@@ -60,10 +60,22 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Checksums | Empty input, frozen engine checksum fixtures, incremental/one-shot agreement, binary bytes and selected byte ranges |
 | Points | Coordinate arithmetic and squared distance |
 | Rectangles | Empty bounds, strict interior containment and normalization |
+| Storage | Record/column growth, schema copies, deletion/reuse, duplicate parameters, UTF-16 values, legacy bytes, compressed round trips and partial-load cleanup |
 
 The checksum fixtures preserve the engine's existing data compatibility contract. Tests link the production `MatrixLib` target and use its real implementations. The console executables use static MinGW runtimes so they can run outside the compiler environment.
 
-This is a small starting suite. Configuration/storage round trips, random-number behavior, construction, rendering, audio and lifecycle need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
+Storage record copies intentionally recreate an empty schema, while moves preserve owned column buffers. Storage objects have single ownership and support moves. The fixture checks preserve the existing STRG versions, ZL03 framing and swap-with-last record deletion order. The storage executable initializes the base services, supplies a console logger and checks for tracked heap leaks in Debug.
+
+To check the configuration-packing operations used by `BUILDCFG` against the tracked text files, run these commands from the repository root after building the tests:
+
+```powershell
+.\build\mingw-debug-exe\tests\matrixgame_storage_tests.exe manual.storage.buildcfg
+.\build\mingw-release-exe\tests\matrixgame_storage_tests.exe manual.storage.buildcfg
+```
+
+This local smoke check parses the interface/data configuration, removes runtime replacements, packs the `if` and `da` roots in memory, restores them and compares their parameter/block trees. It leaves externally supplied resources and `robots.dat` unchanged. The CTest suite uses synthetic fixtures; invoking the console command in a running battle remains a playtest.
+
+Random-number behavior, construction, rendering, audio and lifecycle need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
 
 ## Add a regression
 

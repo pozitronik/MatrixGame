@@ -61,55 +61,32 @@ static void ZL03_Compression(CBuf &out, BYTE *in, int inlen) {
     int ptro = out.Pointer();
     int ptri = 0;
 
-    int szi = inlen;
-
-    while (szi >= 65000) {
+    while (ptri < inlen) {
+        const int size = (inlen - ptri > 65000) ? 65000 : inlen - ptri;
+        DWORD len = compressBound(size);
         out.Pointer(ptro);
-        out.Expand(65536 * 2);
-
-        DWORD len = out.Len() - ptro + 4;
-        int res = compress2(out.Buff<BYTE>() + ptro + 4, &len, in + ptri, 65000, Z_BEST_COMPRESSION);
+        out.Expand(sizeof(DWORD) + len);
+        const int res = compress2(out.Buff<BYTE>() + ptro + sizeof(DWORD), &len, in + ptri,
+                                  size, Z_BEST_COMPRESSION);
         if (res != Z_OK) {
-            debugbreak();
+            ERROR_E;
         }
-        ptri += 65000;
-
         *(DWORD *)(out.Buff<BYTE>() + ptro) = len;
-        ptro += len + 4;
+        ptro += len + sizeof(DWORD);
+        ptri += size;
         out.SetLenNoShrink(ptro);
-
-        szi -= 65000;
         ++cnt;
     }
-
-    if (szi > 0) {
-        out.Pointer(ptro);
-        out.Expand(szi * 2);
-
-        DWORD len = szi;
-        compress2(out.Buff<BYTE>() + ptro + 4, &len, in + ptri, szi, Z_BEST_COMPRESSION);
-
-        *(DWORD *)(out.Buff<BYTE>() + ptro) = len;
-        ptro += len + 4;
-
-        ++cnt;
-    }
-
-    out.SetLenNoShrink(ptro);
     *(DWORD *)(out.Buff<BYTE>() + 4) = cnt;
 }
 
-CStorageRecordItem::~CStorageRecordItem() {}
-
 void CStorageRecordItem::InitBuf(CHeap *heap) {
     ReleaseBuf(heap);
-    m_Buf = HNew(heap) CDataBuf(heap, m_Type);
+    m_Buf.get_deleter().heap = heap;
+    m_Buf.reset(HNew(heap) CDataBuf(heap, m_Type));
 }
-void CStorageRecordItem::ReleaseBuf(CHeap *heap) {
-    if (m_Buf) {
-        HDelete(CDataBuf, m_Buf, heap);
-        m_Buf = NULL;
-    }
+void CStorageRecordItem::ReleaseBuf([[maybe_unused]] CHeap *heap) {
+    m_Buf.reset();
 }
 
 DWORD CStorageRecordItem::CalcUniqID(DWORD xi) {
@@ -146,9 +123,10 @@ bool CStorageRecordItem::Load(CBuf &buf) {
     DWORD sz = buf.Get<DWORD>();
 
     if (m_Type & ST_COMPRESSED) {
-        m_Type = (EStorageType)(m_Type & ST_COMPRESSED);
+        m_Type = (EStorageType)(m_Type & ~ST_COMPRESSED);
         if (0 == ZL03_UnCompress(*m_Buf, buf.Buff<BYTE>() + buf.Pointer(), sz))
             return false;
+        buf.Pointer(buf.Pointer() + sz);
     }
     else {
         m_Buf->Clear();
@@ -159,128 +137,82 @@ bool CStorageRecordItem::Load(CBuf &buf) {
     return true;
 }
 
-CStorageRecord::~CStorageRecord() {
-    if (m_Items) {
-        for (int i = 0; i < m_ItemsCount; ++i) {
-            m_Items[i].ReleaseBuf(m_Heap);
-            m_Items[i].~CStorageRecordItem();
-        }
-        HFree(m_Items, m_Heap);
-    }
-}
-
 void CStorageRecord::AddItem(const CStorageRecordItem &item) {
-    ++m_ItemsCount;
-    m_Items = (CStorageRecordItem *)HAllocEx(m_Items, sizeof(CStorageRecordItem) * m_ItemsCount, m_Heap);
-    new(&m_Items[m_ItemsCount - 1]) CStorageRecordItem(item);
-    // m_Items[m_ItemsCount-1].InitBuf(m_Heap);
+    m_Items.push_back(item);
 }
 
-CStorageRecord::CStorageRecord(const CStorageRecord &rec) : m_Heap(rec.m_Heap), m_Name{rec.m_Name} {
-    m_ItemsCount = rec.m_ItemsCount;
-    m_Items = (CStorageRecordItem *)HAlloc(sizeof(CStorageRecordItem) * m_ItemsCount, m_Heap);
-    for (int i = 0; i < m_ItemsCount; ++i) {
-        new(&m_Items[i]) CStorageRecordItem(rec.m_Items[i]);
-        m_Items[i].InitBuf(m_Heap);
+CStorageRecord::CStorageRecord(const CStorageRecord &rec)
+  : m_Heap(rec.m_Heap), m_Name(rec.m_Name), m_Items(rec.m_Items) {
+    for (auto &item : m_Items) {
+        item.InitBuf(m_Heap);
     }
 }
 
 CDataBuf *CStorageRecord::GetBuf(const wchar *column, EStorageType st) {
-    for (int i = 0; i < m_ItemsCount; ++i) {
-        if (m_Items[i].GetName() == column)
-            return m_Items[i].GetBuf(st);
+    for (auto &item : m_Items) {
+        if (item.GetName() == column)
+            return item.GetBuf(st);
     }
     return NULL;
 }
 
 void CStorageRecord::Save(CBuf &buf, bool compression) {
     buf.WStr(m_Name);
-    buf.Add<uint32_t>(m_ItemsCount);
-    for (int i = 0; i < m_ItemsCount; ++i) {
-        m_Items[i].Save(buf, compression);
+    buf.Add<uint32_t>(static_cast<uint32_t>(m_Items.size()));
+    for (auto &item : m_Items) {
+        item.Save(buf, compression);
     }
 }
 
 DWORD CStorageRecord::CalcUniqID(DWORD xi) {
     DWORD x = CalcCRC32_Buf(xi, m_Name.c_str(), m_Name.length() * sizeof(wchar));
-    for (int i = 0; i < m_ItemsCount; ++i) {
-        x = m_Items[i].CalcUniqID(x);
+    for (auto &item : m_Items) {
+        x = item.CalcUniqID(x);
     }
     return x;
 }
 
 bool CStorageRecord::Load(CBuf &buf) {
-    if (m_Items) {
-        for (int i = 0; i < m_ItemsCount; ++i) {
-            m_Items[i].ReleaseBuf(m_Heap);
-            m_Items[i].~CStorageRecordItem();
-        }
-        HFree(m_Items, m_Heap);
-        m_Items = NULL;
-    }
-
+    m_Items.clear();
     m_Name = buf.WStr();
-    m_ItemsCount = buf.Get<DWORD>();
-    if (m_ItemsCount == 0)
-        return true;
-
-    m_Items = (CStorageRecordItem *)HAlloc(sizeof(CStorageRecordItem) * m_ItemsCount, m_Heap);
-    for (int i = 0; i < m_ItemsCount; ++i) {
-        new(&m_Items[i]) CStorageRecordItem(m_Heap);
-        if (!m_Items[i].Load(buf)) {
-            for (int j = 0; j <= i; ++j) {
-                m_Items[j].ReleaseBuf(m_Heap);
-                m_Items[j].~CStorageRecordItem();
-            }
-            HFree(m_Items, m_Heap);
-            m_Items = NULL;
-            m_ItemsCount = 0;
+    const DWORD count = buf.Get<DWORD>();
+    m_Items.reserve(count);
+    for (DWORD i = 0; i < count; ++i) {
+        m_Items.emplace_back(m_Heap);
+        if (!m_Items.back().Load(buf)) {
+            m_Items.clear();
             return false;
         }
     }
     return true;
 }
 
-CStorage::CStorage(CHeap *heap) : m_Heap(heap), m_Records(NULL), m_RecordsCnt(0) {}
-
-CStorage::~CStorage() {
-    Clear();
-}
+CStorage::CStorage(CHeap *heap) : m_Heap(heap) {}
 
 void CStorage::Clear(void) {
-    if (m_Records) {
-        for (int i = 0; i < m_RecordsCnt; ++i) {
-            m_Records[i].~CStorageRecord();
-        }
-        HFree(m_Records, m_Heap);
-
-        m_Records = NULL;
-        m_RecordsCnt = 0;
-    }
+    m_Records.clear();
 }
 
 void CStorage::AddRecord(const CStorageRecord &sr) {
-    ++m_RecordsCnt;
-    m_Records = (CStorageRecord *)HAllocEx(m_Records, sizeof(CStorageRecord) * m_RecordsCnt, m_Heap);
-    new(&m_Records[m_RecordsCnt - 1]) CStorageRecord(sr);
+    m_Records.push_back(sr);
 }
 
 void CStorage::DelRecord(const wchar *table) {
-    for (int i = 0; i < m_RecordsCnt; ++i) {
+    for (size_t i = 0; i < m_Records.size(); ++i) {
         if (m_Records[i].GetName() == table) {
-            m_Records[i].~CStorageRecord();
-            --m_RecordsCnt;
-            if (m_RecordsCnt != i)
-                memcpy(m_Records + i, m_Records + m_RecordsCnt, sizeof(CStorageRecord));
-
+            // Preserve the legacy swap-with-last deletion order.
+            if (i + 1 != m_Records.size()) {
+                m_Records[i] = std::move(m_Records.back());
+            }
+            m_Records.pop_back();
             break;
         }
     }
 }
 
 bool CStorage::IsTablePresent(const wchar *table) {
-    for (int i = 0; i < m_RecordsCnt; ++i) {
-        if (m_Records[i].GetName() == table) {
+    for (const auto &record : m_Records) {
+        if (record.GetName() == table) {
             return true;
         }
     }
@@ -288,9 +220,9 @@ bool CStorage::IsTablePresent(const wchar *table) {
 }
 
 CDataBuf *CStorage::GetBuf(const wchar *table, const wchar *column, EStorageType st) {
-    for (int i = 0; i < m_RecordsCnt; ++i) {
-        if (m_Records[i].GetName() == table) {
-            return m_Records[i].GetBuf(column, st);
+    for (auto &record : m_Records) {
+        if (record.GetName() == table) {
+            return record.GetBuf(column, st);
         }
     }
     return NULL;
@@ -298,8 +230,8 @@ CDataBuf *CStorage::GetBuf(const wchar *table, const wchar *column, EStorageType
 
 DWORD CStorage::CalcUniqID(void) {
     DWORD x = 0xFFFFFFFF;
-    for (int i = 0; i < m_RecordsCnt; ++i) {
-        x = m_Records[i].CalcUniqID(x);
+    for (auto &record : m_Records) {
+        x = record.CalcUniqID(x);
     }
     return x;
 }
@@ -329,10 +261,10 @@ void CStorage::Save(CBuf &buf, bool compression) {
     buf.Clear();
     buf.Add<uint32_t>(0x47525453);
     buf.Add<uint32_t>(compression ? 1 : 0);  // version
-    buf.Add<uint32_t>(m_RecordsCnt);         // records count
+    buf.Add<uint32_t>(static_cast<uint32_t>(m_Records.size()));  // records count
 
-    for (int i = 0; i < m_RecordsCnt; ++i) {
-        m_Records[i].Save(buf, false);
+    for (auto &record : m_Records) {
+        record.Save(buf, false);
     }
 
     if (compression) {
@@ -365,28 +297,13 @@ bool CStorage::Load(CBuf &buf_in) {
         buf2.Pointer(0);
     }
 
-    if (m_Records) {
-        for (int i = 0; i < m_RecordsCnt; ++i) {
-            m_Records[i].~CStorageRecord();
-        }
-        HFree(m_Records, m_Heap);
-        m_Records = NULL;
-    }
-
-    m_RecordsCnt = buf->Get<DWORD>();
-    if (m_RecordsCnt == 0)
-        return true;
-
-    m_Records = (CStorageRecord *)HAlloc(sizeof(CStorageRecord) * m_RecordsCnt, m_Heap);
-    for (int i = 0; i < m_RecordsCnt; ++i) {
-        new(&m_Records[i]) CStorageRecord(m_Heap);
-        if (!m_Records[i].Load(*buf)) {
-            for (int j = 0; j <= i; ++j) {
-                m_Records[j].~CStorageRecord();
-            }
-            HFree(m_Records, m_Heap);
-            m_Records = NULL;
-            m_RecordsCnt = 0;
+    m_Records.clear();
+    const DWORD count = buf->Get<DWORD>();
+    m_Records.reserve(count);
+    for (DWORD i = 0; i < count; ++i) {
+        m_Records.emplace_back(m_Heap);
+        if (!m_Records.back().Load(*buf)) {
+            m_Records.clear();
             return false;
         }
     }
