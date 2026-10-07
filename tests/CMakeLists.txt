@@ -46,6 +46,11 @@ add_matrix_test(base.storage.empty_round_trip matrixgame_storage_tests base stor
 add_matrix_test(base.storage.column_compression matrixgame_storage_tests base storage)
 add_matrix_test(base.storage.partial_load_cleanup matrixgame_storage_tests base storage)
 
+add_matrix_test_executable(matrixgame_error_tests error_tests.cpp)
+add_matrix_test(base.error.single_message matrixgame_error_tests base startup)
+add_matrix_test(base.error.empty_trace matrixgame_error_tests base startup)
+add_matrix_test(base.error.missing_file matrixgame_error_tests base startup)
+
 add_matrix_test_executable(matrixgame_random_tests random_tests.cpp)
 add_matrix_test(base.random.unit_interval matrixgame_random_tests base random)
 add_matrix_test(base.random.fractional_scales matrixgame_random_tests base random)
