@@ -1,5 +1,7 @@
 # Cross-compiling MatrixGame on Linux
 
+> This is an unsupported cross-compilation guide retained for reference. It produces Windows binaries for Wine, not a native Linux game. Use the [Windows build guide](BUILD_WINDOWS.md) for supported builds.
+
 You can cross-compile the game on Linux for Windows and then launch it using wine!
 
 You can also debug it! 

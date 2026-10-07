@@ -298,6 +298,7 @@ def main(argv=None):
     branch.add_argument('--allow-no-issue', metavar='REASON')
     pr = commands.add_parser('pr')
     pr.add_argument('--input', required=True, type=Path)
+    pr.add_argument('--event', action='store_true', help='read pull_request from a GitHub event payload')
     issues = commands.add_parser('issues')
     source = issues.add_mutually_exclusive_group(required=True)
     source.add_argument('--repo')
@@ -320,6 +321,10 @@ def main(argv=None):
             snapshot = read_snapshot(args.input)
             if not isinstance(snapshot, dict):
                 raise ValueError('PR snapshot must be an object')
+            if args.event:
+                snapshot = snapshot.get('pull_request')
+                if not isinstance(snapshot, dict):
+                    raise ValueError('GitHub event must contain a pull_request object')
             return findings(validate_pr(snapshot, catalog))
         rows, warnings = read_issues(args.repo) if args.repo else (read_snapshot(args.input), [])
         if not isinstance(rows, list):

@@ -33,8 +33,9 @@ The [testing guide](docs/TESTING.md) describes verification, and the
 
 ## License and origins
 
-The engine is licensed under **GPLv2 or any later version**; see [LICENSE](LICENSE).
-Existing copyright notices and third-party licenses apply.
+The copyright holders released the engine sources in `MatrixGame` and `MatrixLib` under **GPLv2 or any later version**; see [LICENSE](LICENSE). Preserve their existing copyright notices.
+
+The engine uses libpng and zlib under their own licenses. See the [libpng license](https://github.com/glennrp/libpng/blob/v1.6.37/LICENSE) and [zlib copyright notice and license](https://github.com/madler/zlib/blob/v1.2.11/README#L77). Their original authors retain the rights and distribution terms for these libraries.
 
 This project builds on [vladislavrv/MatrixGame](https://github.com/vladislavrv/MatrixGame)
 and [murgesku/MatrixGame](https://github.com/murgesku/MatrixGame).

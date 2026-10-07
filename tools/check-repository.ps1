@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [string]$BaseRef = ''
+)
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -20,6 +22,12 @@ foreach ($resource in @('robots.pkg', 'robots.dat')) {
     git -C $repoRoot check-ignore --quiet --no-index $resource
     if ($LASTEXITCODE -ne 0) { throw "$resource must be covered by .gitignore." }
 }
+if ($BaseRef) {
+    git -C $repoRoot diff --check "$BaseRef...HEAD"
+    if ($LASTEXITCODE -ne 0) { throw 'Committed changes contain whitespace errors.' }
+}
 git -C $repoRoot diff --check
-if ($LASTEXITCODE -ne 0) { throw 'Diff contains whitespace errors.' }
+if ($LASTEXITCODE -ne 0) { throw 'Working-tree changes contain whitespace errors.' }
+git -C $repoRoot diff --cached --check
+if ($LASTEXITCODE -ne 0) { throw 'Staged changes contain whitespace errors.' }
 Write-Output 'Repository checks passed; local resources and tools are excluded.'

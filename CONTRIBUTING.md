@@ -81,6 +81,12 @@ Use lowercase ASCII and hyphenated words, with one slash and at most 80 characte
 
 Reuse an owned checkout for serial tasks and switch only after the working tree is settled. Parallel tasks require separate owned worktrees. Never modify another contributor's checkout. Remove a completed worktree through Git after preserving its commits; do not keep it for hypothetical later use.
 
+## Commits
+
+Use `<Area>: <imperative summary>` for the subject, following the same area capitalization as issue and PR titles. Aim for 72 characters or fewer and never exceed 100. Keep it to one line without a terminal period.
+
+Reference the primary leaf issue in the body when one exists; do not invent an issue reference for authorized administrative work. Write one line per prose paragraph. Do not add tool or session attribution, session links, or model co-author trailers. Preserve legitimate human authorship and existing copyright notices.
+
 ## Pull requests and review
 
 Use the same area title convention, with an imperative PR title preferably under 72 characters and never over 100. Link one primary leaf issue using `Issue: #<number>` and the Development relationship. A final umbrella integration PR uses `Epic: #<number>` instead; an issue-exempt PR explains the authorized scope under `Issue exception`. Apply relevant area/discovery labels; do not copy issue type, priority or status labels onto the PR. Explain the change and its compatibility effects, include actual validation, and use draft state while work remains incomplete.

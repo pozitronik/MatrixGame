@@ -76,3 +76,5 @@ For integration with the Space Rangers host:
 ```
 
 The DLL uses the host game's resource and configuration layout.
+
+CI builds the normal standalone configurations, a developer EXE with cheats, and Release DLLs with cheats for both MinGW and MSVC. Artifacts identify compiler, configuration, output type and cheats setting; these names replace the older `dll_gcc` and `dll_msvc` names.

@@ -5,6 +5,7 @@ on:
     branches: [dev, master]
   pull_request:
     branches: [dev, master, 'epic/**']
+    types: [opened, synchronize, reopened, ready_for_review, edited]
   workflow_dispatch:
 
 permissions:
@@ -27,6 +28,9 @@ jobs:
         run: |
           python3 -B .github/scripts/check-contribution-policy.py catalog
           python3 -B -m unittest discover -s .github/scripts -p 'test_*.py'
+      - name: Validate pull request metadata
+        if: github.event_name == 'pull_request'
+        run: python3 -B .github/scripts/check-contribution-policy.py pr --input "$GITHUB_EVENT_PATH" --event
 
   repository:
     name: Repository checks
@@ -36,12 +40,18 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+          fetch-depth: 0
       - name: Verify local-only content is excluded
         shell: pwsh
-        run: ./tools/check-repository.ps1
+        env:
+          CHECK_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          $base = $env:CHECK_BASE_SHA
+          if (-not $base -or $base -match '^0+$') { $base = 'HEAD^' }
+          ./tools/check-repository.ps1 -BaseRef $base
 
   build:
-    name: ${{ matrix.compiler }} ${{ matrix.configuration }} EXE
+    name: ${{ matrix.name }}
     runs-on: windows-2022
     timeout-minutes: 30
     strategy:
@@ -50,10 +60,34 @@ jobs:
         include:
           - compiler: MinGW
             configuration: Debug
+            target: EXE
+            cheats: false
+            name: MinGW Debug EXE
           - compiler: MinGW
             configuration: Release
+            target: EXE
+            cheats: false
+            name: MinGW Release EXE
           - compiler: MSVC
             configuration: Release
+            target: EXE
+            cheats: false
+            name: MSVC Release EXE
+          - compiler: MinGW
+            configuration: Release
+            target: DLL
+            cheats: true
+            name: MinGW Release DLL (cheats)
+          - compiler: MSVC
+            configuration: Release
+            target: DLL
+            cheats: true
+            name: MSVC Release DLL (cheats)
+          - compiler: MinGW
+            configuration: Debug
+            target: EXE
+            cheats: true
+            name: MinGW Debug EXE (cheats)
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -73,17 +107,26 @@ jobs:
           $sdkRoot = Join-Path $destination 'DXSDK'
           if (-not (Test-Path "$sdkRoot/Include/d3dx9.h")) { throw 'DirectX headers missing.' }
           "DXSDK_DIR=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-      - name: Build standalone without local assets
+      - name: Build the selected configuration without local assets
         shell: pwsh
-        run: ./tools/build.ps1 -Compiler '${{ matrix.compiler }}' -Configuration '${{ matrix.configuration }}' -WithoutResources
-      - name: Upload compiled standalone and text configuration
+        run: |
+          $buildParameters = @{
+            Compiler = '${{ matrix.compiler }}'
+            Configuration = '${{ matrix.configuration }}'
+            WithoutResources = $true
+          }
+          if ('${{ matrix.target }}' -eq 'DLL') { $buildParameters.DLL = $true }
+          if ('${{ matrix.cheats }}' -eq 'true') { $buildParameters.Cheats = $true }
+          ./tools/build.ps1 @buildParameters
+      - name: Upload compiled binaries and text configuration
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: standalone-${{ matrix.compiler }}-${{ matrix.configuration }}
+          name: matrixgame-${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}-${{ matrix.cheats && 'cheats' || 'normal' }}
           if-no-files-found: error
           retention-days: 14
           path: |
             build/**/MatrixGame.exe
+            build/**/MatrixGame.dll
             build/**/MatrixGame.pdb
             build/**/MatrixGame/**/*.dll
             build/**/CFG/**/*.txt

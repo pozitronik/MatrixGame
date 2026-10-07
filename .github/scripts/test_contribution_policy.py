@@ -186,6 +186,16 @@ class InputAndReadOnlyContracts(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     POLICY.load_catalog(path)
 
+    def test_github_event_validation_uses_the_untrusted_pr_as_data(self):
+        TEMP_ROOT.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=TEMP_ROOT) as directory:
+            path = Path(directory) / 'event.json'
+            for payload, result in [({'pull_request': pr()}, 0), ({'pull_request': pr(title='Invalid title')}, 1), ({}, 2)]:
+                path.write_text(json.dumps(payload), encoding='utf-8')
+                with mock.patch.object(POLICY.subprocess, 'run') as run, contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
+                    self.assertEqual(result, POLICY.main(['pr', '--input', str(path), '--event']))
+                run.assert_not_called()
+
     def test_malformed_local_snapshots_fail_without_network_or_a_traceback(self):
         TEMP_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=TEMP_ROOT) as directory:

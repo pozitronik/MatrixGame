@@ -29,9 +29,9 @@ $configureArgs = @(
     '-S', $repoRoot, '-B', $buildRoot,
     "-DCMAKE_BUILD_TYPE=$Configuration",
     "-DMATRIXGAME_BUILD_DLL=$dllOption",
-    "-DMATRIXGAME_CHEATS=$cheatsOption",
-    '-DMATRIXGAME_PKG_BRING_FROM_GAME=OFF'
+    "-DMATRIXGAME_CHEATS=$cheatsOption"
 )
+if (-not $DLL) { $configureArgs += '-DMATRIXGAME_PKG_BRING_FROM_GAME=OFF' }
 
 $savedPath = $env:PATH
 try {
