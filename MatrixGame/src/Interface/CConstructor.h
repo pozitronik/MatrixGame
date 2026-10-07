@@ -5,6 +5,8 @@
 
 #pragma once
 
+#include <span>
+
 #include "../MatrixObject.hpp"
 #include "../MatrixRobot.hpp"
 #include "../Logic/MatrixAIGroup.h"
@@ -82,6 +84,8 @@ struct SSpecialBot {
     static int m_AIRobotTypeCnt;
 
     static void LoadAIRobotType(CBlockPar &bp);
+    // Capacity entries are indexed by armor kind, as populated by RobotPreload.
+    static void LoadAIRobotType(CBlockPar &bp, std::span<const SRobotWeaponMatrix> weaponMatrix);
     static void ClearAIRobotType(void);
 
     void CalcStrength(void);              // Расчитываем силу робота
