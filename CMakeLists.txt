@@ -5,7 +5,10 @@ set(CMAKE_CONFIGURATION_TYPES Release Debug)
 
 project(MatrixGame)
 
-include(CTest)
+option(BUILD_TESTING "Build the engine regression tests" ON)
+if(BUILD_TESTING)
+    enable_testing()
+endif()
 
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
