@@ -5,6 +5,8 @@ set(CMAKE_CONFIGURATION_TYPES Release Debug)
 
 project(MatrixGame)
 
+include(CTest)
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -78,6 +80,10 @@ endif()
 
 add_subdirectory(MatrixLib)
 add_subdirectory(MatrixGame)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()
 
 install(
     TARGETS MatrixGame

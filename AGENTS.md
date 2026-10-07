@@ -69,10 +69,14 @@ Use the pinned tools described in `docs/BUILD_WINDOWS.md` rather than whichever 
 .\tools\setup-toolchain.ps1
 .\tools\build.ps1 -Configuration Debug
 .\tools\build.ps1 -Configuration Release
+.\tools\test.ps1 -Configuration Debug
+.\tools\test.ps1 -Configuration Release
 .\tools\check-repository.ps1
 ```
 
 The CMake options select EXE/DLL and cheats; `_DEBUG`, `ASSERT_OFF` and `BUILD_EXE` change compiled behavior. Check the actual configuration and binary before concluding that a path was exercised. Debug and Release use different assertion and allocation instrumentation.
+
+The test helper builds the `matrixgame_tests` target and runs registered engine contracts through CTest. It rejects empty selections and propagates failures. Keep test fixtures synthetic, link production implementations and use checks that remain active in Release. Follow `docs/TESTING.md` when extending the suite.
 
 For game or build changes, validate affected Debug and Release standalone configurations. Check MSVC compatibility when compiler behavior, headers, packing, dependencies or ABI are affected. Use focused regressions and relevant playtests; broaden testing only when the risk or a failure warrants it. Document a missing check clearly and use CI for toolchain coverage when possible. Do not launch an interactive game unexpectedly.
 

@@ -6,6 +6,8 @@ param(
     [switch]$DLL,
     [switch]$Cheats,
     [switch]$WithoutResources,
+    [switch]$WithoutTests,
+    [switch]$TestsOnly,
     [string]$ToolchainRoot = '',
     [int]$Jobs = 4
 )
@@ -19,17 +21,20 @@ if (-not (Test-Path -LiteralPath $cmake)) {
     throw 'Pinned tools are missing. Run tools/setup-toolchain.ps1 first.'
 }
 if ($Jobs -lt 1) { throw 'Jobs must be a positive number.' }
+if ($TestsOnly -and $WithoutTests) { throw 'TestsOnly and WithoutTests cannot be combined.' }
 
 $kind = if ($DLL) { 'dll' } else { 'exe' }
 $buildName = "{0}-{1}-{2}" -f $Compiler.ToLowerInvariant(), $Configuration.ToLowerInvariant(), $kind
 $buildRoot = Join-Path $repoRoot "build/$buildName"
 $dllOption = if ($DLL) { 'ON' } else { 'OFF' }
 $cheatsOption = if ($Cheats) { 'ON' } else { 'OFF' }
+$testingOption = if ($WithoutTests) { 'OFF' } else { 'ON' }
 $configureArgs = @(
     '-S', $repoRoot, '-B', $buildRoot,
     "-DCMAKE_BUILD_TYPE=$Configuration",
     "-DMATRIXGAME_BUILD_DLL=$dllOption",
-    "-DMATRIXGAME_CHEATS=$cheatsOption"
+    "-DMATRIXGAME_CHEATS=$cheatsOption",
+    "-DBUILD_TESTING=$testingOption"
 )
 if (-not $DLL) { $configureArgs += '-DMATRIXGAME_PKG_BRING_FROM_GAME=OFF' }
 
@@ -48,10 +53,17 @@ try {
 
     & $cmake @configureArgs
     if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
-    & $cmake --build $buildRoot --config $Configuration --parallel $Jobs
+    $buildArgs = @('--build', $buildRoot, '--config', $Configuration, '--parallel', $Jobs)
+    if ($TestsOnly) { $buildArgs += @('--target', 'matrixgame_tests') }
+    & $cmake @buildArgs
     if ($LASTEXITCODE -ne 0) { throw 'Compilation failed.' }
 } finally {
     $env:PATH = $savedPath
+}
+
+if ($TestsOnly) {
+    Write-Output "Test build output: $buildRoot/tests"
+    return
 }
 
 $gameRoot = Join-Path $buildRoot 'MatrixGame'

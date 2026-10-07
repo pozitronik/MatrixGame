@@ -41,7 +41,7 @@ if ((Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -ne $archive
 New-Item -ItemType Directory -Path $installRoot -Force | Out-Null
 & $extractor.Source x $ArchivePath "-o$installRoot" -y -bso0 -bsp0
 if ($LASTEXITCODE -ne 0) { throw 'Toolchain extraction failed.' }
-foreach ($program in @('gcc.exe', 'g++.exe', 'cmake.exe', 'ninja.exe')) {
+foreach ($program in @('gcc.exe', 'g++.exe', 'cmake.exe', 'ctest.exe', 'ninja.exe')) {
     if (-not (Test-Path -LiteralPath (Join-Path $compilerRoot "bin/$program"))) {
         throw "The downloaded toolchain is missing $program."
     }
