@@ -62,6 +62,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Rectangles | Empty bounds, strict interior containment and normalization |
 | Storage | Record/column growth, schema copies, deletion/reuse, duplicate parameters, UTF-16 values, legacy bytes, compressed round trips and partial-load cleanup |
 | Random numbers | Original generator sequence, seed normalization, range endpoints, reversed/equal bounds, fractional scales, index bounds and shared-stream consumption |
+| AI robot definitions | Head aliases and resource valuation, headless definitions, weapon strength ordering and missing armor-capacity diagnostics |
 
 The checksum fixtures preserve the engine's existing data compatibility contract. Tests link the production `MatrixLib` target and use its real implementations. The console executables use static MinGW runtimes so they can run outside the compiler environment.
 
@@ -83,6 +84,8 @@ Integer and finite floating bounds are normalized when reversed and include both
 `IRND` uses integer modulo mapping instead of rounded interpolation. The previous mapping gave endpoint indices roughly half the weight of interior indices; the corrected mapping removes that weighting while retaining modulo bias. This changes index-based choices such as axes, sound/frame variants and effect thresholds.
 
 Simulation and effects still share one seeded stream, so changing the order or number of effect calls can change later simulation draws. Stream separation would require an explicit gameplay decision. Floating-point mappings are checked by their range/endpoint contract; the suite does not claim cross-compiler replay of an entire battle.
+
+The AI robot executable compiles the production definition loader and pricing code using the common engine compiler options. Synthetic configuration prices and armor weapon capacities let it check definition parsing, total resource costs and selection ordering without a map, renderer or game package. Robot mesh assembly and AI construction in a running battle remain playtests.
 
 Construction, rendering, audio, lifecycle and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
 

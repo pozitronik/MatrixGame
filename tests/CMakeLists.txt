@@ -55,3 +55,13 @@ add_matrix_test(base.random.floating_bounds matrixgame_random_tests base random)
 add_matrix_test(base.random.integer_bounds matrixgame_random_tests base random)
 add_matrix_test(base.random.index_bounds matrixgame_random_tests base random)
 add_matrix_test(base.random.shared_stream matrixgame_random_tests base random)
+
+add_matrix_test_executable(matrixgame_ai_tests
+    ai_robot_tests.cpp
+    ../MatrixGame/src/Interface/AIRobotTypes.cpp)
+target_include_directories(matrixgame_ai_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+target_compile_definitions(matrixgame_ai_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+add_matrix_test(game.ai.head_price matrixgame_ai_tests gameplay ai)
+add_matrix_test(game.ai.no_head matrixgame_ai_tests gameplay ai)
+add_matrix_test(game.ai.strength_order matrixgame_ai_tests gameplay ai)
+add_matrix_test(game.ai.capacity_bounds matrixgame_ai_tests gameplay ai)
