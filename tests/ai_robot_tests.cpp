@@ -151,9 +151,9 @@ void capacity_bounds() {
         SSpecialBot::LoadAIRobotType(definitions.input,
                 std::span<const SRobotWeaponMatrix>(definitions.capacities.data(), ROBOT_ARMOR_CNT - 1));
     }
-    catch (const Base::CException &error) {
+    catch (const std::out_of_range &error) {
         rejected = true;
-        MG_CHECK(error.Info().find(L"missing armor capacity: 6") != std::wstring::npos);
+        MG_CHECK(std::string_view(error.what()).find("missing armor capacity: 6") != std::string_view::npos);
     }
     MG_CHECK(rejected);
 }

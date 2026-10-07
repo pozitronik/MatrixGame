@@ -5,6 +5,8 @@
 
 #include "CConstructor.h"
 
+#include <stdexcept>
+
 void SPrice::SetPrice(ERobotUnitType type, ERobotUnitKind kind) {
     ZeroMemory(m_Resources, sizeof(m_Resources));
     if (!kind)
@@ -129,7 +131,7 @@ void SSpecialBot::LoadAIRobotType(CBlockPar &bp, std::span<const SRobotWeaponMat
 
         const auto armor = m_AIRobotTypeList[m_AIRobotTypeCnt].m_Armor.m_Unit.m_nKind - 1;
         if (armor >= weaponMatrix.size())
-            ERROR_S2(L"LoadAIRobotType missing armor capacity: ", utils::format(L"%u", armor + 1).c_str());
+            throw std::out_of_range("AI robot definition missing armor capacity: " + std::to_string(armor + 1));
         m_AIRobotTypeList[m_AIRobotTypeCnt].m_Armor.m_MaxCommonWeaponCnt = weaponMatrix[armor].common;
         m_AIRobotTypeList[m_AIRobotTypeCnt].m_Armor.m_MaxExtraWeaponCnt = weaponMatrix[armor].extra;
         m_AIRobotTypeList[m_AIRobotTypeCnt].m_Armor.m_Unit.m_Price.SetPrice(
