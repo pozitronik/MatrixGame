@@ -1,0 +1,42 @@
+name: "Tracker"
+description: "Maintain an inventory, compatibility corpus or recurring observation."
+labels: ["type:tracker", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Use <Area> or Project: track <subject> as the title. Actionable entries become separate leaf issues."
+  - type: textarea
+    id: subject
+    attributes:
+      label: "Subject"
+      description: "Define the observation or inventory and the decision it informs."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Scope"
+      description: "Coverage boundaries and exclusions."
+    validations:
+      required: true
+  - type: textarea
+    id: source
+    attributes:
+      label: "Source and update protocol"
+      description: "Authoritative inputs, how observations are captured, and when they are updated."
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "Acceptance criteria"
+      description: "Closure, replacement or archival criteria."
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: "Validation plan"
+      description: "How observations and changes in the inventory are checked."
+    validations:
+      required: true

@@ -1,25 +1,45 @@
-name: Scoped task
-description: Define a bounded implementation, testing or documentation task.
-title: "[Task] "
+name: "Maintenance task"
+description: "Define a bounded code, build, test, dependency or documentation change."
+labels: ["type:task", "status:needs-triage"]
 body:
-  - type: textarea
-    id: problem
+  - type: markdown
     attributes:
-      label: Problem and scope
-      description: Connect the task to the stable Windows standalone goal; list exclusions.
+      value: "Use <Area>: <intended outcome> as the title. Keep unrelated maintenance in separate tasks."
+  - type: textarea
+    id: goal
+    attributes:
+      label: "Goal"
+      description: "Explain the problem and the result this task should produce."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Scope"
+      description: "Define the change boundary and non-goals."
     validations:
       required: true
   - type: textarea
     id: acceptance
     attributes:
-      label: Acceptance criteria
-      description: Observable outcomes that allow the issue to be closed.
+      label: "Acceptance criteria"
+      description: "Conditions that allow the task to be closed."
     validations:
       required: true
   - type: textarea
     id: validation
     attributes:
-      label: Validation plan and dependencies
-      description: Builds, automated checks, manual scenarios and prerequisite issues.
+      label: "Validation plan"
+      description: "Specific checks appropriate to the affected behavior."
     validations:
       required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: "Dependencies"
+      description: "Hard prerequisites or contextual links."
+  - type: textarea
+    id: external
+    attributes:
+      label: "External blocker"
+      description: "If applicable, name the external condition and what unblocks it."

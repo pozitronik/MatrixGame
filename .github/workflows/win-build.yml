@@ -2,9 +2,9 @@ name: Windows standalone CI
 
 on:
   push:
-    branches: [master]
+    branches: [dev, master]
   pull_request:
-    branches: [master]
+    branches: [dev, master, 'epic/**']
   workflow_dispatch:
 
 permissions:
@@ -15,6 +15,19 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  policy:
+    name: Contribution policy checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Validate the label catalog and policy contracts
+        run: |
+          python3 -B .github/scripts/check-contribution-policy.py catalog
+          python3 -B -m unittest discover -s .github/scripts -p 'test_*.py'
+
   repository:
     name: Repository checks
     runs-on: windows-2022
@@ -78,14 +91,16 @@ jobs:
   required:
     name: Required checks
     if: always()
-    needs: [repository, build]
+    needs: [policy, repository, build]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require repository and build jobs to succeed
         env:
+          POLICY_RESULT: ${{ needs.policy.result }}
           REPOSITORY_RESULT: ${{ needs.repository.result }}
           BUILD_RESULT: ${{ needs.build.result }}
         run: |
+          test "$POLICY_RESULT" = success
           test "$REPOSITORY_RESULT" = success
           test "$BUILD_RESULT" = success

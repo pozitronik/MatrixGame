@@ -7,7 +7,8 @@ $trackedFiles = @(git -C $repoRoot ls-files)
 if ($LASTEXITCODE -ne 0) { throw 'Cannot inspect tracked files.' }
 $forbidden = @($trackedFiles | Where-Object {
     $_ -match '(?i)\.pkg$' -or $_ -match '(?i)^robots\.dat$' -or
-    $_ -match '^(?:\.tools|\.local)/'
+    $_ -match '^(?:\.tools|\.local|\.codex|\.claude)/' -or
+    $_ -match '(^|/)YOUR\.GITHUB\.NAME$'
 })
 if ($forbidden.Count) {
     throw "Local-only content is tracked: $($forbidden -join ', ')"

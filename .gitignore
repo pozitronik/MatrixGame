@@ -10,7 +10,10 @@ bin/
 # Developer tools and local settings.
 .tools/
 .local/
+.codex/
+.claude/
 CMakeUserPresets.json
+__pycache__/
 
 # Editor state and game/debugger output.
 .vs/

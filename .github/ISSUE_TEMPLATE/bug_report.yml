@@ -1,35 +1,55 @@
-name: Bug report
-description: Report a reproducible standalone failure.
-title: "[Bug] "
-labels: [bug]
+name: "Bug report"
+description: "Report behavior that contradicts the intended result."
+labels: ["type:bug", "status:needs-triage"]
 body:
+  - type: markdown
+    attributes:
+      value: "Use <Area>: <observable defect> as the title. Describe a minimal reproduction; implementation planning can be completed during triage."
   - type: textarea
     id: environment
     attributes:
-      label: Build and environment
-      description: Commit, Windows version, compiler, Debug/Release, EXE/DLL, cheats, map/seed if known.
+      label: "Build and environment"
+      description: "Source revision, Windows version, compiler, Debug/Release, EXE/DLL, and cheats setting."
+    validations:
+      required: true
+  - type: textarea
+    id: observed
+    attributes:
+      label: "Observed behavior"
+      description: "Describe the failure and its impact."
     validations:
       required: true
   - type: textarea
     id: reproduction
     attributes:
-      label: Reproduction
-      description: Exact steps and observed behavior. Do not attach game resource files.
+      label: "Reproduction"
+      description: "Give steps, input and map/seed where relevant. Do not attach resource files."
     validations:
       required: true
   - type: textarea
     id: expected
     attributes:
-      label: Expected behavior
+      label: "Expected behavior"
+      description: "Describe the intended result."
     validations:
       required: true
   - type: textarea
     id: evidence
     attributes:
-      label: Logs and debugger evidence
-      description: Relevant log excerpt or stack, and how frequently the failure occurs.
+      label: "Evidence"
+      description: "A small log excerpt, stack, failing regression or source finding."
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Scope"
+      description: "The correction boundary and any non-goals."
   - type: textarea
     id: acceptance
     attributes:
-      label: Suggested acceptance criteria
-      description: Behavior and regression checks that would demonstrate a fix.
+      label: "Acceptance criteria"
+      description: "Observable conditions that demonstrate the correction."
+  - type: textarea
+    id: validation
+    attributes:
+      label: "Validation plan"
+      description: "Relevant regression tests, builds and playtest scenarios."

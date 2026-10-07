@@ -1,11 +1,21 @@
-## What changed
+## Issue
 
-Describe the problem and the resulting behavior.
+Issue: #<number>
 
-## How to verify
+<!-- Link the primary leaf issue through Development. For approved issue-exempt work, replace the marker with the exception's scope. -->
 
-List the builds, tests or playtest steps performed and their results.
+## Summary
 
-## Related work
+Describe the problem and resulting behavior.
 
-Link related reports or discussions, and note any compatibility or documentation changes.
+## Design and compatibility
+
+Describe relevant data-format, lifetime, determinism, ABI or hot-path changes and the scope boundaries.
+
+## Validation
+
+List the builds, regression tests or playtest steps actually performed and their results. State any relevant coverage gap.
+
+## Documentation
+
+Describe affected documentation or explain why no update is needed.
