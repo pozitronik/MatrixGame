@@ -1,74 +1,91 @@
-name: Auto-build
+name: Windows standalone CI
 
 on:
   push:
-    branches: [ "refactoring", "TEST" ]
+    branches: [master]
   pull_request:
-    branches: [ "refactoring" ]
-
-  # Allows you to run this workflow manually from the Actions tab
+    branches: [master]
   workflow_dispatch:
 
-jobs:
-  msvc:
-    name: Build with MSVC
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v4
-    - name: Get DXSDK
-      run:  |
-            DXDIR=$TEMP/DXDIR
-            curl -L https://download.microsoft.com/download/a/e/7/ae743f1f-632b-4809-87a9-aa1bb3458e31/DXSDK_Jun10.exe -o _DX2010_.exe
-            7z x _DX2010_.exe DXSDK/Include -o_DX2010_
-            7z x _DX2010_.exe DXSDK/Lib/x86 -o_DX2010_
-            mkdir $DXDIR
-            mv _DX2010_/DXSDK/* $DXDIR
-            rm -fR _DX*_ _DX*_.exe
-            echo "DXSDK_DIR=$DXDIR" >> $GITHUB_ENV
-      shell: bash
-    - name: Compile with MSVC
-      run: |
-        cmake -A Win32 . -B build_msvc
-        cmake --build build_msvc --config Release
-      shell: bash
-    - name: Store artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: dll_msvc
-        path: |
-          ${{ github.workspace }}/build_msvc/MatrixGame/Release/MatrixGame.dll
+permissions:
+  contents: read
 
-  gcc:
-    name: Build with GCC
-    runs-on: windows-latest
+concurrency:
+  group: standalone-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository:
+    name: Repository checks
+    runs-on: windows-2022
+    timeout-minutes: 5
     steps:
-    - uses: actions/checkout@v4
-    - name: Get MinGW
-      run: |
-           MINGW_DIR=$TEMP/mingw
-           curl -L https://github.com/brechtsanders/winlibs_mingw/releases/download/13.1.0-16.0.2-11.0.0-ucrt-r1/winlibs-i686-mcf-dwarf-gcc-13.1.0-mingw-w64ucrt-11.0.0-r1.7z -o mingw.7z
-           7z x mingw.7z -o$MINGW_DIR
-           rm mingw.7z
-           echo "PATH=$MINGW_DIR/mingw32/bin:$PATH" >> $GITHUB_ENV
-      shell: bash
-    - name: Get Ninja
-      run: |
-           NINJA_DIR=$TEMP/ninja
-           curl -L https://github.com/ninja-build/ninja/releases/download/v1.11.1/ninja-win.zip -o ninja.zip
-           unzip ninja.zip -d $NINJA_DIR
-           rm ninja.zip
-           echo "PATH=$NINJA_DIR:$PATH" >> $GITHUB_ENV
-      shell: bash
-    - name: Compile with GCC
-      run: |
-        # ninja wants cmd.exe to be in the path
-        export PATH=/c/Windows/System32:$PATH
-        cmake . -G "Ninja" -B build_gcc
-        cmake --build build_gcc --config Release
-      shell: bash
-    - name: Store artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: dll_gcc
-        path: |
-          ${{ github.workspace }}/build_gcc/MatrixGame/MatrixGame.dll
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Verify local-only content is excluded
+        shell: pwsh
+        run: ./tools/check-repository.ps1
+
+  build:
+    name: ${{ matrix.compiler }} ${{ matrix.configuration }} EXE
+    runs-on: windows-2022
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - compiler: MinGW
+            configuration: Debug
+          - compiler: MinGW
+            configuration: Release
+          - compiler: MSVC
+            configuration: Release
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned build tools
+        shell: pwsh
+        run: ./tools/setup-toolchain.ps1
+      - name: Get DirectX SDK headers and x86 libraries
+        if: matrix.compiler == 'MSVC'
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP 'DXSDK_Jun10.exe'
+          $destination = Join-Path $env:RUNNER_TEMP 'directx-sdk'
+          Invoke-WebRequest -Uri 'https://download.microsoft.com/download/a/e/7/ae743f1f-632b-4809-87a9-aa1bb3458e31/DXSDK_Jun10.exe' -OutFile $archive
+          & 7z x $archive 'DXSDK/Include' 'DXSDK/Lib/x86' "-o$destination" -y -bso0 -bsp0
+          if ($LASTEXITCODE -ne 0) { throw 'DirectX SDK extraction failed.' }
+          $sdkRoot = Join-Path $destination 'DXSDK'
+          if (-not (Test-Path "$sdkRoot/Include/d3dx9.h")) { throw 'DirectX headers missing.' }
+          "DXSDK_DIR=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Build standalone without local assets
+        shell: pwsh
+        run: ./tools/build.ps1 -Compiler '${{ matrix.compiler }}' -Configuration '${{ matrix.configuration }}' -WithoutResources
+      - name: Upload compiled standalone and text configuration
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: standalone-${{ matrix.compiler }}-${{ matrix.configuration }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/**/MatrixGame.exe
+            build/**/MatrixGame.pdb
+            build/**/MatrixGame/**/*.dll
+            build/**/CFG/**/*.txt
+
+  required:
+    name: Required checks
+    if: always()
+    needs: [repository, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require repository and build jobs to succeed
+        env:
+          REPOSITORY_RESULT: ${{ needs.repository.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+        run: |
+          test "$REPOSITORY_RESULT" = success
+          test "$BUILD_RESULT" = success

@@ -1,2 +1,20 @@
 build*/
 bin/
+
+# Local game assets are supplied separately and must never be committed.
+*.pkg
+*.PKG
+/robots.dat
+/ROBOTS.DAT
+
+# Developer tools and local settings.
+.tools/
+.local/
+CMakeUserPresets.json
+
+# Editor state and game/debugger output.
+.vs/
+.idea/
+*.log
+*.dmp
+*.stackdump

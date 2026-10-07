@@ -1,0 +1,25 @@
+name: Scoped task
+description: Define a bounded implementation, testing or documentation task.
+title: "[Task] "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and scope
+      description: Connect the task to the stable Windows standalone goal; list exclusions.
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Observable outcomes that allow the issue to be closed.
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: Validation plan and dependencies
+      description: Builds, automated checks, manual scenarios and prerequisite issues.
+    validations:
+      required: true
