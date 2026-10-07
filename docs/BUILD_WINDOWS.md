@@ -26,6 +26,8 @@ The playtest machine also needs the 32-bit DirectX runtime `d3dx9_43.dll`.
 Use `-Cheats` to enable developer cheats. The script builds the game without
 launching it.
 
+Game builds compile the CTest executables by default. Run them with `tools/test.ps1`; use `-WithoutTests` for a game-only build or `-TestsOnly` to build the test targets without staging game resources. See [Testing](TESTING.md) for commands, results and instructions for adding a regression.
+
 ## Game resources and configuration
 
 Place `robots.pkg` and optionally `robots.dat` at the repository root.
