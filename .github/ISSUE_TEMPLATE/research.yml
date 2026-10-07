@@ -1,0 +1,40 @@
+name: "Research question"
+description: "Investigate one bounded question and record an evidence-based conclusion."
+labels: ["type:research", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Use <Area>: investigate, evaluate or decide ... as the title. Implementation normally becomes separate work."
+  - type: textarea
+    id: question
+    attributes:
+      label: "Question"
+      description: "State the decision or answerable question and why it matters."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Scope"
+      description: "Bound the investigation and exclude unrelated implementation."
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "Known evidence"
+      description: "Relevant source findings, prior experiments and uncertainty."
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "Acceptance criteria"
+      description: "Required conclusion, evidence and a clear exit condition; a negative result can be sufficient."
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: "Validation plan"
+      description: "Method, comparison, prototype or measurement and its practical limits."
+    validations:
+      required: true

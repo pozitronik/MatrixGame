@@ -1,0 +1,109 @@
+# MatrixGame - licensed under GPLv2 or any later version.
+[CmdletBinding()]
+param(
+    [ValidateSet('Debug', 'Release')][string]$Configuration = 'Debug',
+    [ValidateSet('MinGW', 'MSVC')][string]$Compiler = 'MinGW',
+    [switch]$DLL,
+    [switch]$Cheats,
+    [switch]$WithoutResources,
+    [string]$ToolchainRoot = '',
+    [int]$Jobs = 4
+)
+
+$ErrorActionPreference = 'Stop'
+$repoRoot = Split-Path -Parent $PSScriptRoot
+if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot '.tools/winlibs/mingw32' }
+$toolBin = Join-Path $ToolchainRoot 'bin'
+$cmake = Join-Path $toolBin 'cmake.exe'
+if (-not (Test-Path -LiteralPath $cmake)) {
+    throw 'Pinned tools are missing. Run tools/setup-toolchain.ps1 first.'
+}
+if ($Jobs -lt 1) { throw 'Jobs must be a positive number.' }
+
+$kind = if ($DLL) { 'dll' } else { 'exe' }
+$buildName = "{0}-{1}-{2}" -f $Compiler.ToLowerInvariant(), $Configuration.ToLowerInvariant(), $kind
+$buildRoot = Join-Path $repoRoot "build/$buildName"
+$dllOption = if ($DLL) { 'ON' } else { 'OFF' }
+$cheatsOption = if ($Cheats) { 'ON' } else { 'OFF' }
+$configureArgs = @(
+    '-S', $repoRoot, '-B', $buildRoot,
+    "-DCMAKE_BUILD_TYPE=$Configuration",
+    "-DMATRIXGAME_BUILD_DLL=$dllOption",
+    "-DMATRIXGAME_CHEATS=$cheatsOption"
+)
+if (-not $DLL) { $configureArgs += '-DMATRIXGAME_PKG_BRING_FROM_GAME=OFF' }
+
+$savedPath = $env:PATH
+try {
+    if ($Compiler -eq 'MinGW') {
+        $env:PATH = "$toolBin;$savedPath"
+        $target = & (Join-Path $toolBin 'gcc.exe') -dumpmachine
+        if ($LASTEXITCODE -ne 0 -or $target -ne 'i686-w64-mingw32') {
+            throw "Expected an x86 MinGW compiler, received: $target"
+        }
+        $configureArgs += @('-G', 'Ninja', "-DCMAKE_MAKE_PROGRAM=$toolBin/ninja.exe")
+    } else {
+        $configureArgs += @('-G', 'Visual Studio 17 2022', '-A', 'Win32')
+    }
+
+    & $cmake @configureArgs
+    if ($LASTEXITCODE -ne 0) { throw 'CMake configuration failed.' }
+    & $cmake --build $buildRoot --config $Configuration --parallel $Jobs
+    if ($LASTEXITCODE -ne 0) { throw 'Compilation failed.' }
+} finally {
+    $env:PATH = $savedPath
+}
+
+$gameRoot = Join-Path $buildRoot 'MatrixGame'
+$binaryRoot = if ($Compiler -eq 'MSVC') { Join-Path $gameRoot $Configuration } else { $gameRoot }
+if ($Compiler -eq 'MinGW') {
+    # Debug builds import compiler runtimes. Stage their transitive dependencies
+    # so starting from Explorer does not accidentally load an installed x64 DLL.
+    $pendingBinaries = New-Object 'System.Collections.Generic.Queue[string]'
+    $seenBinaries = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+    $extension = if ($DLL) { 'dll' } else { 'exe' }
+    $pendingBinaries.Enqueue((Join-Path $binaryRoot "MatrixGame.$extension"))
+    while ($pendingBinaries.Count) {
+        $binary = $pendingBinaries.Dequeue()
+        if (-not $seenBinaries.Add($binary)) { continue }
+        $imports = & (Join-Path $toolBin 'objdump.exe') -p $binary
+        if ($LASTEXITCODE -ne 0) { throw "Cannot inspect runtime imports: $binary" }
+        foreach ($import in $imports) {
+            if ($import -match 'DLL Name:\s+([A-Za-z0-9_+.-]+)') {
+                $runtimeName = $Matches[1]
+                $runtimeSource = Join-Path $toolBin $runtimeName
+                if (Test-Path -LiteralPath $runtimeSource) {
+                    $runtimeTarget = Join-Path $binaryRoot $runtimeName
+                    Copy-Item -LiteralPath $runtimeSource -Destination $runtimeTarget -Force
+                    $pendingBinaries.Enqueue($runtimeTarget)
+                }
+            }
+        }
+    }
+}
+if (-not $DLL) {
+    # Refresh tracked configuration, including for existing build directories.
+    # Multi-configuration generators place the EXE below the CMake CFG directory.
+    Copy-Item -LiteralPath (Join-Path $repoRoot 'MatrixGame/CFG') -Destination $binaryRoot -Recurse -Force
+    $dataRoot = Join-Path $binaryRoot 'DATA'
+    $configRoot = Join-Path $binaryRoot 'CFG'
+    New-Item -ItemType Directory -Path $dataRoot -Force | Out-Null
+    if (-not $WithoutResources) {
+        foreach ($resource in @(
+            @{Name = 'robots.pkg'; Destination = $dataRoot},
+            @{Name = 'robots.dat'; Destination = $configRoot}
+        )) {
+            $source = Join-Path $repoRoot $resource.Name
+            if (Test-Path -LiteralPath $source) {
+                Copy-Item -LiteralPath $source -Destination (Join-Path $resource.Destination $resource.Name) -Force
+                Write-Output "Local $($resource.Name) staged for playtesting."
+            }
+        }
+    }
+    if ($WithoutResources) {
+        Write-Output 'Local resource staging skipped; any existing output resources are retained.'
+    } elseif (-not (Test-Path -LiteralPath (Join-Path $dataRoot 'robots.pkg'))) {
+        Write-Output 'Game resources are missing; provide robots.pkg locally to play.'
+    }
+}
+Write-Output "Build output: $binaryRoot"

@@ -1,0 +1,40 @@
+name: "Feature request"
+description: "Propose a focused addition to the game or its development interface."
+labels: ["type:feature", "status:needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: "Use <Area>: <intended outcome> as the title. Keep the request within the project scope."
+  - type: textarea
+    id: goal
+    attributes:
+      label: "Goal"
+      description: "Describe the user or developer need and the resulting behavior."
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "Scope"
+      description: "What is included and which neighboring changes are excluded?"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "Acceptance criteria"
+      description: "Observable conditions that establish the feature is complete."
+    validations:
+      required: true
+  - type: textarea
+    id: validation
+    attributes:
+      label: "Validation plan"
+      description: "Tests, compatibility checks and relevant playtests."
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: "Dependencies"
+      description: "Hard prerequisites or related work, with the distinction made explicit."
