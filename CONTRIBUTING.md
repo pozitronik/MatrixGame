@@ -19,11 +19,10 @@ Use exactly one type label:
 | `type:task` | Maintain code, tools, dependencies, tests or documentation |
 | `type:research` | Answer a bounded question and record a conclusion |
 | `type:epic` | Coordinate a finite outcome through sub-issues |
-| `type:tracker` | Maintain an inventory or observation record |
 
-Research normally produces separate implementation issues. Epics are decomposed into reviewable leaves; trackers do not own implementation.
+Research normally produces separate implementation issues. Epics are decomposed into reviewable leaves. Use milestones for delivery planning rather than tracker issues that duplicate the same progress.
 
-The canonical label names and descriptions are in [.github/labels.json](.github/labels.json). Every triaged leaf has exactly one priority and at least one area. An epic or tracker may omit them when cross-cutting. Discovery labels such as `good first issue` and `help wanted` are optional.
+The canonical label names and descriptions are in [.github/labels.json](.github/labels.json). Every triaged leaf has exactly one priority and at least one area. An epic may omit them when cross-cutting. Discovery labels such as `good first issue` and `help wanted` are optional.
 
 ### Status and ownership
 
@@ -47,7 +46,7 @@ Apply every area genuinely affected. The available areas cover storage, memory, 
 
 ### Titles and bodies
 
-Use `<Area>: <concise problem or outcome>`, with canonical area capitalization and a maximum of 100 characters. Use `AI` and `UI` for those abbreviations; other area names use title case. Cross-cutting epics and trackers may use `Project`. Bug titles describe observed behavior; tasks and features describe an outcome; research titles use an investigation verb. Omit priority, status, identities, branch names and issue numbers.
+Use `<Area>: <concise problem or outcome>`, with canonical area capitalization and a maximum of 100 characters. Use `AI` and `UI` for those abbreviations; other area names use title case. Cross-cutting epics may use `Project`. Bug titles describe observed behavior; tasks and features describe an outcome; research titles use an investigation verb. Omit priority, status, identities, branch names and issue numbers.
 
 Before work is claimed, the body defines the problem or goal, evidence, scope and non-goals, acceptance criteria, validation, and relevant compatibility or lifetime constraints. Use `Scope`, `Acceptance criteria` and `Validation plan` headings so contributors and checks can find the stable contract. New bug reporters may leave planning to triage.
 
@@ -59,7 +58,7 @@ Use native parent/sub-issue relationships for decomposition, with at most three 
 
 Use native blocked-by dependencies only for hard prerequisites; shared context or preferred sequencing is not blocking. Parentage alone does not establish a dependency. Avoid cycles. An external blocker belongs under `External blocker`, with an unblock condition and the decision or resource needed. Deferred work names its reconsideration trigger under `Reconsideration`.
 
-Link contextual work without assigning false ownership. Close duplicates or superseded issues as not planned with a link to the original or successor. Promote actionable tracker entries to scoped leaf issues. Do not generate a speculative backlog simply to populate a tracker.
+Link contextual work without assigning false ownership. Close duplicates or superseded issues as not planned with a link to the original or successor. Milestones group scoped work toward delivery; do not create a second tracker issue merely to list milestone progress.
 
 ## Branches
 
@@ -90,13 +89,13 @@ Required CI and an independent external approval must apply to the current revis
 
 Review correctness, evidence and architecture, including determinism, serialized formats, lifecycle and hot-path cost where relevant. Offer concrete corrections. Distinguish introduced regressions from unrelated existing defects, and distinguish demonstrated costs from speculative optimizations. A useful non-blocking suggestion can become a scoped follow-up; keep unrelated follow-ups separate rather than hiding them in an approved patch.
 
-Only maintainers merge after the acceptance criteria and current checks are satisfied. For PRs targeting `dev` or an epic umbrella, the maintainer records the merged PR and closes the implementing leaf issue manually. GitHub closing keywords operate on the default branch; see [GitHub's linking guidance](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue). Research closes when its question is answered. Epics and trackers are not closed merely because a linked PR merged.
+Only maintainers merge after the acceptance criteria and current checks are satisfied. For PRs targeting `dev` or an epic umbrella, the maintainer records the merged PR and closes the implementing leaf issue manually. GitHub closing keywords operate on the default branch; see [GitHub's linking guidance](https://docs.github.com/en/issues/tracking-your-work-with-issues/using-issues/linking-a-pull-request-to-an-issue). Research closes when its question is answered. Epics are not closed merely because a linked PR merged.
 
 ### Epics
 
 Create an integration-only `epic/<number>-<slug>` umbrella from the current `dev` tip. Each leaf branches from that umbrella and its PR targets it. Do not implement directly on the umbrella or open one oversized PR for the epic. Native relationships express leaf ownership and prerequisites.
 
-After independent review and required checks, merge a finished leaf into the umbrella and close that leaf only when its own acceptance criteria are met. The epic stays open. Resolve integration defects and required follow-ups, then validate the combined umbrella and propose its final PR into `dev`. Only that reviewed merge, together with the epic's integration criteria, completes the epic. A tracker has no implementation branch.
+After independent review and required checks, merge a finished leaf into the umbrella and close that leaf only when its own acceptance criteria are met. The epic stays open. Resolve integration defects and required follow-ups, then validate the combined umbrella and propose its final PR into `dev`. Only that reviewed merge, together with the epic's integration criteria, completes the epic.
 
 ## Validation
 
@@ -108,7 +107,7 @@ Record commands or reproducible steps and results. If a check is unavailable, st
 
 A release is a maintainer-approved, independently reviewed promotion from `dev` to `master`, with validation of the integrated standalone build and package. Use dated release tags in `YYYY.MM.DD` form, adding `.N` for another release on the same date. Tags and merged PRs record delivery; do not keep implementing issues open until promotion.
 
-Use epics for cross-cutting planning rather than a second milestone/status system. Publishing a release or tag requires explicit authorization and must exclude private game resources and development state.
+Use milestones for delivery groups and epics only when an implementation outcome needs decomposition. Milestones do not duplicate issue status or dependencies. Publishing a release or tag requires explicit authorization and must exclude private game resources and development state.
 
 ## Policy checks
 

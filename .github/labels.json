@@ -4,7 +4,6 @@
   {"name": "type:task", "color": "1d76db", "description": "Maintenance, tools, dependencies, tests or documentation"},
   {"name": "type:research", "color": "d876e3", "description": "Bounded investigation ending in a documented conclusion"},
   {"name": "type:epic", "color": "5319e7", "description": "Finite outcome coordinated through native sub-issues"},
-  {"name": "type:tracker", "color": "006b75", "description": "Inventory or continuing observation; implementation belongs in leaf issues"},
   {"name": "status:needs-triage", "color": "ededed", "description": "Classification, scope or a maintainer decision is missing"},
   {"name": "status:in-progress", "color": "1d76db", "description": "Claimed by one assignee with a named branch or linked PR"},
   {"name": "status:in-review", "color": "fbca04", "description": "Assigned work has a reviewable PR or research conclusion"},

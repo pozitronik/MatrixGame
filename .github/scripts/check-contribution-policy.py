@@ -15,7 +15,7 @@ import sys
 
 LABELS_PATH = Path(__file__).resolve().parents[1] / 'labels.json'
 TOPIC_PREFIXES = {'feature', 'fix', 'task', 'docs', 'research', 'hotfix', 'epic'}
-META_TYPES = {'type:epic', 'type:tracker'}
+META_TYPES = {'type:epic'}
 ACTIVE_STATUSES = {'status:in-progress', 'status:in-review'}
 REPOSITORY_PATTERN = re.compile(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+')
 PLACEHOLDERS = {'', 'none', 'n/a', 'not applicable', 'no response', 'tbd'}
@@ -48,7 +48,7 @@ def load_catalog(path=LABELS_PATH):
             prefixes.add(prefix)
         catalog[name] = row
     required = {
-        'type': {'bug', 'feature', 'task', 'research', 'epic', 'tracker'},
+        'type': {'bug', 'feature', 'task', 'research', 'epic'},
         'status': {'needs-triage', 'in-progress', 'in-review', 'blocked', 'deferred'},
         'priority': {'P0', 'P1', 'P2', 'P3'},
     }
