@@ -111,6 +111,8 @@ def validate_title(title, catalog, allow_project=False):
 
 def sections(body):
     """Find plain Markdown sections without treating fenced examples as headings."""
+    if body is not None and not isinstance(body, str):
+        raise ValueError('Markdown body must be text')
     found = {}
     current = None
     fence = None
@@ -208,7 +210,9 @@ def validate_pr(pr, catalog):
     base, head = ref_name(pr, 'base'), ref_name(pr, 'head')
     if base not in {'dev', 'master'} and not (base.startswith('epic/') and not validate_branch(base)):
         errors.append('PR must target dev, an epic umbrella, or authorized stable-line work')
-    body = pr.get('body') or ''
+    body = pr.get('body')
+    if body is None:
+        body = ''
     content = sections(body)
     exception = content.get('issue exception', '')
     errors += validate_branch(head, exception_reason=exception if supplied(exception) else None)

@@ -190,7 +190,7 @@ class InputAndReadOnlyContracts(unittest.TestCase):
         TEMP_ROOT.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory(dir=TEMP_ROOT) as directory:
             path = Path(directory) / 'snapshot.json'
-            for command, data in [('pr', []), ('issues', ['not an issue'])]:
+            for command, data in [('pr', []), ('issues', ['not an issue']), ('pr', pr(body={})), ('issues', [issue(body={})])]:
                 path.write_text(json.dumps(data), encoding='utf-8')
                 with mock.patch.object(POLICY.subprocess, 'run') as run, contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(2, POLICY.main([command, '--input', str(path)]))
