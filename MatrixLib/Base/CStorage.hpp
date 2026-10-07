@@ -7,6 +7,9 @@
 #define STORAGE_INCLUDE
 
 #include <windows.h>
+#include <memory>
+#include <utility>
+#include <vector>
 
 #include "CHeap.hpp"
 #include "CException.hpp"
@@ -215,7 +218,7 @@ public:
                 // its need to move data
                 BYTE *data0 = GetFirstElement<BYTE>(te);
                 BYTE *data1 = data0 + te->count * header->element_type_size;
-                memcpy(data0 - saved, data0, data1 - data0);
+                memmove(data0 - saved, data0, data1 - data0);
                 te->disp -= saved;
             }
             if (te->count < te->allocated_count) {
@@ -225,7 +228,7 @@ public:
         }
         if (saved) {
             // copy table
-            memcpy(Buff<BYTE>() + (header->alloc_table_disp - saved), Buff<BYTE>() + header->alloc_table_disp,
+            memmove(Buff<BYTE>() + (header->alloc_table_disp - saved), Buff<BYTE>() + header->alloc_table_disp,
                    sizeof(SDataBufAllocTableEntry) * header->arrays_count);
             SetLenNoShrink(Len() - saved);
             header->alloc_table_disp -= saved;
@@ -234,24 +237,36 @@ public:
 };
 
 class CStorageRecordItem : public CMain {
+    struct BufferDeleter {
+        CHeap *heap;
+        void operator()(CDataBuf *buffer) const {
+            if (buffer) {
+                HDelete(CDataBuf, buffer, heap);
+            }
+        }
+    };
+
     std::wstring m_Name;
     EStorageType m_Type;
 
-    CDataBuf *m_Buf;
+    std::unique_ptr<CDataBuf, BufferDeleter> m_Buf{nullptr, BufferDeleter{nullptr}};
 
 public:
     CStorageRecordItem(const CStorageRecordItem &item)
-      : m_Name(item.m_Name), m_Type(item.m_Type), m_Buf(NULL) {}
+      : m_Name(item.m_Name), m_Type(item.m_Type) {}
     CStorageRecordItem(const std::wstring &name, EStorageType type)
-      : m_Name(name), m_Type(type), m_Buf(NULL) {}
-    CStorageRecordItem(CHeap *heap) : m_Name{}, m_Buf(NULL) { InitBuf(heap); }
-    ~CStorageRecordItem();
+      : m_Name(name), m_Type(type) {}
+    CStorageRecordItem(CHeap *heap) : m_Type(ST_BYTE) { InitBuf(heap); }
+    CStorageRecordItem(CStorageRecordItem &&) noexcept = default;
+    CStorageRecordItem &operator=(CStorageRecordItem &&) noexcept = default;
+    CStorageRecordItem &operator=(const CStorageRecordItem &) = delete;
+    ~CStorageRecordItem() = default;
 
     void InitBuf(CHeap *heap);
     void ReleaseBuf(CHeap *heap);
     const std::wstring &GetName(void) const { return m_Name; }
 
-    CDataBuf *GetBuf(EStorageType st) { return (st == m_Type) ? m_Buf : NULL; }
+    CDataBuf *GetBuf(EStorageType st) { return (st == m_Type) ? m_Buf.get() : nullptr; }
 
     DWORD CalcUniqID(DWORD x);
 
@@ -263,15 +278,18 @@ class CStorageRecord : public CMain {
     CHeap *m_Heap;
 
     std::wstring m_Name;  // record name (table name)
-    CStorageRecordItem *m_Items;
-    int m_ItemsCount;
+    std::vector<CStorageRecordItem> m_Items;
 
 public:
+    // Copying a record creates its schema with empty buffers, as used by AddRecord.
     CStorageRecord(const CStorageRecord &rec);
     CStorageRecord(std::wstring name, CHeap *heap = NULL)
-      : m_Heap(heap), m_Name(name), m_Items(NULL), m_ItemsCount(0) {}
-    CStorageRecord(CHeap *heap) : m_Heap(heap), m_Name{}, m_Items(NULL), m_ItemsCount(0) {}
-    ~CStorageRecord();
+      : m_Heap(heap), m_Name(std::move(name)) {}
+    CStorageRecord(CHeap *heap) : m_Heap(heap) {}
+    CStorageRecord(CStorageRecord &&) noexcept = default;
+    CStorageRecord &operator=(CStorageRecord &&) noexcept = default;
+    CStorageRecord &operator=(const CStorageRecord &) = delete;
+    ~CStorageRecord() = default;
 
     const std::wstring &GetName(void) const { return m_Name; }
 
@@ -287,12 +305,15 @@ public:
 class CStorage : public CMain {
     CHeap *m_Heap;
 
-    CStorageRecord *m_Records;
-    int m_RecordsCnt;
+    std::vector<CStorageRecord> m_Records;
 
 public:
     CStorage(CHeap *heap = NULL);
-    ~CStorage();
+    CStorage(const CStorage &) = delete;
+    CStorage &operator=(const CStorage &) = delete;
+    CStorage(CStorage &&) noexcept = default;
+    CStorage &operator=(CStorage &&) noexcept = default;
+    ~CStorage() = default;
 
     void Clear(void);
 
