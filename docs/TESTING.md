@@ -60,17 +60,31 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Checksums | Empty input, frozen engine checksum fixtures, incremental/one-shot agreement, binary bytes and selected byte ranges |
 | Points | Coordinate arithmetic and squared distance |
 | Rectangles | Empty bounds, strict interior containment and normalization |
+| Storage | Record/column growth, schema copies, deletion/reuse, duplicate parameters, UTF-16 values, legacy bytes, compressed round trips and partial-load cleanup |
 | Random numbers | Original generator sequence, seed normalization, range endpoints, reversed/equal bounds, fractional scales, index bounds and shared-stream consumption |
 
 The checksum fixtures preserve the engine's existing data compatibility contract. Tests link the production `MatrixLib` target and use its real implementations. The console executables use static MinGW runtimes so they can run outside the compiler environment.
 
-The random-number generator uses the original map simulation's Park-Miller sequence (`16807`, modulus `2147483647`), with the output shifted down by one. Seeds are reduced modulo the modulus; a zero result selects state one. Integer results span `0..2147483645`; floating results span the closed interval `0..1`. The fixed integer sequence is portable across the supported compilers.
+Storage record copies intentionally recreate an empty schema, while moves preserve owned column buffers. Storage objects have single ownership and support moves. The fixture checks preserve the existing STRG versions, ZL03 framing and swap-with-last record deletion order. The storage executable initializes the base services, supplies a console logger and checks for tracked heap leaks in Debug.
+
+To check the configuration-packing operations used by `BUILDCFG` against the tracked text files, run these commands from the repository root after building the tests:
+
+```powershell
+.\build\mingw-debug-exe\tests\matrixgame_storage_tests.exe manual.storage.buildcfg
+.\build\mingw-release-exe\tests\matrixgame_storage_tests.exe manual.storage.buildcfg
+```
+
+This local smoke check parses the interface/data configuration, removes runtime replacements, packs the `if` and `da` roots in memory, restores them and compares their parameter/block trees. It leaves externally supplied resources and `robots.dat` unchanged. The CTest suite uses synthetic fixtures; invoking the console command in a running battle remains a playtest.
+
+The random-number generator uses the original map simulation's Park-Miller sequence (`16807`, modulus `2147483647`), with the output shifted down by one. Seeds are reduced modulo the modulus; a zero result selects state one. Integer results span `0..2147483645`; floating results span the closed interval `0..1`. The fixed integer sequence is portable across the supported compilers. This contract describes the recurrence and normalized seeds; it does not reproduce the original game's startup seed selection or promise per-seed battle parity with Space Rangers 2.
 
 Integer and finite floating bounds are normalized when reversed and include both endpoints. Ordinary integer ranges use the legacy modulo mapping, which carries modulo bias; ranges wider than one generator output combine two draws using 64-bit arithmetic. Equal bounds consume one draw. `IRND(n)` selects an index in `0..n-1` for a positive count and returns zero otherwise. The fractional-scale helpers take double arguments and return float values; their scales should be finite and representable as float.
 
+`IRND` uses integer modulo mapping instead of rounded interpolation. The previous mapping gave endpoint indices roughly half the weight of interior indices; the corrected mapping removes that weighting while retaining modulo bias. This changes index-based choices such as axes, sound/frame variants and effect thresholds.
+
 Simulation and effects still share one seeded stream, so changing the order or number of effect calls can change later simulation draws. Stream separation would require an explicit gameplay decision. Floating-point mappings are checked by their range/endpoint contract; the suite does not claim cross-compiler replay of an entire battle.
 
-Configuration/storage round trips, construction, rendering, audio and lifecycle need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
+Construction, rendering, audio, lifecycle and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
 
 ## Add a regression
 
