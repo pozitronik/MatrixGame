@@ -2,6 +2,8 @@
 
 Automated engine tests use CTest and small C++ console executables. They run with synthetic data, without game resources or an interactive window. Use the Windows x86 tools from the [build guide](BUILD_WINDOWS.md); building the base library still needs the normal compiler prerequisites.
 
+The project registers tests directly with CMake's `enable_testing` and `add_test`. Optional CDash/dashboard tool discovery is omitted, so configuring the engine suite does not probe Windows registry entries for unrelated memory-checking tools.
+
 ## Run the automated tests
 
 From the repository root:
