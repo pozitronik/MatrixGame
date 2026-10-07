@@ -55,6 +55,8 @@ the resource package.
 Launch the EXE without arguments for interactive play. A map argument selects the
 visibility-calculation path.
 
+Completed standalone execution and teardown return exit status zero. Caught initialization or execution failures return a nonzero status; inspect the diagnostic and `test.log` for the cause.
+
 ## MSVC
 
 Install Visual Studio 2022 with C++ tools and the DirectX SDK (June 2010).
