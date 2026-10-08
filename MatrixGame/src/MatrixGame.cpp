@@ -9,6 +9,7 @@
 #include "CFile.hpp"
 
 #include "MatrixGame.h"
+#include "SoundBridge.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
 #include "Interface/CInterface.h"
@@ -101,6 +102,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
     catch (const CException& ex)
     {
         ClipCursor(NULL);
+        SoundBridge::shutdown();
 #ifdef ENABLE_HISTORY
         CDebugTracer::SaveHistory();
 #endif
@@ -115,10 +117,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
     }
     catch (const std::exception& e)
     {
+        SoundBridge::shutdown();
         lgr.fatal(e.what());
         MessageBox(NULL, e.what(), "Exception:", MB_OK);
     }
     catch (...) {
+        SoundBridge::shutdown();
 #ifdef ENABLE_HISTORY
         CDebugTracer::SaveHistory();
 #endif
@@ -180,6 +184,11 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     g_MatrixHeap = HNew(NULL) CHeap;
 
     CFile::AddPackFile(L"DATA\\robots.pkg");
+#ifdef BUILD_EXE
+    std::wstring audio_package;
+    if (CFile::FileExist(audio_package, L"DATA\\sound.pkg")) CFile::AddPackFile(audio_package.c_str());
+    if (CFile::FileExist(audio_package, L"DATA\\voices.pkg")) CFile::AddPackFile(audio_package.c_str());
+#endif
     CFile::OpenPackFiles();
 
     CLoadProgress lp;
@@ -321,6 +330,9 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     g_Config.ReadParams();
 
     g_Config.ApplySettings(&settings);
+#ifdef BUILD_EXE
+    SoundBridge::initialize_standalone();
+#endif
     g_Sampler.ApplySettings(&settings);
     SetMaxCameraDistance(settings.m_MaxDistance);
 
@@ -768,6 +780,7 @@ void CGame::Deinit(void) {
 
     CInstDraw::ClearAll();
 
+    SoundBridge::shutdown();
     CFile::ReleasePackFiles();
 
     if (g_MatrixHeap) {
