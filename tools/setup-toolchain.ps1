@@ -7,13 +7,17 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $toolsRoot = Join-Path $repoRoot '.tools'
-$installRoot = Join-Path $toolsRoot 'winlibs'
+$installRoot = Join-Path $toolsRoot 'winlibs-13.2.0'
 $compilerRoot = Join-Path $installRoot 'mingw32'
-$archiveName = 'winlibs-i686-mcf-dwarf-gcc-13.1.0-mingw-w64ucrt-11.0.0-r1.7z'
-$archiveUrl = "https://github.com/brechtsanders/winlibs_mingw/releases/download/13.1.0-16.0.2-11.0.0-ucrt-r1/$archiveName"
-$archiveHash = 'A3989CBBCA282A35B6BA022BBD5F51F88CD3830BB081011838A95E786227DDCA'
+$archiveName = 'winlibs-i686-mcf-dwarf-gcc-13.2.0-mingw-w64ucrt-11.0.1-r3.7z'
+$archiveUrl = "https://github.com/brechtsanders/winlibs_mingw/releases/download/13.2.0mcf-11.0.1-ucrt-r3/$archiveName"
+$archiveHash = 'D4D50D6F1BFAF3309007F197DBBB82E3F968F6208363C1BE2A180E9C914A6511'
 
 if (Test-Path -LiteralPath (Join-Path $compilerRoot 'bin/g++.exe')) {
+    $installedVersion = & (Join-Path $compilerRoot 'bin/g++.exe') -dumpfullversion
+    if ($LASTEXITCODE -ne 0 -or $installedVersion -ne '13.2.0') {
+        throw 'The installed toolchain does not match the pinned GCC version.'
+    }
     Write-Output "Toolchain already installed: $compilerRoot"
     exit 0
 }

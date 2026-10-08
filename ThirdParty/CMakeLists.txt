@@ -9,6 +9,12 @@ else()
   set(TOOLCHAIN_ARGS "")
 endif()
 
+if(MINGW)
+  list(APPEND TOOLCHAIN_ARGS
+    "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
+    "-DCMAKE_ASM_COMPILER=${CMAKE_C_COMPILER}")
+endif()
+
 ExternalProject_Add(zlib-external
   GIT_REPOSITORY https://github.com/madler/zlib
   GIT_TAG        v1.2.11
