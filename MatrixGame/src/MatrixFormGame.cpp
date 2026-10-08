@@ -1702,6 +1702,8 @@ void CFormMatrixGame::SystemEvent(ESysEvent se) {
     if (se == SYSEV_DEACTIVATING) {
         Input::onFocusLost();
         g_MatrixMap->m_VKeyDown = 0;
+        g_MatrixMap->MouseCam(false);
+        g_MatrixMap->m_Console.Keyboard(VK_SHIFT, false);
         if (FLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY)) {
             g_MatrixMap->ReleasePoolDefaultResources();
         }

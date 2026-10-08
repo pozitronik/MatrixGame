@@ -41,7 +41,7 @@ Use a fresh bomber for each row below and keep the test area away from the base 
 4. Move the pointer over the special weapon slot above and to the right of the hull slot and press `2`. The slot should show the bomb; its weapon label is `бомба` in the tracked Russian interface. This shortcut applies to the special slot, not an ordinary gun slot.
 5. Set the build quantity to one and click `Build` (`Построить`). Wait up to 90 seconds for the robot to leave the base, then select it. The bomb-order button should be available. If a required slot is absent, the button is disabled, or construction does not finish, record the blocker and stop rather than substituting another robot.
 
-In a separately built cheats-enabled game, select the base and type `RICHIERICH` before opening the constructor when resources are insufficient. The resource counters should each increase by 9,000. Do not use this preparation in a cheats-disabled run. `SPAWN` creates a laser robot, not a bomber.
+In a separately built cheats-enabled game, select the base and type `RICHIERICH` before opening the constructor when resources are insufficient. The resource counters should each reach the 9,000 limit. Do not use this preparation in a cheats-disabled run. `SPAWN` creates a laser robot, not a bomber.
 
 ### Detonation cases
 
@@ -95,6 +95,25 @@ Use a cheats-disabled standalone build. Run in Debug and Release on the same map
 3. Repeat in the opposite drag direction. Also try a small rectangle and a quick drag/release before the next visible redraw; the final released rectangle should determine selection.
 4. Start another drag around friendly robots, press a group-number key such as `1` while holding the left button, then release immediately. The canceled rectangle must not be added to selection; any assigned control group may be recalled normally. Start a fresh drag and verify selection still works. Escape opens the menu and does not cancel a selection drag.
 5. Close with Alt+F4 and confirm exit status zero. Report any stall and whether it affects only the box or simulation/caption updates too.
+
+## Controls and text
+
+Use [Controls and UI text](CONTROLS.md) as the reference. Complete the ordinary matrix in Debug and Release with cheats disabled, recording packed/text configuration, resolution and display scaling. Start from a fresh battle and dismiss the introduction. Allow up to 30 seconds for a command or state transition; record unavailable targets/resources as unperformed cases.
+
+| Check | Exact actions and expected result |
+| --- | --- |
+| Movement, stop, cancel | Select a friendly robot, `M` plus a ground click, then `S` while moving. It stops. Press `M`, then `X`; a subsequent ground click does not apply that canceled order. |
+| Attack | Select a robot, `A` plus a reachable enemy click. Check firing and damage, then select another unit and issue a move order. |
+| Manual control and pause | Enter a selected robot with Enter, move with `W/A/S/D`, then Enter to return. Pause for five seconds and Pause again; the battle resumes and accepts a fresh order. |
+| Construction | Select the base, press `B` and build one affordable robot. Check that the completed unit can be selected and moved. Press `T` at an eligible building and build an affordable turret; observe it in the map. |
+| Mouse focus state | Hold the middle mouse button and move to rotate. Alt+Tab away, release it outside the game, then return and move the mouse without any button. The camera remains stable. A fresh middle-button press rotates and releasing stops it. |
+| Text | Inspect the introduction, resource counters, robot labels, hints, constructor and Escape menu. Check for missing/clipped glyphs, broken color markup or lost lines; record the active language and any difference between packed and tracked text. |
+
+Close each run normally and record exit status zero. Rebuild the same configuration with `-Cheats` only after finishing its ordinary checks; reused output directories replace the earlier game binary.
+
+For developer checks, type `DEVCON`. Enter `ab`, Left, `c`, Backspace and Delete: the edited text becomes `a`. Press Escape to clear, then Escape to close. Reopen with `DEVCON`, hold Shift and type `a`, Alt+Tab away, release Shift, return and type `b`; the preserved text should read `Ab`. Escape twice returns to the battle. Type `RICHIERICH`; resources reach 9,000. Type `AUTO` twice and `NEED4SPEED` twice, checking that each toggle returns to its preceding state. Test `KEEPALIVE` and `IAMTESTER` separately from ordinary focus checks because they change activation handling. Close and record the exit status; repeat in the other configuration.
+
+These checks do not establish every console command, every cheat, remapping, localized keyboard entry, GPU glyph rendering or complete combat coverage. Keep unperformed cases visible in the result record.
 
 ## Map arguments and failure cases
 

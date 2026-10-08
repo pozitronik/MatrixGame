@@ -166,6 +166,32 @@ add_matrix_test(game.selection.limit_order matrixgame_selection_tests gameplay i
 add_matrix_test(game.selection.small_rectangle matrixgame_selection_tests gameplay input)
 add_matrix_test(game.selection.object_teardown matrixgame_selection_tests gameplay input memory)
 
+add_matrix_test_executable(matrixgame_text_tests text_parser_tests.cpp font_metrics_stub.cpp
+    ../MatrixGame/src/Text/Parser.cpp)
+target_include_directories(matrixgame_text_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+target_compile_definitions(matrixgame_text_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+add_matrix_test(game.text.words_colors matrixgame_text_tests ui)
+add_matrix_test(game.text.inline_unicode matrixgame_text_tests ui)
+add_matrix_test(game.text.newlines matrixgame_text_tests ui)
+add_matrix_test(game.text.bounded_color matrixgame_text_tests ui)
+add_matrix_test(game.text.invalid_color matrixgame_text_tests ui)
+add_matrix_test(game.text.many_tags matrixgame_text_tests ui)
+add_matrix_test(game.text.line_layout matrixgame_text_tests ui)
+
+add_matrix_test_executable(matrixgame_cheat_tests cheat_tests.cpp command_world.hpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_cheat_tests PRIVATE MatrixGameInternal)
+add_matrix_test(game.cheats.suffix_matching matrixgame_cheat_tests gameplay input)
+add_matrix_test(game.cheats.flag_toggles matrixgame_cheat_tests gameplay input)
+add_matrix_test(game.cheats.resource_limit matrixgame_cheat_tests gameplay input)
+add_matrix_test(game.cheats.console matrixgame_cheat_tests gameplay input)
+
+add_matrix_test_executable(matrixgame_form_input_tests form_input_tests.cpp command_world.hpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_form_input_tests PRIVATE MatrixGameInternal)
+add_matrix_test(game.input.mouse_focus_reset matrixgame_form_input_tests gameplay input)
+add_matrix_test(game.input.mouse_fresh_press matrixgame_form_input_tests gameplay input)
+add_matrix_test(game.input.console_shift_focus matrixgame_form_input_tests gameplay input)
+add_matrix_test(game.input.console_editing matrixgame_form_input_tests gameplay input)
+
 add_matrix_test_executable(matrixgame_input_tests input_tests.cpp ../MatrixGame/src/input.cpp)
 target_include_directories(matrixgame_input_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 target_compile_definitions(matrixgame_input_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)

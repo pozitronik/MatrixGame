@@ -5,7 +5,7 @@
 #include <d3dx9core.h>
 
 #include <algorithm>
-#include <functional>
+#include <cwctype>
 
 namespace Text {
 
@@ -44,29 +44,40 @@ size_t icase_find(std::wstring_view text, std::wstring_view prefix)
     return std::distance(text.begin(), it);
 }
 
+namespace {
+bool parse_channel(std::wstring_view text, uint32_t &value) {
+    bool negative = false;
+    if (!text.empty() && (text.front() == L'+' || text.front() == L'-')) {
+        negative = text.front() == L'-';
+        text.remove_prefix(1);
+    }
+    if (text.empty()) return false;
+    value = 0;
+    for (wchar_t character : text) {
+        if (character < L'0' || character > L'9') return false;
+        value = value * 10 + (character - L'0');
+        if (value > 255) return false;
+    }
+    return !negative || value == 0;
+}
+}
+
 D3DCOLOR GetColorFromTag(std::wstring_view text, D3DCOLOR defaultColor)
 {
-    if (icase_starts_with(text, COLOR_TAG_START))
-    {
-        try
-        {
-            const size_t rEnd = text.find(L',', 7);
-            const size_t gEnd = text.find(L',', rEnd + 1);
-
-            std::size_t pos{};
-
-            const int a = 255;
-            const int r = std::stoi(&text[7], &pos);
-            const int g = std::stoi(&text[rEnd + 1], &pos);
-            const int b = std::stoi(&text[gEnd + 1], &pos);
-
-            return a << 24 | r << 16 | g << 8 | b;
-        }
-        catch (const std::exception& e)
-        {
-            lgr.error("Failed to parse color from text: {}")(utils::from_wstring(std::wstring{text}));
-        }
+    if (!icase_starts_with(text, COLOR_TAG_START)) return defaultColor;
+    const auto end = text.find(L'>');
+    if (end == text.npos) return defaultColor;
+    const auto values = text.substr(COLOR_TAG_START.size(), end - COLOR_TAG_START.size());
+    const auto first = values.find(L',');
+    const auto second = first == values.npos ? values.npos : values.find(L',', first + 1);
+    uint32_t r, g, b;
+    if (first != values.npos && second != values.npos && values.find(L',', second + 1) == values.npos &&
+        parse_channel(values.substr(0, first), r) &&
+        parse_channel(values.substr(first + 1, second - first - 1), g) &&
+        parse_channel(values.substr(second + 1), b)) {
+        return 0xff000000u | (r << 16) | (g << 8) | b;
     }
+    lgr.error("Failed to parse color from text: {}")(utils::from_wstring(text));
     return defaultColor;
 }
 
@@ -74,40 +85,30 @@ std::vector<Token> parse_tokens(std::wstring_view str, Font& font)
 {
     std::vector<Token> result;
 
-    const std::function<void(std::wstring_view str)> processWord = [&result, &processWord](std::wstring_view str){
-        size_t pos = icase_find(str, COLOR_TAG_START);
-        if (pos == std::wstring::npos)
-        {
-            // no color tag
-            result.emplace_back(str);
-            return;
-        }
-
-        if (pos != 0) // color not from the str beginning
-        {
-            result.emplace_back(str.substr(0, pos));
-            str.remove_prefix(pos);
-        }
-
-        pos = icase_find(str, COLOR_TAG_END);
-        if (pos == std::wstring::npos)
-        {
-            // no color end tag
-            result.emplace_back(str);
-            return;
-        }
-
-        result.emplace_back(str.substr(0, pos + COLOR_TAG_END.length())); // TODO: use contants
-        str.remove_prefix(pos + COLOR_TAG_END.length());
-
-        if (!str.empty())
-        {
-            processWord(str);
+    const auto processWord = [&result](std::wstring_view word) {
+        while (true) {
+            size_t pos = icase_find(word, COLOR_TAG_START);
+            if (pos == word.npos) {
+                result.emplace_back(word);
+                return;
+            }
+            if (pos != 0) {
+                result.emplace_back(word.substr(0, pos));
+                word.remove_prefix(pos);
+            }
+            pos = icase_find(word, COLOR_TAG_END);
+            if (pos == word.npos) {
+                result.emplace_back(word);
+                return;
+            }
+            result.emplace_back(word.substr(0, pos + COLOR_TAG_END.size()));
+            word.remove_prefix(pos + COLOR_TAG_END.size());
+            if (word.empty()) return;
         }
     };
 
     size_t pos = 0;
-    while((pos = str.find_first_of(L" \r"), pos) != std::string::npos)
+    while((pos = str.find_first_of(L" \r\n"), pos) != std::wstring::npos)
     {
         if (str[pos] == L' ') // space - just split words
         {
@@ -115,11 +116,12 @@ std::vector<Token> parse_tokens(std::wstring_view str, Font& font)
             result.emplace_back(L" ");
             str.remove_prefix(pos + 1);
         }
-        else if(str[pos] == L'\r') // new line
+        else // CRLF, lone CR and LF all produce one explicit line break
         {
             processWord(str.substr(0, pos));
             result.emplace_back(L"\r\n");
-            str.remove_prefix(pos + 2);
+            const size_t length = str[pos] == L'\r' && pos + 1 < str.size() && str[pos + 1] == L'\n' ? 2 : 1;
+            str.remove_prefix(pos + length);
         }
     }
 
@@ -141,11 +143,12 @@ std::vector<Token> parse_tokens(std::wstring_view str, Font& font)
             color = token.color;
         }
 
-        if (icase_starts_with(text, COLOR_TAG_START))
+        const auto openingEnd = text.find(L'>');
+        if (icase_starts_with(text, COLOR_TAG_START) && openingEnd != text.npos)
         {
             in_color_tag = true;
             color = GetColorFromTag(text, token.color);
-            text.remove_prefix(text.find(L">") + 1);
+            text.remove_prefix(openingEnd + 1);
         }
 
         auto pos = icase_find(text, COLOR_TAG_END);
@@ -165,7 +168,7 @@ std::vector<Token> parse_tokens(std::wstring_view str, Font& font)
 
 size_t calc_lines(const std::vector<Token>& text, Font& font, const RECT &rect)
 {
-    const size_t line_width = rect.right - rect.left;
+    const size_t line_width = rect.right > rect.left ? static_cast<size_t>(int64_t(rect.right) - rect.left) : 0;
 
     size_t lines = 1;
     size_t cur_width = 0;
@@ -185,13 +188,13 @@ size_t calc_lines(const std::vector<Token>& text, Font& font, const RECT &rect)
         }
         else
         {
-            if (cur_width + token.width < line_width)
+            if (cur_width == 0 || (cur_width <= line_width && token.width <= line_width - cur_width))
             {
                 cur_width += token.width;
             }
             else
             {
-                cur_width = 0;
+                cur_width = token.width;
                 lines++;
             }
         }
