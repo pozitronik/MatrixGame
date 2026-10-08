@@ -57,6 +57,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         map = args[1];
     }
 
+    int exit_code = 1;
     try {
         uint32_t seed = (unsigned)time(nullptr);
         CGame::Init(hInstance, nullptr, map, seed);
@@ -98,6 +99,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         CacheDeinit();
 
         CMain::BaseDeInit();
+        exit_code = 0;
     }
     catch (const CException& ex)
     {
@@ -129,7 +131,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 
     ClipCursor(NULL);
 
-    return 1;
+    return exit_code;
 }
 
 /**
@@ -200,7 +202,9 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     conf_file += FILE_CONFIGURATION;
 
     if (CFile::FileExist(stor_cfg_name, conf_file.c_str())) {
-        stor_cfg.Load(conf_file.c_str());
+        if (!stor_cfg.Load(conf_file.c_str())) {
+            ERROR_S2(L"Invalid packed configuration: ", conf_file.c_str());
+        }
         stor_cfg_present = true;
     }
 

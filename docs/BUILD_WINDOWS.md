@@ -6,8 +6,8 @@ x86 and uses C++20 and DirectX 9.
 ## MinGW
 
 Install 7-Zip and make `7z.exe` available on PATH. The setup script downloads
-and verifies a WinLibs bundle containing GCC 13.1.0, CMake 3.26.3 and Ninja 1.11.1.
-It installs these tools under the ignored `.tools/` directory.
+and verifies a WinLibs bundle containing GCC 13.2.0, CMake 3.27.8 and Ninja 1.11.1.
+It installs these tools under the ignored `.tools/winlibs-13.2.0/` directory.
 
 ```powershell
 .\tools\setup-toolchain.ps1
@@ -17,6 +17,8 @@ It installs these tools under the ignored `.tools/` directory.
 
 An existing copy of the bundle can be passed to `setup-toolchain.ps1 -ArchivePath <path>`.
 Use the supplied x86 compiler rather than an x64 installation on PATH.
+
+The x86 GCC 13.1 bundle could abort while propagating C++ exceptions in relocated executables. The pinned minor update retains ASLR, the UCRT runtime and the MCF thread model. Keep old toolchain installations until existing work no longer needs them. The build helper selects explicit compiler paths and clears compiler caches in the selected build and dependency directories when the installation changes; cached dependency sources, supplied resources and other build configurations are retained.
 
 Executables are written to `build/mingw-debug-exe/MatrixGame` and
 `build/mingw-release-exe/MatrixGame`. The helper copies imported MinGW runtime
@@ -56,6 +58,10 @@ the resource package.
 
 Launch the EXE without arguments for interactive play. A map argument selects the
 visibility-calculation path.
+
+Completed standalone execution and teardown return exit status zero. Caught initialization or execution failures return a nonzero status; inspect the diagnostic and `test.log` for the cause.
+
+A present packed configuration must load successfully. A rejected format is reported as a startup error naming the file; text fallback is selected when the packed configuration is absent. When temporarily removing an output copy of `robots.dat`, give its backup a different filename prefix because resource lookup also searches `robots.dat.*`.
 
 ## MSVC
 

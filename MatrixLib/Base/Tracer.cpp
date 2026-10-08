@@ -434,7 +434,7 @@ const CDebugTracer *CDebugTracer::get_call(const CDebugTracer *item) throw() {
         return 0;
     }
     else {
-        return CDebugTracer::m_call_trace->m_prev;
+        return CDebugTracer::m_call_trace ? CDebugTracer::m_call_trace->m_prev : nullptr;
     }
 }
 
