@@ -200,7 +200,9 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     conf_file += FILE_CONFIGURATION;
 
     if (CFile::FileExist(stor_cfg_name, conf_file.c_str())) {
-        stor_cfg.Load(conf_file.c_str());
+        if (!stor_cfg.Load(conf_file.c_str())) {
+            ERROR_S2(L"Invalid packed configuration: ", conf_file.c_str());
+        }
         stor_cfg_present = true;
     }
 

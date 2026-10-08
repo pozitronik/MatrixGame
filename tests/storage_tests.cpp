@@ -265,6 +265,33 @@ void partial_load_cleanup() {
     MG_CHECK(storage.GetBuf(L"reused", L"v", Base::ST_INT32) != nullptr);
 }
 
+void check_rejected_header(DWORD tag, DWORD version) {
+    Base::CBuf rejected;
+    rejected.Add<DWORD>(tag);
+    rejected.Add<DWORD>(version);
+    Base::CStorage storage;
+    MG_CHECK(!storage.Load(rejected));
+
+    Base::CBlockPar source;
+    source.ParAdd(L"setting", L"preserved");
+    Base::CStorage valid;
+    valid.StoreBlockPar(L"da", source);
+    Base::CBuf encoded;
+    valid.Save(encoded);
+    MG_CHECK(storage.Load(encoded));
+    Base::CBlockPar restored;
+    storage.RestoreBlockPar(L"da", restored);
+    check_tree(source, restored);
+}
+
+void invalid_tag() {
+    check_rejected_header(0, 0);
+}
+
+void unsupported_version() {
+    check_rejected_header(0x47525453, 2);
+}
+
 void buildcfg_smoke() {
     Base::CBlockPar interface_config;
     interface_config.LoadFromTextFile(L"MatrixGame/CFG/robots/iface.txt");
@@ -301,6 +328,8 @@ constexpr tests::Case cases[] = {
     {"base.storage.empty_round_trip", empty_round_trip},
     {"base.storage.column_compression", column_compression},
     {"base.storage.partial_load_cleanup", partial_load_cleanup},
+    {"base.storage.invalid_tag", invalid_tag},
+    {"base.storage.unsupported_version", unsupported_version},
 };
 
 }  // namespace
