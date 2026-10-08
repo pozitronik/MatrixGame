@@ -13,7 +13,7 @@ Build before choosing a configuration case. The build helper refreshes tracked t
 | Missing resources | Temporarily remove only the output copy of `DATA/robots.pkg` | Check the failure diagnostic and cleanup |
 | Invalid configuration | Replace only the output copy of `CFG/robots.dat` with a small synthetic invalid file | Check rejection and cleanup |
 
-Change output copies only. Keep supplied files at the repository root unchanged. Rename an output copy to a clearly named backup before a failure/fallback case, restore it after the game exits, and remove any synthetic replacement. Do not extract or publish the resource package. Run one game process at a time.
+Change output copies only. Keep supplied files at the repository root unchanged. Rename an output copy to a clearly named backup with a different filename prefix, such as `.playtest-robots.dat`, before a failure/fallback case. Resource lookup also searches `robots.dat.*`, so a suffix-only backup can still be selected. Restore the copy after the game exits and remove any synthetic replacement. Do not extract or publish the resource package. Run one game process at a time.
 
 ## Check an interactive battle
 
