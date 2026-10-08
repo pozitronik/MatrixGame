@@ -63,6 +63,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Storage | Record/column growth, schema copies, deletion/reuse, duplicate parameters, UTF-16 values, legacy bytes, compressed round trips, rejected format tags/versions and partial-load cleanup |
 | Random numbers | Original generator sequence, seed normalization, range endpoints, reversed/equal bounds, fractional scales, index bounds and shared-stream consumption |
 | AI robot definitions | Head aliases and resource valuation, headless definitions, weapon strength ordering and missing armor-capacity diagnostics |
+| Keyboard state | Independent key releases and repeats, clearing all held keys on focus loss, fresh presses afterward and configured action lookup |
 | Error diagnostics | Omitted secondary messages, errors without an active Debug trace, file/line metadata and missing-file operation/path diagnostics |
 | Compiler/runtime | Catching a C++ exception across a callback boundary, running stack cleanup and reporting an assertion with a normal failure exit while retaining a representative global configuration layout |
 
@@ -88,6 +89,8 @@ Integer and finite floating bounds are normalized when reversed and include both
 Simulation and effects still share one seeded stream, so changing the order or number of effect calls can change later simulation draws. Stream separation would require an explicit gameplay decision. Floating-point mappings are checked by their range/endpoint contract; the suite does not claim cross-compiler replay of an entire battle.
 
 The AI robot executable compiles the production definition loader and pricing code using the common engine compiler options. Synthetic configuration prices and armor weapon capacities let it check definition parsing, total resource costs and selection ordering without a map, renderer or game package. Robot mesh assembly and AI construction in a running battle remain playtests.
+
+The input executable compiles the production keyboard-state code and supplies synthetic action bindings. It tests focus-loss notifications without physical keyboard input or an interactive window. The form forwards deactivation to this state reset; visible focus transitions, mouse capture and complete command behavior remain playtests.
 
 The error executable checks catchable engine diagnostics using literal and string messages, an empty Debug trace and a nonexistent synthetic file path. It suppresses native error dialogs so a crash fails its CTest process rather than waiting for desktop input. These cases do not validate a live startup exception, renderer teardown or the standalone message box.
 
