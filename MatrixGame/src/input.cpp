@@ -20,6 +20,11 @@ void onKeyUp(uint8_t vk)
     down_keys.reset(vk);
 }
 
+void onFocusLost()
+{
+    down_keys.reset();
+}
+
 bool isVKeyPressed(uint8_t vk)
 {
     return down_keys.test(vk);

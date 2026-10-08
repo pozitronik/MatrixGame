@@ -37,7 +37,9 @@ CExceptionStr::CExceptionStr(
 : CException(file, line)
 {
     m_str = str;
-    m_str += str2;
+    if (str2 != nullptr) {
+        m_str += str2;
+    }
 }
 
 std::wstring CExceptionStr::Info() const
