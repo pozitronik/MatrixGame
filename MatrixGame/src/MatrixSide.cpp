@@ -7245,7 +7245,6 @@ void CMatrixSideUnit::TaktPL(int onlygroup) {
                     robot = (CMatrixRobotAI *)obj;
                     if (robot->HaveBomb()) {
                         t++;
-                        auto tmp = GetWorldPos(robot) - GetWorldPos(m_PlayerGroup[i].m_Obj);
                         if (robot->PLIsInPlace()) {
                             robot->BigBoom();
                             t--;
@@ -7254,10 +7253,12 @@ void CMatrixSideUnit::TaktPL(int onlygroup) {
                             robot->BigBoom();
                             t--;
                         }
-                        else if (m_PlayerGroup[i].m_Obj && m_PlayerGroup[i].m_Obj->IsLive() &&
-                                 D3DXVec2LengthSq(&tmp) < POW2(150)) {
-                            robot->BigBoom();
-                            t--;
+                        else if (m_PlayerGroup[i].m_Obj && m_PlayerGroup[i].m_Obj->IsLive()) {
+                            auto tmp = GetWorldPos(robot) - GetWorldPos(m_PlayerGroup[i].m_Obj);
+                            if (D3DXVec2LengthSq(&tmp) < POW2(150)) {
+                                robot->BigBoom();
+                                t--;
+                            }
                         }
                     }
                     if (!PLIsToPlace(robot)) {
