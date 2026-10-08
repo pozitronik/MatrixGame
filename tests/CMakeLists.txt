@@ -65,3 +65,18 @@ add_matrix_test(game.ai.head_price matrixgame_ai_tests gameplay ai)
 add_matrix_test(game.ai.no_head matrixgame_ai_tests gameplay ai)
 add_matrix_test(game.ai.strength_order matrixgame_ai_tests gameplay ai)
 add_matrix_test(game.ai.capacity_bounds matrixgame_ai_tests gameplay ai)
+
+add_matrix_test_executable(matrixgame_compiler_tests compiler_tests.cpp)
+target_include_directories(matrixgame_compiler_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+target_compile_definitions(matrixgame_compiler_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+add_matrix_test(base.compiler.exception_unwind matrixgame_compiler_tests base compiler)
+add_matrix_test_executable(matrixgame_compiler_failure_tests compiler_failure_tests.cpp)
+target_include_directories(matrixgame_compiler_failure_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+target_compile_definitions(matrixgame_compiler_failure_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+add_test(NAME base.compiler.failure_report COMMAND ${CMAKE_COMMAND}
+    "-DTEST_EXECUTABLE=$<TARGET_FILE:matrixgame_compiler_failure_tests>"
+    -P "${CMAKE_CURRENT_SOURCE_DIR}/check_failure_report.cmake")
+set_tests_properties(base.compiler.failure_report PROPERTIES
+    LABELS "engine;asset-free;base;compiler"
+    TIMEOUT 30
+)
