@@ -126,6 +126,8 @@ These checks validate repository hygiene and contribution-policy tooling. For ga
 
 ## Playtesting
 
+Use [Standalone playtesting](PLAYTESTING.md) for packed/text configuration cases, resource failures, the map-argument path and a reproducible validation record.
+
 Launch the standalone EXE without arguments, using locally supplied resources.
 Check the affected behavior in Debug and Release with cheats disabled first.
 
