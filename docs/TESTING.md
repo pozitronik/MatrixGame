@@ -68,7 +68,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Random numbers | Original generator sequence, seed normalization, range endpoints, reversed/equal bounds, fractional scales, index bounds and shared-stream consumption |
 | AI robot definitions | Head aliases and resource valuation, headless definitions, weapon strength ordering and missing armor-capacity diagnostics |
 | Bomb commands | A moving bomber retains its ground order when the object target is absent, inactive or destroyed; target validation and fixture cleanup use production implementations |
-| Keyboard state | Independent key releases and repeats, clearing all held keys on focus loss, fresh presses afterward and configured action lookup |
+| Keyboard state | Independent key releases and repeats, focus-loss reset, fresh presses, configured actions and keep-alive activation dispatch without deactivation/resource changes |
 | Error diagnostics | Omitted secondary messages, errors without an active Debug trace, file/line metadata and missing-file operation/path diagnostics |
 | Compiler/runtime | Catching a C++ exception across a callback boundary, running stack cleanup and reporting an assertion with a normal failure exit while retaining a representative global configuration layout |
 
@@ -98,6 +98,8 @@ The AI robot executable compiles the production definition loader and pricing co
 The bomb executable links `MatrixGameInternal` and constructs a synthetic map, side, robot and idle weapon through their real constructors. Map and robot objects use the same zeroed engine heap and matching destruction as production; their constructors do not initialize every member for ordinary stack allocation. A narrow fixture grants access to weapon state so meshes are unnecessary. A test diagnostic overlay records messages and rejects drawing or device transitions. The cases exercise `TaktPL`, including clearing an inactive or destroyed target, and check that no graphics device or loaded cache entries appear. Debug checks also require all tracked allocations to be released, including visual helpers normally retired by drawing. Actual detonation, effects, selection and UI/manual-control equivalence remain playtests.
 
 The input executable compiles the production keyboard-state code and supplies synthetic action bindings. It tests focus-loss notifications without physical keyboard input or an interactive window. The form forwards deactivation to this state reset; visible focus transitions, mouse capture and complete command behavior remain playtests.
+
+Keep-alive cases call the production window procedure and game form with synthetic map/side state. They check an input-only notification on activation loss, release all 256 tracked keys, clear the last-key marker, preserve application/map flags and accept fresh input. Regain does not synthesize a second reset; ordinary deactivation remains covered. The tests use no window/device and do not establish visible fullscreen or mouse-drag behavior.
 
 The error executable checks catchable engine diagnostics using literal and string messages, an empty Debug trace and a nonexistent synthetic file path. It suppresses native error dialogs so a crash fails its CTest process rather than waiting for desktop input. These cases do not validate a live startup exception, renderer teardown or the standalone message box.
 
