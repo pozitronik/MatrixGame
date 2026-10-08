@@ -57,6 +57,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         map = args[1];
     }
 
+    int exit_code = 1;
     try {
         uint32_t seed = (unsigned)time(nullptr);
         CGame::Init(hInstance, nullptr, map, seed);
@@ -98,6 +99,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         CacheDeinit();
 
         CMain::BaseDeInit();
+        exit_code = 0;
     }
     catch (const CException& ex)
     {
@@ -129,7 +131,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 
     ClipCursor(NULL);
 
-    return 1;
+    return exit_code;
 }
 
 /**

@@ -57,6 +57,8 @@ the resource package.
 Launch the EXE without arguments for interactive play. A map argument selects the
 visibility-calculation path.
 
+Completed standalone execution and teardown return exit status zero. Caught initialization or execution failures return a nonzero status; inspect the diagnostic and `test.log` for the cause.
+
 A present packed configuration must load successfully. A rejected format is reported as a startup error naming the file; text fallback is selected when the packed configuration is absent. When temporarily removing an output copy of `robots.dat`, give its backup a different filename prefix because resource lookup also searches `robots.dat.*`.
 
 ## MSVC
