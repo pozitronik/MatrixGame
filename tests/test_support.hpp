@@ -9,7 +9,31 @@
 #include <string>
 #include <string_view>
 
+#if defined(_MSC_VER) && defined(_DEBUG)
+#include <crtdbg.h>
+#include <cstdio>
+#endif
+
 namespace tests {
+
+#if defined(_MSC_VER) && defined(_DEBUG)
+inline int __cdecl report_crt_failure(int type, char *message, int *) {
+    std::fputs(message ? message : "MSVC Debug runtime failure\n", stderr);
+    std::fflush(stderr);
+    if (type == _CRT_ERROR || type == _CRT_ASSERT) {
+        std::_Exit(EXIT_FAILURE);
+    }
+    return 1;
+}
+
+inline void configure_crt_reports() {
+    _CrtSetReportHook2(_CRT_RPTHOOK_INSTALL, report_crt_failure);
+    for (int type : {_CRT_WARN, _CRT_ERROR, _CRT_ASSERT}) {
+        _CrtSetReportMode(type, _CRTDBG_MODE_FILE);
+        _CrtSetReportFile(type, _CRTDBG_FILE_STDERR);
+    }
+}
+#endif
 
 struct Case {
     const char *name;
@@ -23,6 +47,9 @@ inline void require(bool condition, const char *expression, const char *file, in
 }
 
 inline int run(int argc, char **argv, std::span<const Case> cases) {
+#if defined(_MSC_VER) && defined(_DEBUG)
+    configure_crt_reports();
+#endif
     if (argc == 2 && std::string_view(argv[1]) == "--list") {
         for (const auto &test : cases) {
             std::cout << test.name << '\n';
