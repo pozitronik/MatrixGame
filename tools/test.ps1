@@ -14,6 +14,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot '.tools/winlibs-13.2.0/mingw32' }
+$ToolchainRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ToolchainRoot)
 $ctest = Join-Path $ToolchainRoot 'bin/ctest.exe'
 if (-not (Test-Path -LiteralPath $ctest)) {
     throw 'Pinned CTest is missing. Run tools/setup-toolchain.ps1 first.'

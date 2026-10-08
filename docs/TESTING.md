@@ -29,7 +29,7 @@ Use `-NoBuild` when the selected build is already current, such as immediately a
 .\tools\test.ps1 -Configuration Debug -NoBuild
 ```
 
-Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-ToolchainRoot` and `-Jobs`. Use the same options for building and testing. For MSVC, set up Visual Studio and the DirectX SDK as described in the build guide:
+Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-ToolchainRoot` and `-Jobs`. Use the same options for building and testing. Relative toolchain paths are resolved from the current PowerShell working directory. For MSVC, set up Visual Studio and the DirectX SDK as described in the build guide:
 
 ```powershell
 .\tools\test.ps1 -Compiler MSVC -Configuration Release

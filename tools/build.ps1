@@ -15,6 +15,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot '.tools/winlibs-13.2.0/mingw32' }
+$ToolchainRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ToolchainRoot)
 $toolBin = Join-Path $ToolchainRoot 'bin'
 $cmake = Join-Path $toolBin 'cmake.exe'
 if (-not (Test-Path -LiteralPath $cmake)) {
