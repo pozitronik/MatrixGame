@@ -59,6 +59,10 @@ the resource package.
 Launch the EXE without arguments for interactive play. A map argument selects the
 visibility-calculation path.
 
+The standalone game resolves its resource directory from the loaded executable's module path, so cmd.exe bare-name, relative-path and absolute-path launches use the files beside that EXE. Path resolution, command-line parsing and directory changes run inside the startup diagnostic boundary; failure reports a nonzero exit status. Command-line storage is released on exit and the first map argument retains its existing meaning. This setup applies to the EXE and does not change the DLL host's working directory.
+
+The module-path reader grows its buffer for long names and bounds retries at the Windows path limit. Its synthetic contracts cover Unicode, truncation and API failure; this does not establish support for every long path in the game resource APIs. The logger opens `test.log` at process startup before changing directory, so a launch from another directory leaves that log in the original working directory.
+
 Completed standalone execution and teardown return exit status zero. Caught initialization or execution failures return a nonzero status; inspect the diagnostic and `test.log` for the cause.
 
 A present packed configuration must load successfully. A rejected format is reported as a startup error naming the file; text fallback is selected when the packed configuration is absent. When temporarily removing an output copy of `robots.dat`, give its backup a different filename prefix because resource lookup also searches `robots.dat.*`.

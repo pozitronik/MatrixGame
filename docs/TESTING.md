@@ -70,6 +70,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Bomb commands | A moving bomber retains its ground order when the object target is absent, inactive or destroyed; target validation and fixture cleanup use production implementations |
 | Keyboard state | Independent key releases and repeats, clearing all held keys on focus loss, fresh presses afterward and configured action lookup |
 | Error diagnostics | Omitted secondary messages, errors without an active Debug trace, file/line metadata and missing-file operation/path diagnostics |
+| Executable paths | Unicode and long module paths, native image lookup, API failure diagnostics and bounded retry of truncated module queries |
 | Compiler/runtime | Catching a C++ exception across a callback boundary, running stack cleanup and reporting an assertion with a normal failure exit while retaining a representative global configuration layout |
 
 The checksum fixtures preserve the engine's existing data compatibility contract. Tests link the production `MatrixLib` target and use its real implementations. The console executables use static MinGW runtimes so they can run outside the compiler environment.
@@ -100,6 +101,8 @@ The bomb executable links `MatrixGameInternal` and constructs a synthetic map, s
 The input executable compiles the production keyboard-state code and supplies synthetic action bindings. It tests focus-loss notifications without physical keyboard input or an interactive window. The form forwards deactivation to this state reset; visible focus transitions, mouse capture and complete command behavior remain playtests.
 
 The error executable checks catchable engine diagnostics using literal and string messages, an empty Debug trace and a nonexistent synthetic file path. It suppresses native error dialogs so a crash fails its CTest process rather than waiting for desktop input. These cases do not validate a live startup exception, renderer teardown or the standalone message box.
+
+The executable-path cases link the production module-path reader. Synthetic Windows API replies check buffer growth and error handling; the native case resolves the console test image without creating a window. Actual cmd.exe launch spelling, map arguments and startup diagnostics require the separate standalone checks described in the build/playtest guides.
 
 Construction, rendering, audio, lifecycle and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
 
