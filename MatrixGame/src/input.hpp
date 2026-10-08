@@ -9,6 +9,7 @@ namespace Input {
 
 void onKeyDown(uint8_t vk);
 void onKeyUp(uint8_t vk);
+void onFocusLost();
 
 bool isVKeyPressed(uint8_t vk);
 bool isKeyPressed(EKeyAction ka);

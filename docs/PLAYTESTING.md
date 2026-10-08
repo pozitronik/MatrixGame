@@ -22,17 +22,18 @@ Launch `MatrixGame.exe` without arguments. Record the map named by the active co
 1. Confirm map rendering, interface text and the resource display. Record the configured resolution and Windows display scaling; physical client pixels can differ from the configured resolution.
 2. Select a robot, issue a move order and verify movement to the selected ground point. Move several robots through a shared route and observe avoidance rather than testing only a single empty route.
 3. Issue an attack against a reachable enemy and verify firing, damage and subsequent selection.
-4. Construct a robot and a turret. Inspect a representative AI construction and head price against the configured resource costs; a head must not be valued using the weapon price table.
-5. Observe a flyer reaching its target and repeat a command after completion. Distinguish a range/position defect from a blocked route or unsupported target.
-6. Close through the interface, then check the window-close path separately. Confirm process termination and that mouse/keyboard use is restored. Record the process exit status rather than assuming that the absence of a window establishes success.
+4. With a bomb-carrying robot, check detonation through the interface and manual control. Include ground and live-object targets, both while moving and after arrival. Verify the explosion, damage and subsequent selection; repeat developer-only cases separately with cheats enabled.
+5. Construct a robot and a turret. Inspect a representative AI construction and head price against the configured resource costs; a head must not be valued using the weapon price table.
+6. Observe a flyer reaching its target and repeat a command after completion. Distinguish a range/position defect from a blocked route or unsupported target.
+7. Close through the interface, then check the window-close path separately. Confirm process termination and that mouse/keyboard use is restored. Record the process exit status rather than assuming that the absence of a window establishes success.
 
 Check sound, pause/resume, focus transitions, manual control and developer-only paths separately where relevant. Repeat affected cases after a correction. Record any limitation or unperformed step explicitly; do not treat startup, compilation or synthetic tests as proof of successful combat.
 
 ## Map arguments and failure cases
 
-A command-line map argument selects visibility calculation rather than the interactive battle loop. A bare filename is prefixed with `Matrix\Map\`; a path containing a backslash is used as supplied. Visibility calculation still initializes the game and loads its resources. It can create `calcvis.log` and cache data, so it is not an asset-free unit test or a replacement for the interactive checklist.
+A command-line map argument selects visibility calculation rather than the interactive battle loop. A bare filename is prefixed with `Matrix\Map\`; a path containing a backslash is used as supplied. Visibility calculation initializes the game, loads its resources, rebuilds visibility data and records completion in `calcvis.log`. The calculated visibility data remains in memory. This mode requires game resources and does not replace the interactive checklist.
 
-For missing/invalid-resource cases, inspect the diagnostic, dismiss any error dialog, and confirm process termination and restored cursor state. Keep these runs bounded. Record whether failure occurred before or after window/device creation and whether the output resource backups were restored. Preserve the smallest relevant log excerpt and stack; avoid publishing configuration dumps or extracted assets.
+For missing/invalid-resource cases, inspect the diagnostic, dismiss any error dialog, and confirm process termination and restored cursor state. A rejected packed configuration must identify the configuration file; a missing map must identify the failed map path. Text fallback applies when packed configuration is absent. Keep these runs bounded. Record whether failure occurred before or after window/device creation and whether the output resource backups were restored. Preserve the smallest relevant log excerpt and stack; avoid publishing configuration dumps or extracted assets.
 
 ## Record the result
 

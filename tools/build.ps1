@@ -14,7 +14,8 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
-if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot '.tools/winlibs/mingw32' }
+if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot '.tools/winlibs-13.2.0/mingw32' }
+$ToolchainRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ToolchainRoot)
 $toolBin = Join-Path $ToolchainRoot 'bin'
 $cmake = Join-Path $toolBin 'cmake.exe'
 if (-not (Test-Path -LiteralPath $cmake)) {
@@ -47,6 +48,34 @@ try {
             throw "Expected an x86 MinGW compiler, received: $target"
         }
         $configureArgs += @('-G', 'Ninja', "-DCMAKE_MAKE_PROGRAM=$toolBin/ninja.exe")
+        $compilerBin = $toolBin.Replace('\', '/')
+        $cachePath = Join-Path $buildRoot 'CMakeCache.txt'
+        $storedCompiler = if (Test-Path -LiteralPath $cachePath) {
+            Select-String -LiteralPath $cachePath -Pattern '^CMAKE_CXX_COMPILER:[^=]+=(.*)$'
+        }
+        if ($storedCompiler -and $storedCompiler.Matches[0].Groups[1].Value.Replace('\', '/') -ne "$compilerBin/g++.exe") {
+            # CMake's automatic compiler change discards options and dependency install prefixes.
+            $allowedRoot = [IO.Path]::GetFullPath($buildRoot) + [IO.Path]::DirectorySeparatorChar
+            foreach ($relative in @('', 'zlib/src/zlib-external-build', 'libpng/src/libpng-external-build')) {
+                $configurationRoot = [IO.Path]::GetFullPath((Join-Path $buildRoot $relative))
+                $targetCache = Join-Path $configurationRoot 'CMakeCache.txt'
+                if (-not $targetCache.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Compiler cache migration left the selected build directory.' }
+                if (Test-Path -LiteralPath $targetCache) { Remove-Item -LiteralPath $targetCache }
+                $informationRoot = Join-Path $configurationRoot 'CMakeFiles'
+                if (Test-Path -LiteralPath $informationRoot) {
+                    foreach ($version in Get-ChildItem -LiteralPath $informationRoot -Directory | Where-Object Name -Match '^\d+\.\d+') {
+                        foreach ($information in @('CMakeCCompiler.cmake', 'CMakeCXXCompiler.cmake', 'CMakeASMCompiler.cmake')) {
+                            $target = Join-Path $version.FullName $information
+                            if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target }
+                        }
+                    }
+                }
+            }
+        }
+        $configureArgs += @(
+            "-DCMAKE_C_COMPILER=$compilerBin/gcc.exe",
+            "-DCMAKE_CXX_COMPILER=$compilerBin/g++.exe"
+        )
     } else {
         $configureArgs += @('-G', 'Visual Studio 17 2022', '-A', 'Win32')
     }
