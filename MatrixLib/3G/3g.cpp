@@ -469,7 +469,7 @@ int L3GRun()
 
         if (!FLAG(g_Flags, GFLAG_APPACTIVE) || !g_FormCur)
         {
-            std::this_thread::yield();
+            MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
             continue;
         }
 

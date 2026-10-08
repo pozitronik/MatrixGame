@@ -21,6 +21,7 @@
 #include "MatrixObjectCannon.hpp"
 #include "Interface/CCounter.h"
 #include "MatrixGamePathUtils.hpp"
+#include "DeviceRecovery.hpp"
 
 #include <input.hpp>
 
@@ -313,7 +314,7 @@ void CFormMatrixGame::Draw(void) {
     g_MatrixMap->Draw();
 
     ASSERT_DX(g_D3DD->EndScene());
-    ASSERT_DX(g_D3DD->Present(NULL, NULL, NULL, NULL));
+    Rendering::CheckPresentResult(g_D3DD->Present(NULL, NULL, NULL, NULL));
 
 #ifdef _DEBUG
     RESETFLAG(g_Flags, GFLAG_RENDERINPROGRESS);

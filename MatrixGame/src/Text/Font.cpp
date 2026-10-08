@@ -1,13 +1,16 @@
 #include <Text/Font.hpp>
+#include <Text/FontCache.hpp>
 
 #include <stupid_logger.hpp>
 #include <utils.hpp>
 
 #include <Resource.h>
 
-#include <map>
+#include <memory>
 
 namespace {
+
+Text::FontCache *fontCache = nullptr;
 
 LPD3DXFONT loadFont(IDirect3DDevice9* device, std::wstring_view name, size_t size)
 {
@@ -117,24 +120,28 @@ size_t Font::CalcTextWidth(std::wstring_view text) const
 
 Font& GetFont(IDirect3DDevice9* device, std::wstring_view font_name)
 {
-    static auto m_fonts = [&]{
+    // Preserve first-use initialization; notifications must not create unused fonts.
+    static const auto cache = [device] {
         prepareRangersFont();
-
-        std::map<std::wstring_view, Font> fonts;
-        fonts.emplace(L"Font.1Normal", loadFont(device, L"Verdana", 13));
-        fonts.emplace(L"Font.2Mini",   loadFont(device, L"Verdana", 12));
-        fonts.emplace(L"Font.2Small",  loadFont(device, L"Verdana", 13));
-        fonts.emplace(L"Font.2Normal", loadFont(device, L"Verdana", 14));
-        fonts.emplace(L"Font.2Ranger", loadFont(device, L"Rangers", 10));
-        return fonts;
+        auto result = std::make_unique<FontCache>(device, loadFont);
+        fontCache = result.get();
+        return result;
     }();
+    return cache->Get(font_name);
+}
 
-    if (!m_fonts.contains(font_name))
-    {
-        throw std::runtime_error("Unknown font: " + utils::from_wstring(font_name));
+void OnLostDevice()
+{
+    if (fontCache) {
+        fontCache->OnLostDevice();
     }
+}
 
-    return m_fonts.at(font_name);
+void OnResetDevice()
+{
+    if (fontCache) {
+        fontCache->OnResetDevice();
+    }
 }
 
 } // namespace Text

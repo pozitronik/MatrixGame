@@ -132,6 +132,27 @@ add_matrix_test(game.lifecycle.cleanup_failure matrixgame_lifecycle_tests startu
 add_matrix_test(game.lifecycle.standalone_partial_cleanup matrixgame_lifecycle_tests startup memory)
 add_matrix_test(game.lifecycle.graphics_partial_init matrixgame_lifecycle_tests startup rendering)
 
+add_matrix_test_executable(matrixgame_font_tests font_tests.cpp native_font_reset.cpp
+    ../MatrixGame/src/Text/Font.cpp ../MatrixGame/src/Text/FontCache.cpp)
+target_include_directories(matrixgame_font_tests PRIVATE
+    ${PROJECT_SOURCE_DIR}/MatrixGame/src ${PROJECT_SOURCE_DIR}/MatrixGame)
+target_compile_definitions(matrixgame_font_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+add_matrix_test(game.font.cache_ownership matrixgame_font_tests rendering memory)
+add_matrix_test(game.font.device_notifications matrixgame_font_tests rendering)
+add_matrix_test(game.font.missing_font matrixgame_font_tests rendering)
+add_matrix_test(game.font.partial_creation matrixgame_font_tests rendering memory)
+add_matrix_test(game.font.failure_diagnostics matrixgame_font_tests rendering)
+
+add_matrix_test_executable(matrixgame_device_tests device_recovery_tests.cpp)
+target_include_directories(matrixgame_device_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+target_compile_definitions(matrixgame_device_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+add_matrix_test(game.device.operational matrixgame_device_tests rendering)
+add_matrix_test(game.device.lost_wait matrixgame_device_tests rendering)
+add_matrix_test(game.device.reset_order matrixgame_device_tests rendering)
+add_matrix_test(game.device.transient_reset matrixgame_device_tests rendering)
+add_matrix_test(game.device.permanent_error matrixgame_device_tests rendering)
+add_matrix_test(game.device.present_loss matrixgame_device_tests rendering)
+
 add_matrix_test_executable(matrixgame_input_tests input_tests.cpp ../MatrixGame/src/input.cpp)
 target_include_directories(matrixgame_input_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 target_compile_definitions(matrixgame_input_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)

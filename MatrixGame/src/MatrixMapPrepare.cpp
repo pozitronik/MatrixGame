@@ -15,11 +15,14 @@
 #include "MatrixShadowManager.hpp"
 #include "ShadowStencil.hpp"
 #include "Interface/CConstructor.h"
+#include "Text/Font.hpp"
+#include "DeviceRecovery.hpp"
 
 #include <new>
 #include <algorithm>
 #include <vector>
 #include <set>
+#include <thread>
 
 void CMatrixMap::PointCalcNormals(int x, int y) {
     DTRACE();
@@ -1930,6 +1933,7 @@ void CMatrixMap::CreatePoolDefaultResources(bool loading) {
     else {
         m_Minimap.RestoreTexture();
         m_DI.OnResetDevice();
+        Text::OnResetDevice();
         CBaseTexture::OnResetDevice();
     }
 
@@ -1985,6 +1989,7 @@ void CMatrixMap::ReleasePoolDefaultResources(void) {
     CInstDraw::MarkAllBuffersNoNeed();
     SInshorewave::MarkAllBuffersNoNeed();
     m_DI.OnLostDevice();
+    Text::OnLostDevice();
     CBaseTexture::OnLostDevice();
 
     RESETFLAG(m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
@@ -1992,38 +1997,9 @@ void CMatrixMap::ReleasePoolDefaultResources(void) {
 
 bool CMatrixMap::CheckLostDevice(void) {
     DTRACE();
-
-    HRESULT hr = g_D3DD->TestCooperativeLevel();
-    switch (hr) {
-        case D3D_OK:
-            if (!FLAG(m_Flags, MMFLAG_VIDEO_RESOURCES_READY)) {
-                CreatePoolDefaultResources(false);
-            }
-            break;
-        case D3DERR_DEVICELOST:
-            if (FLAG(m_Flags, MMFLAG_VIDEO_RESOURCES_READY)) {
-                ReleasePoolDefaultResources();
-            }
-            return true;
-
-        case D3DERR_DEVICENOTRESET:
-            if (FLAG(m_Flags, MMFLAG_VIDEO_RESOURCES_READY)) {
-                ReleasePoolDefaultResources();
-            }
-
-            //        D3DResource::Dump(D3DRESTYPE_VB);
-            hr = g_D3DD->Reset(&g_D3Dpp);
-            if (hr != D3D_OK) {
-                return true;
-            }
-            else {
-                CreatePoolDefaultResources(false);
-                break;
-            }
-
-        default:
-            break;
-    }
-
-    return false;
+    return Rendering::RecoverDevice(g_D3DD->TestCooperativeLevel(), FLAG(m_Flags, MMFLAG_VIDEO_RESOURCES_READY),
+                                    [this] { ReleasePoolDefaultResources(); },
+                                    [] { return g_D3DD->Reset(&g_D3Dpp); },
+                                    [this] { CreatePoolDefaultResources(false); },
+                                    [](std::chrono::milliseconds delay) { std::this_thread::sleep_for(delay); });
 }
