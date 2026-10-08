@@ -536,6 +536,7 @@ public:
                         CMatrixMapStatic *attaker);
 
     friend class CMatrixRobot;
+    friend struct RobotCommandFixture;
 
     CMatrixRobotAI(void);
     ~CMatrixRobotAI();
