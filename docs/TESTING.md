@@ -29,7 +29,7 @@ Use `-NoBuild` when the selected build is already current, such as immediately a
 .\tools\test.ps1 -Configuration Debug -NoBuild
 ```
 
-Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-ToolchainRoot` and `-Jobs`. Use the same options for building and testing. For MSVC, set up Visual Studio and the DirectX SDK as described in the build guide:
+Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-ToolchainRoot` and `-Jobs`. Use the same options for building and testing. Relative toolchain paths are resolved from the current PowerShell working directory. For MSVC, set up Visual Studio and the DirectX SDK as described in the build guide:
 
 ```powershell
 .\tools\test.ps1 -Compiler MSVC -Configuration Release
@@ -44,7 +44,7 @@ Each named case runs in its own process with a 30-second timeout. CTest reports 
 To list or run already-built tests directly:
 
 ```powershell
-$ctest = '.\.tools\winlibs\mingw32\bin\ctest.exe'
+$ctest = '.\.tools\winlibs-13.2.0\mingw32\bin\ctest.exe'
 & $ctest --test-dir build/mingw-debug-exe -C Debug -N -L '^engine$'
 & $ctest --test-dir build/mingw-debug-exe -C Debug -L '^engine$' --output-on-failure --no-tests=error
 ```
@@ -60,10 +60,11 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Checksums | Empty input, frozen engine checksum fixtures, incremental/one-shot agreement, binary bytes and selected byte ranges |
 | Points | Coordinate arithmetic and squared distance |
 | Rectangles | Empty bounds, strict interior containment and normalization |
-| Storage | Record/column growth, schema copies, deletion/reuse, duplicate parameters, UTF-16 values, legacy bytes, compressed round trips and partial-load cleanup |
+| Storage | Record/column growth, schema copies, deletion/reuse, duplicate parameters, UTF-16 values, legacy bytes, compressed round trips, rejected format tags/versions and partial-load cleanup |
 | Random numbers | Original generator sequence, seed normalization, range endpoints, reversed/equal bounds, fractional scales, index bounds and shared-stream consumption |
 | AI robot definitions | Head aliases and resource valuation, headless definitions, weapon strength ordering and missing armor-capacity diagnostics |
 | Keyboard state | Independent key releases and repeats, clearing all held keys on focus loss, fresh presses afterward and configured action lookup |
+| Compiler/runtime | Catching a C++ exception across a callback boundary, running stack cleanup and reporting an assertion with a normal failure exit while retaining a representative global configuration layout |
 
 The checksum fixtures preserve the engine's existing data compatibility contract. Tests link the production `MatrixLib` target and use its real implementations. The console executables use static MinGW runtimes so they can run outside the compiler environment.
 
