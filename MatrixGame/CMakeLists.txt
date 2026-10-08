@@ -39,11 +39,13 @@ target_compile_definitions(
         WINDOWS_IGNORE_PACKING_MISMATCH
         ${COMPILE_DEFINITIONS})
 
+set(MATRIXGAME_ENGINE_LINK_OPTIONS ${LINK_OPTIONS})
+list(REMOVE_ITEM MATRIXGAME_ENGINE_LINK_OPTIONS /SUBSYSTEM:WINDOWS)
 target_link_options(
     MatrixGameInternal
     PUBLIC
         "$<$<C_COMPILER_ID:MSVC>:-SAFESEH:NO>"
-        ${LINK_OPTIONS})
+        ${MATRIXGAME_ENGINE_LINK_OPTIONS})
 
 target_link_libraries(
     MatrixGameInternal

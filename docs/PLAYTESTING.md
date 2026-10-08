@@ -29,6 +29,37 @@ Launch `MatrixGame.exe` without arguments. Record the map named by the active co
 
 Check sound, pause/resume, focus transitions, manual control and developer-only paths separately where relevant. Repeat affected cases after a correction. Record any limitation or unperformed step explicitly; do not treat startup, compilation or synthetic tests as proof of successful combat.
 
+## Bomb commands
+
+Use a fresh bomber for each row below and keep the test area away from the base and other units. Start with cheats disabled in Debug and Release. Changing `-Cheats` reuses the same build directory, so finish one option's playtests before rebuilding for the other option.
+
+### Construct a bomber
+
+1. Left-click your main base and press `B` to open the robot constructor.
+2. Move the pointer over the hull slot, the large armor icon beside the robot preview, and press `2`. This selects armor kind 1, which supports a mortar/bomb socket in the standard resource set.
+3. Move the pointer over the chassis slot below the hull slot and press `1` for pneumatic chassis. Leave the head empty; if a head is installed, hover over its slot and press `0`.
+4. Move the pointer over the special weapon slot above and to the right of the hull slot and press `2`. The slot should show the bomb; its weapon label is `бомба` in the tracked Russian interface. This shortcut applies to the special slot, not an ordinary gun slot.
+5. Set the build quantity to one and click `Build` (`Построить`). Wait up to 90 seconds for the robot to leave the base, then select it. The bomb-order button should be available. If a required slot is absent, the button is disabled, or construction does not finish, record the blocker and stop rather than substituting another robot.
+
+In a separately built cheats-enabled game, select the base and type `RICHIERICH` before opening the constructor when resources are insufficient. The resource counters should each increase by 9,000. Do not use this preparation in a cheats-disabled run. `SPAWN` creates a laser robot, not a bomber.
+
+### Detonation cases
+
+Use `M`, then left-click a ground point, for a movement order. For UI detonation, hover over the bomb-order button and check its hint (`Взорвать бомбу` in the tracked interface), click the button, then left-click the specified target. Pressing `E` in tactical view selects the same order but does not by itself test the UI button. In manual control, `Enter` enters the selected robot and `E` detonates immediately.
+
+| Case | Actions | Expected result |
+| --- | --- | --- |
+| UI, stationary, ground | Move the bomber into an open area and wait for it to stop. Click the bomb-order button, then bare terrain about two robot lengths away. | The order is accepted; the bomber approaches if needed and detonates without an exception. |
+| UI, moving, ground | Order movement to bare terrain at least ten robot lengths away. While the bomber is moving, click the bomb-order button and left-click a different bare ground point along that route. | The moving robot accepts the replacement bomb order and detonates without an exception. |
+| UI, stationary, live object | Stop the bomber in an open area. Click the bomb-order button, then a live robot at least ten robot lengths away. | The command tracks a live object and the bomber detonates when it reaches the existing trigger conditions. |
+| UI, moving, live object | Issue the long movement order. While the bomber is moving, click the bomb-order button and then a live robot away from the base. | The replacement command retains its live target and detonates without an exception. |
+| Manual, stationary | Select a stopped bomber, press `Enter`, wait two seconds without moving, then press `E`. | Immediate explosion and destruction of the bomber; manual control is released. |
+| Manual, moving | Select a bomber, press `Enter`, hold `W`, then press `E` after two seconds while still holding `W`. Release all keys. | Detonation during movement, destruction of the bomber and restored input. |
+
+A friendly robot is a valid live-object command target; record its side and its health before and after the blast. Friendly damage depends on the active configuration, so use an unprotected enemy in blast range to establish damage if friendly damage is disabled. Keep uninvolved units outside the blast area. Allow up to 30 seconds for a command; record an unreachable target as a blocked case rather than a successful detonation.
+
+After each blast, wait five seconds, select another surviving friendly robot and issue a short `M` movement order. Check that the destroyed bomber is no longer selectable, selection and commands still work, and no exception appears. At the end of each run, close the window and record the process exit status; normal close should return zero. Record each row separately, including explosion visibility, target damage and any unperformed check. Repeat the same matrix with cheats enabled after completing the disabled runs.
+
 ## Map arguments and failure cases
 
 A command-line map argument selects visibility calculation rather than the interactive battle loop. A bare filename is prefixed with `Matrix\Map\`; a path containing a backslash is used as supplied. Visibility calculation initializes the game, loads its resources, rebuilds visibility data and records completion in `calcvis.log`. The calculated visibility data remains in memory. This mode requires game resources and does not replace the interactive checklist.

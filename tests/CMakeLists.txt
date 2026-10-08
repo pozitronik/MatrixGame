@@ -73,6 +73,12 @@ add_matrix_test(game.ai.no_head matrixgame_ai_tests gameplay ai)
 add_matrix_test(game.ai.strength_order matrixgame_ai_tests gameplay ai)
 add_matrix_test(game.ai.capacity_bounds matrixgame_ai_tests gameplay ai)
 
+add_matrix_test_executable(matrixgame_bomb_tests bomb_order_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_bomb_tests PRIVATE MatrixGameInternal)
+add_matrix_test(game.bomb.ground_target matrixgame_bomb_tests gameplay input)
+add_matrix_test(game.bomb.inactive_target matrixgame_bomb_tests gameplay input)
+add_matrix_test(game.bomb.destroyed_target matrixgame_bomb_tests gameplay input)
+
 add_matrix_test_executable(matrixgame_input_tests input_tests.cpp ../MatrixGame/src/input.cpp)
 target_include_directories(matrixgame_input_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 target_compile_definitions(matrixgame_input_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)

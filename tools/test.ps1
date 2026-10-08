@@ -44,6 +44,13 @@ if (-not (Test-Path -LiteralPath $cache) -or
     throw 'Tests are not configured. Run tools/test.ps1 without -NoBuild.'
 }
 
+$testBinaryRoot = Join-Path $buildRoot 'tests'
+if ($Compiler -eq 'MSVC') { $testBinaryRoot = Join-Path $testBinaryRoot $Configuration }
+if (Test-Path -LiteralPath (Join-Path $testBinaryRoot 'matrixgame_bomb_tests.exe')) {
+    & (Join-Path $PSScriptRoot 'setup-directx-runtime.ps1')
+    Copy-Item -LiteralPath (Join-Path $repoRoot '.tools/directx-x86/d3dx9_43.dll') -Destination $testBinaryRoot -Force
+}
+
 $ctestArgs = @(
     '--test-dir', $buildRoot, '-C', $Configuration,
     '--output-on-failure', '--no-tests=error',

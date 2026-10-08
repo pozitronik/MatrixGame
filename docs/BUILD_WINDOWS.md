@@ -25,6 +25,8 @@ Executables are written to `build/mingw-debug-exe/MatrixGame` and
 DLLs beside the executable so it can be launched outside the compiler environment.
 The playtest machine also needs the 32-bit DirectX runtime `d3dx9_43.dll`.
 
+`tools/setup-directx-runtime.ps1` prepares the pinned x86 D3DX9 component from [Microsoft's June 2010 runtime package](https://www.microsoft.com/en-us/download/details.aspx?id=8109). It verifies the archive and DLL SHA256 values and extracts the component into `.tools/directx-x86`. `tools/test.ps1` stages this DLL for engine command tests; it does not change the system installation or stage game resources.
+
 Use `-Cheats` to enable developer cheats. The script builds the game without
 launching it.
 
