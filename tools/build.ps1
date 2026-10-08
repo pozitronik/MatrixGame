@@ -51,7 +51,7 @@ try {
         $compilerBin = $toolBin.Replace('\', '/')
         $cachePath = Join-Path $buildRoot 'CMakeCache.txt'
         $storedCompiler = if (Test-Path -LiteralPath $cachePath) {
-            Select-String -LiteralPath $cachePath -Pattern '^CMAKE_CXX_COMPILER:(?:FILEPATH|STRING)=(.*)$'
+            Select-String -LiteralPath $cachePath -Pattern '^CMAKE_CXX_COMPILER:[^=]+=(.*)$'
         }
         if ($storedCompiler -and $storedCompiler.Matches[0].Groups[1].Value.Replace('\', '/') -ne "$compilerBin/g++.exe") {
             # CMake's automatic compiler change discards options and dependency install prefixes.
