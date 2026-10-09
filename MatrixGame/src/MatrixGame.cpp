@@ -21,11 +21,13 @@
 #include "Interface/CHistory.h"
 #include "MatrixSampleStateManager.hpp"
 #include "MatrixMultiSelection.hpp"
+#include "ExecutablePath.hpp"
 
 #include <new>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
+#include <memory>
 
 ////////////////////////////////////////////////////////////////////////////////
 #include <stupid_logger.hpp>
@@ -40,25 +42,20 @@ CLoadProgress *g_LoadProgress;
 
 int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 {
-    const wchar *cmd = GetCommandLineW();
-
     lgr.info("===== Started as EXE =====");
-
-    int numarg;
-    wchar **args = CommandLineToArgvW(cmd, &numarg);
-    wchar *map = nullptr;
-
-    std::filesystem::path app_path{args[0]};
-
-    lgr.info(utils::from_wstring(app_path.native()));
-    std::filesystem::current_path(app_path.parent_path());
-
-    if (numarg > 1) {
-        map = args[1];
-    }
 
     int exit_code = 1;
     try {
+        int numarg = 0;
+        std::unique_ptr<LPWSTR, decltype(&LocalFree)> args(CommandLineToArgvW(GetCommandLineW(), &numarg), &LocalFree);
+        if (!args || numarg < 1) {
+            throw std::runtime_error(std::format("CommandLineToArgvW failed (Win32 error={})", GetLastError()));
+        }
+        const auto app_path = Startup::ExecutablePath();
+        lgr.info(utils::from_wstring(app_path.native()));
+        std::filesystem::current_path(app_path.parent_path());
+        const wchar *map = numarg > 1 ? args.get()[1] : nullptr;
+
         uint32_t seed = (unsigned)time(nullptr);
         CGame::Init(hInstance, nullptr, map, seed);
 
