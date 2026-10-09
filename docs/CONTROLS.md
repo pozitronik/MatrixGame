@@ -33,7 +33,7 @@ Build separately with `tools/build.ps1 -Configuration Debug -Cheats` or the matc
 | `AUTO` | Toggle automatic robot management. |
 | `FLYCAM` | Toggle the free-camera flag. |
 | `NEED4SPEED` | Toggle four-times simulation speed. |
-| `KEEPALIVE` | Toggle continued activity while unfocused. The inherited activation path skips the ordinary input/resource reset in this mode. |
+| `KEEPALIVE` | Toggle continued activity while unfocused. Activation loss clears held keys, mouse-camera rotation and console Shift through an input-only reset while preserving simulation and graphics resources. |
 | `IAMTESTER` | Enable automatic mode, keep-alive, four-times speed and side/FPS diagnostics. |
 | `IAMLOOSER` | Open the victory dialog and select the win result; it does not prove natural victory detection. |
 | `SPAWN` | Create the configured laser-equipped robot at the cursor; this is not a bomber shortcut. |
