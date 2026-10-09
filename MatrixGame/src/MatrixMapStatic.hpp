@@ -215,6 +215,7 @@ typedef CMatrixMapStatic *PCMatrixMapStatic;
  * P.S. why is it called static? - exweilt 07/05/2025
  */
 class CMatrixMapStatic : public CMain {
+    friend struct SelectionFixture;
     SRemindCore m_RemindCore; // frees object's resources if not used for some time.
 
     int m_ObjectStateTTLAblaze;
