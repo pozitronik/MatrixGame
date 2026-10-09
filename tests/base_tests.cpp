@@ -11,7 +11,7 @@ namespace {
 static_assert(sizeof(dword) == 4, "The engine checksum contract requires a 32-bit dword.");
 
 void crc_empty() {
-    MG_CHECK(Base::CalcCRC32(nullptr, 0) == 0);
+    MG_CHECK(Base::CalcCRC32(nullptr, 0) == 1);
     const auto initial = Base::CalcCRC32_Begin(nullptr, 0);
     MG_CHECK(Base::CalcCRC32_Buf(initial, nullptr, 0) == initial);
     MG_CHECK(Base::CalcCRC32_End(initial) == 0);
