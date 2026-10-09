@@ -1,10 +1,10 @@
 # Configuration and resource contracts
 
-The engine consumes text configuration, structured binary storage, package archives, maps and image resources. Their roles and readers differ. This guide records contracts visible in source and existing regressions; it is not a complete specification for an external game-resource editor.
+The engine consumes text configuration, structured binary storage, package archives, maps, images and sound resources. Their roles and readers differ. This guide records contracts visible in source and existing regressions; it is not a complete specification for an external game-resource editor.
 
 ## Configuration trees and text
 
-[CBlockPar](../MatrixLib/Base/CBlockPar.hpp) owns an ordered tree of parameters and child blocks. Duplicate names are allowed. Indexed access and named/path access serve different purposes; converting the tree to a dictionary would discard order and duplicate entries. `LoadFromText` clears the destination before parsing, while `CStorage::RestoreBlockPar` appends to its destination, so restore into an empty tree unless appending is intended.
+[CBlockPar](../MatrixLib/Base/CBlockPar.hpp) owns an ordered tree of parameters and child blocks. Duplicate names are allowed. Indexed access and named/path access serve different purposes; converting the tree to a dictionary would discard order and duplicate entries. `LoadFromText` clears the destination before parsing, including empty input. `LoadFromTextFile` skips parsing when the file contains no payload, leaving the destination unchanged. `CStorage::RestoreBlockPar` appends to its destination, so restore into an empty tree unless appending is intended.
 
 [CBlockPar.cpp](../MatrixLib/Base/CBlockPar.cpp) contains `BPCompiler`, text I/O and `ParamParser`. Named `key=value` parameters and brace-delimited blocks are used throughout [CFG/robots](../MatrixGame/CFG/robots). Text loading recognizes a leading UTF-16LE BOM on an even-sized Windows file; the other path converts bytes through the UTF-8/UTF-16 codecvt helpers. Do not silently change encoding or normalize existing localization data.
 
@@ -54,6 +54,8 @@ Open package-backed `CFile` objects must close before `CFile::ReleasePackFiles`;
 [FilePNG.cpp](../MatrixLib/Bitmap/FilePNG.cpp) adapts in-memory PNG bytes through libpng. `ReadStart_Buf` borrows the input bytes and returns an opaque handle, dimensions and a format code: gray, RGB, RGBA or palette. Sixteen-bit samples are stripped to eight bits. `Read` consumes that handle, fills caller-provided rows/palette and releases reader state, including on a caught decode error. Keep the input alive until that call finishes and provide sufficient row stride/output storage. The wrapper's writer supports additional formats, so writer support alone does not establish reader support for each combination.
 
 ## Compatibility evidence and limits
+
+Standalone sound uses a private UTF-16 `Sound` mapping from logical event suffixes to archived WAV paths. The production [WAV reader](../MatrixGame/src/Audio/Audio.cpp) accepts mono/stereo PCM8/16, checks RIFF/chunk/frame metadata and supports bounded legacy header/padding variations found in original clips. [Standalone sound](AUDIO.md) defines those variants, resource preparation and the separation between sound effects and unsupported music/Ogg playback. Synthetic audio cases exercise the reader without private clips.
 
 Frozen checksum/storage bytes and synthetic tree/column/compression cases are reproducible without private packages. Tracked text configuration can be exercised by the manual in-memory packing check. Live map loading/rendering requires the separately supplied game resources and the [standalone playtest](PLAYTESTING.md).
 
