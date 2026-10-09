@@ -19,6 +19,8 @@ Keyboard defaults are defined by `CMatrixConfig::SetDefaults`. The active config
 
 Ordinary activation loss releases held keys, clears the last-key marker, cancels mouse-camera rotation and releases the developer console's Shift modifier. Returning requires a fresh press for those held inputs; typed console text is retained. Selection, construction, combat, complete drag behavior and manual-control feedback still require visible playtests.
 
+The form also accepts an input-only reset with the same held-input cleanup, preserving application activity and graphics resources. A keep-alive activation path can send this event while continuing simulation and rendering; the ordinary deactivation path still releases default-pool resources.
+
 ## Developer input
 
 Build separately with `tools/build.ps1 -Configuration Debug -Cheats` or the matching Release command. Type a code into the battle view while the developer console is closed. In-game recognition is compiled into the form only when cheats are enabled. Console tests invoke production handlers directly and do not establish that disabled game builds recognize them.

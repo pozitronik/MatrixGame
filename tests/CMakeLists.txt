@@ -191,6 +191,8 @@ add_matrix_test(game.input.mouse_focus_reset matrixgame_form_input_tests gamepla
 add_matrix_test(game.input.mouse_fresh_press matrixgame_form_input_tests gameplay input)
 add_matrix_test(game.input.console_shift_focus matrixgame_form_input_tests gameplay input)
 add_matrix_test(game.input.console_editing matrixgame_form_input_tests gameplay input)
+add_matrix_test(game.input.input_only_mouse_reset matrixgame_form_input_tests gameplay input)
+add_matrix_test(game.input.input_only_console_reset matrixgame_form_input_tests gameplay input)
 
 add_matrix_test_executable(matrixgame_input_tests input_tests.cpp ../MatrixGame/src/input.cpp)
 target_include_directories(matrixgame_input_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)

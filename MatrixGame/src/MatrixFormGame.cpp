@@ -1694,16 +1694,13 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
 
 void CFormMatrixGame::SystemEvent(ESysEvent se) {
     DTRACE();
-    if (se == SYSEV_INPUT_RESET) {
-        Input::onFocusLost();
-        g_MatrixMap->m_VKeyDown = 0;
-        return;
-    }
-    if (se == SYSEV_DEACTIVATING) {
+    if (se == SYSEV_DEACTIVATING || se == SYSEV_INPUT_RESET) {
         Input::onFocusLost();
         g_MatrixMap->m_VKeyDown = 0;
         g_MatrixMap->MouseCam(false);
         g_MatrixMap->m_Console.Keyboard(VK_SHIFT, false);
+    }
+    if (se == SYSEV_DEACTIVATING) {
         if (FLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY)) {
             g_MatrixMap->ReleasePoolDefaultResources();
         }

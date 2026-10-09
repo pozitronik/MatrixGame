@@ -74,11 +74,55 @@ void console_editing() {
     MG_CHECK(!console.IsActive());
 }
 
+void input_only_mouse_reset() {
+    tests::CommandWorld world;
+    CFormMatrixGame form;
+    g_Flags = GFLAG_KEEPALIVE | GFLAG_APPACTIVE;
+    form.MouseKey(B_DOWN, VK_MBUTTON, 8, 8);
+    MG_CHECK(world.map->IsMouseCam());
+    world.map->m_Flags |= MMFLAG_VIDEO_RESOURCES_READY;
+    const DWORD map_flags = world.map->m_Flags & ~MMFLAG_MOUSECAM;
+    const DWORD app_flags = g_Flags;
+    Input::onKeyDown(VK_W);
+    world.map->m_VKeyDown = VK_W;
+    form.SystemEvent(SYSEV_INPUT_RESET);
+    MG_CHECK(!world.map->IsMouseCam() && !Input::isVKeyPressed(VK_W));
+    MG_CHECK(world.map->m_VKeyDown == 0);
+    MG_CHECK(world.map->m_Flags == map_flags && g_Flags == app_flags);
+    MG_CHECK(g_D3DD == nullptr);
+    form.SystemEvent(SYSEV_INPUT_RESET);
+    form.MouseKey(B_DOWN, VK_MBUTTON, 8, 8);
+    MG_CHECK(world.map->IsMouseCam());
+    form.MouseKey(B_UP, VK_MBUTTON, 8, 8);
+    MG_CHECK(!world.map->IsMouseCam());
+}
+
+void input_only_console_reset() {
+    tests::CommandWorld world;
+    CFormMatrixGame form;
+    g_Flags = GFLAG_KEEPALIVE | GFLAG_APPACTIVE;
+    world.map->m_Console.SetActive(true);
+    form.Keyboard(true, VK_SHIFT);
+    form.Keyboard(true, VK_A);
+    MG_CHECK(ConsoleInputFixture::text(world.map->m_Console) == L"A");
+    world.map->m_Flags |= MMFLAG_VIDEO_RESOURCES_READY;
+    const DWORD map_flags = world.map->m_Flags;
+    const DWORD app_flags = g_Flags;
+    form.SystemEvent(SYSEV_INPUT_RESET);
+    form.Keyboard(true, VK_B);
+    MG_CHECK(ConsoleInputFixture::text(world.map->m_Console) == L"Ab");
+    MG_CHECK(world.map->m_Console.IsActive());
+    MG_CHECK(world.map->m_Flags == map_flags && g_Flags == app_flags);
+    MG_CHECK(g_D3DD == nullptr);
+}
+
 constexpr tests::Case cases[] = {
     {"game.input.mouse_focus_reset", mouse_camera_focus_reset},
     {"game.input.mouse_fresh_press", mouse_camera_fresh_press},
     {"game.input.console_shift_focus", console_shift_focus_reset},
     {"game.input.console_editing", console_editing},
+    {"game.input.input_only_mouse_reset", input_only_mouse_reset},
+    {"game.input.input_only_console_reset", input_only_console_reset},
 };
 }
 
