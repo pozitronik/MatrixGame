@@ -456,8 +456,6 @@ void CSound::LayerOff(ESoundLayer sl) {
         if (m_LayersI[sl].id == m_AllSounds[m_LayersI[sl].index].id) {
             StopPlayInternal(m_LayersI[sl].index);
         }
-        m_AllSounds[m_LayersI[sl].index].id = SOUND_ID_EMPTY;
-        m_AllSounds[m_LayersI[sl].index].id_internal = 0;
     }
     m_LayersI[sl].index = -1;
     m_LayersI[sl].id = SOUND_ID_EMPTY;

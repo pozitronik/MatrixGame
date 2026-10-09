@@ -107,11 +107,7 @@ The error executable checks catchable engine diagnostics using literal and strin
 
 The executable-path cases link the production module-path reader. Synthetic Windows API replies check buffer growth and error handling; the native case resolves the console test image without creating a window. Actual cmd.exe launch spelling, map arguments and startup diagnostics require the separate standalone checks described in the build/playtest guides.
 
-Construction, rendering, audio, lifecycle and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
-
-## Add a regression
-
-The audio service tests use synthetic WAV bytes and a fake device; frontend cases link the real command/layer implementation with a non-rendering diagnostic substitute. They do not initialize an audio device or open private archives. A local, muted hardware smoke test explicitly exercises XAudio2 creation, looping, balance and teardown:
+The audio service tests use synthetic WAV bytes and a fake device; frontend cases link the real command/layer implementation with a non-rendering diagnostic substitute. They cover layer interrupt/skip, stale slot reuse and repeated clearing through standalone and synthetic host callbacks without initializing an audio device or opening private archives. A local, muted hardware smoke test explicitly exercises XAudio2 creation, looping, balance and teardown:
 
 ```powershell
 .\build\mingw-debug-exe\tests\matrixgame_audio_tests.exe manual.audio.native_device
@@ -119,6 +115,10 @@ The audio service tests use synthetic WAV bytes and a fake device; frontend case
 ```
 
 This opt-in check requires a working Windows 10/11 audio endpoint. It emits no sound and is not registered in CTest. Audible game checks follow [Standalone sound](AUDIO.md).
+
+Construction, rendering, lifecycle, audible/device audio behavior and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
+
+## Add a regression
 
 1. Define a bounded behavior and construct the smallest synthetic input that demonstrates it. Keep tests deterministic; use fixed seeds where random behavior matters.
 2. Add a test function in the appropriate executable. Use `MG_CHECK(expression)` from `tests/test_support.hpp` for assertions and local objects for automatic cleanup. Assertions throw on failure and are evaluated in every build configuration.

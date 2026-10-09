@@ -40,6 +40,8 @@ add_matrix_test_executable(matrixgame_audio_frontend_tests audio_frontend_tests.
 target_link_libraries(matrixgame_audio_frontend_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.audio.layer_lifetime matrixgame_audio_frontend_tests gameplay audio)
 add_matrix_test(game.audio.clear_reentrancy matrixgame_audio_frontend_tests gameplay audio)
+add_matrix_test(game.audio.stale_layer_slot matrixgame_audio_frontend_tests gameplay audio)
+add_matrix_test(game.audio.host_layer_lifetime matrixgame_audio_frontend_tests gameplay audio)
 add_matrix_test(game.audio.frontend_missing matrixgame_audio_frontend_tests gameplay audio)
 add_matrix_test(game.audio.host_routing matrixgame_audio_frontend_tests gameplay audio)
 
