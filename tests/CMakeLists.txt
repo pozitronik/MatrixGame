@@ -160,6 +160,8 @@ add_matrix_test(game.selection.latest_rectangle matrixgame_selection_tests gamep
 add_matrix_test(game.selection.release_before_frame matrixgame_selection_tests gameplay input)
 add_matrix_test(game.selection.reversed_mask matrixgame_selection_tests gameplay input)
 add_matrix_test(game.selection.cancel_pending matrixgame_selection_tests gameplay input)
+add_matrix_test(game.selection.canceled_release matrixgame_selection_tests gameplay input)
+add_matrix_test(game.selection.number_cancel matrixgame_selection_tests gameplay input)
 add_matrix_test(game.selection.limit_order matrixgame_selection_tests gameplay input)
 add_matrix_test(game.selection.small_rectangle matrixgame_selection_tests gameplay input)
 add_matrix_test(game.selection.object_teardown matrixgame_selection_tests gameplay input memory)

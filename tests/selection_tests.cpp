@@ -12,7 +12,9 @@ struct CountingBuilding : CMatrixBuilding {
     mutable int calls = 0;
     mutable CRect rectangle{};
     bool hit = false;
+    bool rejectScan = false;
     bool InRect(const CRect &rect) const override {
+        if (rejectScan) throw std::logic_error("Canceled selection must not perform geometry picking");
         ++calls;
         rectangle = rect;
         return hit && rect.IsInRect(CPoint(50, 50));
@@ -120,6 +122,33 @@ void cancellation_discards_pending() {
     MG_CHECK(!selection->FindItem(fixture.building));
 }
 
+void canceled_release_stays_empty() {
+    SelectionFixture fixture;
+    fixture.building->hit = true;
+    fixture.form.MouseMove(100, 100);
+    CMultiSelection::m_GameSelection->End(false);
+    fixture.building->rejectScan = true;
+    fixture.form.MouseKey(B_UP, VK_LBUTTON, 100, 100);
+    MG_CHECK(fixture.building->calls == 0);
+    MG_CHECK(fixture.world.map->m_PlayerSide->m_ActiveObject != fixture.building);
+    MG_CHECK(fixture.world.map->m_PlayerSide->GetCurSelGroup()->GetObjectsCnt() == 0);
+}
+
+void number_key_cancellation() {
+    SelectionFixture fixture;
+    g_Config.SetDefaults();
+    fixture.building->hit = true;
+    fixture.form.MouseMove(100, 100);
+    fixture.form.Keyboard(true, '1');
+    fixture.form.Keyboard(false, '1');
+    fixture.building->rejectScan = true;
+    fixture.form.MouseKey(B_UP, VK_LBUTTON, 100, 100);
+    MG_CHECK(fixture.building->calls == 0);
+    MG_CHECK(fixture.world.map->m_PlayerSide->m_ActiveObject != fixture.building);
+    MG_CHECK(fixture.world.map->m_PlayerSide->GetCurSelGroup()->GetObjectsCnt() == 0);
+    MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+}
+
 void selection_limit_and_order() {
     SelectionFixture fixture;
     fixture.building->hit = true;
@@ -160,6 +189,8 @@ constexpr tests::Case cases[] = {
     {"game.selection.release_before_frame", release_before_frame},
     {"game.selection.reversed_mask", reversed_rectangle_and_mask},
     {"game.selection.cancel_pending", cancellation_discards_pending},
+    {"game.selection.canceled_release", canceled_release_stays_empty},
+    {"game.selection.number_cancel", number_key_cancellation},
     {"game.selection.limit_order", selection_limit_and_order},
     {"game.selection.small_rectangle", small_rectangle_is_preserved},
     {"game.selection.object_teardown", object_teardown_before_refresh},

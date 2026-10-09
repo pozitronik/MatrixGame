@@ -568,8 +568,9 @@ void CFormMatrixGame::MouseKey(ButtonStatus status, int key, int x, int y) {
 
             // A release can arrive before a frame has consumed the latest move.
             g_MatrixMap->m_Cursor.SetPos(x, y);
-            CMultiSelection::m_GameSelection->Update(CPoint(x, y), TRACE_ROBOT | TRACE_BUILDING,
-                                                     selcallback, (uintptr_t)&cbs);
+            CMultiSelection::m_GameSelection->Update(CPoint(x, y));
+            CMultiSelection::m_GameSelection->UpdatePending(TRACE_ROBOT | TRACE_BUILDING, selcallback,
+                                                            (uintptr_t)&cbs);
             CMultiSelection::m_GameSelection->End();
             DCP();
 
