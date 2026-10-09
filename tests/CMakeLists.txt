@@ -2,11 +2,14 @@
 add_custom_target(matrixgame_tests)
 
 function(add_matrix_test_executable target)
-    add_executable(${target} ${ARGN} test_support.hpp)
+    add_executable(${target} ${ARGN} test_support.hpp test_support.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(${target} PRIVATE MatrixLib)
+    if(MSVC)
+        target_link_libraries(${target} PRIVATE dbghelp)
+    endif()
     target_compile_options(${target} PRIVATE ${COMPILE_OPTIONS} "$<$<CXX_COMPILER_ID:MSVC>:/EHsc>")
-    target_compile_definitions(${target} PRIVATE ${COMPILE_DEFINITIONS} _ALLOW_RTCc_IN_STL)
+    target_compile_definitions(${target} PRIVATE ${COMPILE_DEFINITIONS})
     if(NOT MSVC)
         # Keep the console tests runnable without copying MinGW runtime DLLs.
         target_link_options(${target} PRIVATE -static)

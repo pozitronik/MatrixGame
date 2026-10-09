@@ -35,7 +35,6 @@ target_compile_definitions(
     PUBLIC
         MATRIXGAME_EXPORTS
         $<$<CONFIG:Release>:ASSERT_OFF>
-        _ALLOW_RTCc_IN_STL
         WINDOWS_IGNORE_PACKING_MISMATCH
         ${COMPILE_DEFINITIONS})
 

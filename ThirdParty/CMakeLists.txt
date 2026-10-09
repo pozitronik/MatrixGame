@@ -15,6 +15,12 @@ if(MINGW)
     "-DCMAKE_ASM_COMPILER=${CMAKE_C_COMPILER}")
 endif()
 
+if(MSVC)
+  set(DEPENDENCY_INSTALL_CONFIGURATION "$<CONFIG>")
+else()
+  set(DEPENDENCY_INSTALL_CONFIGURATION Release)
+endif()
+
 ExternalProject_Add(zlib-external
   GIT_REPOSITORY https://github.com/madler/zlib
   GIT_TAG        v1.2.11
@@ -29,19 +35,25 @@ ExternalProject_Add(zlib-external
     ${CMAKE_COMMAND}
       --build .
       --target install
-      --config Release
+      --config ${DEPENDENCY_INSTALL_CONFIGURATION}
 )
 
 add_library(ZLIB INTERFACE)
 target_include_directories(ZLIB INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/zlib/include)
 target_link_directories(ZLIB INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib)
-target_link_libraries(ZLIB INTERFACE zlibstatic)
+if(MSVC)
+  target_link_libraries(ZLIB INTERFACE "$<IF:$<CONFIG:Debug>,zlibstaticd,zlibstatic>")
+else()
+  target_link_libraries(ZLIB INTERFACE zlibstatic)
+endif()
 add_dependencies(ZLIB zlib-external)
 
 if(MSVC)
-  set(ZLIB_STATIC_FILENAME zlibstatic.lib)
+  set(ZLIB_LIBRARY_ARGS
+    "-DZLIB_LIBRARY_DEBUG=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/zlibstaticd.lib"
+    "-DZLIB_LIBRARY_RELEASE=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/zlibstatic.lib")
 else()
-  set(ZLIB_STATIC_FILENAME libzlibstatic.a)
+  set(ZLIB_LIBRARY_ARGS "-DZLIB_LIBRARY=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libzlibstatic.a")
 endif()
 
 #===============================================================================
@@ -60,19 +72,19 @@ ExternalProject_Add(libpng-external
     -DPNG_TESTS=Off       # don't build tests
     -DPNG_BUILD_ZLIB=Off  # use custom zlib
     -DZLIB_INCLUDE_DIR=${CMAKE_CURRENT_BINARY_DIR}/zlib/include
-    -DZLIB_LIBRARY=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/${ZLIB_STATIC_FILENAME}
+    ${ZLIB_LIBRARY_ARGS}
   INSTALL_COMMAND
     ${CMAKE_COMMAND}
       --build .
       --target install
-      --config Release
+      --config ${DEPENDENCY_INSTALL_CONFIGURATION}
 )
 
 add_library(LIBPNG INTERFACE)
 target_include_directories(LIBPNG INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/libpng/include)
 target_link_directories(LIBPNG INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/libpng/lib)
 if(MSVC)
-  target_link_libraries(LIBPNG INTERFACE libpng16_static ZLIB)
+  target_link_libraries(LIBPNG INTERFACE "$<IF:$<CONFIG:Debug>,libpng16_staticd,libpng16_static>" ZLIB)
 else()
   target_link_libraries(LIBPNG INTERFACE png ZLIB)
 endif()

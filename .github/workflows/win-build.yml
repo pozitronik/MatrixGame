@@ -69,6 +69,11 @@ jobs:
             cheats: false
             name: MinGW Release EXE
           - compiler: MSVC
+            configuration: Debug
+            target: EXE
+            cheats: false
+            name: MSVC Debug EXE
+          - compiler: MSVC
             configuration: Release
             target: EXE
             cheats: false

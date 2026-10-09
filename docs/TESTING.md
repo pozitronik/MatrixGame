@@ -43,6 +43,8 @@ Normal game builds also compile the test executables. `tools/build.ps1 -WithoutT
 
 Each named case runs in its own process with a 30-second timeout. CTest reports the failed case, assertion expression, source location and captured output. The helper writes `test-results.xml` in the selected build directory, replacing the report with the current selection's results; detailed output is in `Testing/Temporary/LastTest.log` below that directory.
 
+MSVC Debug tests retain compiler runtime checks and send fatal CRT reports to standard error instead of waiting for a desktop dialog. Native failures include a best-effort symbolized stack when the executable's PDB is available, then exit with a failure status. This reporting applies to the console tests; interactive game diagnostics are unchanged.
+
 To list or run already-built tests directly:
 
 ```powershell
@@ -93,7 +95,7 @@ Simulation and effects still share one seeded stream, so changing the order or n
 
 The AI robot executable compiles the production definition loader and pricing code using the common engine compiler options. Synthetic configuration prices and armor weapon capacities let it check definition parsing, total resource costs and selection ordering without a map, renderer or game package. Robot mesh assembly and AI construction in a running battle remain playtests.
 
-The bomb executable links `MatrixGameInternal` and constructs a synthetic map, side, robot and idle weapon through their real constructors. A narrow fixture grants access to weapon state so meshes are unnecessary. A test diagnostic overlay records messages and rejects drawing or device transitions. The cases exercise `TaktPL`, including clearing an inactive or destroyed target, and check that no graphics device or loaded cache entries appear. Debug checks also require all tracked allocations to be released, including visual helpers normally retired by drawing. Actual detonation, effects, selection and UI/manual-control equivalence remain playtests.
+The bomb executable links `MatrixGameInternal` and constructs a synthetic map, side, robot and idle weapon through their real constructors. Map and robot objects use the same zeroed engine heap and matching destruction as production; their constructors do not initialize every member for ordinary stack allocation. A narrow fixture grants access to weapon state so meshes are unnecessary. A test diagnostic overlay records messages and rejects drawing or device transitions. The cases exercise `TaktPL`, including clearing an inactive or destroyed target, and check that no graphics device or loaded cache entries appear. Debug checks also require all tracked allocations to be released, including visual helpers normally retired by drawing. Actual detonation, effects, selection and UI/manual-control equivalence remain playtests.
 
 The input executable compiles the production keyboard-state code and supplies synthetic action bindings. It tests focus-loss notifications without physical keyboard input or an interactive window. The form forwards deactivation to this state reset; visible focus transitions, mouse capture and complete command behavior remain playtests.
 

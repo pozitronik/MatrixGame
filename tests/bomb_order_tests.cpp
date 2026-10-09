@@ -23,17 +23,28 @@ struct RobotCommandFixture {
 };
 
 namespace {
+template<class Object>
+struct EngineHeapDeleter {
+    void operator()(Object *object) const { HDelete(Object, object, g_MatrixHeap); }
+};
+
+template<class Object>
+auto make_engine_object() {
+    // Production constructors rely on the zeroed storage provided by HNew.
+    return std::unique_ptr<Object, EngineHeapDeleter<Object>>(HNew(g_MatrixHeap) Object);
+}
+
 struct World {
     CHeap heap;
     CBlockPar data;
-    std::unique_ptr<CMatrixMapLogic> map;
+    std::unique_ptr<CMatrixMapLogic, EngineHeapDeleter<CMatrixMapLogic>> map;
 
     World() {
         g_MatrixHeap = &heap;
         g_MatrixData = &data;
         try {
             CacheInit();
-            map = std::make_unique<CMatrixMapLogic>();
+            map = make_engine_object<CMatrixMapLogic>();
             g_MatrixMap = map.get();
             map->m_SizeMove = CPoint(20, 20);
             map->m_PlayerSide = nullptr;
@@ -79,12 +90,12 @@ struct Bomber : CMatrixRobotAI {
 
 struct Scenario {
     World world;
-    Bomber robot;
+    std::unique_ptr<Bomber, EngineHeapDeleter<Bomber>> robot = make_engine_object<Bomber>();
     const CPoint destination{10, 10};
 
     Scenario() {
-        robot.GetEnv()->m_PlaceAdd = destination;
-        robot.MoveTo(destination.x, destination.y);
+        robot->GetEnv()->m_PlaceAdd = destination;
+        robot->MoveTo(destination.x, destination.y);
         group().m_RobotCnt = 1;
         group().Order(mpo_Bomb);
         group().m_To = destination;
@@ -94,13 +105,13 @@ struct Scenario {
     SMatrixPlayerGroup &group() { return world.map->GetPlayerSide()->m_PlayerGroup[0]; }
 
     void evaluate() {
-        MG_CHECK(robot.HaveBomb());
-        MG_CHECK(!robot.PLIsInPlace());
+        MG_CHECK(robot->HaveBomb());
+        MG_CHECK(!robot->PLIsInPlace());
         world.map->GetPlayerSide()->TaktPL(0);
         MG_CHECK(group().Order() == mpo_Bomb);
         MG_CHECK(group().m_Obj == nullptr);
-        MG_CHECK(robot.IsLiveRobot());
-        MG_CHECK(robot.GetEnv()->m_PlaceAdd.Dist2(destination) == 0);
+        MG_CHECK(robot->IsLiveRobot());
+        MG_CHECK(robot->GetEnv()->m_PlaceAdd.Dist2(destination) == 0);
         MG_CHECK(g_D3DD == nullptr);
         for (auto *cached : g_Cache->_data) {
             MG_CHECK(!cached->IsLoaded());
@@ -115,21 +126,21 @@ void ground_target_while_moving() {
 
 void inactive_target() {
     Scenario scenario;
-    CMatrixRobotAI target;
-    target.m_Side = 2;
-    target.m_CurrState = ROBOT_DIP;
-    target.AddLT();
-    scenario.group().m_Obj = &target;
+    auto target = make_engine_object<CMatrixRobotAI>();
+    target->m_Side = 2;
+    target->m_CurrState = ROBOT_DIP;
+    target->AddLT();
+    scenario.group().m_Obj = target.get();
     scenario.evaluate();
 }
 
 void destroyed_target() {
     Scenario scenario;
     {
-        CMatrixRobotAI target;
-        target.m_Side = 2;
-        target.AddLT();
-        scenario.group().m_Obj = &target;
+        auto target = make_engine_object<CMatrixRobotAI>();
+        target->m_Side = 2;
+        target->AddLT();
+        scenario.group().m_Obj = target.get();
     }
     scenario.evaluate();
 }

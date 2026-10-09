@@ -116,5 +116,5 @@ else()
 endif()
 
 target_compile_options(MatrixLib PRIVATE ${COMPILE_OPTIONS})
-target_compile_definitions(MatrixLib PRIVATE ${COMPILE_DEFINITIONS} _ALLOW_RTCc_IN_STL)
+target_compile_definitions(MatrixLib PRIVATE ${COMPILE_DEFINITIONS})
 target_link_options(MatrixLib PUBLIC "$<$<C_COMPILER_ID:MSVC>:-SAFESEH:NO>")

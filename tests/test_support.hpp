@@ -11,6 +11,10 @@
 
 namespace tests {
 
+#if defined(_MSC_VER) && defined(_DEBUG)
+void configure_crt_reports();
+#endif
+
 struct Case {
     const char *name;
     void (*run)();
@@ -23,6 +27,9 @@ inline void require(bool condition, const char *expression, const char *file, in
 }
 
 inline int run(int argc, char **argv, std::span<const Case> cases) {
+#if defined(_MSC_VER) && defined(_DEBUG)
+    configure_crt_reports();
+#endif
     if (argc == 2 && std::string_view(argv[1]) == "--list") {
         for (const auto &test : cases) {
             std::cout << test.name << '\n';
