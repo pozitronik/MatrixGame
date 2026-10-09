@@ -67,6 +67,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Storage | Record/column growth, schema copies, deletion/reuse, duplicate parameters, UTF-16 values, legacy bytes, compressed round trips, rejected format tags/versions and partial-load cleanup |
 | Random numbers | Original generator sequence, seed normalization, range endpoints, reversed/equal bounds, fractional scales, index bounds and shared-stream consumption |
 | AI robot definitions | Head aliases and resource valuation, headless definitions, weapon strength ordering and missing armor-capacity diagnostics |
+| Audio | PCM8/16 mono/stereo parsing, rejected chunk/frame metadata, shared clip caching, unique handles, loop flags, gain/balance, failure diagnostics, shutdown order, frontend layers and preserved host callback routing |
 | Bomb commands | A moving bomber retains its ground order when the object target is absent, inactive or destroyed; target validation and fixture cleanup use production implementations |
 | Keyboard state | Independent key releases and repeats, focus-loss reset, fresh presses, configured actions and keep-alive activation dispatch without deactivation/resource changes |
 | Error diagnostics | Omitted secondary messages, errors without an active Debug trace, file/line metadata and missing-file operation/path diagnostics |
@@ -106,7 +107,16 @@ The error executable checks catchable engine diagnostics using literal and strin
 
 The executable-path cases link the production module-path reader. Synthetic Windows API replies check buffer growth and error handling; the native case resolves the console test image without creating a window. Actual cmd.exe launch spelling, map arguments and startup diagnostics require the separate standalone checks described in the build/playtest guides.
 
-Construction, rendering, audio, lifecycle and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
+The audio service tests use synthetic WAV bytes and a fake device; frontend cases link the real command/layer implementation with a non-rendering diagnostic substitute. They cover layer interrupt/skip, stale slot reuse and repeated clearing through standalone and synthetic host callbacks without initializing an audio device or opening private archives. A local, muted hardware smoke test explicitly exercises XAudio2 creation, looping, balance and teardown:
+
+```powershell
+.\build\mingw-debug-exe\tests\matrixgame_audio_tests.exe manual.audio.native_device
+.\build\mingw-release-exe\tests\matrixgame_audio_tests.exe manual.audio.native_device
+```
+
+This opt-in check requires a working Windows 10/11 audio endpoint. It emits no sound and is not registered in CTest. Audible game checks follow [Standalone sound](AUDIO.md).
+
+Construction, rendering, lifecycle, audible/device audio behavior and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
 
 ## Add a regression
 

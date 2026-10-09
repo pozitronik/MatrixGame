@@ -52,6 +52,8 @@ DATA/
 standalone game uses the text configuration. The helper refreshes the tracked
 configuration after each build, then copies any supplied `robots.dat`.
 
+Standalone sound on Windows 10/11 additionally uses local `sound.pkg`, optional `voices.pkg` and the private `sounds.txt` name mapping. Prepare them with `python -B tools/prepare-sound-resources.py --game-directory '<original game directory>'`; the helper reads the original `CFG/CacheData.dat` without modifying it. The build stages the packages under `DATA` and the mapping under `CFG`. See [Standalone sound](AUDIO.md) for speech selection, playback contracts and listening checks.
+
 `-WithoutResources` skips copying external resources. It leaves any copies
 already present in a reused build directory. Compilation itself does not require
 the resource package.

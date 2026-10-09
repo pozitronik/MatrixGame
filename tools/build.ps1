@@ -132,7 +132,10 @@ if (-not $DLL) {
     if (-not $WithoutResources) {
         foreach ($resource in @(
             @{Name = 'robots.pkg'; Destination = $dataRoot},
-            @{Name = 'robots.dat'; Destination = $configRoot}
+            @{Name = 'robots.dat'; Destination = $configRoot},
+            @{Name = 'sound.pkg'; Destination = $dataRoot},
+            @{Name = 'voices.pkg'; Destination = $dataRoot},
+            @{Name = 'sounds.txt'; Destination = $configRoot}
         )) {
             $source = Join-Path $repoRoot $resource.Name
             if (Test-Path -LiteralPath $source) {

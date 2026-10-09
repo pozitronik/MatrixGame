@@ -4,6 +4,7 @@
 // Refer to the LICENSE file included
 
 #include "MatrixSoundManager.hpp"
+#include "SoundBridge.hpp"
 #include "MatrixGameDll.hpp"
 #include "MatrixMap.hpp"
 
@@ -131,26 +132,26 @@ int FindSoundSlotPlayedOnly(uint32_t id);
 ///////////////////////////////////////////////////////////////////////////////
 inline uint32_t snd_create(wchar_t *n, int i, int j) {
     DTRACE();
-    return g_RangersInterface->m_SoundCreate(n, i, j);
+    return SoundBridge::create(n, i, j);
 }
 
 inline void snd_destroy(uint32_t s) {
     DTRACE();
-    g_RangersInterface->m_SoundDestroy(s);
+    SoundBridge::destroy(s);
 }
 
 inline void snd_pan(uint32_t s, float v) {
     DTRACE();
-    g_RangersInterface->m_SoundPan(s, v);
+    SoundBridge::pan(s, v);
 }
 inline void snd_vol(uint32_t s, float v) {
     DTRACE();
-    g_RangersInterface->m_SoundVolume(s, v);
+    SoundBridge::volume(s, v);
 }
 
 inline void snd_play(uint32_t s) {
     DTRACE();
-    g_RangersInterface->m_SoundPlay(s);
+    SoundBridge::play(s);
 }
 ///////////////////////////////////////////////////////////////////////////////
 
@@ -410,12 +411,12 @@ void CSound::Takt(void) {
     if (delta < 0 || delta > 1000) {
         nextsoundtakt = 1000 + g_MatrixMap->GetTime();
 
-        if (g_RangersInterface) {
+        if (SoundBridge::available()) {
             // for (int i=1;i<SL_COUNT; ++i)
             //{
             //    if (m_Layers[i] != SOUND_ID_EMPTY)
             //    {
-            //        if (!g_RangersInterface->m_SoundIsPlay(m_Layers[i]))
+            //        if (!SoundBridge::playing(m_Layers[i]))
             //        {
             //            snd_destroy(m_Layers[i]);
             //            m_Layers[i] = SOUND_ID_EMPTY;
@@ -425,7 +426,7 @@ void CSound::Takt(void) {
 
             for (int i = 0; i < MAX_SOUNDS; ++i) {
                 if (m_AllSounds[i].id_internal != 0) {
-                    if (!g_RangersInterface->m_SoundIsPlay(m_AllSounds[i].id_internal)) {
+                    if (!SoundBridge::playing(m_AllSounds[i].id_internal)) {
                         snd_destroy(m_AllSounds[i].id_internal);
                         m_AllSounds[i].id_internal = 0;
                         m_AllSounds[i].id = SOUND_ID_EMPTY;
@@ -450,20 +451,20 @@ void CSound::Takt(void) {
 void CSound::LayerOff(ESoundLayer sl) {
     DTRACE();
 
-    ASSERT(g_RangersInterface);
+    ASSERT(SoundBridge::available());
     if (m_LayersI[sl].index >= 0 && m_LayersI[sl].index < MAX_SOUNDS) {
         if (m_LayersI[sl].id == m_AllSounds[m_LayersI[sl].index].id) {
             StopPlayInternal(m_LayersI[sl].index);
         }
-        m_AllSounds[m_LayersI[sl].index].id = SOUND_ID_EMPTY;
-        m_AllSounds[m_LayersI[sl].index].id_internal = 0;
     }
+    m_LayersI[sl].index = -1;
+    m_LayersI[sl].id = SOUND_ID_EMPTY;
 }
 
 void CSound::SureLoaded(ESound snd) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         if (!FLAG(m_Sounds[snd].flags, SSoundItem::LOADED)) {
             // load sound
             CBlockPar *bps = g_MatrixData->BlockGet(L"Sounds");
@@ -524,7 +525,7 @@ void CSound::SureLoaded(ESound snd) {
 //    int deli = -1;
 //    for(int i=0; i<MAX_SOUNDS; ++i)
 //    {
-//        if (!g_RangersInterface->m_SoundIsPlay(m_AllSounds[i].id_internal))
+//        if (!SoundBridge::playing(m_AllSounds[i].id_internal))
 //        {
 //            snd_destroy(m_AllSounds[i].id_internal);
 //            m_AllSounds[i].id_internal = 0;
@@ -566,7 +567,7 @@ int FindSoundSlotPlayedOnly(uint32_t id) {
     DTRACE();
     int i = FindSoundSlot(id);
     if (i >= 0) {
-        if (g_RangersInterface->m_SoundIsPlay(m_AllSounds[i].id_internal))
+        if (SoundBridge::playing(m_AllSounds[i].id_internal))
             return i;
         snd_destroy(m_AllSounds[i].id_internal);
 
@@ -588,7 +589,7 @@ int FindSlotForSound(void) {
             StopPlayInternal(i);
             return i;
         }
-        if (!g_RangersInterface->m_SoundIsPlay(m_AllSounds[i].id_internal)) {
+        if (!SoundBridge::playing(m_AllSounds[i].id_internal)) {
             snd_destroy(m_AllSounds[i].id_internal);
             m_AllSounds[i].id_internal = 0;
             m_AllSounds[i].id = SOUND_ID_EMPTY;
@@ -608,7 +609,7 @@ int FindSlotForSound(void) {
 uint32_t CSound::Play(const wchar_t *name, const D3DXVECTOR3 &pos, ESoundLayer sl, ESoundInterruptFlag interrupt) {
     DTRACE();
 
-    if (!g_RangersInterface)
+    if (!SoundBridge::available())
         return SOUND_ID_EMPTY;
 
     RESETFLAG(m_Sounds[S_SPECIAL_SLOT].flags, SSoundItem::LOADED);
@@ -626,7 +627,7 @@ uint32_t CSound::Play(ESound snd, float vol, float pan, ESoundLayer sl, ESoundIn
 uint32_t CSound::Play(const wchar_t *name, ESoundLayer sl, ESoundInterruptFlag interrupt) {
     DTRACE();
 
-    if (!g_RangersInterface)
+    if (!SoundBridge::available())
         return SOUND_ID_EMPTY;
 
     RESETFLAG(m_Sounds[S_SPECIAL_SLOT].flags, SSoundItem::LOADED);
@@ -638,7 +639,7 @@ uint32_t CSound::Play(const wchar_t *name, ESoundLayer sl, ESoundInterruptFlag i
 uint32_t CSound::Play(const D3DXVECTOR3 &pos, float attn, float pan0, float pan1, float vol0, float vol1, const wchar_t *name) {
     DTRACE();
 
-    if (!g_RangersInterface)
+    if (!SoundBridge::available())
         return SOUND_ID_EMPTY;
 
     int si = FindSlotForSound();
@@ -652,6 +653,7 @@ uint32_t CSound::Play(const D3DXVECTOR3 &pos, float attn, float pan0, float pan1
     // TODO: non-const pointer is required here for no reason
     wchar_t* raw_name = const_cast<wchar_t*>(name);
     m_AllSounds[si].id_internal = snd_create(raw_name, m_LastGroup++, 0);
+    if (m_AllSounds[si].id_internal == 0) return SOUND_ID_EMPTY;
     m_AllSounds[si].id = m_LastID++;
 
     snd_pan(m_AllSounds[si].id_internal, pan);
@@ -679,10 +681,10 @@ uint32_t CSound::Play(const D3DXVECTOR3 &pos, float attn, float pan0, float pan1
 bool CSound::IsSoundPlay(uint32_t id) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         for (int i = 0; i < MAX_SOUNDS; ++i) {
             if (m_AllSounds[i].id == id) {
-                if (g_RangersInterface->m_SoundIsPlay(m_AllSounds[i].id_internal))
+                if (SoundBridge::playing(m_AllSounds[i].id_internal))
                     return true;
                 // snd_vol(m_AllSounds[i].id_internal, 0);
                 snd_destroy(m_AllSounds[i].id_internal);
@@ -700,7 +702,7 @@ bool SLID::IsPlayed(void) {
 
     if (index >= 0 && index < MAX_SOUNDS) {
         if (m_AllSounds[index].id == id) {
-            return g_RangersInterface->m_SoundIsPlay(m_AllSounds[index].id_internal) != 0;
+            return SoundBridge::playing(m_AllSounds[index].id_internal) != 0;
         }
     }
     return false;
@@ -709,7 +711,7 @@ bool SLID::IsPlayed(void) {
 uint32_t PlayInternal(ESound snd, float vol, float pan, ESoundLayer sl, ESoundInterruptFlag interrupt) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         if (vol < 0.00001f)
             return SOUND_ID_EMPTY;
 
@@ -735,7 +737,9 @@ uint32_t PlayInternal(ESound snd, float vol, float pan, ESoundLayer sl, ESoundIn
         wchar_t* path = const_cast<wchar_t*>(m_Sounds[snd].path.c_str());
         m_AllSounds[si].id_internal =
                 snd_create(path, m_LastGroup++, FLAG(m_Sounds[snd].flags, SSoundItem::LOOPED));
+        if (m_AllSounds[si].id_internal == 0) return SOUND_ID_EMPTY;
         m_AllSounds[si].id = newid;
+        if (sl != SL_ALL) m_LayersI[sl].index = si;
 
         m_AllSounds[si].curpan = pan;
         m_AllSounds[si].curvol = vol;
@@ -762,7 +766,7 @@ uint32_t PlayInternal(ESound snd, float vol, float pan, ESoundLayer sl, ESoundIn
 uint32_t CSound::Play(ESound snd, ESoundLayer sl, ESoundInterruptFlag interrupt) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         SureLoaded(snd);
         return PlayInternal(snd, (float)RND(m_Sounds[snd].vol0, m_Sounds[snd].vol1),
                             (float)RND(m_Sounds[snd].pan0, m_Sounds[snd].pan1), sl, interrupt);
@@ -775,7 +779,7 @@ uint32_t CSound::Play(ESound snd, ESoundLayer sl, ESoundInterruptFlag interrupt)
 uint32_t CSound::Play(ESound snd, const D3DXVECTOR3 &pos, ESoundLayer sl, ESoundInterruptFlag interrupt) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         SureLoaded(snd);
 
         float pan, vol;
@@ -817,7 +821,7 @@ void CSound::CalcPanVol(const D3DXVECTOR3 &pos, float attn, float pan0, float pa
 uint32_t CSound::Play(uint32_t id, ESound snd, const D3DXVECTOR3 &pos, ESoundLayer sl, ESoundInterruptFlag interrupt) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         SureLoaded(snd);
 
         float pan, vol;
@@ -846,7 +850,7 @@ uint32_t CSound::Play(uint32_t id, ESound snd, const D3DXVECTOR3 &pos, ESoundLay
 uint32_t CSound::ChangePos(uint32_t id, ESound snd, const D3DXVECTOR3 &pos) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         SureLoaded(snd);
 
         float pan, vol;
@@ -875,7 +879,7 @@ uint32_t CSound::ChangePos(uint32_t id, ESound snd, const D3DXVECTOR3 &pos) {
 void CSound::StopPlayAllSounds(void) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         for (int i = 0; i < MAX_SOUNDS; ++i) {
             StopPlayInternal(i);
         }
@@ -887,7 +891,7 @@ void CSound::StopPlay(uint32_t id) {
 
     if (id == SOUND_ID_EMPTY)
         return;
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         // g_MatrixMap->m_DI.T(std::wstring(L"sndoff") + (int)id, L"");
 
         int idx = FindSoundSlotPlayedOnly(id);
@@ -943,7 +947,7 @@ void CSound::AddSound(ESound snd, const D3DXVECTOR3 &pos, ESoundLayer sl,
 {
     DTRACE();
 
-    if (!g_RangersInterface)
+    if (!SoundBridge::available())
         return;
     uint32_t key = Pos2Key(pos);
 
@@ -956,7 +960,7 @@ void CSound::AddSound(ESound snd, const D3DXVECTOR3 &pos, ESoundLayer sl,
 
 void CSound::AddSound(const wchar_t *name, const D3DXVECTOR3 &pos) {
     DTRACE();
-    if (!g_RangersInterface)
+    if (!SoundBridge::available())
         return;
 
     RESETFLAG(m_Sounds[S_SPECIAL_SLOT].flags, SSoundItem::LOADED);
@@ -970,7 +974,7 @@ void CSound::AddSound(const wchar_t *name, const D3DXVECTOR3 &pos) {
 void CSound::AddSound(const D3DXVECTOR3 &pos, float attn, float pan0, float pan1, float vol0, float vol1, const wchar_t *name) {
     DTRACE();
 
-    if (!g_RangersInterface)
+    if (!SoundBridge::available())
         return;
     uint32_t key = Pos2Key(pos);
 
@@ -984,15 +988,18 @@ void CSound::AddSound(const D3DXVECTOR3 &pos, float attn, float pan0, float pan1
 void CSound::Clear(void) {
     DTRACE();
 
-    if (g_RangersInterface) {
+    if (SoundBridge::available()) {
         for (int i = 0; i < MAX_SOUNDS; ++i) {
             if (m_AllSounds[i].id_internal != 0) {
                 // snd_vol(m_AllSounds[i].id_internal, 0);
                 snd_destroy(m_AllSounds[i].id_internal);
+                m_AllSounds[i].id_internal = 0;
+                m_AllSounds[i].id = SOUND_ID_EMPTY;
             }
         }
     }
 
+    for (auto &layer : m_LayersI) layer.index = -1;
     m_PosSounds.clear();
 }
 
@@ -1000,7 +1007,7 @@ void CSoundArray::UpdateTimings(float ms)
 {
     DTRACE();
 
-    if (!g_RangersInterface)
+    if (!SoundBridge::available())
     {
         m_array.clear();
         return;
@@ -1055,7 +1062,7 @@ void CSoundArray::SetSoundPos(const D3DXVECTOR3 &pos)
 {
     DTRACE();
 
-    if (!g_RangersInterface)
+    if (!SoundBridge::available())
     {
         m_array.clear();
         return;
@@ -1185,7 +1192,7 @@ void CSound::SaveSoundLog()
                 int(m_AllSounds[i].id_internal),
                 m_AllSounds[i].curvol,
                 m_AllSounds[i].curpan,
-                g_RangersInterface->m_SoundGetVolume(m_AllSounds[i].id_internal),
-                g_RangersInterface->m_SoundIsPlay(m_AllSounds[i].id_internal));
+                SoundBridge::volume(m_AllSounds[i].id_internal),
+                SoundBridge::playing(m_AllSounds[i].id_internal));
     }
 }

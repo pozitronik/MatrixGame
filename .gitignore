@@ -6,6 +6,8 @@ bin/
 *.PKG
 /robots.dat
 /ROBOTS.DAT
+/sounds.txt
+/SOUNDS.TXT
 
 # Developer tools and local settings.
 .tools/

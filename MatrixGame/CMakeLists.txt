@@ -1,3 +1,4 @@
+add_subdirectory(src/Audio)
 add_library(MatrixGameInternal STATIC)
 
 macro(add_matrix_directory DIRECTORY)
@@ -52,6 +53,7 @@ target_link_libraries(
         winmm
         ${DIRECTX9_LIBRARIES}
         MatrixLib
+        MatrixAudio
         "$<$<C_COMPILER_ID:MSVC>:legacy_stdio_definitions>"
 )
 
