@@ -31,7 +31,9 @@ Check sound, pause/resume, focus transitions, manual control and developer-only 
 
 ## Random-generator modes
 
-Repeat the following checks in Debug and Release for both `ParkMiller` and `LegacyCRT`, with cheats disabled and the same resource/configuration mode. Build first, then edit only that build's `CFG/standalone.txt`; a later build refreshes the file. Keep root-level supplied packages and `robots.dat` unchanged. Preserve the original output file so it can be restored after the test.
+This is an optional integration smoke check for suspected navigation or carrier regressions. Visible gameplay does not establish a generator's sequence or distribution; deterministic tests described in [Battle random generation](RANDOM.md#verification) check those contracts. General movement, avoidance and flyer behavior remain part of the standalone battle checks above.
+
+When this check is relevant, repeat it in Debug and Release for both `ParkMiller` and `LegacyCRT`, with cheats disabled and the same resource/configuration mode. Build first, then edit only that build's `CFG/standalone.txt`; a later build refreshes the file. Keep root-level supplied packages and `robots.dat` unchanged. Preserve the original output file so it can be restored after the test.
 
 1. Set `RandomGenerator=ParkMiller`, launch without arguments from the executable directory and dismiss the introductory confirmation. Check `test.log` for `Battle random generator: ParkMiller`. If the log names another mode or reports a configuration error, stop and correct the setup.
 2. Select a friendly robot, press `M`, and left-click bare ground at least ten robot lengths away. Wait up to 30 seconds for arrival, then issue another short `M` order. Check movement, stopping and subsequent selection; record an unreachable destination separately.
