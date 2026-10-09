@@ -71,6 +71,8 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Bomb commands | A moving bomber retains its ground order when the object target is absent, inactive or destroyed; target validation and fixture cleanup use production implementations |
 | Lifecycle | Repeated cursor cleanup and reload, empty configuration, form transitions and constructor unwinding, partial game/standalone teardown, cleanup before cache creation, continued cleanup after C++ failures, owned/borrowed graphics references and rejected graphics configuration before window creation |
 | Keyboard state | Independent key releases and repeats, focus-loss reset, fresh presses, configured actions and keep-alive activation dispatch without deactivation/resource changes |
+| Device recovery | Resource release/reset/restore order, waiting during loss, transient and permanent reset failures and presentation error handling |
+| UI font lifetime | Existing font definitions and stable cache identity, owned-interface release, repeated loss/reset notifications, absent fonts, partial creation and callback failure diagnostics |
 | Error diagnostics | Omitted secondary messages, errors without an active Debug trace, file/line metadata and missing-file operation/path diagnostics |
 | Executable paths | Unicode and long module paths, native image lookup, API failure diagnostics and bounded retry of truncated module queries |
 | Compiler/runtime | Catching a C++ exception across a callback boundary, running stack cleanup and reporting an assertion with a normal failure exit while retaining a representative global configuration layout |
@@ -118,6 +120,8 @@ The audio service tests use synthetic WAV bytes and a fake device; frontend case
 This opt-in check requires a working Windows 10/11 audio endpoint. It emits no sound and is not registered in CTest. Audible game checks follow [Standalone sound](AUDIO.md).
 
 The lifecycle executable links production game cleanup, configuration, map, cache and forms with the same diagnostic overlay substitute. It checks empty and partially populated state without invoking interactive startup. [Session lifetime](LIFECYCLE.md) describes ownership and the boundaries this establishes. Menu restart, result dialogs, actual startup failure handlers and graphics-device teardown remain playtests or require separate regressions.
+
+Recovery tests compile the production decision path and font cache. Synthetic HRESULTs and COM fonts keep them independent of physical graphics hardware and game packages. An explicit native font-reset check is available outside CTest; [DirectX device recovery](DEVICE_RECOVERY.md) describes the procedure, covered transitions and limits. Visible restored graphics and complete renderer resource lifetimes still need playtests.
 
 Construction, rendering, lifecycle, audible/device audio behavior and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
 

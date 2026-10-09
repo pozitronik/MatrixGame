@@ -3,6 +3,7 @@
 #include <d3dx9core.h>
 
 #include <string>
+#include <string_view>
 
 namespace Text {
 
@@ -34,5 +35,8 @@ private:
 };
 
 Font& GetFont(IDirect3DDevice9* device, std::wstring_view font_name);
+
+void OnLostDevice();
+void OnResetDevice();
 
 } // namespace Text
