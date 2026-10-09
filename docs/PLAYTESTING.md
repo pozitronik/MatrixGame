@@ -86,6 +86,16 @@ Use a cheats-disabled windowed standalone build with packed configuration. Compl
 
 These steps cover the exposed windowed focus transition. Border resizing and Alt+Enter mode switching are not implemented. Exclusive fullscreen, display-mode changes, sleep/resume and physical driver loss need separately named scenarios and hardware evidence; do not report the windowed checklist as those tests. See [DirectX device recovery](DEVICE_RECOVERY.md) for automated cases and the explicit native reset check.
 
+## Selection dragging
+
+Use a cheats-disabled standalone build. Run in Debug and Release on the same map, recording configuration, resolution/display scaling and exit status. Keep the pointer inside the game client area so window focus remains unchanged.
+
+1. Dismiss the introduction and locate several friendly robots. Left-click bare terrain beside them, hold the left mouse button and move quickly back and forth for ten seconds while changing the selection rectangle. The box, simulation and window-caption counters should continue updating.
+2. Release around a group, then issue `M` and a ground click. Only the intended group should receive the order.
+3. Repeat in the opposite drag direction. Also try a small rectangle and a quick drag/release before the next visible redraw; the final released rectangle should determine selection.
+4. Start another drag around friendly robots, press a group-number key such as `1` while holding the left button, then release immediately. The canceled rectangle must not be added to selection; any assigned control group may be recalled normally. Start a fresh drag and verify selection still works. Escape opens the menu and does not cancel a selection drag.
+5. Close with Alt+F4 and confirm exit status zero. Report any stall and whether it affects only the box or simulation/caption updates too.
+
 ## Map arguments and failure cases
 
 A command-line map argument selects visibility calculation rather than the interactive battle loop. A bare filename is prefixed with `Matrix\Map\`; a path containing a backslash is used as supplied. Visibility calculation initializes the game, loads its resources, rebuilds visibility data and records completion in `calcvis.log`. The calculated visibility data remains in memory. This mode requires game resources and does not replace the interactive checklist.

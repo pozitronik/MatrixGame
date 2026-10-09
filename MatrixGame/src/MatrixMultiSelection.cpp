@@ -200,6 +200,7 @@ void CMultiSelection::Update(
     [[maybe_unused]] SELECT_ENUM callback,
     [[maybe_unused]] DWORD param)
 {
+    RESETFLAG(m_Flags, MS_FLAG_PENDING_UPDATE);
     m_RB = pos;
 
     CRect r(m_LT.x, m_LT.y, m_RB.x, m_RB.y);
@@ -274,7 +275,16 @@ void CMultiSelection::Update(
     }
 }
 
+bool CMultiSelection::UpdatePending(DWORD mask, SELECT_ENUM callback, DWORD param) {
+    if (FLAG(m_Flags, MS_FLAG_DIP) || !FLAG(m_Flags, MS_FLAG_PENDING_UPDATE)) {
+        return false;
+    }
+    Update(m_RB, mask, callback, param);
+    return true;
+}
+
 void CMultiSelection::End(bool add_to_selection) {
+    RESETFLAG(m_Flags, MS_FLAG_PENDING_UPDATE);
     SETFLAG(m_Flags, MS_FLAG_DIP);
     m_TimeBeforeDip = g_MatrixMap->GetTime();
 

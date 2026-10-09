@@ -331,12 +331,21 @@ void CFormMatrixGame::Draw(void) {
 #endif
 }
 
+void selcallback(CMatrixMapStatic *ms, uintptr_t param);
+
 void CFormMatrixGame::Takt(int step) {
     DTRACE();
 
     if (g_MatrixMap->CheckLostDevice())
     {
         return;
+    }
+
+    if (CMultiSelection::m_GameSelection) {
+        SCallback cbs;
+        cbs.mp = g_MatrixMap->m_Cursor.GetPos();
+        cbs.calls = 0;
+        CMultiSelection::m_GameSelection->UpdatePending(TRACE_ROBOT | TRACE_BUILDING, selcallback, (uintptr_t)&cbs);
     }
 
     g_MatrixMap->Takt(step);
@@ -459,11 +468,7 @@ void CFormMatrixGame::MouseMove(int x, int y) {
     p_side->OnMouseMove();
 
     if (CMultiSelection::m_GameSelection) {
-        SCallback cbs;
-        cbs.mp = CPoint(x, y);
-        cbs.calls = 0;
-        CMultiSelection::m_GameSelection->Update(g_MatrixMap->m_Cursor.GetPos(), TRACE_ROBOT | TRACE_BUILDING,
-                                                 selcallback, (uintptr_t)&cbs);
+        CMultiSelection::m_GameSelection->Update(g_MatrixMap->m_Cursor.GetPos());
     }
 
     // interface
@@ -558,9 +563,14 @@ void CFormMatrixGame::MouseKey(ButtonStatus status, int key, int x, int y) {
         CMatrixSideUnit *ps = g_MatrixMap->GetPlayerSide();
         if (CMultiSelection::m_GameSelection) {
             SCallback cbs;
-            cbs.mp = CPoint(-1, -1);
+            cbs.mp = CPoint(x, y);
             cbs.calls = 0;
 
+            // A release can arrive before a frame has consumed the latest move.
+            g_MatrixMap->m_Cursor.SetPos(x, y);
+            CMultiSelection::m_GameSelection->Update(CPoint(x, y));
+            CMultiSelection::m_GameSelection->UpdatePending(TRACE_ROBOT | TRACE_BUILDING, selcallback,
+                                                            (uintptr_t)&cbs);
             CMultiSelection::m_GameSelection->End();
             DCP();
 

@@ -21,6 +21,7 @@ typedef void (*SELECT_ENUM)(CMatrixMapStatic *ms, uintptr_t param);
 #define MS_FLAG_DIP       SETBIT(0)
 #define MS_FLAG_ROBOTS    SETBIT(1)
 #define MS_FLAG_BUILDINGS SETBIT(2)
+#define MS_FLAG_PENDING_UPDATE SETBIT(3)
 
 #define MULTISEL_FVF (D3DFVF_XYZRHW | D3DFVF_TEX1)
 struct SMultiSelVertex {
@@ -29,6 +30,7 @@ struct SMultiSelVertex {
 };
 
 class CMultiSelection : public CMain {
+    friend struct SelectionFixture;
     static CMultiSelection *m_First;
     static CMultiSelection *m_Last;
     CMultiSelection *m_Next;
@@ -125,8 +127,13 @@ public:
 
     static CMultiSelection *Begin(const Base::CPoint &pos);
 
-    void Update(const Base::CPoint &pos) { m_RB = pos; }
+    // Mouse dispatch records only the newest rectangle; the frame evaluates its geometry.
+    void Update(const Base::CPoint &pos) {
+        m_RB = pos;
+        SETFLAG(m_Flags, MS_FLAG_PENDING_UPDATE);
+    }
     void Update(const Base::CPoint &pos, DWORD mask, SELECT_ENUM callback, DWORD param);
+    bool UpdatePending(DWORD mask, SELECT_ENUM callback, DWORD param);
     void End(bool add_to_selection = true);
 
     static void AddTime(int ms) { m_Time += ms; }

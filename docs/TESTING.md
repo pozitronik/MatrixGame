@@ -71,6 +71,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Bomb commands | A moving bomber retains its ground order when the object target is absent, inactive or destroyed; target validation and fixture cleanup use production implementations |
 | Lifecycle | Repeated cursor cleanup and reload, empty configuration, form transitions and constructor unwinding, partial game/standalone teardown, cleanup before cache creation, continued cleanup after C++ failures, owned/borrowed graphics references and rejected graphics configuration before window creation |
 | Keyboard state | Independent key releases and repeats, focus-loss reset, fresh presses, configured actions and keep-alive activation dispatch without deactivation/resource changes |
+| Selection | Queued mouse moves without geometry scans, one refresh of the latest rectangle, release before a frame, reversed/small rectangles, hit masks, the existing 30-object order/limit, direct/group-number cancellation followed by immediate release and object teardown before refresh |
 | Device recovery | Resource release/reset/restore order, waiting during loss, transient and permanent reset failures and presentation error handling |
 | UI font lifetime | Existing font definitions and stable cache identity, owned-interface release, repeated loss/reset notifications, absent fonts, partial creation and callback failure diagnostics |
 | Error diagnostics | Omitted secondary messages, errors without an active Debug trace, file/line metadata and missing-file operation/path diagnostics |
@@ -124,6 +125,8 @@ The lifecycle executable links production game cleanup, configuration, map, cach
 Recovery tests compile the production decision path and font cache. Synthetic HRESULTs and COM fonts keep them independent of physical graphics hardware and game packages. An explicit native font-reset check is available outside CTest; [DirectX device recovery](DEVICE_RECOVERY.md) describes the procedure, covered transitions and limits. Visible restored graphics and complete renderer resource lifetimes still need playtests.
 
 Construction, rendering, lifecycle, audible/device audio behavior and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
+
+Selection cases link production multi-selection and game-form input. Synthetic visible buildings count rectangle hit tests without meshes, packages or a device. They verify queued movement and final release through the real form, plus pending refresh, membership, masks, limits and cancellation in the selection implementation. They do not invoke the rendered frame/device path; native queue-load measurements and [Selection dragging](PLAYTESTING.md#selection-dragging) cover that integration separately. Debug rejects tracked allocation leaks and test crashes do not open native dialogs.
 
 ## Add a regression
 
