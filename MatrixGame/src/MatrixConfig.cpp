@@ -193,6 +193,7 @@ void CMatrixConfig::SetDefaults(void) {
     m_VertexLight = true;
 
     m_Cursors = NULL;
+    m_CursorsCnt = 0;
 
     m_ShowStencilShadows = true;
     m_ShowProjShadows = true;
@@ -329,6 +330,8 @@ void CMatrixConfig::Clear(void) {
 
         HFree(m_Cursors, g_CacheHeap);
     }
+    m_Cursors = NULL;
+    m_CursorsCnt = 0;
 }
 
 void CMatrixConfig::ReadParams(void) {

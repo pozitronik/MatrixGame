@@ -6,6 +6,7 @@
 #include "Texture.hpp"
 #include "3g.hpp"
 #include "Helper.hpp"
+#include "GraphicsReferences.hpp"
 #include "../../MatrixGame/src/MatrixSampleStateManager.hpp"
 
 #include "CBlockPar.hpp"
@@ -33,6 +34,10 @@
 HINSTANCE g_HInst = 0;
 IDirect3D9 *g_D3D = NULL;
 IDirect3DDevice9 *g_D3DD = NULL;
+namespace {
+Graphics::Reference<IDirect3D9> owned_direct3d;
+Graphics::Reference<IDirect3DDevice9> owned_device;
+}
 D3DCAPS9 g_D3DDCaps;
 ATOM g_WndA = 0;
 HWND g_Wnd = 0;
@@ -230,13 +235,14 @@ void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const
     }
 
     g_D3D = Direct3DCreate9(D3D_SDK_VERSION);
+    owned_direct3d.adopt(g_D3D);
     if (!g_D3D)
     {
         ERROR_S(L"Direct3DCreate9 failed");
     }
 
     D3DDISPLAYMODE mode;
-    ASSERT_DX(g_D3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &mode));
+    FAILED_DX(g_D3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &mode));
 
     D3DPRESENT_PARAMETERS d3dpp;
     memset(&d3dpp, 0, sizeof(d3dpp));
@@ -258,6 +264,7 @@ void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const
             &d3dpp,
             &g_D3DD
         );
+    owned_device.adopt(g_D3DD);
 
     switch(cd_res)
     {
@@ -270,12 +277,14 @@ void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const
             ERROR_S(L"CreateDevice failed: D3DERR_NOTAVAILABLE");
         case D3DERR_OUTOFVIDEOMEMORY:
             ERROR_S(L"CreateDevice failed: D3DERR_OUTOFVIDEOMEMORY");
+        default:
+            throw CExceptionD3D(__FILE__, __LINE__, cd_res);
     }
 
     SetWindowLongPtr(g_Wnd, GWL_WNDPROC, uintptr_t((WNDPROC)L3G_WndProc));
 
-    IDirect3DSurface9 *surf;
-    g_D3DD->GetRenderTarget(0, &surf);
+    IDirect3DSurface9 *surf = nullptr;
+    FAILED_DX(g_D3DD->GetRenderTarget(0, &surf));
     if (!(surf == NULL))
         g_D3DD->ColorFill(surf, NULL, 0);
     surf->Release();
@@ -286,7 +295,7 @@ void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const
     D3DDISPLAYMODE d3ddm;
 
     if (!FLAG(g_Flags, GFLAG_FULLSCREEN)) {
-        ASSERT_DX(g_D3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &d3ddm));
+        FAILED_DX(g_D3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &d3ddm));
         if (d3ddm.Format == D3DFMT_X8R8G8B8) {
             d3ddm.Format = D3DFMT_A8R8G8B8;
             bpp = 32;
@@ -396,7 +405,7 @@ void L3GInitAsDLL(
 }
 
 void L3GDeinit() {
-    if (FLAG(g_Flags, GFLAG_GAMMA)) {
+    if (g_D3DD && FLAG(g_Flags, GFLAG_GAMMA)) {
         g_D3DD->SetGammaRamp(0, D3DSGR_NO_CALIBRATION, &g_StoreRamp0);
         g_D3DD->SetGammaRamp(1, D3DSGR_NO_CALIBRATION, &g_StoreRamp1);
     }
@@ -405,17 +414,9 @@ void L3GDeinit() {
     CHelper::ClearAll();
 #endif
 
-    /*
-        if(g_D3DD)
-        {
-            int ref = g_D3DD->Release();
-            g_D3DD=NULL;
-        }
-        if(g_D3D)
-        {
-            int ref = g_D3D->Release();
-            g_D3D=NULL;
-        }*/
+    owned_device.release(g_D3DD);
+    owned_direct3d.release(g_D3D);
+    RESETFLAG(g_Flags, GFLAG_GAMMA);
     ZeroMemory(&g_D3DDCaps, sizeof(D3DCAPS9));
 
     if (g_WndA)
@@ -431,6 +432,8 @@ void L3GDeinit() {
     if (g_WndExtern) {
         SetWindowLong(g_Wnd, GWL_WNDPROC, g_WndOldProg);
     }
+    g_Wnd = nullptr;
+    g_WndOldProg = 0;
     g_WndExtern = false;
 }
 
