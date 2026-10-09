@@ -43,6 +43,8 @@ Normal game builds also compile the test executables. `tools/build.ps1 -WithoutT
 
 Each named case runs in its own process with a 30-second timeout. CTest reports the failed case, assertion expression, source location and captured output. The helper writes `test-results.xml` in the selected build directory, replacing the report with the current selection's results; detailed output is in `Testing/Temporary/LastTest.log` below that directory.
 
+MSVC Debug tests retain compiler runtime checks and send fatal CRT reports to standard error instead of waiting for a desktop dialog. Native failures include a best-effort symbolized stack when the executable's PDB is available, then exit with a failure status. This reporting applies to the console tests; interactive game diagnostics are unchanged.
+
 To list or run already-built tests directly:
 
 ```powershell
