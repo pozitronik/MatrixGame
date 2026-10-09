@@ -1,0 +1,3 @@
+// Select the random generator once, before battle initialization.
+// Supported values: ParkMiller (default), LegacyCRT.
+RandomGenerator=ParkMiller

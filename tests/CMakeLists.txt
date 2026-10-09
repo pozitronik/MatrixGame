@@ -94,6 +94,28 @@ add_matrix_test(base.random.floating_bounds matrixgame_random_tests base random)
 add_matrix_test(base.random.integer_bounds matrixgame_random_tests base random)
 add_matrix_test(base.random.index_bounds matrixgame_random_tests base random)
 add_matrix_test(base.random.shared_stream matrixgame_random_tests base random)
+add_matrix_test(base.random.legacy_sequence matrixgame_random_tests base random)
+add_matrix_test(base.random.legacy_seeds matrixgame_random_tests base random)
+add_matrix_test(base.random.legacy_bounds matrixgame_random_tests base random)
+add_matrix_test(base.random.legacy_floating_bounds matrixgame_random_tests base random)
+add_matrix_test(base.random.legacy_width_consumption matrixgame_random_tests base random)
+add_matrix_test(base.random.legacy_index_mapping matrixgame_random_tests base random)
+add_matrix_test(base.random.legacy_crt_interop matrixgame_random_tests base random)
+
+add_matrix_test_executable(matrixgame_random_configuration_tests
+    random_configuration_tests.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+target_include_directories(matrixgame_random_configuration_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+add_matrix_test(game.random.default_mode matrixgame_random_configuration_tests gameplay startup random)
+add_matrix_test(game.random.explicit_mode matrixgame_random_configuration_tests gameplay startup random)
+add_matrix_test(game.random.invalid_mode matrixgame_random_configuration_tests gameplay startup random)
+add_matrix_test(game.random.fixed_battle_mode matrixgame_random_configuration_tests gameplay startup random)
+add_matrix_test(game.random.missing_file matrixgame_random_configuration_tests gameplay startup random)
+add_matrix_test(game.random.configuration_file matrixgame_random_configuration_tests gameplay startup random)
+add_matrix_test(game.random.configuration_report matrixgame_random_configuration_tests gameplay startup random)
+
+add_matrix_test_executable(matrixgame_random_map_tests random_map_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_random_map_tests PRIVATE MatrixGameInternal)
+add_matrix_test(game.random.shared_map_helpers matrixgame_random_map_tests gameplay startup random)
 
 add_matrix_test_executable(matrixgame_ai_tests
     ai_robot_tests.cpp

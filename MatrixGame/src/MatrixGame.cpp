@@ -24,6 +24,7 @@
 #include "MatrixMultiSelection.hpp"
 #include "ExecutablePath.hpp"
 #include "SessionCleanup.hpp"
+#include "RandomConfiguration.hpp"
 
 #include <new>
 #include <fstream>
@@ -186,10 +187,19 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
                 const wchar *lang, const wchar *txt_start, const wchar *txt_win, const wchar *txt_loss,
                 const wchar *planet)
 {
-    random::seed(seed);
     static_init();
 
     DTRACE();
+
+#ifdef BUILD_EXE
+    const auto selection = RandomConfiguration::initialize_standalone(seed);
+    if (!selection.valid) {
+        lgr.error("Invalid RandomGenerator in CFG/standalone.txt; using ParkMiller");
+    }
+    lgr.notice("Battle random generator: {}")(RandomConfiguration::name(selection.mode));
+#else
+    random::seed(seed, random::Mode::ParkMiller);
+#endif
 
     g_MatrixHeap = HNew(NULL) CHeap;
 

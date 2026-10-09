@@ -134,6 +134,12 @@ public:
         return create_entry<level::info>(caller, format);
     }
 
+    // Report a one-time configuration choice at INFO even with a higher threshold.
+    auto notice(std::string_view format, std::source_location caller = std::source_location::current())
+    {
+        return entry<level::info>(_out, caller, format, _tick);
+    }
+
     auto debug(std::string_view format, std::source_location caller = std::source_location::current())
     {
         return create_entry<level::debug>(caller, format);
