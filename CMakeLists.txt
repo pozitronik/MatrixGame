@@ -34,7 +34,7 @@ list(APPEND COMPILE_DEFINITIONS MATRIXGAME_EXPORTS $<$<CONFIG:Release>:ASSERT_OF
 if(MSVC)
     set(COMPILE_OPTIONS
         $<$<CONFIG:Release>:/Zi /W3 /O2 /Ob2 /Oi /Ot /Oy /GF /EHsc /GS- /Gy->
-        $<$<CONFIG:Debug>:/Zi /W3 /Od /GF /Gm- /RTCc /RTC1>
+        $<$<CONFIG:Debug>:/Zi /W3 /Od /GF /Gm- /RTC1>
     )
     set(LINK_OPTIONS
         /SUBSYSTEM:WINDOWS /DYNAMICBASE:NO /MACHINE:X86

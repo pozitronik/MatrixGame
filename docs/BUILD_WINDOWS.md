@@ -77,6 +77,8 @@ $env:DXSDK_DIR = '<DirectX SDK directory>'
 Output is under `build/msvc-release-exe/MatrixGame/Release`.
 The corresponding Visual C++ x86 runtime is required to run the game.
 
+Debug builds retain `/RTC1` stack and uninitialized-variable checks. `/RTCc` narrowing checks are omitted because they reject valid casts in the Windows CRT and C++ standard library; see [Microsoft's runtime-check documentation](https://learn.microsoft.com/cpp/build/reference/rtc-run-time-error-checks). The `_ALLOW_RTCc_IN_STL` workaround is unnecessary. External zlib and libpng builds install and link the selected Debug or Release configuration so their CRT matches the engine.
+
 ## DLL
 
 For integration with the Space Rangers host:
