@@ -21,6 +21,7 @@ struct SCmdItem
 #define DEV_CONSOLE_CURSOR_FLASH_PERIOD 300
 
 class CDevConsole : public CMain {
+    friend struct ConsoleInputFixture;
     DWORD m_Flags;
 
     static SCmdItem m_Commands[];
