@@ -119,8 +119,17 @@ constexpr tests::Case cases[] = {
 } // namespace
 
 int main(int argc, char **argv) {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();
+    SetUnhandledExceptionFilter(nullptr);
+    std::set_terminate([] { std::abort(); });
     const int result = tests::run(argc, argv, cases);
+#ifdef MEM_SPY_ENABLE
+    if (Base::SMemHeader::first_mem_block) {
+        std::cerr << "Random configuration test leaked tracked heap allocations.\n";
+        return EXIT_FAILURE;
+    }
+#endif
     Base::CMain::BaseDeInit();
     return result;
 }
