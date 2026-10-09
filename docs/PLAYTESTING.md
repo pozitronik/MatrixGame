@@ -98,7 +98,7 @@ Use a cheats-disabled standalone build. Run in Debug and Release on the same map
 
 ## Controls and text
 
-Use [Controls and UI text](CONTROLS.md) as the reference. Complete the ordinary matrix in Debug and Release with cheats disabled, recording packed/text configuration, resolution and display scaling. Start from a fresh battle and dismiss the introduction. Allow up to 30 seconds for a command or state transition; record unavailable targets/resources as unperformed cases.
+Use [Controls and UI text](CONTROLS.md) as the reference. Complete the ordinary matrix in Debug and Release with cheats disabled, recording packed/text configuration, resolution and display scaling. Debug also has extra keyboard handlers independently of the cheats option; in particular, `K` over an object can damage or destroy it, so use Release to isolate ordinary capture behavior. Start from a fresh battle and dismiss the introduction. Allow up to 30 seconds for a command or state transition; record unavailable targets/resources as unperformed cases.
 
 | Check | Exact actions and expected result |
 | --- | --- |
