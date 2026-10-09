@@ -254,6 +254,7 @@ void cleanup_continues_after_failure() {
 void standalone_partial_cleanup() {
     for (int stage = 0; stage < 5; ++stage) {
         Base::CMain::BaseInit();
+        SetUnhandledExceptionFilter(nullptr);
         CForm::StaticInit();
         CacheInit();
         g_Config.SetDefaults();
@@ -267,7 +268,9 @@ void standalone_partial_cleanup() {
             // Initialization can fail after registration but before Enter completes.
             g_FormCur = form;
         }
+        SETFLAG(g_Flags, GFLAG_GAMMA);
         MG_CHECK(Session::cleanup_standalone(form, timer_active));
+        MG_CHECK(!FLAG(g_Flags, GFLAG_GAMMA));
         MG_CHECK(form == nullptr && !timer_active);
         MG_CHECK(g_FormFirst == nullptr && g_FormLast == nullptr && g_FormCur == nullptr);
         MG_CHECK(g_Cache == nullptr && g_CacheHeap == nullptr && g_Wnd == nullptr);

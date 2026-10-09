@@ -50,6 +50,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
     CFormMatrixGame *formgame = nullptr;
     bool initialization_started = false;
     bool timer_active = false;
+    std::string diagnostic;
     try {
         int numarg = 0;
         std::unique_ptr<LPWSTR, decltype(&LocalFree)> args(CommandLineToArgvW(GetCommandLineW(), &numarg), &LocalFree);
@@ -99,15 +100,15 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 #ifdef ENABLE_HISTORY
         CDebugTracer::SaveHistory();
 #endif
-        lgr.fatal(utils::from_wstring(ex.Info()));
-        MessageBox(NULL, utils::from_wstring(ex.Info()).c_str(), "Exception:", MB_OK);
+        diagnostic = utils::from_wstring(ex.Info());
+        lgr.fatal(diagnostic);
     }
     catch (const std::exception& e)
     {
         ClipCursor(nullptr);
         SoundBridge::shutdown();
-        lgr.fatal(e.what());
-        MessageBox(NULL, e.what(), "Exception:", MB_OK);
+        diagnostic = e.what();
+        lgr.fatal(diagnostic);
     }
     catch (...) {
         ClipCursor(nullptr);
@@ -115,8 +116,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 #ifdef ENABLE_HISTORY
         CDebugTracer::SaveHistory();
 #endif
-        lgr.fatal("Unknown bug :(");
-        MessageBox(NULL, "Unknown bug :(", "Exception:", MB_OK);
+        diagnostic = "Unknown exception";
+        lgr.fatal(diagnostic);
     }
 
     if (initialization_started && !Session::cleanup_standalone(formgame, timer_active)) {
@@ -124,6 +125,9 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         exit_code = 1;
     }
     ClipCursor(nullptr);
+    if (!diagnostic.empty()) {
+        MessageBox(NULL, diagnostic.c_str(), "Exception:", MB_OK);
+    }
 
     return exit_code;
 }
