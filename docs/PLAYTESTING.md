@@ -111,7 +111,15 @@ Use [Controls and UI text](CONTROLS.md) as the reference. Complete the ordinary 
 
 Close each run normally and record exit status zero. Rebuild the same configuration with `-Cheats` only after finishing its ordinary checks; reused output directories replace the earlier game binary.
 
-For developer checks, type `DEVCON`. Enter `ab`, Left, `c`, Backspace and Delete: the edited text becomes `a`. Press Escape to clear, then Escape to close. Reopen with `DEVCON`, hold Shift and type `a`, Alt+Tab away, release Shift, return and type `b`; the preserved text should read `Ab`. Escape twice returns to the battle. Type `RICHIERICH`; resources reach 9,000. Type `AUTO` twice and `NEED4SPEED` twice, checking that each toggle returns to its preceding state. Test `KEEPALIVE` and `IAMTESTER` separately from ordinary focus checks because they change activation handling. Close and record the exit status; repeat in the other configuration.
+Use a cheats-enabled build for the developer matrix below. Type cheat codes in the battle view with the console closed; opening the console routes subsequent typing to its editor. Use an English keyboard layout and report any unavailable input. Complete the first four checks in one launch, then use a fresh launch for `IAMTESTER`. Repeat both launches in Debug and Release, recording exit statuses.
+
+| Check | Exact actions and expected result |
+| --- | --- |
+| Console editing | Type `DEVCON`. Type `ab`, press Left, type `c`, press Backspace, then Delete. The edited text becomes `a`. Escape clears it; another Escape closes the empty console. |
+| Ordinary console focus | Reopen with `DEVCON`, hold Shift and type `a`, Alt+Tab away, release Shift outside the game, then return without held keys and type `b`. Input remains present as `Ab`. Escape twice returns to the battle. |
+| Resource/toggle codes | With the console closed, type `RICHIERICH`; all four counters reach 9,000. Type `AUTO` twice and `NEED4SPEED` twice, leaving each toggle at its preceding setting. Confirm a fresh robot movement command works afterwards. `NEED4SPEED` reports true/false through the diagnostic overlay. |
+| Keep-alive input reset | Type `KEEPALIVE` once and confirm the true diagnostic. Hold the middle mouse button and rotate, Alt+Tab away, release it outside the game and return. The window remains visible and the battle keeps running; moving without buttons no longer rotates the camera. A fresh middle-button press works. Reopen `DEVCON` and repeat the Shift/`a`/focus-loss/`b` check; input is `Ab`. Escape twice closes the console. Type `KEEPALIVE` again and confirm false; ordinary focus loss minimizes the window again. |
+| Tester preset, fresh launch | Dismiss the introduction and type `IAMTESTER` with the console closed. Side/FPS diagnostics appear and the battle continues while unfocused. Repeat the console Shift and middle-button focus checks above; retained text and fresh input work. Close normally instead of trying to reverse every preset flag. |
 
 These checks do not establish every console command, every cheat, remapping, localized keyboard entry, GPU glyph rendering or complete combat coverage. Keep unperformed cases visible in the result record.
 
