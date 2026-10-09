@@ -76,11 +76,11 @@ Use the [missing/invalid-resource cases](#map-arguments-and-failure-cases) to ch
 
 ## Focus and recovery
 
-Use a cheats-disabled windowed standalone build with packed configuration. Complete the following steps in Debug, then repeat in Release. Record the actual client resolution, adapter and driver. The ordinary window minimizes on focus loss, so compare camera position before and after rather than trying to watch it while inactive.
+Use a cheats-disabled windowed standalone build with packed configuration. Complete the following steps in Debug, then repeat in Release. Record the actual client resolution, adapter and driver. The ordinary window releases cursor confinement and minimizes whenever the application loses focus, including Alt+Tab or activating another application's window. Compare camera position before and after rather than trying to watch it while inactive. Camera scrolling uses the arrow keys by default; use the configured camera key if bindings have changed.
 
 1. Dismiss the introduction and inspect resource counters, robot labels and a menu hint for readable text. Select a friendly robot and issue `M` plus a click on nearby open ground.
-2. Hold `W` for one second to scroll, Alt+Tab to another application, then release `W`. Leave the game inactive for five seconds. Check that the desktop cursor is unrestricted.
-3. Return to the game without holding any key. Within two seconds, check that the scene and UI text return. The camera should stop until a fresh scroll key is pressed; selection and a new movement order should work.
+2. Hold Up Arrow for one second to scroll, Alt+Tab to another application, then release Up Arrow. Leave the game inactive for five seconds. Check that the desktop cursor is unrestricted.
+3. Return to the game without holding any key. Within two seconds, check that the scene and UI text return. The camera should stop until a fresh scroll key is pressed. Press and release Up Arrow to verify fresh scrolling; selection and a new movement order should work.
 4. Repeat focus loss/regain twice. After each return, open Escape and inspect menu text, then Escape again to resume. Check for a black window, missing text, stale selection, an exception or an unresponsive interface.
 5. Close the window and record the process status; normal exit should be zero. A recovery diagnostic must include the failing operation and HRESULT.
 
