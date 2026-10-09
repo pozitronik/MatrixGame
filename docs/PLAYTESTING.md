@@ -29,6 +29,21 @@ Launch `MatrixGame.exe` without arguments. Record the map named by the active co
 
 Check sound, pause/resume, focus transitions, manual control and developer-only paths separately where relevant. Repeat affected cases after a correction. Record any limitation or unperformed step explicitly; do not treat startup, compilation or synthetic tests as proof of successful combat.
 
+## Random-generator modes
+
+This is an optional integration smoke check for suspected navigation or carrier regressions. Visible gameplay does not establish a generator's sequence or distribution; deterministic tests described in [Battle random generation](RANDOM.md#verification) check those contracts. General movement, avoidance and flyer behavior remain part of the standalone battle checks above.
+
+When this check is relevant, repeat it in Debug and Release for both `ParkMiller` and `LegacyCRT`, with cheats disabled and the same resource/configuration mode. Build first, then edit only that build's `CFG/standalone.txt`; a later build refreshes the file. Keep root-level supplied packages and `robots.dat` unchanged. Preserve the original output file so it can be restored after the test.
+
+1. Set `RandomGenerator=ParkMiller`, launch without arguments from the executable directory and dismiss the introductory confirmation. Check `test.log` for `Battle random generator: ParkMiller`. If the log names another mode or reports a configuration error, stop and correct the setup.
+2. Select a friendly robot, press `M`, and left-click bare ground at least ten robot lengths away. Wait up to 30 seconds for arrival, then issue another short `M` order. Check movement, stopping and subsequent selection; record an unreachable destination separately.
+3. Drag a selection rectangle around at least three friendly robots in tactical view. Press `M` and click a ground point across a shared route, then send them back through the same route. Observe avoidance and eventual arrival for up to 60 seconds; record persistent overlap, oscillation or a unit that never resumes movement.
+4. Select the friendly main base. Hover its command buttons to find the reinforcement/support request, whose hint describes availability or the remaining cooldown, then click it when available (`H` is the default keyboard action). Watch the arriving carriers approach the base area and deliver robots. Allow up to 90 seconds after an accepted request. A missing/disabled button, unavailable cooldown or no accepted request is a blocked flyer check, not evidence of successful flight.
+5. After the carriers leave, select a delivered or existing friendly robot and issue another short movement order. Confirm controls remain usable. Repeat the support request when its displayed cooldown expires, or record that repeat as unperformed with the remaining time; do not substitute the unfinished build-flyer UI path for the support-delivery path.
+6. Close normally and record the exit status. Set `RandomGenerator=LegacyCRT`, make a fresh launch, check the `LegacyCRT` log line, and repeat steps 2–5. Close and record that exit status too. Repeat the pair of launches for the other build configuration.
+
+Record each mode/configuration separately, including the accepted support request, arrival/delivery/departure, repeat-request limitation and any exception. Different startup seeds and mode distributions can change battle choices, so this procedure checks usable behavior rather than matching trajectories. Restore the original options file after the final exit.
+
 ## Bomb commands
 
 Use a fresh bomber for each row below and keep the test area away from the base and other units. Start with cheats disabled in Debug and Release. Changing `-Cheats` reuses the same build directory, so finish one option's playtests before rebuilding for the other option.

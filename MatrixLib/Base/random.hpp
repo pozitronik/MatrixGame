@@ -3,9 +3,14 @@
 namespace random
 {
 
-void seed(unsigned int val);
+enum class Mode { ParkMiller, LegacyCRT };
 
-// Park-Miller output shifted to [0, 2147483645]. All helpers share this stream.
+// Reseeding preserves the selected mode; a new battle selects it explicitly.
+void seed(unsigned int val);
+void seed(unsigned int val, Mode selected_mode);
+Mode mode();
+
+// Park-Miller's maximum. Legacy CRT output uses RAND_MAX instead.
 inline constexpr int maximum = 2147483645;
 int Rnd();
 // Floating ranges include both endpoints; reversed bounds are normalized.
@@ -19,5 +24,6 @@ double RndFloat(double zmin, double zmax);
 double RND(double from, double to);
 float FRND(double x);
 float FSRND(double x);
-// Select an index in [0, n). Non-positive counts return zero.
+// Select an index in [0, n). Legacy CRT retains rounded endpoint weighting.
+// Non-positive counts return zero. Every call consumes one raw draw.
 int IRND(int n);

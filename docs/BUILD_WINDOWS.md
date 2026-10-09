@@ -65,6 +65,8 @@ The standalone game resolves its resource directory from the loaded executable's
 
 The module-path reader grows its buffer for long names and bounds retries at the Windows path limit. Its synthetic contracts cover Unicode, truncation and API failure; this does not establish support for every long path in the game resource APIs. The logger opens `test.log` at process startup before changing directory, so a launch from another directory leaves that log in the original working directory.
 
+`CFG/standalone.txt` selects the battle random generator independently of packed game configuration. The build helper stages its tracked default beside the EXE; see [Battle random generation](RANDOM.md) for the `ParkMiller` default and corrected `LegacyCRT` option.
+
 Completed standalone execution and teardown return exit status zero. Caught initialization or execution failures return a nonzero status; inspect the diagnostic and `test.log` for the cause.
 
 A present packed configuration must load successfully. A rejected format is reported as a startup error naming the file; text fallback is selected when the packed configuration is absent. When temporarily removing an output copy of `robots.dat`, give its backup a different filename prefix because resource lookup also searches `robots.dat.*`.
