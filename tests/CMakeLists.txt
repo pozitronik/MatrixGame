@@ -126,6 +126,11 @@ add_matrix_test(game.lifecycle.form_transitions matrixgame_lifecycle_tests start
 add_matrix_test(game.lifecycle.form_construction_failure matrixgame_lifecycle_tests startup)
 add_matrix_test(game.lifecycle.repeated_forms matrixgame_lifecycle_tests startup)
 add_matrix_test(game.lifecycle.partial_startup matrixgame_lifecycle_tests startup memory)
+add_matrix_test(game.lifecycle.safe_free_without_cache matrixgame_lifecycle_tests startup memory)
+add_matrix_test(game.lifecycle.graphics_references matrixgame_lifecycle_tests startup rendering)
+add_matrix_test(game.lifecycle.cleanup_failure matrixgame_lifecycle_tests startup)
+add_matrix_test(game.lifecycle.standalone_partial_cleanup matrixgame_lifecycle_tests startup memory)
+add_matrix_test(game.lifecycle.graphics_partial_init matrixgame_lifecycle_tests startup rendering)
 
 add_matrix_test_executable(matrixgame_input_tests input_tests.cpp ../MatrixGame/src/input.cpp)
 target_include_directories(matrixgame_input_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)

@@ -69,7 +69,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | AI robot definitions | Head aliases and resource valuation, headless definitions, weapon strength ordering and missing armor-capacity diagnostics |
 | Audio | PCM8/16 mono/stereo parsing, rejected chunk/frame metadata, shared clip caching, unique handles, loop flags, gain/balance, failure diagnostics, shutdown order, frontend layers and preserved host callback routing |
 | Bomb commands | A moving bomber retains its ground order when the object target is absent, inactive or destroyed; target validation and fixture cleanup use production implementations |
-| Lifecycle | Repeated cursor configuration cleanup and reload, empty configuration, form transition order, constructor unwinding, repeated form lifetimes and teardown of five synthetic partial-startup stages |
+| Lifecycle | Repeated cursor cleanup and reload, empty configuration, form transitions and constructor unwinding, partial game/standalone teardown, cleanup before cache creation, continued cleanup after C++ failures, owned/borrowed graphics references and rejected graphics configuration before window creation |
 | Keyboard state | Independent key releases and repeats, focus-loss reset, fresh presses, configured actions and keep-alive activation dispatch without deactivation/resource changes |
 | Error diagnostics | Omitted secondary messages, errors without an active Debug trace, file/line metadata and missing-file operation/path diagnostics |
 | Executable paths | Unicode and long module paths, native image lookup, API failure diagnostics and bounded retry of truncated module queries |

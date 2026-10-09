@@ -5,8 +5,12 @@
 #include "MatrixMap.hpp"
 #include "Helper.hpp"
 #include "Form.hpp"
+#include "GraphicsReferences.hpp"
+#include "MatrixFormGame.hpp"
+#include "SessionCleanup.hpp"
 
 #include <memory>
+#include <type_traits>
 #include <vector>
 
 namespace {
@@ -193,6 +197,170 @@ void partial_startup_cleanup() {
     }
 }
 
+void safe_free_without_cache() {
+    CacheDeinit();
+    g_MatrixHeap = HNew(nullptr) CHeap;
+    g_MatrixData = HNew(g_MatrixHeap) CBlockPar;
+    g_MatrixData->ParAdd(L"Synthetic", L"Failure before cache creation");
+    CGame::SafeFree();
+    check_empty_game();
+    MG_CHECK(g_Cache == nullptr && g_CacheHeap == nullptr);
+    CGame::SafeFree();
+    check_empty_game();
+}
+
+struct FakeReference {
+    std::vector<int> &events;
+    int id;
+    void Release() { events.push_back(id); }
+};
+
+void graphics_reference_ownership() {
+    std::vector<int> events;
+    FakeReference api{events, 1}, device{events, 2}, host{events, 3};
+    Graphics::Reference<FakeReference> owned_interface, owned_device;
+    auto *visible_interface = &api;
+    auto *visible_device = &device;
+    owned_interface.adopt(visible_interface);
+    owned_device.adopt(visible_device);
+    owned_device.release(visible_device);
+    owned_interface.release(visible_interface);
+    MG_CHECK(visible_interface == nullptr && visible_device == nullptr);
+    MG_CHECK((events == std::vector<int>{2, 1}));
+    owned_device.release(visible_device);
+    owned_interface.release(visible_interface);
+    MG_CHECK(events.size() == 2);
+    visible_device = &host;
+    owned_device.release(visible_device);
+    MG_CHECK(visible_device == nullptr && events.size() == 2);
+    visible_interface = &api;
+    owned_interface.adopt(visible_interface);
+    owned_interface.release(visible_interface);
+    MG_CHECK((events == std::vector<int>{2, 1, 1}));
+}
+
+void cleanup_continues_after_failure() {
+    std::vector<int> events;
+    const bool result = Session::cleanup(
+        [&] { events.push_back(1); throw std::runtime_error("Synthetic cleanup failure"); },
+        [&] { events.push_back(2); },
+        [&] { events.push_back(3); throw 17; },
+        [&] { events.push_back(4); });
+    MG_CHECK(!result);
+    MG_CHECK((events == std::vector<int>{1, 2, 3, 4}));
+    MG_CHECK(Session::cleanup([&] { events.push_back(5); }));
+}
+
+void standalone_partial_cleanup() {
+    for (int stage = 0; stage < 5; ++stage) {
+        Base::CMain::BaseInit();
+        CForm::StaticInit();
+        CacheInit();
+        g_Config.SetDefaults();
+        CFormMatrixGame *form = nullptr;
+        bool timer_active = false;
+        if (stage >= 1) g_MatrixHeap = HNew(nullptr) CHeap;
+        if (stage >= 2) g_MatrixData = HNew(g_MatrixHeap) CBlockPar;
+        if (stage >= 3) populate_cursors(g_Config);
+        if (stage >= 4) {
+            form = HNew(nullptr) CFormMatrixGame;
+            // Initialization can fail after registration but before Enter completes.
+            g_FormCur = form;
+        }
+        MG_CHECK(Session::cleanup_standalone(form, timer_active));
+        MG_CHECK(form == nullptr && !timer_active);
+        MG_CHECK(g_FormFirst == nullptr && g_FormLast == nullptr && g_FormCur == nullptr);
+        MG_CHECK(g_Cache == nullptr && g_CacheHeap == nullptr && g_Wnd == nullptr);
+        check_empty_game();
+        MG_CHECK(Session::cleanup_standalone(form, timer_active));
+    }
+}
+
+void graphics_partial_initialization() {
+    CBlockPar config;
+    config.ParAdd(L"FullScreen", L"0");
+    config.ParAdd(L"Resolution", L"Invalid synthetic resolution");
+    bool caught = false;
+    try {
+        L3GInitAsEXE(GetModuleHandle(nullptr), config, L"MatrixLifecycleTest", L"Lifecycle test");
+    }
+    catch (const CException &) { caught = true; }
+    MG_CHECK(caught);
+    L3GDeinit();
+    L3GDeinit();
+    MG_CHECK(g_D3D == nullptr && g_D3DD == nullptr && g_Wnd == nullptr);
+}
+
+struct ReleaseCom {
+    template<class T> void operator()(T *pointer) const { if (pointer) pointer->Release(); }
+};
+
+struct GraphicsSession {
+    ~GraphicsSession() { L3GDeinit(); }
+};
+
+void native_graphics_lifetimes() {
+    CBlockPar config;
+    config.ParAdd(L"FullScreen", L"0");
+    config.ParAdd(L"Resolution", L"320,240");
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        GraphicsSession session;
+        L3GInitAsEXE(GetModuleHandle(nullptr), config, L"MatrixLifecycleTest", L"Lifecycle test");
+        MG_CHECK(g_D3D != nullptr && g_D3DD != nullptr && IsWindow(g_Wnd));
+        const HWND window = g_Wnd;
+        // Keep an extra reference alive so an omitted engine Release is observable.
+        g_D3D->AddRef();
+        std::unique_ptr<IDirect3D9, ReleaseCom> api(g_D3D);
+        g_D3DD->AddRef();
+        std::unique_ptr<IDirect3DDevice9, ReleaseCom> device(g_D3DD);
+        L3GDeinit();
+        MG_CHECK(g_D3D == nullptr && g_D3DD == nullptr && g_Wnd == nullptr);
+        MG_CHECK(!IsWindow(window));
+        L3GDeinit();
+        MG_CHECK(device.release()->Release() == 0);
+        MG_CHECK(api.release()->Release() == 0);
+    }
+
+    // The DLL layer may use these resources but must leave the host references intact.
+    const HWND host_window = CreateWindowEx(0, "STATIC", "Lifecycle host", WS_OVERLAPPED,
+        0, 0, 320, 240, nullptr, nullptr, GetModuleHandle(nullptr), nullptr);
+    MG_CHECK(host_window != nullptr);
+    const auto destroy_window = [](HWND window) { DestroyWindow(window); };
+    std::unique_ptr<std::remove_pointer_t<HWND>, decltype(destroy_window)> window(host_window, destroy_window);
+    std::unique_ptr<IDirect3D9, ReleaseCom> api(Direct3DCreate9(D3D_SDK_VERSION));
+    MG_CHECK(api != nullptr);
+    D3DPRESENT_PARAMETERS parameters{};
+    parameters.Windowed = TRUE;
+    parameters.SwapEffect = D3DSWAPEFFECT_DISCARD;
+    parameters.hDeviceWindow = host_window;
+    IDirect3DDevice9 *created = nullptr;
+    const HRESULT result = api->CreateDevice(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, host_window,
+        D3DCREATE_HARDWARE_VERTEXPROCESSING | D3DCREATE_MULTITHREADED, &parameters, &created);
+    std::unique_ptr<IDirect3DDevice9, ReleaseCom> device(created);
+    MG_CHECK(result == D3D_OK && device != nullptr);
+    const ULONG api_references = api->AddRef();
+    api->Release();
+    const ULONG device_references = device->AddRef();
+    device->Release();
+    const LONG_PTR original_procedure = GetWindowLongPtr(host_window, GWL_WNDPROC);
+    {
+        GraphicsSession session;
+        L3GInitAsDLL(GetModuleHandle(nullptr), config, L"MatrixLifecycleTest", L"Lifecycle host",
+            host_window, reinterpret_cast<uintptr_t>(api.get()), reinterpret_cast<uintptr_t>(device.get()));
+        L3GDeinit();
+        MG_CHECK(IsWindow(host_window));
+        MG_CHECK(GetWindowLongPtr(host_window, GWL_WNDPROC) == original_procedure);
+        MG_CHECK(g_D3D == nullptr && g_D3DD == nullptr && g_Wnd == nullptr);
+        L3GDeinit();
+        MG_CHECK(api->AddRef() == api_references);
+        api->Release();
+        MG_CHECK(device->AddRef() == device_references);
+        device->Release();
+    }
+    MG_CHECK(device.release()->Release() == 0);
+    MG_CHECK(api.release()->Release() == 0);
+}
+
 constexpr tests::Case cases[] = {
     {"game.lifecycle.configuration_cleanup", configuration_cleanup},
     {"game.lifecycle.empty_configuration", empty_configuration_cleanup},
@@ -200,6 +368,12 @@ constexpr tests::Case cases[] = {
     {"game.lifecycle.form_construction_failure", form_construction_failure},
     {"game.lifecycle.repeated_forms", repeated_form_sessions},
     {"game.lifecycle.partial_startup", partial_startup_cleanup},
+    {"game.lifecycle.safe_free_without_cache", safe_free_without_cache},
+    {"game.lifecycle.graphics_references", graphics_reference_ownership},
+    {"game.lifecycle.cleanup_failure", cleanup_continues_after_failure},
+    {"game.lifecycle.standalone_partial_cleanup", standalone_partial_cleanup},
+    {"game.lifecycle.graphics_partial_init", graphics_partial_initialization},
+    {"manual.lifecycle.native_graphics", native_graphics_lifetimes},
 };
 }
 

@@ -23,6 +23,7 @@
 #include "MatrixSampleStateManager.hpp"
 #include "MatrixMultiSelection.hpp"
 #include "ExecutablePath.hpp"
+#include "SessionCleanup.hpp"
 
 #include <new>
 #include <fstream>
@@ -46,6 +47,9 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
     lgr.info("===== Started as EXE =====");
 
     int exit_code = 1;
+    CFormMatrixGame *formgame = nullptr;
+    bool initialization_started = false;
+    bool timer_active = false;
     try {
         int numarg = 0;
         std::unique_ptr<LPWSTR, decltype(&LocalFree)> args(CommandLineToArgvW(GetCommandLineW(), &numarg), &LocalFree);
@@ -58,12 +62,13 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         const wchar *map = numarg > 1 ? args.get()[1] : nullptr;
 
         uint32_t seed = (unsigned)time(nullptr);
+        initialization_started = true;
         CGame::Init(hInstance, nullptr, map, seed);
 
-        CFormMatrixGame *formgame = HNew(NULL) CFormMatrixGame();
+        formgame = HNew(NULL) CFormMatrixGame();
         FormChange(formgame);
 
-        timeBeginPeriod(1);
+        timer_active = timeBeginPeriod(1) == TIMERR_NOERROR;
 
         if (map)
         {
@@ -85,18 +90,6 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
             L3GRun();
         }
 
-        timeEndPeriod(1);
-
-        CGame::Deinit();
-
-        FormChange(NULL);
-        HDelete(CFormMatrixGame, formgame, NULL);
-
-        g_Cache->Clear();
-        L3GDeinit();
-        CacheDeinit();
-
-        CMain::BaseDeInit();
         exit_code = 0;
     }
     catch (const CException& ex)
@@ -106,22 +99,18 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 #ifdef ENABLE_HISTORY
         CDebugTracer::SaveHistory();
 #endif
-        if (g_Cache)
-        {
-            g_Cache->Clear();
-        }
-        L3GDeinit();
-
         lgr.fatal(utils::from_wstring(ex.Info()));
         MessageBox(NULL, utils::from_wstring(ex.Info()).c_str(), "Exception:", MB_OK);
     }
     catch (const std::exception& e)
     {
+        ClipCursor(nullptr);
         SoundBridge::shutdown();
         lgr.fatal(e.what());
         MessageBox(NULL, e.what(), "Exception:", MB_OK);
     }
     catch (...) {
+        ClipCursor(nullptr);
         SoundBridge::shutdown();
 #ifdef ENABLE_HISTORY
         CDebugTracer::SaveHistory();
@@ -130,9 +119,26 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         MessageBox(NULL, "Unknown bug :(", "Exception:", MB_OK);
     }
 
-    ClipCursor(NULL);
+    if (initialization_started && !Session::cleanup_standalone(formgame, timer_active)) {
+        lgr.fatal("Standalone session cleanup failed");
+        exit_code = 1;
+    }
+    ClipCursor(nullptr);
 
     return exit_code;
+}
+
+bool Session::cleanup_standalone(CFormMatrixGame *&form, bool &timer_active) noexcept {
+    return cleanup(
+        [&] { if (timer_active) { timeEndPeriod(1); timer_active = false; } },
+        [] { FormChange(nullptr); },
+        [&] { if (form) { HDelete(CFormMatrixGame, form, nullptr); form = nullptr; } },
+        [] { CGame::Deinit(); },
+        [] { if (g_Cache) g_Cache->Clear(); },
+        [] { L3GDeinit(); },
+        [] { CacheDeinit(); },
+        [] { CMain::BaseDeInit(); },
+        [] { ClipCursor(nullptr); });
 }
 
 /**
@@ -832,7 +838,9 @@ void CGame::SafeFree() {
     }
 
     try {
-        g_Cache->Clear();
+        if (g_Cache) {
+            g_Cache->Clear();
+        }
     }
     catch (...) {
     }
