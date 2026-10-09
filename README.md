@@ -28,6 +28,7 @@ instructions and configuration options.
 ## Development
 
 [Contributing](CONTRIBUTING.md) covers reporting bugs and submitting changes.
+The [architecture guide](docs/ARCHITECTURE.md) explains subsystem ownership, the [data-format guide](docs/DATA_FORMATS.md) records resource contracts, and the [debugging guide](docs/DEBUGGING.md) provides failure-investigation procedures.
 The [testing guide](docs/TESTING.md) describes verification, and the
 [roadmap](docs/ROADMAP.md) outlines the project's direction.
 

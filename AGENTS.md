@@ -12,6 +12,7 @@ Read documents when their subject is relevant rather than loading the entire rep
 | `CONTRIBUTING.md` | Issue taxonomy, triage, branches, PRs, review and releases | Before contribution-tracking or integration work |
 | `docs/BUILD_WINDOWS.md` | Toolchains, resources and build options | Building or changing build configuration |
 | `docs/TESTING.md` | Regression coverage and playtest procedures | Planning or reporting validation |
+| `docs/ARCHITECTURE.md`, `docs/DATA_FORMATS.md`, `docs/DEBUGGING.md` | Ownership, resource contracts and failure investigation | Changing subsystem boundaries or diagnosing a failure |
 | `.github/labels.json` | Canonical label names and descriptions | Classifying work |
 | This file | Repository-specific implementation and operating rules | Working on the source |
 
