@@ -91,6 +91,13 @@ add_matrix_test(game.bomb.ground_target matrixgame_bomb_tests gameplay input)
 add_matrix_test(game.bomb.inactive_target matrixgame_bomb_tests gameplay input)
 add_matrix_test(game.bomb.destroyed_target matrixgame_bomb_tests gameplay input)
 
+add_matrix_test_executable(matrixgame_keepalive_tests keepalive_tests.cpp command_world.hpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_keepalive_tests PRIVATE MatrixGameInternal)
+add_matrix_test(game.input.keepalive_dispatch matrixgame_keepalive_tests gameplay input)
+add_matrix_test(game.input.keepalive_keys matrixgame_keepalive_tests gameplay input)
+add_matrix_test(game.input.keepalive_fresh matrixgame_keepalive_tests gameplay input)
+add_matrix_test(game.input.ordinary_deactivation matrixgame_keepalive_tests gameplay input)
+
 add_matrix_test_executable(matrixgame_input_tests input_tests.cpp ../MatrixGame/src/input.cpp)
 target_include_directories(matrixgame_input_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 target_compile_definitions(matrixgame_input_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)

@@ -1683,6 +1683,11 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
 
 void CFormMatrixGame::SystemEvent(ESysEvent se) {
     DTRACE();
+    if (se == SYSEV_INPUT_RESET) {
+        Input::onFocusLost();
+        g_MatrixMap->m_VKeyDown = 0;
+        return;
+    }
     if (se == SYSEV_DEACTIVATING) {
         Input::onFocusLost();
         g_MatrixMap->m_VKeyDown = 0;

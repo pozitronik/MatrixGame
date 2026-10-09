@@ -595,6 +595,9 @@ LRESULT CALLBACK L3G_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
         {
             if (FLAG(g_Flags, GFLAG_KEEPALIVE))
             {
+                if (wParam == 0 && g_FormCur) {
+                    g_FormCur->SystemEvent(SYSEV_INPUT_RESET);
+                }
                 // don't minimize or pause the game when keepalive flag is set
                 break;
             }
