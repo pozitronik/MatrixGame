@@ -2,7 +2,7 @@
 add_custom_target(matrixgame_tests)
 
 function(add_matrix_test_executable target)
-    add_executable(${target} ${ARGN} test_support.hpp)
+    add_executable(${target} ${ARGN} test_support.hpp test_support.cpp)
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(${target} PRIVATE MatrixLib)
     if(MSVC)
