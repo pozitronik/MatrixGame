@@ -257,3 +257,28 @@ set_tests_properties(base.compiler.failure_report PROPERTIES
     LABELS "engine;asset-free;base;compiler"
     TIMEOUT 30
 )
+
+add_matrix_test_executable(matrixgame_dll_entry_tests dll_entry_tests.cpp ../MatrixGame/src/MatrixGameDll.cpp)
+target_include_directories(matrixgame_dll_entry_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+target_compile_definitions(matrixgame_dll_entry_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+target_link_libraries(matrixgame_dll_entry_tests PRIVATE winmm)
+add_matrix_test(game.dll.engine_init_failure matrixgame_dll_entry_tests startup dll)
+add_matrix_test(game.dll.standard_init_failure matrixgame_dll_entry_tests startup dll)
+add_matrix_test(game.dll.unknown_init_failure matrixgame_dll_entry_tests startup dll)
+add_matrix_test(game.dll.form_failure matrixgame_dll_entry_tests startup dll)
+add_matrix_test(game.dll.loop_failure matrixgame_dll_entry_tests startup dll)
+add_matrix_test(game.dll.result_failure matrixgame_dll_entry_tests startup dll)
+add_matrix_test(game.dll.success_values matrixgame_dll_entry_tests startup dll)
+add_matrix_test(game.dll.interface_layout matrixgame_dll_entry_tests startup dll)
+
+if(MATRIXGAME_BUILD_DLL)
+    add_matrix_test_executable(matrixgame_dll_host_tests dll_host_tests.cpp)
+    target_include_directories(matrixgame_dll_host_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+    target_compile_definitions(matrixgame_dll_host_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+    add_dependencies(matrixgame_dll_host_tests MatrixGame)
+    add_test(NAME game.dll.native_rejected_configuration
+        COMMAND matrixgame_dll_host_tests game.dll.native_rejected_configuration "$<TARGET_FILE:MatrixGame>")
+    set_tests_properties(game.dll.native_rejected_configuration PROPERTIES
+        LABELS "engine;asset-free;startup;dll"
+        TIMEOUT 30)
+endif()

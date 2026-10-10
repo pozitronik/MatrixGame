@@ -76,7 +76,7 @@ public:
         const wchar *planet = nullptr
     );
     static void Deinit();
-    static void SafeFree();
+    static void SafeFree(bool end_timer = true) noexcept;
 
     /**
      * @brief An envelope over L3GRun() function to account for DLL multiple windows form change.

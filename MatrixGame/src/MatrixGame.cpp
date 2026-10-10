@@ -845,9 +845,9 @@ void CGame::SaveResult(SRobotGameState *state) {
     state->m_KillBuilding = g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_BUILDING_KILL);
 }
 
-void CGame::SafeFree() {
+void CGame::SafeFree(bool end_timer) noexcept {
     try {
-        timeEndPeriod(1);
+        if (end_timer) timeEndPeriod(1);
 
         Deinit();
     }

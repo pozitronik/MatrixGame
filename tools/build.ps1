@@ -93,14 +93,9 @@ try {
     $env:PATH = $savedPath
 }
 
-if ($TestsOnly) {
-    Write-Output "Test build output: $buildRoot/tests"
-    return
-}
-
 $gameRoot = Join-Path $buildRoot 'MatrixGame'
 $binaryRoot = if ($Compiler -eq 'MSVC') { Join-Path $gameRoot $Configuration } else { $gameRoot }
-if ($Compiler -eq 'MinGW') {
+if ($Compiler -eq 'MinGW' -and (-not $TestsOnly -or $DLL)) {
     # Debug builds import compiler runtimes. Stage their transitive dependencies
     # so starting from Explorer does not accidentally load an installed x64 DLL.
     $pendingBinaries = New-Object 'System.Collections.Generic.Queue[string]'
@@ -124,6 +119,11 @@ if ($Compiler -eq 'MinGW') {
             }
         }
     }
+}
+if ($TestsOnly) {
+    # DLL host tests load the actual library and need its imported runtimes.
+    Write-Output "Test build output: $buildRoot/tests"
+    return
 }
 if (-not $DLL) {
     # Refresh tracked configuration, including for existing build directories.
