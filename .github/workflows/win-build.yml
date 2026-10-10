@@ -49,9 +49,9 @@ jobs:
           $base = $env:CHECK_BASE_SHA
           if (-not $base -or $base -match '^0+$') { $base = 'HEAD^' }
           ./tools/check-repository.ps1 -BaseRef $base
-      - name: Verify packaging contracts
+      - name: Verify build-tool and packaging contracts
         shell: pwsh
-        run: python -B -m unittest discover -s tests -p 'test_package.py'
+        run: python -B -m unittest discover -s tests -p 'test_*.py'
 
   build:
     name: ${{ matrix.name }}

@@ -47,6 +47,8 @@ class PackageTests(unittest.TestCase):
                      "docs/licenses/MCF-Gthread.txt"]:
             self.write(name, ("synthetic " + name).encode())
         self.write("docs/RELEASE_README.md", b"Audio: https://github.com/pozitronik/MatrixGame/blob/dev/docs/AUDIO.md\n")
+        self.dependencies = {"zlib": {"version": "fixture-zlib"}, "libpng": {"version": "fixture-png"}}
+        self.write("ThirdParty/dependencies.json", package.json_bytes(self.dependencies))
         for name in package.CONFIG_FILES:
             self.write("MatrixGame/CFG/" + name, b"synthetic committed defaults")
         runtime = b"synthetic cached source archive"
@@ -61,7 +63,7 @@ class PackageTests(unittest.TestCase):
         self.write("build/mingw-release-exe/CMakeCache.txt", self.cache)
         self.write("build/mingw-release-exe/MatrixGame/MatrixGame.exe", self.binary)
         self.write("build/mingw-release-exe/libpng/src/libpng-external/LICENSE", b"synthetic png license")
-        self.write("build/mingw-release-exe/zlib/src/zlib-external/README", b"synthetic zlib license")
+        self.write("build/mingw-release-exe/zlib/src/zlib-external/LICENSE", b"synthetic zlib license")
         self.write("build/mingw-release-exe/packaging-build.json", package.json_bytes({"revision": self.revision,
             "binary_sha256": package.digest(self.binary), "cache_sha256": package.digest(self.cache)}))
 
@@ -90,6 +92,7 @@ class PackageTests(unittest.TestCase):
             self.assertFalse(any(b"private" in archive.read(name) for name in archive.namelist()))
             info = json.loads(archive.read("SOURCE.json"))
             self.assertEqual(info["revision"], self.revision)
+            self.assertEqual(info["dependencies"], self.dependencies)
             for name, expected in info["files"].items():
                 self.assertEqual(package.digest(archive.read(name)), expected)
 

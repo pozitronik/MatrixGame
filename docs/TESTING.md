@@ -31,7 +31,7 @@ Use `-NoBuild` when the selected build is already current, such as immediately a
 .\tools\test.ps1 -Configuration Debug -NoBuild
 ```
 
-Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-ToolchainRoot` and `-Jobs`. Use the same options for building and testing. Relative toolchain paths are resolved from the current PowerShell working directory. For MSVC, set up Visual Studio and the DirectX SDK as described in the build guide:
+Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-ToolchainRoot`, `-CMakeRoot` and `-Jobs`. Use the same options for building and testing. Relative toolchain/CMake paths are resolved from the current PowerShell working directory. For MSVC, set up Visual Studio and the DirectX SDK as described in the build guide:
 
 ```powershell
 .\tools\test.ps1 -Compiler MSVC -Configuration Release
@@ -48,7 +48,7 @@ MSVC Debug tests retain compiler runtime checks and send fatal CRT reports to st
 To list or run already-built tests directly:
 
 ```powershell
-$ctest = '.\.tools\winlibs-13.2.0\mingw32\bin\ctest.exe'
+$ctest = '.\.tools\cmake-4.4.4-windows-i386\bin\ctest.exe'
 & $ctest --test-dir build/mingw-debug-exe -C Debug -N -L '^engine$'
 & $ctest --test-dir build/mingw-debug-exe -C Debug -L '^engine$' --output-on-failure --no-tests=error
 ```
@@ -65,6 +65,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Points | Coordinate arithmetic and squared distance |
 | Rectangles | Empty bounds, strict interior containment and normalization |
 | Storage | Record/column growth, schema copies, deletion/reuse, duplicate parameters, UTF-16 values, legacy bytes, compressed round trips, rejected format tags/versions and partial-load cleanup |
+| Dependency formats | Frozen compressed configuration and two-block package data from zlib 1.2.11, multiblock UTF-16 configuration, linked header/library agreement, frozen grayscale/RGB/RGBA PNGs from libpng 1.6.37, padded BGR write/read conversion and rejected PNG header/truncation |
 | Random numbers | Original generator sequence, seed normalization, range endpoints, reversed/equal bounds, fractional scales, index bounds and shared-stream consumption |
 | AI robot definitions | Head aliases and resource valuation, headless definitions, weapon strength ordering and missing armor-capacity diagnostics |
 | Audio | PCM8/16 mono/stereo parsing, rejected chunk/frame metadata, shared clip caching, unique handles, loop flags, gain/balance, failure diagnostics, shutdown order, frontend layers and preserved host callback routing |
@@ -81,6 +82,10 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Compiler/runtime | Catching a C++ exception across a callback boundary, running stack cleanup and reporting an assertion with a normal failure exit while retaining a representative global configuration layout |
 
 The checksum fixtures preserve the engine's existing data compatibility contract. Tests link the production `MatrixLib` target and use its real implementations. The console executables use static MinGW runtimes so they can run outside the compiler environment.
+
+The dependency fixtures are synthetic bytes encoded with zlib 1.2.11 and libpng 1.6.37. `matrixgame_dependency_tests` loads them through the production storage, package and bitmap paths. Package checks read across the 65,536-byte block boundary and seek back into it; configuration checks preserve duplicate keys, Unicode and the 65,000-byte compression boundary. New writes are compared by decoded content, not identical compressed streams. The frozen fixtures define decoding compatibility independently of the installed dependency versions.
+
+Build-tool and packaging checks use Python's standard library and isolated fixtures below `build/`, without game assets or a desktop window. Run `python -B -m unittest discover -s tests -p 'test_*.py'`. CMake setup rejects a bad archive before extraction, and packaging checks retain the committed dependency manifest in source identification.
 
 Storage record copies intentionally recreate an empty schema, while moves preserve owned column buffers. Storage objects have single ownership and support moves. The fixture checks preserve the existing STRG versions, ZL03 framing and swap-with-last record deletion order. The storage executable initializes the base services, supplies a console logger and checks for tracked heap leaks in Debug.
 

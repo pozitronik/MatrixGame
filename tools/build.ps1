@@ -9,6 +9,7 @@ param(
     [switch]$WithoutTests,
     [switch]$TestsOnly,
     [string]$ToolchainRoot = '',
+    [string]$CMakeRoot = '',
     [int]$Jobs = 4
 )
 
@@ -17,7 +18,9 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot '.tools/winlibs-13.2.0/mingw32' }
 $ToolchainRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ToolchainRoot)
 $toolBin = Join-Path $ToolchainRoot 'bin'
-$cmake = Join-Path $toolBin 'cmake.exe'
+if (-not $CMakeRoot) { $CMakeRoot = Join-Path $repoRoot '.tools/cmake-4.4.4-windows-i386' }
+$CMakeRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($CMakeRoot)
+$cmake = Join-Path $CMakeRoot 'bin/cmake.exe'
 if (-not (Test-Path -LiteralPath $cmake)) {
     throw 'Pinned tools are missing. Run tools/setup-toolchain.ps1 first.'
 }

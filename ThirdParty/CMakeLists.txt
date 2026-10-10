@@ -1,91 +1,91 @@
 include(ExternalProject)
 
-cmake_policy(SET CMP0097 NEW) # skip updating submodules
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+  "${CMAKE_CURRENT_LIST_DIR}/dependencies.json")
+file(READ "${CMAKE_CURRENT_LIST_DIR}/dependencies.json" DEPENDENCY_MANIFEST)
+foreach(dependency zlib libpng)
+  string(JSON ${dependency}_URL GET "${DEPENDENCY_MANIFEST}" ${dependency} url)
+  string(JSON ${dependency}_SHA256 GET "${DEPENDENCY_MANIFEST}" ${dependency} sha256)
+endforeach()
 
-# Only define TOOLCHAIN_ARGS if CMAKE_TOOLCHAIN_FILE is set. Needed for linux cross compilation.
-if(DEFINED CMAKE_TOOLCHAIN_FILE)
-  set(TOOLCHAIN_ARGS "-DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE} -DCMAKE_POLICY_VERSION_MINIMUM=3.5")
-else()
-  set(TOOLCHAIN_ARGS "")
+# Match the engine's compiler, configuration and CRT without inheriting game-only warnings.
+set(DEPENDENCY_CMAKE_ARGS
+  "-DCMAKE_C_COMPILER:FILEPATH=${CMAKE_C_COMPILER}"
+  "-DCMAKE_BUILD_TYPE:STRING=${CMAKE_BUILD_TYPE}"
+  "-DCMAKE_C_FLAGS_DEBUG:STRING=${CMAKE_C_FLAGS_DEBUG}"
+  "-DCMAKE_C_FLAGS_RELEASE:STRING=${CMAKE_C_FLAGS_RELEASE}"
+  "-DCMAKE_INSTALL_LIBDIR:STRING=lib")
+if(CMAKE_TOOLCHAIN_FILE)
+  list(APPEND DEPENDENCY_CMAKE_ARGS "-DCMAKE_TOOLCHAIN_FILE:FILEPATH=${CMAKE_TOOLCHAIN_FILE}")
 endif()
-
 if(MINGW)
-  list(APPEND TOOLCHAIN_ARGS
-    "-DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}"
-    "-DCMAKE_ASM_COMPILER=${CMAKE_C_COMPILER}")
+  list(APPEND DEPENDENCY_CMAKE_ARGS
+    "-DCMAKE_C_FLAGS:STRING=${CMAKE_C_FLAGS} -ffile-prefix-map=${CMAKE_SOURCE_DIR}/=")
+else()
+  list(APPEND DEPENDENCY_CMAKE_ARGS "-DCMAKE_C_FLAGS:STRING=${CMAKE_C_FLAGS}")
+endif()
+if(DEFINED CMAKE_MSVC_RUNTIME_LIBRARY)
+  list(APPEND DEPENDENCY_CMAKE_ARGS
+    "-DCMAKE_MSVC_RUNTIME_LIBRARY:STRING=${CMAKE_MSVC_RUNTIME_LIBRARY}")
 endif()
 
+set(DEPENDENCY_INSTALL_CONFIGURATION "$<CONFIG>")
+set(DEPENDENCY_DEBUG_POSTFIX "$<$<CONFIG:Debug>:d>")
 if(MSVC)
-  set(DEPENDENCY_INSTALL_CONFIGURATION "$<CONFIG>")
+  set(ZLIB_ARCHIVE "${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/zs${DEPENDENCY_DEBUG_POSTFIX}.lib")
+  set(PNG_ARCHIVE "${CMAKE_CURRENT_BINARY_DIR}/libpng/lib/libpng16_static${DEPENDENCY_DEBUG_POSTFIX}.lib")
 else()
-  set(DEPENDENCY_INSTALL_CONFIGURATION Release)
+  set(ZLIB_ARCHIVE "${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libzs${DEPENDENCY_DEBUG_POSTFIX}.a")
+  set(PNG_ARCHIVE "${CMAKE_CURRENT_BINARY_DIR}/libpng/lib/libpng16${DEPENDENCY_DEBUG_POSTFIX}.a")
 endif()
 
 ExternalProject_Add(zlib-external
-  GIT_REPOSITORY https://github.com/madler/zlib
-  GIT_TAG        v1.2.11
-  GIT_SUBMODULES ""
-  UPDATE_DISCONNECTED false
-  PREFIX         zlib
+  URL "${zlib_URL}"
+  URL_HASH "SHA256=${zlib_SHA256}"
+  DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/.tools/downloads"
+  DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+  PREFIX zlib
   CMAKE_ARGS
-    ${TOOLCHAIN_ARGS}
-    -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/zlib
-    -DBUILD_SHARED_LIBS=False
-  INSTALL_COMMAND
-    ${CMAKE_COMMAND}
-      --build .
-      --target install
-      --config ${DEPENDENCY_INSTALL_CONFIGURATION}
-)
+    ${DEPENDENCY_CMAKE_ARGS}
+    "-DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/zlib"
+    -DZLIB_BUILD_SHARED=OFF
+    -DZLIB_BUILD_STATIC=ON
+    -DZLIB_BUILD_TESTING=OFF
+  INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install --config ${DEPENDENCY_INSTALL_CONFIGURATION}
+  INSTALL_BYPRODUCTS "${ZLIB_ARCHIVE}"
+    "${CMAKE_CURRENT_BINARY_DIR}/zlib/include/zlib.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/zlib/include/zconf.h")
 
 add_library(ZLIB INTERFACE)
-target_include_directories(ZLIB INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/zlib/include)
-target_link_directories(ZLIB INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/zlib/lib)
-if(MSVC)
-  target_link_libraries(ZLIB INTERFACE "$<IF:$<CONFIG:Debug>,zlibstaticd,zlibstatic>")
-else()
-  target_link_libraries(ZLIB INTERFACE zlibstatic)
-endif()
+target_include_directories(ZLIB INTERFACE "${CMAKE_CURRENT_BINARY_DIR}/zlib/include")
+target_link_libraries(ZLIB INTERFACE "${ZLIB_ARCHIVE}")
 add_dependencies(ZLIB zlib-external)
 
-if(MSVC)
-  set(ZLIB_LIBRARY_ARGS
-    "-DZLIB_LIBRARY_DEBUG=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/zlibstaticd.lib"
-    "-DZLIB_LIBRARY_RELEASE=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/zlibstatic.lib")
-else()
-  set(ZLIB_LIBRARY_ARGS "-DZLIB_LIBRARY=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/libzlibstatic.a")
-endif()
-
-#===============================================================================
-
 ExternalProject_Add(libpng-external
-  GIT_REPOSITORY https://github.com/glennrp/libpng
-  GIT_TAG        v1.6.37
-  GIT_SUBMODULES ""
-  UPDATE_DISCONNECTED false
-  PREFIX         libpng
-  DEPENDS        zlib-external
+  URL "${libpng_URL}"
+  URL_HASH "SHA256=${libpng_SHA256}"
+  DOWNLOAD_DIR "${CMAKE_SOURCE_DIR}/.tools/downloads"
+  DOWNLOAD_EXTRACT_TIMESTAMP FALSE
+  PREFIX libpng
+  DEPENDS zlib-external
   CMAKE_ARGS
-    ${TOOLCHAIN_ARGS}
-    -DCMAKE_INSTALL_PREFIX=${CMAKE_CURRENT_BINARY_DIR}/libpng
-    -DPNG_SHARED=Off      # don't build shared libs
-    -DPNG_TESTS=Off       # don't build tests
-    -DPNG_BUILD_ZLIB=Off  # use custom zlib
-    -DZLIB_INCLUDE_DIR=${CMAKE_CURRENT_BINARY_DIR}/zlib/include
-    ${ZLIB_LIBRARY_ARGS}
-  INSTALL_COMMAND
-    ${CMAKE_COMMAND}
-      --build .
-      --target install
-      --config ${DEPENDENCY_INSTALL_CONFIGURATION}
-)
+    ${DEPENDENCY_CMAKE_ARGS}
+    "-DCMAKE_INSTALL_PREFIX:PATH=${CMAKE_CURRENT_BINARY_DIR}/libpng"
+    -DPNG_SHARED=OFF
+    -DPNG_STATIC=ON
+    -DPNG_TESTS=OFF
+    -DPNG_TOOLS=OFF
+    "-DZLIB_INCLUDE_DIR:PATH=${CMAKE_CURRENT_BINARY_DIR}/zlib/include"
+    "-DZLIB_LIBRARY:FILEPATH=${ZLIB_ARCHIVE}"
+    "-DZLIB_LIBRARY_DEBUG:FILEPATH=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/$<IF:$<BOOL:${MSVC}>,zsd.lib,libzsd.a>"
+    "-DZLIB_LIBRARY_RELEASE:FILEPATH=${CMAKE_CURRENT_BINARY_DIR}/zlib/lib/$<IF:$<BOOL:${MSVC}>,zs.lib,libzs.a>"
+  INSTALL_COMMAND ${CMAKE_COMMAND} --build . --target install --config ${DEPENDENCY_INSTALL_CONFIGURATION}
+  INSTALL_BYPRODUCTS "${PNG_ARCHIVE}"
+    "${CMAKE_CURRENT_BINARY_DIR}/libpng/include/png.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/libpng/include/pngconf.h"
+    "${CMAKE_CURRENT_BINARY_DIR}/libpng/include/pnglibconf.h")
 
 add_library(LIBPNG INTERFACE)
-target_include_directories(LIBPNG INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/libpng/include)
-target_link_directories(LIBPNG INTERFACE ${CMAKE_CURRENT_BINARY_DIR}/libpng/lib)
-if(MSVC)
-  target_link_libraries(LIBPNG INTERFACE "$<IF:$<CONFIG:Debug>,libpng16_staticd,libpng16_static>" ZLIB)
-else()
-  target_link_libraries(LIBPNG INTERFACE png ZLIB)
-endif()
+target_include_directories(LIBPNG INTERFACE "${CMAKE_CURRENT_BINARY_DIR}/libpng/include")
+target_link_libraries(LIBPNG INTERFACE "${PNG_ARCHIVE}" ZLIB)
 add_dependencies(LIBPNG libpng-external)

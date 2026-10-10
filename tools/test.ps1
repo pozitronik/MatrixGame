@@ -8,6 +8,7 @@ param(
     [switch]$NoBuild,
     [string]$Filter = '',
     [string]$ToolchainRoot = '',
+    [string]$CMakeRoot = '',
     [int]$Jobs = 4
 )
 
@@ -15,7 +16,9 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $ToolchainRoot) { $ToolchainRoot = Join-Path $repoRoot '.tools/winlibs-13.2.0/mingw32' }
 $ToolchainRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($ToolchainRoot)
-$ctest = Join-Path $ToolchainRoot 'bin/ctest.exe'
+if (-not $CMakeRoot) { $CMakeRoot = Join-Path $repoRoot '.tools/cmake-4.4.4-windows-i386' }
+$CMakeRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($CMakeRoot)
+$ctest = Join-Path $CMakeRoot 'bin/ctest.exe'
 if (-not (Test-Path -LiteralPath $ctest)) {
     throw 'Pinned CTest is missing. Run tools/setup-toolchain.ps1 first.'
 }
@@ -30,6 +33,7 @@ if (-not $NoBuild) {
         WithoutResources = $true
         TestsOnly = $true
         ToolchainRoot = $ToolchainRoot
+        CMakeRoot = $CMakeRoot
         Jobs = $Jobs
     }
     & (Join-Path $PSScriptRoot 'build.ps1') @buildParameters
