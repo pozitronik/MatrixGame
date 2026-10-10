@@ -99,6 +99,8 @@ For integration with the Space Rangers host:
 
 The DLL uses the host game's resource and configuration layout.
 
+The callback interface keeps its existing x86 calling conventions and structure layout. `Run` contains C++ exceptions from initialization, form construction and result handling. These entry failures return `100`, matching the existing loop-error convention; successful runs retain their existing exit values. Initialization failure leaves the supplied result statistics unchanged, releases partial game state and cursor confinement, and preserves borrowed host resources. Diagnostics go to `test.log` in the host working directory and Windows debug output, without a standalone error dialog. Native faults and invalid host pointers require separate investigation.
+
 CI builds normal standalone Debug/Release configurations for MinGW and MSVC, a MinGW Debug developer EXE with cheats, and Release DLLs with cheats for both compilers. Every build runs the registered engine contracts and contributes to Required checks. MSVC Debug DLL and MSVC Debug EXE with cheats remain outside this matrix. Artifacts identify compiler, configuration, output type and cheats setting; these names replace the older `dll_gcc` and `dll_msvc` names.
 
 `tools/package.ps1` prepares the supported MinGW Release distribution without local assets. [Standalone packaging](RELEASES.md) describes the committed configuration, matching source, notices and separate DirectX prerequisite. CI verifies packaging contracts and retains the package/source ZIPs as artifacts; this is separate from publishing a release.

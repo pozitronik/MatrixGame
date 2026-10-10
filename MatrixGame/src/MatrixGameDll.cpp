@@ -7,13 +7,66 @@
 #include "MatrixFormGame.hpp"
 #include "MatrixGame.h"
 #include "3g.hpp"
+#include "utils.hpp"
 
+#include <cstdio>
+#include <exception>
 #include <time.h>
 #include <windows.h>
 
 SMGDRobotInterface g_RobotInterface;
 SMGDRangersInterface *g_RangersInterface = nullptr;
 int g_ExitState = 0;
+
+namespace {
+
+void log_run_failure(const char *message) noexcept {
+    constexpr const char *prefix = "MatrixGame DLL Run failed: ";
+    OutputDebugStringA(prefix);
+    OutputDebugStringA(message);
+    OutputDebugStringA("\n");
+    // Avoid the allocating formatter in logger entry destructors on an error path.
+    std::FILE *file = nullptr;
+#ifdef _MSC_VER
+    fopen_s(&file, "test.log", "ab");
+#else
+    file = std::fopen("test.log", "ab");
+#endif
+    if (file) {
+        std::fputs(prefix, file);
+        std::fputs(message, file);
+        std::fputc('\n', file);
+        std::fclose(file);
+    }
+}
+
+int failed_run(bool end_timer) noexcept {
+    ClipCursor(nullptr);
+    try {
+        throw;
+    }
+    catch (const Base::CException &exception) {
+        try {
+            const auto diagnostic = utils::from_wstring(exception.Info());
+            log_run_failure(diagnostic.c_str());
+        }
+        catch (...) {
+            log_run_failure("Engine exception; diagnostic unavailable");
+        }
+    }
+    catch (const std::exception &exception) {
+        log_run_failure(exception.what());
+    }
+    catch (...) {
+        log_run_failure("Unknown C++ exception");
+    }
+    CGame::SafeFree(end_timer);
+    g_ExitState = MATRIXGAME_RUN_ERROR;
+    SETFLAG(g_Flags, GFLAG_EXITLOOP);
+    return MATRIXGAME_RUN_ERROR;
+}
+
+}  // namespace
 
 long __stdcall ExceptionHandler(PEXCEPTION_POINTERS) {
     return EXCEPTION_EXECUTE_HANDLER;
@@ -73,24 +126,27 @@ int __stdcall Support() {
 }
 
 int __stdcall Run(HINSTANCE hinst, HWND hwnd, wchar *map, SRobotsSettings *settings, wchar *lang, wchar *txt_start,
-                  wchar *txt_win, wchar *txt_loss, wchar *planet, SRobotGameState *rgs) {
-    uint32_t seed = (unsigned)time(nullptr);
-
-    CGame::Init(hinst, hwnd, map, seed, settings, lang, txt_start, txt_win, txt_loss, planet);
-    
-    CFormMatrixGame formgame;
-
-    CGame::RunGameLoop(&formgame);
-
-    CGame::SaveResult(rgs);
-    CGame::SafeFree();
-
-    ClipCursor(nullptr);
-
-    if (FLAG(g_Flags, GFLAG_EXITLOOP))
-        return g_ExitState;
-    else
-        return 0;
+                  wchar *txt_win, wchar *txt_loss, wchar *planet, SRobotGameState *rgs) noexcept {
+    try {
+        const uint32_t seed = static_cast<uint32_t>(time(nullptr));
+        CGame::Init(hinst, hwnd, map, seed, settings, lang, txt_start, txt_win, txt_loss, planet);
+        CFormMatrixGame formgame;
+        try {
+            CGame::RunGameLoop(&formgame);
+            CGame::SaveResult(rgs);
+            CGame::SafeFree();
+            ClipCursor(nullptr);
+            return FLAG(g_Flags, GFLAG_EXITLOOP) ? g_ExitState : 0;
+        }
+        catch (...) {
+            // Keep the active stack form alive while cleanup detaches it.
+            return failed_run(true);
+        }
+    }
+    catch (...) {
+        // Initialization and form construction precede the loop's timer acquisition.
+        return failed_run(false);
+    }
 }
 
 MATRIXGAMEDLL_API SMGDRobotInterface *__cdecl GetRobotInterface(void) {

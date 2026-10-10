@@ -155,3 +155,6 @@ extern SMGDRangersInterface *g_RangersInterface;
 // 4-cancel
 // +100-with error
 extern int g_ExitState;
+
+// Caught DLL entry failures use the existing loop-error result.
+inline constexpr int MATRIXGAME_RUN_ERROR = 100;
