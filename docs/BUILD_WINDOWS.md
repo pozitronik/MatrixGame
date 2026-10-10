@@ -67,6 +67,8 @@ The module-path reader grows its buffer for long names and bounds retries at the
 
 Completed standalone execution and teardown return exit status zero. Caught initialization or execution failures return a nonzero status; inspect the diagnostic and `test.log` for the cause.
 
+The standalone EXE uses the Windows GUI subsystem. To wait for completion and obtain its exit status in PowerShell, use `Start-Process -FilePath <executable> -WorkingDirectory <game-directory> -Wait -PassThru` and read the returned process's `ExitCode`; in cmd.exe use `start /wait`. An ordinary shell invocation and its `$LASTEXITCODE` or `%ERRORLEVEL%` do not reliably report a completed game. See [Debugging](DEBUGGING.md#confirm-the-launch-layout) for a complete command.
+
 A present packed configuration must load successfully. A rejected format is reported as a startup error naming the file; text fallback is selected when the packed configuration is absent. When temporarily removing an output copy of `robots.dat`, give its backup a different filename prefix because resource lookup also searches `robots.dat.*`.
 
 ## MSVC
@@ -96,3 +98,5 @@ For integration with the Space Rangers host:
 The DLL uses the host game's resource and configuration layout.
 
 CI builds normal standalone Debug/Release configurations for MinGW and MSVC, a MinGW Debug developer EXE with cheats, and Release DLLs with cheats for both compilers. Every build runs the registered engine contracts and contributes to Required checks. MSVC Debug DLL and MSVC Debug EXE with cheats remain outside this matrix. Artifacts identify compiler, configuration, output type and cheats setting; these names replace the older `dll_gcc` and `dll_msvc` names.
+
+`tools/package.ps1` prepares the supported MinGW Release distribution without local assets. [Standalone packaging](RELEASES.md) describes the committed configuration, matching source, notices and separate DirectX prerequisite. CI verifies packaging contracts and retains the package/source ZIPs as artifacts; this is separate from publishing a release.

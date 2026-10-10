@@ -82,7 +82,7 @@ else()
             APPEND
             PROPERTY COMPILE_DEFINITIONS BUILD_EXE
     )
-    add_executable(MatrixGame)
+    add_executable(MatrixGame WIN32)
 endif()
 
 set(MATRIX_RESOURCES

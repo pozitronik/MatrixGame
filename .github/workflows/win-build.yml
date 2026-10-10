@@ -49,6 +49,9 @@ jobs:
           $base = $env:CHECK_BASE_SHA
           if (-not $base -or $base -match '^0+$') { $base = 'HEAD^' }
           ./tools/check-repository.ps1 -BaseRef $base
+      - name: Verify packaging contracts
+        shell: pwsh
+        run: python -B -m unittest discover -s tests -p 'test_package.py'
 
   build:
     name: ${{ matrix.name }}
@@ -142,6 +145,20 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
           path: build/**/test-results.xml
+      - name: Prepare the minimal standalone package
+        if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats
+        shell: pwsh
+        run: ./tools/package.ps1
+      - name: Upload standalone package and corresponding source
+        if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: matrixgame-windows-x86-package
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            build/packages/*.zip
+            build/packages/*.sha256
       - name: Upload compiled binaries and text configuration
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
