@@ -10,7 +10,8 @@ Build before choosing a configuration case. The build helper refreshes tracked t
 | --- | --- | --- |
 | Packed configuration | `DATA/robots.pkg`, `CFG/robots.dat`, tracked `CFG/robots/` text files | Check the supplied packed configuration and its interface data |
 | Text fallback | `DATA/robots.pkg`, tracked `CFG/robots/data.txt` and `iface.txt`; no `CFG/robots.dat` | Check the tracked standalone configuration |
-| Missing resources | Temporarily remove only the output copy of `DATA/robots.pkg` | Check the failure diagnostic and cleanup |
+| Missing resources | Temporarily remove only the output copy of `DATA/robots.pkg`; also check absent `DATA` and `CFG` directories | Check the resource-placement dialog and exit status 1 before a battle initializes |
+| Optional audio | Keep `robots.pkg`; check neither audio package, effects only, speech only and both | Check startup and clean exit; absent audio stays silent |
 | Invalid configuration | Replace only the output copy of `CFG/robots.dat` with a small synthetic invalid file | Check rejection and cleanup |
 
 Change output copies only. Keep supplied files at the repository root unchanged. Rename an output copy to a clearly named backup with a different filename prefix, such as `.playtest-robots.dat`, before a failure/fallback case. Resource lookup also searches `robots.dat.*`, so a suffix-only backup can still be selected. Restore the copy after the game exits and remove any synthetic replacement. Do not extract or publish the resource package. Run one game process at a time.

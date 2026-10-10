@@ -43,6 +43,7 @@ add_matrix_test(game.audio.clear_reentrancy matrixgame_audio_frontend_tests game
 add_matrix_test(game.audio.stale_layer_slot matrixgame_audio_frontend_tests gameplay audio)
 add_matrix_test(game.audio.host_layer_lifetime matrixgame_audio_frontend_tests gameplay audio)
 add_matrix_test(game.audio.frontend_missing matrixgame_audio_frontend_tests gameplay audio)
+add_matrix_test(game.audio.no_optional_packages matrixgame_audio_frontend_tests gameplay audio startup)
 add_matrix_test(game.audio.host_routing matrixgame_audio_frontend_tests gameplay audio)
 
 add_matrix_test_executable(matrixgame_base_tests base_tests.cpp)
@@ -84,6 +85,14 @@ add_matrix_test(game.startup.module_long matrixgame_path_tests startup)
 add_matrix_test(game.startup.module_failure matrixgame_path_tests startup)
 add_matrix_test(game.startup.module_truncated matrixgame_path_tests startup)
 add_matrix_test(game.startup.module_native matrixgame_path_tests startup)
+
+add_matrix_test_executable(matrixgame_resource_tests resource_file_tests.cpp ../MatrixGame/src/ResourceFiles.cpp)
+target_include_directories(matrixgame_resource_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+target_compile_definitions(matrixgame_resource_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+add_matrix_test(game.startup.resources_missing matrixgame_resource_tests startup)
+add_matrix_test(game.startup.resources_optional matrixgame_resource_tests startup audio)
+add_matrix_test(game.startup.resources_exact_files matrixgame_resource_tests startup)
+add_matrix_test(game.startup.resources_unopened matrixgame_resource_tests startup audio)
 
 add_matrix_test_executable(matrixgame_random_tests random_tests.cpp)
 add_matrix_test(base.random.unit_interval matrixgame_random_tests base random)

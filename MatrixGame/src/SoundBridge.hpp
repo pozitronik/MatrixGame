@@ -4,7 +4,7 @@
 
 namespace SoundBridge {
 bool available();
-void initialize_standalone();
+void initialize_standalone(bool resources_available);
 void install(std::unique_ptr<Audio::Service> service);
 void shutdown();
 uint32_t create(wchar_t *name, int group, int loop);

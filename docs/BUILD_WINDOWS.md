@@ -48,11 +48,9 @@ DATA/
   robots.pkg
 ```
 
-`robots.pkg` is required to play. If `CFG/robots.dat` is absent, the
-standalone game uses the text configuration. The helper refreshes the tracked
-configuration after each build, then copies any supplied `robots.dat`.
+`robots.pkg` is required to play. If `DATA/robots.pkg` is absent, the EXE shows "Place robots.pkg at DATA/robots.pkg." and exits with status 1 before game initialization. The path is relative to the executable directory; this dialog also works without `DATA` or `CFG` directories. If `CFG/robots.dat` is absent, the standalone game uses the text configuration. The helper refreshes the tracked configuration after each build, then copies any supplied `robots.dat`.
 
-Standalone sound on Windows 10/11 additionally uses local `sound.pkg`, optional `voices.pkg` and the private `sounds.txt` name mapping. Prepare them with `python -B tools/prepare-sound-resources.py --game-directory '<original game directory>'`; the helper reads the original `CFG/CacheData.dat` without modifying it. The build stages the packages under `DATA` and the mapping under `CFG`. See [Standalone sound](AUDIO.md) for speech selection, playback contracts and listening checks.
+Standalone sound on Windows 10/11 uses optional local `sound.pkg` and `voices.pkg`, plus the private `sounds.txt` name mapping. Missing audio packages are ignored during startup; with neither present the audio service stays disabled. Prepare them with `python -B tools/prepare-sound-resources.py --game-directory '<original game directory>'`; the helper reads the original `CFG/CacheData.dat` without modifying it. The build stages the packages under `DATA` and the mapping under `CFG`. See [Standalone sound](AUDIO.md) for speech selection, playback contracts and listening checks.
 
 `-WithoutResources` skips copying external resources. It leaves any copies
 already present in a reused build directory. Compilation itself does not require

@@ -16,10 +16,11 @@ The game targets Windows x86 and uses C++20 and DirectX 9. Install 7-Zip and mak
 .\tools\build.ps1 -Configuration Release
 ```
 
-Standalone play requires the Space Rangers resource package `robots.pkg`.
-Place it at the repository root, along with `robots.dat` if available. The build
-script copies these files into the executable's resource directories. Game
-resources are supplied separately and are not included in the repository.
+Game resources are supplied separately and are not included in the repository. For local builds, place `robots.pkg` at the repository root, along with `robots.dat` if available. The build script stages them beside the executable.
+
+For a standalone build, place the required package at `DATA/robots.pkg`, where `DATA` is beside `MatrixGame.exe`. Without it, startup shows "Place robots.pkg at DATA/robots.pkg." and exits with status 1 before initializing a battle. No game packages are needed to display this dialog.
+
+`DATA/sound.pkg` and `DATA/voices.pkg` are optional. Missing audio packages do not prevent startup: the game runs silently with neither, and missing effects or speech remain silent when only one is supplied. Playback also needs a prepared `CFG/sounds.txt` mapping; see [Standalone sound](docs/AUDIO.md). `CFG/robots.dat` is optional because the build includes text configuration under `CFG/robots`.
 
 Run `build/mingw-debug-exe/MatrixGame/MatrixGame.exe` without arguments to play.
 See the [Windows build guide](docs/BUILD_WINDOWS.md) for prerequisites, MSVC

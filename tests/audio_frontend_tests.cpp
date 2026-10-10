@@ -78,6 +78,18 @@ void missing_mapping() {
     MG_CHECK(f.device->voices.empty() && f.reports == 1);
 }
 
+void no_optional_packages() {
+    Frontend f;
+    const auto id = CSound::Play(S_BCLICK, 1, 0, SL_ALL);
+    MG_CHECK(id != SOUND_ID_EMPTY && SoundBridge::available());
+    SoundBridge::initialize_standalone(false);
+    MG_CHECK(!SoundBridge::available());
+    MG_CHECK(f.device->voices[0]->destroyed == 1);
+    MG_CHECK(CSound::Play(S_BCLICK, 1, 0, SL_ALL) == SOUND_ID_EMPTY);
+    SoundBridge::initialize_standalone(false);
+    MG_CHECK(!SoundBridge::available() && f.reports == 0);
+}
+
 int host_created{}, host_played{}, host_destroyed{}, host_group{}, host_loop{};
 dword __stdcall host_create(wchar *, int group, int loop) { ++host_created; host_group = group; host_loop = loop; return 71; }
 void __stdcall host_play(dword id) { if (id == 71) ++host_played; }
@@ -123,6 +135,7 @@ constexpr tests::Case cases[] = {
     {"game.audio.layer_lifetime", layer_lifetime}, {"game.audio.clear_reentrancy", clear_reentrancy},
     {"game.audio.stale_layer_slot", stale_layer_slot}, {"game.audio.host_layer_lifetime", host_layer_lifetime},
     {"game.audio.frontend_missing", missing_mapping}, {"game.audio.host_routing", host_routing},
+    {"game.audio.no_optional_packages", no_optional_packages},
 };
 } // namespace
 
