@@ -55,6 +55,7 @@ else()
     # -Wno-... options should be fixed and removed.
     list(APPEND COMPILE_OPTIONS
         $<$<CONFIG:Release>:-Os>
+        "-ffile-prefix-map=${CMAKE_SOURCE_DIR}/="
         -ftrivial-auto-var-init=zero
 
         -Wall
@@ -77,7 +78,7 @@ else()
     )
 
     set(LINK_OPTIONS
-        $<$<CONFIG:Release>:-static -s>
+        $<$<CONFIG:Release>:-static -s -Wl,--no-insert-timestamp>
     )
 endif()
 

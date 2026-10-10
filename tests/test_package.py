@@ -46,6 +46,7 @@ class PackageTests(unittest.TestCase):
                      "docs/licenses/GCC-runtime-exception.txt", "docs/licenses/MinGW-w64-runtime.txt",
                      "docs/licenses/MCF-Gthread.txt"]:
             self.write(name, ("synthetic " + name).encode())
+        self.write("docs/RELEASE_README.md", b"Audio: https://github.com/pozitronik/MatrixGame/blob/dev/docs/AUDIO.md\n")
         for name in package.CONFIG_FILES:
             self.write("MatrixGame/CFG/" + name, b"synthetic committed defaults")
         runtime = b"synthetic cached source archive"
@@ -114,6 +115,26 @@ class PackageTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "receipt"):
             self.create()
 
+    def test_embedded_contributor_paths_rejected(self):
+        for index, spelling in enumerate([str(self.root), str(self.root).replace("\\", "/"), str(self.root).upper()]):
+            for encoding in ["utf-8", "utf-16-le"]:
+                with self.subTest(spelling=spelling, encoding=encoding):
+                    binary = self.binary + (spelling + "/MatrixLib/Base/CFile.cpp").encode(encoding)
+                    self.write("build/mingw-release-exe/MatrixGame/MatrixGame.exe", binary)
+                    self.write("build/mingw-release-exe/packaging-build.json", package.json_bytes({
+                        "revision": self.revision, "binary_sha256": package.digest(binary),
+                        "cache_sha256": package.digest(self.cache)}))
+                    with self.assertRaisesRegex(ValueError, "contributor path"):
+                        self.create("build/leak-case-" + str(index) + "-" + encoding)
+
+    def test_player_documentation_targets_packaged_revision(self):
+        names = self.create()
+        binary = next(name for name in names if "windows" in name)
+        with zipfile.ZipFile(self.root / "build/packages" / binary) as archive:
+            readme = archive.read("README.md").decode()
+            self.assertIn("/blob/" + self.revision + "/docs/AUDIO.md", readme)
+            self.assertNotIn("/blob/dev/", readme)
+
     def test_dirty_and_untracked_production_source_rejected(self):
         self.write("MatrixGame/CFG/standalone.txt", b"edited")
         with self.assertRaisesRegex(ValueError, "Commit tracked"):
@@ -137,6 +158,10 @@ class PackageTests(unittest.TestCase):
             struct.pack_into("<H", wrong, offset, value)
             with self.assertRaisesRegex(ValueError, "GUI executable"):
                 package.validate_build(self.cache, wrong)
+        wrong = bytearray(self.binary)
+        struct.pack_into("<I", wrong, 72, 1)
+        with self.assertRaisesRegex(ValueError, "timestamp"):
+            package.validate_build(self.cache, wrong)
 
     def test_unknown_or_incomplete_imports_rejected(self):
         with self.assertRaises(ValueError):

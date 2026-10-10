@@ -1,6 +1,6 @@
 # Debugging standalone failures
 
-Establish which executable and configuration failed before changing code. Compiler, Debug/Release, EXE/DLL and cheats options alter compiled behavior. Source paths embedded in an exception identify where the binary was compiled; they do not prove where that executable was launched or where it searched for resources.
+Establish which executable and configuration failed before changing code. Compiler, Debug/Release, EXE/DLL and cheats options alter compiled behavior. Supported MinGW builds map compile-time source paths to repository-relative names, such as `MatrixLib/Base/CFile.cpp`, in errors, assertions and logger locations. These paths identify the source at the recorded build revision; they are not resource lookup paths. MSVC and older binaries can still report absolute compile-time paths, which do not prove where the executable was launched.
 
 ## Confirm the launch layout
 
@@ -27,6 +27,8 @@ $process = Start-Process -FilePath $executable -WorkingDirectory $gameDirectory 
 ```
 
 An expected successful standalone run returns zero. A caught initialization/execution error returns nonzero and displays a diagnostic. Keep the launch command, observed condition, configuration and diagnostic together when reporting a defect; see [Standalone playtesting](PLAYTESTING.md) for battle procedures.
+
+The game EXE uses the Windows GUI subsystem. An ordinary PowerShell `&` or cmd.exe invocation can return before the game exits; `$LASTEXITCODE` or `%ERRORLEVEL%` then describes the shell's launch rather than the completed game. Use `Start-Process -Wait -PassThru` as above, or `start /wait` in cmd.exe, when recording an exit status.
 
 ## Find the failure boundary
 

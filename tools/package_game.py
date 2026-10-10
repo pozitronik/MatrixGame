@@ -70,6 +70,18 @@ def validate_build(cache, binary):
     subsystem = struct.unpack_from("<H", binary, offset + 92)[0]
     if machine != 0x14c or magic != 0x10b or flags & 0x2000 or subsystem != 2:
         raise ValueError("Expected an x86 Windows GUI executable")
+    if struct.unpack_from("<I", binary, offset + 8)[0] != 0:
+        raise ValueError("Release PE timestamp must be zero")
+
+
+def validate_binary_paths(binary, *roots):
+    folded = binary.lower()
+    for root in roots:
+        name = str(root.resolve()).rstrip("/\\")
+        for spelling in {name.replace("\\", "/"), name.replace("/", "\\")}:
+            for encoding in ("utf-8", "utf-16-le"):
+                if spelling.encode(encoding).lower() in folded:
+                    raise ValueError("Executable contains an absolute contributor path")
 
 
 def validate_imports(imports):
@@ -126,7 +138,9 @@ def runtime_source(root):
 
 
 def package_files(root, build, revision, binary, imports):
-    files = {"MatrixGame.exe": binary, "README.md": committed(root, revision, "docs/RELEASE_README.md"),
+    readme = committed(root, revision, "docs/RELEASE_README.md").decode("utf-8")
+    readme = readme.replace("/blob/dev/docs/AUDIO.md", "/blob/" + revision + "/docs/AUDIO.md")
+    files = {"MatrixGame.exe": binary, "README.md": readme.encode("utf-8"),
              "LICENSE": committed(root, revision, "LICENSE"),
              "THIRD_PARTY_NOTICES.md": committed(root, revision, "docs/THIRD_PARTY_NOTICES.md")}
     for name in CONFIG_FILES:
@@ -169,6 +183,7 @@ def create_package(root, build, output, objdump):
     if receipt != {"revision": revision, "binary_sha256": digest(binary), "cache_sha256": digest(cache)}:
         raise ValueError("Build receipt does not match the source, executable and configuration")
     validate_build(cache, binary)
+    validate_binary_paths(binary, root, build)
     imports = inspect_imports(build / "MatrixGame/MatrixGame.exe", objdump)
     config, runtime = runtime_source(root)
     packages = {"MatrixGame-windows-x86-" + revision[:12] + ".zip": archive_bytes(package_files(root, build, revision, binary, imports)),

@@ -67,6 +67,8 @@ The module-path reader grows its buffer for long names and bounds retries at the
 
 Completed standalone execution and teardown return exit status zero. Caught initialization or execution failures return a nonzero status; inspect the diagnostic and `test.log` for the cause.
 
+The standalone EXE uses the Windows GUI subsystem. To wait for completion and obtain its exit status in PowerShell, use `Start-Process -FilePath <executable> -WorkingDirectory <game-directory> -Wait -PassThru` and read the returned process's `ExitCode`; in cmd.exe use `start /wait`. An ordinary shell invocation and its `$LASTEXITCODE` or `%ERRORLEVEL%` do not reliably report a completed game. See [Debugging](DEBUGGING.md#confirm-the-launch-layout) for a complete command.
+
 A present packed configuration must load successfully. A rejected format is reported as a startup error naming the file; text fallback is selected when the packed configuration is absent. When temporarily removing an output copy of `robots.dat`, give its backup a different filename prefix because resource lookup also searches `robots.dat.*`.
 
 ## MSVC
