@@ -72,6 +72,17 @@ add_matrix_test(base.storage.partial_load_cleanup matrixgame_storage_tests base 
 add_matrix_test(base.storage.invalid_tag matrixgame_storage_tests base storage)
 add_matrix_test(base.storage.unsupported_version matrixgame_storage_tests base storage)
 
+add_matrix_test_executable(matrixgame_dependency_tests dependency_tests.cpp dependency_fixtures.hpp)
+add_matrix_test(base.dependencies.linked_versions matrixgame_dependency_tests base dependencies)
+add_matrix_test(base.dependencies.legacy_configuration matrixgame_dependency_tests base dependencies storage)
+add_matrix_test(base.dependencies.multiblock_configuration matrixgame_dependency_tests base dependencies storage)
+add_matrix_test(base.dependencies.legacy_pack_blocks matrixgame_dependency_tests base dependencies pack)
+add_matrix_test(bitmap.png.legacy_gray matrixgame_dependency_tests bitmap dependencies png)
+add_matrix_test(bitmap.png.legacy_rgb matrixgame_dependency_tests bitmap dependencies png)
+add_matrix_test(bitmap.png.legacy_rgba matrixgame_dependency_tests bitmap dependencies png)
+add_matrix_test(bitmap.png.write_round_trip matrixgame_dependency_tests bitmap dependencies png)
+add_matrix_test(bitmap.png.invalid matrixgame_dependency_tests bitmap dependencies png)
+
 add_matrix_test_executable(matrixgame_error_tests error_tests.cpp)
 add_matrix_test(base.error.single_message matrixgame_error_tests base startup)
 add_matrix_test(base.error.empty_trace matrixgame_error_tests base startup)

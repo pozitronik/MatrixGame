@@ -148,11 +148,12 @@ def package_files(root, build, revision, binary, imports):
     for name in ("GCC-runtime-exception.txt", "MinGW-w64-runtime.txt", "MCF-Gthread.txt"):
         files["licenses/" + name] = committed(root, revision, "docs/licenses/" + name)
     files["licenses/libpng.txt"] = (build / "libpng/src/libpng-external/LICENSE").read_bytes()
-    files["licenses/zlib.txt"] = (build / "zlib/src/zlib-external/README").read_bytes()
+    files["licenses/zlib.txt"] = (build / "zlib/src/zlib-external/LICENSE").read_bytes()
     files["SOURCE.json"] = json_bytes({"revision": revision, "project": "MatrixGame",
         "repository": "https://github.com/pozitronik/MatrixGame", "compiler": "GCC 13.2.0",
         "architecture": "x86", "configuration": "Release", "cheats": False,
         "imports": imports, "external_runtime": sorted(EXTERNAL_DLLS),
+        "dependencies": json.loads(committed(root, revision, "ThirdParty/dependencies.json")),
         "files": {name: digest(data) for name, data in sorted(files.items())}})
     return files
 

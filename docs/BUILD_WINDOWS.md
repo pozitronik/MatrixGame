@@ -5,9 +5,7 @@ x86 and uses C++20 and DirectX 9.
 
 ## MinGW
 
-Install 7-Zip and make `7z.exe` available on PATH. The setup script downloads
-and verifies a WinLibs bundle containing GCC 13.2.0, CMake 3.27.8 and Ninja 1.11.1.
-It installs these tools under the ignored `.tools/winlibs-13.2.0/` directory.
+Install 7-Zip and make `7z.exe` available on PATH. The setup script downloads and verifies a WinLibs bundle containing GCC 13.2.0 and Ninja 1.11.1 under the ignored `.tools/winlibs-13.2.0/` directory. It also prepares the separately pinned CMake/CTest 4.4.4 i386 release under `.tools/cmake-4.4.4-windows-i386/`. The compiler target remains Windows x86; CMake 4.4 requires a Windows 10 or newer build host.
 
 ```powershell
 .\tools\setup-toolchain.ps1
@@ -17,6 +15,10 @@ It installs these tools under the ignored `.tools/winlibs-13.2.0/` directory.
 
 An existing copy of the bundle can be passed to `setup-toolchain.ps1 -ArchivePath <path>`.
 Use the supplied x86 compiler rather than an x64 installation on PATH.
+
+For offline setup, also pass `-CMakeArchivePath <cmake-4.4.4-windows-i386.zip>`, or run `setup-cmake.ps1 -ArchivePath <path>` separately. Setup verifies the upstream archive SHA256 before extraction and checks the installed CMake/CTest versions. Downloads are cached under `.tools/downloads/`. Existing compiler installations are retained; the older CMake bundled with WinLibs is not selected by default.
+
+Both build/test helpers accept `-CMakeRoot <installation-directory>` independently of `-ToolchainRoot`. The project's minimum is CMake 3.27, with policies tested through 4.4; use the pinned 4.4.4 for normal work. Relative installation paths are resolved from the PowerShell working directory. CMake's own executable path is propagated to the dependency builds.
 
 The x86 GCC 13.1 bundle could abort while propagating C++ exceptions in relocated executables. The pinned minor update retains ASLR, the UCRT runtime and the MCF thread model. Keep old toolchain installations until existing work no longer needs them. The build helper selects explicit compiler paths and clears compiler caches in the selected build and dependency directories when the installation changes; cached dependency sources, supplied resources and other build configurations are retained.
 
@@ -100,3 +102,11 @@ The DLL uses the host game's resource and configuration layout.
 CI builds normal standalone Debug/Release configurations for MinGW and MSVC, a MinGW Debug developer EXE with cheats, and Release DLLs with cheats for both compilers. Every build runs the registered engine contracts and contributes to Required checks. MSVC Debug DLL and MSVC Debug EXE with cheats remain outside this matrix. Artifacts identify compiler, configuration, output type and cheats setting; these names replace the older `dll_gcc` and `dll_msvc` names.
 
 `tools/package.ps1` prepares the supported MinGW Release distribution without local assets. [Standalone packaging](RELEASES.md) describes the committed configuration, matching source, notices and separate DirectX prerequisite. CI verifies packaging contracts and retains the package/source ZIPs as artifacts; this is separate from publishing a release.
+
+## Dependencies and cached builds
+
+[ThirdParty/dependencies.json](../ThirdParty/dependencies.json) records zlib 1.3.2 and libpng 1.6.59 source URLs and upstream SHA256 values. CMake verifies release archives in `.tools/downloads/` before extracting them into the selected build directory. A prepared cache permits new dependency builds without network access; provide the exact filenames and bytes from the manifest. There are no floating Git tags, submodule updates or requests during an unchanged incremental build. A damaged cache requires a verified replacement and is not an offline-ready source.
+
+Dependencies build as static libraries with the selected compiler and Debug/Release configuration. MSVC configuration/CRT selection matches the engine; MinGW Debug dependencies now carry Debug information instead of using Release libraries. Installed headers and archives are declared build outputs so Ninja rebuilds consumers after an update. Sources and installed files belong to each normal build directory; supplied game resources and other configurations are retained. Explicit archive paths prevent obsolete libraries left in a reused directory from being selected.
+
+Compressed STRG/ZL03 configuration and ZL02 package blocks retain their tags, widths, block limits and decoded content. Compressed bytes can differ between zlib versions. PNG compatibility checks use synthetic images and the production reader/writer. See [Testing](TESTING.md) for the registered regressions.
