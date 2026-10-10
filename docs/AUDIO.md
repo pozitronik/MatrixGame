@@ -16,6 +16,8 @@ The helper reads the original configuration, validates its content checksum and 
 
 Build Debug and Release with `tools/build.ps1`. The helper stages local `sound.pkg` and optional `voices.pkg` under `DATA`, and `sounds.txt` under `CFG`, beside the executable. No resource files are required to compile or run the automated tests. Background music and Ogg decoding are outside this sound-effect implementation; `music.pkg` is not staged for playback.
 
+Both audio packages are optional for startup and are checked as files on disk, independently of registered archives. With neither present, the game leaves standalone audio disabled and does not read the mapping or create an audio device. With only one package, available mapped clips can play and absent clips stay silent. A missing `DATA/robots.pkg` instead produces the resource-placement dialog described in the [README](../README.md).
+
 The mapping contract is a UTF-16 text configuration with a `Sound` block whose parameters map an event suffix to its virtual archive path. For example, `ButtonClick=sound\ButtonClick.wav` resolves `Sound.ButtonClick`. The generated file is private configuration, not project source.
 
 ## Playback and lifetime

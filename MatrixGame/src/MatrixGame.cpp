@@ -25,6 +25,7 @@
 #include "ExecutablePath.hpp"
 #include "SessionCleanup.hpp"
 #include "RandomConfiguration.hpp"
+#include "ResourceFiles.hpp"
 
 #include <new>
 #include <fstream>
@@ -62,6 +63,13 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         lgr.info(utils::from_wstring(app_path.native()));
         std::filesystem::current_path(app_path.parent_path());
         const wchar *map = numarg > 1 ? args.get()[1] : nullptr;
+
+        if (!Startup::ResourceFileExists(L"DATA\\robots.pkg")) {
+            lgr.error("Missing DATA/robots.pkg");
+            MessageBoxW(nullptr, L"Place robots.pkg at DATA/robots.pkg.\nThe DATA folder is beside MatrixGame.exe.",
+                        L"Game resources required", MB_OK | MB_ICONINFORMATION);
+            return exit_code;
+        }
 
         uint32_t seed = (unsigned)time(nullptr);
         initialization_started = true;
@@ -205,9 +213,10 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     CFile::AddPackFile(L"DATA\\robots.pkg");
 #ifdef BUILD_EXE
-    std::wstring audio_package;
-    if (CFile::FileExist(audio_package, L"DATA\\sound.pkg")) CFile::AddPackFile(audio_package.c_str());
-    if (CFile::FileExist(audio_package, L"DATA\\voices.pkg")) CFile::AddPackFile(audio_package.c_str());
+    const bool sound_package = Startup::ResourceFileExists(L"DATA\\sound.pkg");
+    const bool voices_package = Startup::ResourceFileExists(L"DATA\\voices.pkg");
+    if (sound_package) CFile::AddPackFile(L"DATA\\sound.pkg");
+    if (voices_package) CFile::AddPackFile(L"DATA\\voices.pkg");
 #endif
     CFile::OpenPackFiles();
 
@@ -351,7 +360,7 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     g_Config.ApplySettings(&settings);
 #ifdef BUILD_EXE
-    SoundBridge::initialize_standalone();
+    SoundBridge::initialize_standalone(sound_package || voices_package);
 #endif
     g_Sampler.ApplySettings(&settings);
     SetMaxCameraDistance(settings.m_MaxDistance);

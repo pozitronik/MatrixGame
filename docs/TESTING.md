@@ -115,6 +115,8 @@ The error executable checks catchable engine diagnostics using literal and strin
 
 The executable-path cases link the production module-path reader. Synthetic Windows API replies check buffer growth and error handling; the native case resolves the console test image without creating a window. Actual cmd.exe launch spelling, map arguments and startup diagnostics require the separate standalone checks described in the build/playtest guides.
 
+Resource-file cases check actual temporary files with the production standalone query: no packages, independent audio presence, exact filenames, directories and a registered but unopened archive. They preserve supplied resources and create no window. Audio frontend coverage also checks that absent optional packages disable and release a prior service without reading mappings or creating a device. The missing-game-package dialog, full package loading and successful battle startup remain separate native checks.
+
 The audio service tests use synthetic WAV bytes and a fake device; frontend cases link the real command/layer implementation with a non-rendering diagnostic substitute. They cover layer interrupt/skip, stale slot reuse and repeated clearing through standalone and synthetic host callbacks without initializing an audio device or opening private archives. A local, muted hardware smoke test explicitly exercises XAudio2 creation, looping, balance and teardown:
 
 ```powershell

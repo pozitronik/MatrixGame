@@ -30,8 +30,9 @@ bool available() { return g_RangersInterface != nullptr || standalone != nullptr
 void install(std::unique_ptr<Audio::Service> service) { standalone = std::move(service); }
 void shutdown() { standalone.reset(); }
 
-void initialize_standalone() {
+void initialize_standalone(bool resources_available) {
     shutdown();
+    if (!resources_available) return;
     try {
         Base::CBlockPar config;
         config.LoadFromTextFile(L"CFG\\sounds.txt");
