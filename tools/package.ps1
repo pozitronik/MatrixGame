@@ -7,6 +7,9 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$compiler = Join-Path $repoRoot '.tools/winlibs-13.2.0/mingw32/bin/g++.exe'
+$version = & $compiler -dumpfullversion
+if ($LASTEXITCODE -ne 0 -or $version -ne '13.2.0') { throw 'Packaging requires the pinned GCC 13.2.0.' }
 $revision = git -C $repoRoot rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve source revision.' }
 if (git -C $repoRoot status --porcelain --untracked-files=no) { throw 'Commit tracked changes before packaging.' }

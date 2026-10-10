@@ -132,6 +132,11 @@ class PackageTests(unittest.TestCase):
         struct.pack_into("<H", wrong, 68, 0x8664)
         with self.assertRaisesRegex(ValueError, "x86"):
             package.validate_build(self.cache, wrong)
+        for offset, value in [(86, 0x2102), (156, 3)]:
+            wrong = bytearray(self.binary)
+            struct.pack_into("<H", wrong, offset, value)
+            with self.assertRaisesRegex(ValueError, "GUI executable"):
+                package.validate_build(self.cache, wrong)
 
     def test_unknown_or_incomplete_imports_rejected(self):
         with self.assertRaises(ValueError):
