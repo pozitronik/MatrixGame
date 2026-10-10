@@ -26,6 +26,8 @@ Run `build/mingw-debug-exe/MatrixGame/MatrixGame.exe` without arguments to play.
 See the [Windows build guide](docs/BUILD_WINDOWS.md) for prerequisites, MSVC
 instructions and configuration options.
 
+The [packaging guide](docs/RELEASES.md) describes the minimal standalone ZIP, source archive, checksums and release checklist.
+
 ## Development
 
 [Contributing](CONTRIBUTING.md) covers reporting bugs and submitting changes.

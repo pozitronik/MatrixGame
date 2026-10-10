@@ -96,3 +96,5 @@ For integration with the Space Rangers host:
 The DLL uses the host game's resource and configuration layout.
 
 CI builds normal standalone Debug/Release configurations for MinGW and MSVC, a MinGW Debug developer EXE with cheats, and Release DLLs with cheats for both compilers. Every build runs the registered engine contracts and contributes to Required checks. MSVC Debug DLL and MSVC Debug EXE with cheats remain outside this matrix. Artifacts identify compiler, configuration, output type and cheats setting; these names replace the older `dll_gcc` and `dll_msvc` names.
+
+`tools/package.ps1` prepares the supported MinGW Release distribution without local assets. [Standalone packaging](RELEASES.md) describes the committed configuration, matching source, notices and separate DirectX prerequisite. CI verifies packaging contracts and retains the package/source ZIPs as artifacts; this is separate from publishing a release.
