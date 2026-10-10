@@ -25,12 +25,12 @@ void log_run_failure(const char *message) noexcept {
     OutputDebugStringA(prefix);
     OutputDebugStringA(message);
     OutputDebugStringA("\n");
-    // Avoid the allocating formatter in logger entry destructors on an error path.
+    // Avoid both the logger's open file and its allocating error-path formatter.
     std::FILE *file = nullptr;
 #ifdef _MSC_VER
-    fopen_s(&file, "test.log", "ab");
+    fopen_s(&file, "matrixgame-dll-errors.log", "ab");
 #else
-    file = std::fopen("test.log", "ab");
+    file = std::fopen("matrixgame-dll-errors.log", "ab");
 #endif
     if (file) {
         std::fputs(prefix, file);

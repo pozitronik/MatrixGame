@@ -52,6 +52,14 @@ public:
 
 void check_failure(Failure selected, std::string_view diagnostic, bool timer_expected) {
     FixtureDirectory directory;
+    // The regular logger can hold test.log open without write sharing on MSVC.
+    const HANDLE regular_log = CreateFileW(L"test.log", GENERIC_WRITE, FILE_SHARE_READ, nullptr,
+                                           CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    MG_CHECK(regular_log != INVALID_HANDLE_VALUE);
+    struct CloseLog {
+        HANDLE file;
+        ~CloseLog() { CloseHandle(file); }
+    } close_log{regular_log};
     CForm::StaticInit();
     events.clear();
     failure = selected;
@@ -69,7 +77,7 @@ void check_failure(Failure selected, std::string_view diagnostic, bool timer_exp
     MG_CHECK(std::count(events.begin(), events.end(), 4) == 1);
     MG_CHECK(g_FormCur == nullptr && g_FormFirst == nullptr && g_FormLast == nullptr);
     MG_CHECK(std::memcmp(&before, &result, sizeof(result)) == 0);
-    std::ifstream file("test.log", std::ios::binary);
+    std::ifstream file("matrixgame-dll-errors.log", std::ios::binary);
     const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
     MG_CHECK(text.find("MatrixGame DLL Run failed:") != std::string::npos);
     MG_CHECK(text.find(diagnostic) != std::string::npos);

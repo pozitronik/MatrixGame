@@ -106,7 +106,7 @@ void rejected_configuration() {
         MG_CHECK(CloseHandle(file));
     }
     api->m_Deinit();
-    std::ifstream file("test.log", std::ios::binary);
+    std::ifstream file("matrixgame-dll-errors.log", std::ios::binary);
     const std::string diagnostic{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
     MG_CHECK(diagnostic.find("MatrixGame DLL Run failed:") != std::string::npos);
     MG_CHECK(diagnostic.find("Invalid packed configuration") != std::string::npos);
