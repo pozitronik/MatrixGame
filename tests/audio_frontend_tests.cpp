@@ -7,6 +7,8 @@
 #include "MatrixMap.hpp"
 #include <filesystem>
 #include <fstream>
+#include <iterator>
+#include <utility>
 
 namespace {
 std::shared_ptr<audio_fixture::DeviceState> startup_device;
@@ -82,6 +84,33 @@ void default_catalog_startup() {
     MG_CHECK(startup_device->voices.size() == 6);
     wchar_t unresolved[] = L"Sound.BReady";
     MG_CHECK(SoundBridge::create(unresolved, 0, 0) == 0);
+}
+
+void map_spawner_catalog_startup() {
+    StartupFixture fixture;
+    // Map effect spawners supply names independently of the tracked CFG files.
+    // Keep their resource contract explicit, including names shared with the host UI.
+    const std::pair<const wchar_t *, const char *> clips[] = {
+        {L"Sound.FormPlanetNone1", "sound/Planet/None/1.wav"},
+        {L"Sound.FormPlanetNone3", "sound/Planet/None/3.wav"},
+        {L"Sound.HangarOpen", "sound/HangarOpen.wav"},
+        {L"Sound.MapWater", "sound/robots/map/water.wav"},
+        {L"Sound.MapAmb1", "sound/robots/map/bottle.wav"},
+        {L"Sound.MapAmb2", "sound/robots/map/fantasy1.wav"},
+        {L"Sound.MapAmb3", "sound/robots/map/fantasy2.wav"},
+        {L"Sound.MapAmb4", "sound/robots/map/amb_low1.wav"},
+        {L"Sound.MapAmb5", "sound/robots/map/amb_low2.wav"},
+        {L"Sound.MapAmb6", "sound/robots/map/amb_low3.wav"},
+        {L"Sound.MapAmb7", "sound/robots/map/amb_low4.wav"},
+        {L"Sound.Splash", "sound/robots/world/splash.wav"},
+        {L"Sound.Zamknulo", "sound/robots/weapon/shorted.wav"},
+    };
+    for (const auto &[name, path] : clips) fixture.wave(path);
+    MG_CHECK(!std::filesystem::exists("CFG/sounds.txt"));
+    SoundBridge::initialize_standalone(true);
+    MG_CHECK(SoundBridge::available() && device_creations == 1);
+    for (const auto &[name, path] : clips) fixture.play(name);
+    MG_CHECK(startup_device->voices.size() == std::size(clips));
 }
 
 void partial_mapping_override() {
@@ -250,6 +279,7 @@ void host_layer_lifetime() {
 
 constexpr tests::Case cases[] = {
     {"game.audio.default_catalog", default_catalog_startup},
+    {"game.audio.map_spawner_catalog", map_spawner_catalog_startup},
     {"game.audio.mapping_override", partial_mapping_override},
     {"game.audio.mapping_fallback", invalid_mapping_fallback},
     {"game.audio.startup_unavailable", startup_without_packages_or_device},

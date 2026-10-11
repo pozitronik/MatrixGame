@@ -46,6 +46,7 @@ add_matrix_test(game.audio.frontend_missing matrixgame_audio_frontend_tests game
 add_matrix_test(game.audio.no_optional_packages matrixgame_audio_frontend_tests gameplay audio startup)
 add_matrix_test(game.audio.host_routing matrixgame_audio_frontend_tests gameplay audio)
 add_matrix_test(game.audio.default_catalog matrixgame_audio_frontend_tests audio startup)
+add_matrix_test(game.audio.map_spawner_catalog matrixgame_audio_frontend_tests audio startup)
 add_matrix_test(game.audio.mapping_override matrixgame_audio_frontend_tests audio startup)
 add_matrix_test(game.audio.mapping_fallback matrixgame_audio_frontend_tests audio startup)
 add_matrix_test(game.audio.startup_unavailable matrixgame_audio_frontend_tests audio startup)

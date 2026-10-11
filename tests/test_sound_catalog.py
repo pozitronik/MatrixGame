@@ -21,7 +21,9 @@ class SoundCatalogTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)), "Duplicate default sound name")
         # Effect spawners also request these names from map resources, outside
         # the tracked battle configuration. BReady has no known clip.
-        map_names = {"MapWater"} | {f"MapAmb{i}" for i in range(1, 8)}
+        map_names = {"MapWater", "FormPlanetNone1", "FormPlanetNone3", "HangarOpen"} | {
+            f"MapAmb{i}" for i in range(1, 8)
+        }
         self.assertEqual(set(names), (referenced - {"BReady"}) | map_names)
         for name, path in entries:
             with self.subTest(name=name):
