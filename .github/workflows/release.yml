@@ -1,0 +1,85 @@
+name: Draft Windows release
+
+on:
+  push:
+    tags:
+      - '[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9][0-9]*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Windows x86 Release
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify release tag and master ancestry
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: python -B tools/release.py verify --tag $env:RELEASE_TAG
+      - name: Check repository and tooling
+        run: |
+          ./tools/check-repository.ps1
+          python -B .github/scripts/check-contribution-policy.py catalog
+          if ($LASTEXITCODE -ne 0) { throw 'Contribution catalog checks failed.' }
+          python -B -m unittest discover -s .github/scripts -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { throw 'Contribution policy tests failed.' }
+          python -B -m unittest discover -s tests -p 'test_*.py'
+          if ($LASTEXITCODE -ne 0) { throw 'Tooling tests failed.' }
+      - name: Install pinned toolchain
+        run: ./tools/setup-toolchain.ps1
+      - name: Build and package standalone game
+        run: ./tools/package.ps1
+      - name: Run Release engine tests
+        run: ./tools/test.ps1 -Configuration Release -NoBuild
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-test-results
+          path: build/mingw-release-exe/test-results.xml
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload release packages
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: release-packages
+          path: |
+            build/packages/*.zip
+            build/packages/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  draft:
+    name: Prepare draft release
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-packages
+          path: build/packages
+      - name: Create or refresh draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_REPOSITORY: ${{ github.repository }}
+        run: python3 -B tools/release.py draft --tag "$RELEASE_TAG" --repo "$RELEASE_REPOSITORY" --packages build/packages
