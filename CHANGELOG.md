@@ -4,4 +4,6 @@ Player-facing changes are recorded here before release. Each release uses a leve
 
 ## Unreleased
 
+- Standalone sound effects now work with `DATA/sound.pkg` alone. Sound mappings are built in; `CFG/sounds.txt` remains an optional override.
+
 - Configure rendering resolution and choose windowed, borderless or exclusive fullscreen in `CFG/standalone.txt`. Use Alt+Enter to switch between windowed and fullscreen modes during play.

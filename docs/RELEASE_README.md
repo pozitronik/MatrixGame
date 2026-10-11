@@ -15,7 +15,7 @@ Without `robots.pkg`, the game displays "Place robots.pkg at DATA/robots.pkg." a
 
 ## Optional sound and configuration
 
-`DATA/sound.pkg` and `DATA/voices.pkg` are optional. With neither present the game runs silently. Sound playback also needs a separately prepared `CFG/sounds.txt` mapping; see [Standalone sound](https://github.com/pozitronik/MatrixGame/blob/dev/docs/AUDIO.md). Keep optional archives intact; invalid archives can prevent startup.
+`DATA/sound.pkg` and `DATA/voices.pkg` are optional. With neither present the game runs silently. Sound-name mappings are built into the executable: adding `sound.pkg` is sufficient for effects. For speech, copy one original `voicesRus.pkg` or `voicesEng.pkg` as `DATA/voices.pkg`. `CFG/sounds.txt` is an optional per-name override; see [Standalone sound](https://github.com/pozitronik/MatrixGame/blob/dev/docs/AUDIO.md). Keep optional archives intact; invalid archives can prevent startup.
 
 `CFG/robots.dat` is optional. When absent, the game loads `CFG/robots/data.txt` and `CFG/robots/iface.txt`. `CFG/standalone.txt` selects the random generator; `ParkMiller` is the default, with `LegacyCRT` available for corrected legacy behavior.
 

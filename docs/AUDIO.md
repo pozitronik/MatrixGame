@@ -4,21 +4,33 @@ Standalone sound effects use the system XAudio2.9 runtime on Windows 10/11. The 
 
 ## Prepare local resources
 
-The sound package contains PCM WAV files. The original game's `CFG/CacheData.dat` maps logical names such as `Sound.ButtonClick` to archive entries. Keep the original packages and generated mapping private and untracked.
+Copy `DATA/Sound.pkg` from an owned game installation to `DATA/sound.pkg` beside `MatrixGame.exe`. No mapping file, Python installation or extraction step is needed for the standard sound effects. The executable includes a default catalog for the battle engine's sound names; audio payloads are supplied separately.
 
-Use Python 3.9 or newer to prepare resources from a locally installed copy of the game:
+For speech, also copy `DATA/voicesRus.pkg` or `DATA/voicesEng.pkg` from the original installation to `DATA/voices.pkg` beside the standalone executable. Choose one language; both archives use the same virtual resource paths. Speech is optional, and its absence does not prevent sound effects. Background music and Ogg decoding remain outside this implementation; `music.pkg` is not used.
+
+For source builds, put local `sound.pkg` and optional `voices.pkg` at the repository root, then build Debug and Release with `tools/build.ps1`. The helper stages these packages under `DATA` beside the executable. Keep supplied packages unchanged and untracked. No resource files are required to compile or run automated tests.
+
+Both audio packages are optional for startup and are checked as files on disk, independently of registered archives. With neither present, the game leaves standalone audio disabled and does not read overrides or create an audio device. With only one package, available mapped clips can play and absent clips stay silent. A missing `DATA/robots.pkg` instead produces the resource-placement dialog described in the [README](../README.md).
+
+## Optional sound overrides
+
+The maintained catalog in [SoundMapping.cpp](../MatrixGame/src/SoundMapping.cpp) contains the resource identifiers used by the battle engine. To replace individual mappings or add aliases for another resource set, create `CFG/sounds.txt` beside the executable, in UTF-8 or UTF-16 text:
+
+```text
+Sound {
+    ButtonClick=sound\custom-click.wav
+}
+```
+
+Keys are case-sensitive event suffixes: `ButtonClick` overrides `Sound.ButtonClick`. Unspecified names keep their built-in defaults. Each key must be unique and contain only ASCII letters, digits or underscores; paths must be nonempty. The file must contain exactly one flat `Sound` block. An unreadable or invalid override file produces a diagnostic and leaves the entire default catalog in use. A valid override pointing to a missing or invalid clip silences that event and logs the resource error; it does not substitute another clip.
+
+For an alternative original-game configuration, the optional helper can prepare an override from that installation's `CFG/CacheData.dat`:
 
 ```powershell
 python -B tools/prepare-sound-resources.py --game-directory '<original game directory>'
 ```
 
-The helper reads the original configuration, validates its content checksum and tree format, writes only the sound-name mapping to root-level `sounds.txt`, and copies `sound.pkg` and a selected speech archive to the project root. It does not modify the installation or extract audio. Existing files with different content are rejected rather than overwritten. Russian speech is selected by default; use `--voices Eng` for English, or `--voices None` to prepare effects without copying speech. The speech archive is staged as `voices.pkg`; both language packages use the same virtual resource paths. `--voices None` leaves existing copies untouched: to disable previously prepared speech, remove the local root-level `voices.pkg` and the `DATA/voices.pkg` copy in each output directory you use.
-
-Build Debug and Release with `tools/build.ps1`. The helper stages local `sound.pkg` and optional `voices.pkg` under `DATA`, and `sounds.txt` under `CFG`, beside the executable. No resource files are required to compile or run the automated tests. Background music and Ogg decoding are outside this sound-effect implementation; `music.pkg` is not staged for playback.
-
-Both audio packages are optional for startup and are checked as files on disk, independently of registered archives. With neither present, the game leaves standalone audio disabled and does not read the mapping or create an audio device. With only one package, available mapped clips can play and absent clips stay silent. A missing `DATA/robots.pkg` instead produces the resource-placement dialog described in the [README](../README.md).
-
-The mapping contract is a UTF-16 text configuration with a `Sound` block whose parameters map an event suffix to its virtual archive path. For example, `ButtonClick=sound\ButtonClick.wav` resolves `Sound.ButtonClick`. The generated file is private configuration, not project source.
+This helper requires Python 3.9 or newer. It validates the configuration checksum and tree format, writes the mapping to root-level `sounds.txt`, and copies `sound.pkg` and a selected speech archive to the project root. It does not modify the installation or extract audio. Existing files with different content are rejected rather than overwritten. Russian speech is selected by default; use `--voices Eng` for English or `--voices None` to skip copying speech. That option leaves existing speech files untouched. The build helper stages an existing root-level `sounds.txt` under `CFG` as an override. Generated overrides remain private and are excluded from releases; the built-in catalog supplies release defaults.
 
 ## Playback and lifetime
 
@@ -41,4 +53,4 @@ Run these checks in Debug and Release with cheats disabled, using the same resou
 5. Pan the camera away from an active robot and back. Check positional volume/balance without asserting an exact loudness or distance from a single listening observation.
 6. Close the window while a movement/weapon sound is active. Confirm sound stops, the process exits with status zero and a subsequent launch plays normally.
 
-For a silent run, inspect `test.log` for `Standalone sound initialized`, missing mapping/resource names or device errors. Confirm `CFG/sounds.txt`, `DATA/sound.pkg` and any selected speech package exist in the output directory; select the intended Windows audio output. A missing speech package does not prevent non-speech effects. A successful build or muted native-device smoke test does not establish audible game behavior.
+For a silent run, inspect `test.log` for `Standalone sound initialized`, missing mapping/resource names or device errors. Confirm `DATA/sound.pkg` and any selected speech package exist in the output directory; select the intended Windows audio output. `CFG/sounds.txt` is optional. To check release defaults, test a freshly extracted archive without adding that override, then supply only the desired packages. A missing speech package does not prevent non-speech effects. A successful build or muted native-device smoke test does not establish audible game behavior.
