@@ -19,8 +19,10 @@ class SoundCatalogTests(unittest.TestCase):
         names = [name for name, _ in entries]
         self.assertTrue(referenced)
         self.assertEqual(len(names), len(set(names)), "Duplicate default sound name")
-        # The legacy BReady alias has no known clip; do not invent a substitute.
-        self.assertEqual(set(names), referenced - {"BReady"})
+        # Effect spawners also request these names from map resources, outside
+        # the tracked battle configuration. BReady has no known clip.
+        map_names = {"MapWater"} | {f"MapAmb{i}" for i in range(1, 8)}
+        self.assertEqual(set(names), (referenced - {"BReady"}) | map_names)
         for name, path in entries:
             with self.subTest(name=name):
                 self.assertTrue(path.startswith("sound\\") and path.endswith(".wav"))

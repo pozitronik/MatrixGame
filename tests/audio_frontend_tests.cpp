@@ -71,12 +71,15 @@ void default_catalog_startup() {
     fixture.wave("sound/robots/chassis/track.wav");
     fixture.wave("sound/robots/exp/robot.wav");
     fixture.wave("sound/robots/voices/robots/robotdone.wav");
+    fixture.wave("sound/robots/map/water.wav");
+    fixture.wave("sound/robots/map/bottle.wav");
     MG_CHECK(!std::filesystem::exists("CFG/sounds.txt"));
     SoundBridge::initialize_standalone(true);
     MG_CHECK(SoundBridge::available() && device_creations == 1);
-    for (const auto *name : {L"Sound.ButtonClick", L"Sound.ChasTrack", L"Sound.ExpRobot", L"Sound.RReady"})
+    for (const auto *name : {L"Sound.ButtonClick", L"Sound.ChasTrack", L"Sound.ExpRobot", L"Sound.RReady",
+                            L"Sound.MapWater", L"Sound.MapAmb1"})
         fixture.play(name);
-    MG_CHECK(startup_device->voices.size() == 4);
+    MG_CHECK(startup_device->voices.size() == 6);
     wchar_t unresolved[] = L"Sound.BReady";
     MG_CHECK(SoundBridge::create(unresolved, 0, 0) == 0);
 }
