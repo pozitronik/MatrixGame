@@ -18,6 +18,7 @@ class CFormMatrixGame : public CForm {
 private:
     float m_LastWorldX, m_LastWorldY;
     int m_Action;
+    bool m_ScreenshotPending = false;
 
 public:
     CFormMatrixGame(void);

@@ -22,6 +22,7 @@
 #include "Interface/CCounter.h"
 #include "MatrixGamePathUtils.hpp"
 #include "DeviceRecovery.hpp"
+#include "WindowDisplay.hpp"
 
 #include <input.hpp>
 
@@ -66,7 +67,7 @@ void make_screenshot()
 
     DeleteFileW(filename.c_str());
 
-    if (!g_D3Dpp.Windowed) {
+    if (Display::enabled() || !g_D3Dpp.Windowed) {
         IDirect3DSurface9 *pTargetSurface = NULL;
         HRESULT hr = D3D_OK;
 
@@ -314,6 +315,11 @@ void CFormMatrixGame::Draw(void) {
     g_MatrixMap->Draw();
 
     ASSERT_DX(g_D3DD->EndScene());
+    if (m_ScreenshotPending) {
+        m_ScreenshotPending = false;
+        // Capture a complete frame before DISCARD presentation invalidates it.
+        make_screenshot();
+    }
     Rendering::CheckPresentResult(g_D3DD->Present(NULL, NULL, NULL, NULL));
 
 #ifdef _DEBUG
@@ -335,6 +341,10 @@ void selcallback(CMatrixMapStatic *ms, uintptr_t param);
 
 void CFormMatrixGame::Takt(int step) {
     DTRACE();
+
+    if (Display::apply_pending(FLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY),
+            [] { g_MatrixMap->ReleasePoolDefaultResources(); },
+            [] { g_MatrixMap->CreatePoolDefaultResources(false); })) return;
 
     if (g_MatrixMap->CheckLostDevice())
     {
@@ -752,7 +762,8 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
 
     if (vk == VK_F9 && down)
     {
-        make_screenshot();
+        if (Display::enabled()) m_ScreenshotPending = true;
+        else make_screenshot();
         return;
     }
 
@@ -1694,11 +1705,17 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
 
 void CFormMatrixGame::SystemEvent(ESysEvent se) {
     DTRACE();
+    if (se == SYSEV_POINTER_LEFT) {
+        g_MatrixMap->m_Cursor.SetPos(-1, -1);
+        g_MatrixMap->MouseCam(false);
+        if (CMultiSelection::m_GameSelection) CMultiSelection::m_GameSelection->End(false);
+    }
     if (se == SYSEV_DEACTIVATING || se == SYSEV_INPUT_RESET) {
         Input::onFocusLost();
         g_MatrixMap->m_VKeyDown = 0;
         g_MatrixMap->MouseCam(false);
         g_MatrixMap->m_Console.Keyboard(VK_SHIFT, false);
+        if (CMultiSelection::m_GameSelection) CMultiSelection::m_GameSelection->End(false);
     }
     if (se == SYSEV_DEACTIVATING) {
         if (FLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY)) {
@@ -1707,7 +1724,10 @@ void CFormMatrixGame::SystemEvent(ESysEvent se) {
     }
 
     if (se == SYSEV_ACTIVATED) {
-        if (FLAG(g_Flags, GFLAG_FULLSCREEN)) {
+        if (Display::enabled()) {
+            Display::confine_cursor();
+        }
+        else if (FLAG(g_Flags, GFLAG_FULLSCREEN)) {
             RECT r;
             GetWindowRect(g_Wnd, &r);
             ClipCursor(&r);

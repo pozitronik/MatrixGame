@@ -5,6 +5,8 @@ set(3G_SOURCES
     3G/Cache.cpp
     3G/CBillboard.cpp
     3G/DeviceState.cpp
+    3G/DisplaySettings.cpp
+    3G/WindowDisplay.cpp
     3G/Form.cpp
     3G/Helper.cpp
     3G/Math3D.cpp
@@ -21,6 +23,8 @@ set(3G_HEADERS
     3G/CBillboard.hpp
     3G/D3DControl.hpp
     3G/DeviceState.hpp
+    3G/DisplaySettings.hpp
+    3G/WindowDisplay.hpp
     3G/Form.hpp
     3G/Helper.hpp
     3G/Math3D.hpp

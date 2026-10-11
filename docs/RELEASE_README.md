@@ -19,6 +19,12 @@ Without `robots.pkg`, the game displays "Place robots.pkg at DATA/robots.pkg." a
 
 `CFG/robots.dat` is optional. When absent, the game loads `CFG/robots/data.txt` and `CFG/robots/iface.txt`. `CFG/standalone.txt` selects the random generator; `ParkMiller` is the default, with `LegacyCRT` available for corrected legacy behavior.
 
+## Resolution and fullscreen
+
+Edit `CFG/standalone.txt` and restart the game. Set `ResolutionWidth` and `ResolutionHeight` to the rendering size in pixels (for example, `1920` and `1080`). Set `WindowMode` to `Windowed`, `Borderless` or `Exclusive`. Alt+Enter switches between windowed mode and `FullscreenMode` (`Borderless` by default); starting fullscreen selects that starting mode for subsequent toggles. These options also work with `CFG/robots.dat`.
+
+Borderless fills the primary display by scaling the configured image; use the monitor's native resolution or the same aspect ratio to avoid stretching. Exclusive mode requires a supported display resolution and minimizes on focus loss. Windowed and borderless modes pause without forcing minimization. Invalid display settings fall back to 1024x768 windowed and are recorded in `test.log`. Changes made with Alt+Enter last for the current session only.
+
 ## Controls
 
 Dismiss the introductory checkmark, then select a friendly robot. Press `M` and click ground to move, `A` and click an enemy to attack, `S` to stop, or `X` to cancel an order. Arrow keys scroll the tactical camera. Enter toggles manual robot control; `W/A/S/D` move the robot in that mode. Escape opens the menu or leaves manual control. Button hints describe available commands.

@@ -26,6 +26,7 @@
 #include "SessionCleanup.hpp"
 #include "RandomConfiguration.hpp"
 #include "ResourceFiles.hpp"
+#include "WindowDisplay.hpp"
 
 #include <new>
 #include <fstream>
@@ -587,6 +588,9 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
 
     ZeroMemory(&g_D3Dpp, sizeof(g_D3Dpp));
 
+#ifdef BUILD_EXE
+    INITFLAG(g_Flags, GFLAG_FULLSCREEN, Display::current_mode() == Display::Mode::Exclusive);
+#else
     RECT rect;
     GetClientRect(g_Wnd, &rect);
     bool was_in_window_mode = (rect.right != d3ddm.Width || rect.bottom != d3ddm.Height);
@@ -615,6 +619,8 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
         }
     }
 
+#endif
+
     g_D3Dpp.SwapEffect = D3DSWAPEFFECT_DISCARD;
     g_D3Dpp.BackBufferFormat = (set.m_BPP == 16) ? D3DFMT_R5G6B5 : D3DFMT_A8R8G8B8;
     g_D3Dpp.EnableAutoDepthStencil = TRUE;
@@ -625,6 +631,9 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
     g_D3Dpp.BackBufferHeight = set.m_ResolutionY;
     g_D3Dpp.Flags = D3DPRESENTFLAG_DISCARD_DEPTHSTENCIL;
     g_D3Dpp.hDeviceWindow = g_Wnd;
+#ifdef BUILD_EXE
+    Display::configure_parameters(g_D3Dpp);
+#endif
 
     if (SUCCEEDED(g_D3D->CheckDeviceMultiSampleType(D3DADAPTER_DEFAULT, D3DDEVTYPE_HAL, g_D3Dpp.BackBufferFormat,
                                                     g_D3Dpp.Windowed, expectedMultiSampleType, NULL))) {
@@ -633,13 +642,13 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
 
     SETFLAG(g_Flags, GFLAG_STENCILAVAILABLE);
 
-    if (D3D_OK != g_D3DD->Reset(&g_D3Dpp)) {
+    if (D3D_OK != Display::reset_device(g_D3Dpp)) {
         if (bpp == 16)
             g_D3Dpp.AutoDepthStencilFormat = D3DFMT_D16;
         else
             g_D3Dpp.AutoDepthStencilFormat = D3DFMT_D24X8;
 
-        if (D3D_OK != g_D3DD->Reset(&g_D3Dpp))
+        if (D3D_OK != Display::reset_device(g_D3Dpp))
         {
             ERROR_S(L"Sorry, unable to set this params.");
         }

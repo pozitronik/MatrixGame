@@ -174,6 +174,8 @@ These checks validate repository hygiene and contribution-policy tooling. For ga
 
 ## Playtesting
 
+Display-mode regressions are registered under `game.display.*`, with integration checks for shortcut routing, pointer leave, deferred screenshots and canceled selection. They run without a visible window. Use [Display settings and verification](DISPLAY.md) for the required native windowed, borderless and exclusive playtests; synthetic reset callbacks do not prove a driver can perform a fullscreen transition.
+
 Use [Standalone playtesting](PLAYTESTING.md) for packed/text configuration cases, resource failures, the map-argument path and a reproducible validation record.
 
 Launch the standalone EXE without arguments, using locally supplied resources.

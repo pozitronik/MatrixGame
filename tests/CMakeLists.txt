@@ -195,6 +195,12 @@ add_matrix_test(game.device.transient_reset matrixgame_device_tests rendering)
 add_matrix_test(game.device.permanent_error matrixgame_device_tests rendering)
 add_matrix_test(game.device.present_loss matrixgame_device_tests rendering)
 
+add_matrix_test_executable(matrixgame_display_tests display_tests.cpp)
+target_compile_definitions(matrixgame_display_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+foreach(contract defaults options invalid_options files toggle_pairs shortcut coordinates reset_parameters transition_order transition_failure)
+    add_matrix_test(game.display.${contract} matrixgame_display_tests rendering input)
+endforeach()
+
 add_matrix_test_executable(matrixgame_selection_tests selection_tests.cpp command_world.hpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_selection_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.selection.queued_moves matrixgame_selection_tests gameplay input)
@@ -207,6 +213,7 @@ add_matrix_test(game.selection.number_cancel matrixgame_selection_tests gameplay
 add_matrix_test(game.selection.limit_order matrixgame_selection_tests gameplay input)
 add_matrix_test(game.selection.small_rectangle matrixgame_selection_tests gameplay input)
 add_matrix_test(game.selection.object_teardown matrixgame_selection_tests gameplay input memory)
+add_matrix_test(game.selection.display_cancel matrixgame_selection_tests gameplay input)
 
 add_matrix_test_executable(matrixgame_text_tests text_parser_tests.cpp font_metrics_stub.cpp
     ../MatrixGame/src/Text/Parser.cpp)
@@ -235,6 +242,9 @@ add_matrix_test(game.input.console_shift_focus matrixgame_form_input_tests gamep
 add_matrix_test(game.input.console_editing matrixgame_form_input_tests gameplay input)
 add_matrix_test(game.input.input_only_mouse_reset matrixgame_form_input_tests gameplay input)
 add_matrix_test(game.input.input_only_console_reset matrixgame_form_input_tests gameplay input)
+add_matrix_test(game.input.display_shortcut matrixgame_form_input_tests rendering input)
+add_matrix_test(game.input.pointer_left matrixgame_form_input_tests rendering input)
+add_matrix_test(game.input.screenshot_deferred matrixgame_form_input_tests rendering input)
 
 add_matrix_test_executable(matrixgame_input_tests input_tests.cpp ../MatrixGame/src/input.cpp)
 target_include_directories(matrixgame_input_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
