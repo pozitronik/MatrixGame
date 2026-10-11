@@ -5,8 +5,122 @@
 #include "MatrixSoundManager.hpp"
 #include "MatrixGameDll.hpp"
 #include "MatrixMap.hpp"
+#include <filesystem>
+#include <fstream>
 
 namespace {
+std::shared_ptr<audio_fixture::DeviceState> startup_device;
+int device_creations{};
+bool fail_device{};
+}
+
+// Replace only the platform device factory in this executable. Startup, mapping,
+// resource reads, WAV decoding and playback routing use production implementations.
+namespace Audio {
+std::unique_ptr<Device> create_xaudio_device() {
+    ++device_creations;
+    if (fail_device) throw std::runtime_error("Synthetic device initialization failure");
+    MG_CHECK(startup_device != nullptr);
+    return std::make_unique<audio_fixture::FakeDevice>(startup_device);
+}
+}
+
+namespace {
+struct StartupFixture {
+    std::filesystem::path previous = std::filesystem::current_path();
+    std::filesystem::path root = previous / ("audio-startup-" + std::to_string(GetCurrentProcessId()));
+    StartupFixture() {
+        MG_CHECK(std::filesystem::create_directory(root));
+        std::filesystem::current_path(root);
+        startup_device = std::make_shared<audio_fixture::DeviceState>();
+        device_creations = 0;
+        fail_device = false;
+        g_RangersInterface = nullptr;
+    }
+    ~StartupFixture() {
+        SoundBridge::shutdown();
+        startup_device.reset();
+        std::filesystem::current_path(previous);
+        std::error_code error;
+        std::filesystem::remove_all(root, error);
+    }
+    void wave(const std::filesystem::path &path) {
+        if (path.has_parent_path()) std::filesystem::create_directories(path.parent_path());
+        const auto bytes = audio_fixture::wave();
+        std::ofstream stream(path, std::ios::binary);
+        stream.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        MG_CHECK(stream.good());
+    }
+    void override_text(const std::string &text) {
+        std::filesystem::create_directories("CFG");
+        std::ofstream stream("CFG/sounds.txt", std::ios::binary);
+        stream << text;
+        MG_CHECK(stream.good());
+    }
+    void play(const wchar_t *name) {
+        const auto id = SoundBridge::create(const_cast<wchar_t *>(name), 0, 0);
+        MG_CHECK(id != 0);
+        SoundBridge::play(id);
+        MG_CHECK(SoundBridge::playing(id));
+    }
+};
+
+void default_catalog_startup() {
+    StartupFixture fixture;
+    fixture.wave("sound/ButtonClick.wav");
+    fixture.wave("sound/robots/chassis/track.wav");
+    fixture.wave("sound/robots/exp/robot.wav");
+    fixture.wave("sound/robots/voices/robots/robotdone.wav");
+    MG_CHECK(!std::filesystem::exists("CFG/sounds.txt"));
+    SoundBridge::initialize_standalone(true);
+    MG_CHECK(SoundBridge::available() && device_creations == 1);
+    for (const auto *name : {L"Sound.ButtonClick", L"Sound.ChasTrack", L"Sound.ExpRobot", L"Sound.RReady"})
+        fixture.play(name);
+    MG_CHECK(startup_device->voices.size() == 4);
+    wchar_t unresolved[] = L"Sound.BReady";
+    MG_CHECK(SoundBridge::create(unresolved, 0, 0) == 0);
+}
+
+void partial_mapping_override() {
+    StartupFixture fixture;
+    fixture.wave("synthetic.wav");
+    fixture.wave("sound/robots/chassis/track.wav");
+    fixture.override_text("Sound {\nButtonClick=synthetic.wav\nBReady=synthetic.wav\n}\n");
+    SoundBridge::initialize_standalone(true);
+    fixture.play(L"Sound.ButtonClick"); // No default ButtonClick file exists in this fixture.
+    fixture.play(L"Sound.ChasTrack"); // An unspecified name retains its default.
+    fixture.play(L"Sound.BReady"); // Additional names are supported.
+    MG_CHECK(startup_device->voices.size() == 3);
+}
+
+void invalid_mapping_fallback() {
+    StartupFixture fixture;
+    fixture.wave("sound/ButtonClick.wav");
+    for (const std::string text : {
+            "Other {\nButtonClick=missing.wav\n}\n",
+            "Sound {\nButtonClick=missing.wav\nButtonClick=also-missing.wav\n}\n",
+            "Sound {\nButtonClick=missing.wav\n}\nSound {\n}\n",
+            "Sound {\nButtonClick=missing.wav\nNested {\n}\n}\n",
+            "Sound {\nButtonClick=missing.wav\nInvalid.Name=missing.wav\n}\n",
+            "Sound {\nButtonClick=\n}\n", "\xc3\x28"}) {
+        fixture.override_text(text);
+        SoundBridge::initialize_standalone(true);
+        MG_CHECK(SoundBridge::available());
+        fixture.play(L"Sound.ButtonClick");
+    }
+    MG_CHECK(device_creations == 7);
+}
+
+void startup_without_packages_or_device() {
+    StartupFixture fixture;
+    fixture.override_text("not a mapping");
+    SoundBridge::initialize_standalone(false);
+    MG_CHECK(!SoundBridge::available() && device_creations == 0);
+    fail_device = true;
+    SoundBridge::initialize_standalone(true);
+    MG_CHECK(!SoundBridge::available() && device_creations == 1);
+}
+
 struct Frontend {
     Base::CBlockPar data;
     std::shared_ptr<audio_fixture::DeviceState> device = std::make_shared<audio_fixture::DeviceState>();
@@ -132,6 +246,10 @@ void host_layer_lifetime() {
 }
 
 constexpr tests::Case cases[] = {
+    {"game.audio.default_catalog", default_catalog_startup},
+    {"game.audio.mapping_override", partial_mapping_override},
+    {"game.audio.mapping_fallback", invalid_mapping_fallback},
+    {"game.audio.startup_unavailable", startup_without_packages_or_device},
     {"game.audio.layer_lifetime", layer_lifetime}, {"game.audio.clear_reentrancy", clear_reentrancy},
     {"game.audio.stale_layer_slot", stale_layer_slot}, {"game.audio.host_layer_lifetime", host_layer_lifetime},
     {"game.audio.frontend_missing", missing_mapping}, {"game.audio.host_routing", host_routing},

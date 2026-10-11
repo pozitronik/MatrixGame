@@ -1,15 +1,49 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "SoundBridge.hpp"
+#include "SoundMapping.hpp"
 #include "MatrixGameDll.hpp"
 #include "CFile.hpp"
 #include "CBlockPar.hpp"
 #include <stupid_logger.hpp>
 #include <utils.hpp>
 #include <stdexcept>
+#include <algorithm>
+#include <filesystem>
 
 namespace SoundBridge {
 namespace {
 std::unique_ptr<Audio::Service> standalone;
+Audio::Mapping sound_mapping() {
+    auto mapping = Audio::default_sound_mapping();
+    try {
+        if (!std::filesystem::exists(L"CFG\\sounds.txt")) return mapping;
+        Base::CBlockPar config;
+        config.LoadFromTextFile(L"CFG\\sounds.txt");
+        if (config.BlockCount(L"Sound") != 1) throw std::runtime_error("Expected one Sound block");
+        const auto *sounds = config.BlockGetNE(L"Sound");
+        if (sounds->BlockCount()) throw std::runtime_error("Nested sound mappings are unsupported");
+        Audio::Mapping overrides;
+        for (int i = 0; i < sounds->ParCount(); ++i) {
+            const std::wstring name = sounds->ParGetName(i);
+            const std::wstring path = sounds->ParGet(i);
+            const bool valid_name = !name.empty() && std::all_of(name.begin(), name.end(), [](wchar_t c) {
+                return (c >= L'A' && c <= L'Z') || (c >= L'a' && c <= L'z') ||
+                       (c >= L'0' && c <= L'9') || c == L'_';
+            });
+            if (!valid_name || path.empty()) throw std::runtime_error("Invalid sound name or empty resource path");
+            if (!overrides.emplace(L"Sound." + name, path).second)
+                throw std::runtime_error("Duplicate sound override");
+        }
+        // Validate the entire override before changing any default.
+        for (auto &[name, path] : overrides) mapping.insert_or_assign(name, std::move(path));
+    } catch (const Base::CException &) {
+        lgr.warning("Cannot read CFG/sounds.txt; using default sound mappings");
+    } catch (const std::exception &error) {
+        lgr.warning("Ignoring CFG/sounds.txt; using default sound mappings: {}")(error.what());
+    }
+    return mapping;
+}
+
 std::vector<uint8_t> load(const std::wstring &path) {
     try {
         Base::CFile file(path);
@@ -34,20 +68,14 @@ void initialize_standalone(bool resources_available) {
     shutdown();
     if (!resources_available) return;
     try {
-        Base::CBlockPar config;
-        config.LoadFromTextFile(L"CFG\\sounds.txt");
-        auto *sounds = config.BlockGetNE(L"Sound");
-        if (!sounds) throw std::runtime_error("Sound mapping needs a Sound block");
-        Audio::Mapping mapping;
-        for (int i = 0; i < sounds->ParCount(); ++i)
-            mapping.emplace(L"Sound." + sounds->ParGetName(i), sounds->ParGet(i));
+        auto mapping = sound_mapping();
         install(std::make_unique<Audio::Service>(Audio::create_xaudio_device(), std::move(mapping), load,
             [](const std::wstring &name, const std::string &message) {
                 lgr.error("Audio {}: {}")(utils::from_wstring(name), message);
             }));
-        lgr.info("Standalone sound initialized");
+        lgr.notice("Standalone sound initialized");
     } catch (const Base::CException &) {
-        lgr.error("Standalone sound disabled: prepare CFG/sounds.txt and local sound resources");
+        lgr.error("Standalone sound disabled: cannot initialize audio resources");
     } catch (const std::exception &error) {
         lgr.error("Standalone sound disabled: {}")(error.what());
     }
