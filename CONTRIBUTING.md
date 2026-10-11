@@ -115,6 +115,8 @@ A release is a maintainer-approved, independently reviewed promotion from `dev` 
 
 Use milestones for delivery groups and epics only when an implementation outcome needs decomposition. Milestones do not duplicate issue status or dependencies. Publishing a release or tag requires explicit authorization and must exclude private game resources and development state.
 
+Follow [Preparing a release](docs/RELEASING.md) for tagging and draft automation. A release tag on `master` builds the Windows archive and prepares an unpublished GitHub release with installation instructions and notes from `CHANGELOG.md`, falling back to generated notes when no entry is supplied.
+
 ## Policy checks
 
 The validator uses Python 3.9 or newer, with no third-party packages. Local catalog, branch and PR checks make no GitHub requests:

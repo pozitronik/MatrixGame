@@ -90,6 +90,8 @@ The dependency fixtures are synthetic bytes encoded with zlib 1.2.11 and libpng 
 
 Build-tool and packaging checks use Python's standard library and isolated fixtures below `build/`, without game assets or a desktop window. Run `python -B -m unittest discover -s tests -p 'test_*.py'`. CMake setup rejects a bad archive before extraction, and packaging checks retain the committed dependency manifest in source identification.
 
+Release automation checks use temporary Git repositories, synthetic archives and mocked GitHub requests. They cover release-tag ancestry, changelog selection and generated-note fallback, checksums and architecture identity, draft reruns and refusal to modify published releases. Run them separately with `python -B -m unittest discover -s tests -p 'test_release.py'`; see [Preparing a release](RELEASING.md) for the tag workflow.
+
 Storage record copies intentionally recreate an empty schema, while moves preserve owned column buffers. Storage objects have single ownership and support moves. The fixture checks preserve the existing STRG versions, ZL03 framing and swap-with-last record deletion order. The storage executable initializes the base services, supplies a console logger and checks for tracked heap leaks in Debug.
 
 To check the configuration-packing operations used by `BUILDCFG` against the tracked text files, run these commands from the repository root after building the tests:
