@@ -29,6 +29,8 @@ Selection dragging records the latest cursor rectangle during mouse dispatch. [M
 
 ## Ownership and shared state
 
+Standalone display settings are parsed by [DisplaySettings.cpp](../MatrixLib/3G/DisplaySettings.cpp) independently of the packed game configuration. [WindowDisplay.cpp](../MatrixLib/3G/WindowDisplay.cpp) owns the current window mode and queues Alt+Enter changes until the form's frame tick. Rendering dimensions stay fixed for the session; mouse positions are converted from client pixels into those dimensions. Borderless/windowed switches only change the native window, while exclusive transitions release and restore device resources around reset. DLL sessions leave this controller disabled. See [Resolution and display modes](DISPLAY.md) for configuration and fallback behavior.
+
 | State | Lifetime and responsibility | Main source |
 | --- | --- | --- |
 | `g_MatrixHeap` | Allocation-helper object created/deleted by initialization/teardown; allocations use the CRT heap, and this pointer owns no arena or allocation set | [CHeap.hpp](../MatrixLib/Base/CHeap.hpp), [MatrixGame.cpp](../MatrixGame/src/MatrixGame.cpp) |

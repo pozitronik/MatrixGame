@@ -4,12 +4,49 @@
 
 #include "MatrixFormGame.hpp"
 #include "input.hpp"
+#include "WindowDisplay.hpp"
+
+LRESULT CALLBACK L3G_WndProc(HWND, UINT, WPARAM, LPARAM);
 
 struct ConsoleInputFixture {
     static const std::wstring &text(const CDevConsole &console) { return console.m_Text; }
 };
 
 namespace {
+void display_shortcut_routing() {
+    struct RecordingForm : CForm {
+        int keys = 0;
+        void Enter() override {}
+        void Leave() override {}
+        void Draw() override {}
+        void Takt(int) override {}
+        void MouseMove(int, int) override {}
+        void MouseKey(ButtonStatus, int, int, int) override {}
+        void Keyboard(bool, uint8_t) override { ++keys; }
+        void SystemEvent(ESysEvent) override {}
+    } form;
+    struct Restore {
+        CForm *previous = g_FormCur;
+        DWORD flags = g_Flags;
+        ~Restore() { g_FormCur = previous; g_Flags = flags; Display::shutdown(); }
+    } restore;
+    g_FormCur = &form;
+    g_Flags = GFLAG_APPACTIVE;
+    Display::initialize({});
+    L3G_WndProc(nullptr, WM_SYSKEYDOWN, VK_RETURN, 1u << 29);
+    L3G_WndProc(nullptr, WM_SYSKEYDOWN, VK_RETURN, (1u << 29) | (1u << 30));
+    L3G_WndProc(nullptr, WM_KEYUP, VK_RETURN, 0);
+    MG_CHECK(form.keys == 0);
+    L3G_WndProc(nullptr, WM_KEYDOWN, VK_RETURN, 0);
+    L3G_WndProc(nullptr, WM_KEYUP, VK_RETURN, 0);
+    MG_CHECK(form.keys == 2);
+    MG_CHECK(g_D3DD == nullptr); // The shortcut only queues work; dispatch never touches a device.
+    Display::shutdown(); // DLL sessions do not initialize standalone display handling.
+    L3G_WndProc(nullptr, WM_SYSKEYDOWN, VK_RETURN, 1u << 29);
+    L3G_WndProc(nullptr, WM_SYSKEYUP, VK_RETURN, 0);
+    MG_CHECK(form.keys == 4);
+}
+
 void mouse_camera_focus_reset() {
     tests::CommandWorld world;
     CFormMatrixGame form;
@@ -22,6 +59,32 @@ void mouse_camera_focus_reset() {
     MG_CHECK(!Input::isVKeyPressed(VK_W));
     MG_CHECK(world.map->m_VKeyDown == 0);
     MG_CHECK(g_D3DD == nullptr);
+}
+
+void pointer_leaves_window() {
+    tests::CommandWorld world;
+    CFormMatrixGame form;
+    form.MouseKey(B_DOWN, VK_MBUTTON, 8, 8);
+    Input::onKeyDown(VK_LEFT);
+    form.SystemEvent(SYSEV_POINTER_LEFT);
+    MG_CHECK(world.map->m_Cursor.GetPosX() == -1 && world.map->m_Cursor.GetPosY() == -1);
+    MG_CHECK(!world.map->IsMouseCam());
+    MG_CHECK(Input::isVKeyPressed(VK_LEFT)); // Leaving the client does not lose keyboard focus.
+    Input::onFocusLost();
+}
+
+void standalone_screenshot_waits_for_frame() {
+    tests::CommandWorld world;
+    CFormMatrixGame form;
+    struct DisplaySession {
+        DisplaySession() { Display::initialize({}); }
+        ~DisplaySession() { Display::shutdown(); Input::onFocusLost(); }
+    } session;
+    MG_CHECK(g_D3DD == nullptr);
+    form.Keyboard(true, VK_F9); // Must not capture a discarded or lost render target from input dispatch.
+    form.Keyboard(false, VK_F9);
+    form.Draw(); // Resources are unavailable: the request must wait for a drawable frame.
+    MG_CHECK(!FLAG(world.map->m_Flags, MMFLAG_VIDEO_RESOURCES_READY));
 }
 
 void mouse_camera_fresh_press() {
@@ -117,6 +180,9 @@ void input_only_console_reset() {
 }
 
 constexpr tests::Case cases[] = {
+    {"game.input.display_shortcut", display_shortcut_routing},
+    {"game.input.pointer_left", pointer_leaves_window},
+    {"game.input.screenshot_deferred", standalone_screenshot_waits_for_frame},
     {"game.input.mouse_focus_reset", mouse_camera_focus_reset},
     {"game.input.mouse_fresh_press", mouse_camera_fresh_press},
     {"game.input.console_shift_focus", console_shift_focus_reset},

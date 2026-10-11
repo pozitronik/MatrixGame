@@ -280,9 +280,23 @@ void standalone_partial_cleanup() {
 }
 
 void graphics_partial_initialization() {
+    // Display settings now have safe defaults. Force registration to fail before
+    // any window/device is created, independently of configuration or GPU access.
+    struct ExistingClass {
+        HINSTANCE instance = GetModuleHandle(nullptr);
+        ExistingClass() {
+            WNDCLASSA window_class{};
+            window_class.lpfnWndProc = DefWindowProcA;
+            window_class.hInstance = instance;
+            window_class.lpszClassName = "MatrixLifecycleTest_wc";
+            MG_CHECK(RegisterClassA(&window_class) != 0);
+        }
+        ~ExistingClass() {
+            L3GDeinit();
+            UnregisterClassA("MatrixLifecycleTest_wc", instance);
+        }
+    } existing_class;
     CBlockPar config;
-    config.ParAdd(L"FullScreen", L"0");
-    config.ParAdd(L"Resolution", L"Invalid synthetic resolution");
     bool caught = false;
     try {
         L3GInitAsEXE(GetModuleHandle(nullptr), config, L"MatrixLifecycleTest", L"Lifecycle test");

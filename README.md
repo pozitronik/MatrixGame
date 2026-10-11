@@ -28,6 +28,8 @@ instructions and configuration options.
 
 The [packaging guide](docs/RELEASES.md) describes the minimal standalone ZIP, source archive, checksums and release checklist.
 
+Resolution, windowed/borderless/exclusive modes and Alt+Enter are configured through `CFG/standalone.txt`; see [Display settings](docs/DISPLAY.md).
+
 ## Development
 
 [Contributing](CONTRIBUTING.md) covers reporting bugs and submitting changes.

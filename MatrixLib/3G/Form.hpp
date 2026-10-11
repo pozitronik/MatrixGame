@@ -22,6 +22,7 @@ enum ESysEvent {
     SYSEV_DEACTIVATING,
     SYSEV_ACTIVATED,
     SYSEV_INPUT_RESET,  // Release held keys without changing activity or graphics.
+    SYSEV_POINTER_LEFT,
 };
 
 /**

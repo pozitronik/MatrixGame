@@ -17,6 +17,7 @@
 #include "Interface/CConstructor.h"
 #include "Text/Font.hpp"
 #include "DeviceRecovery.hpp"
+#include "WindowDisplay.hpp"
 
 #include <new>
 #include <algorithm>
@@ -1999,7 +2000,7 @@ bool CMatrixMap::CheckLostDevice(void) {
     DTRACE();
     return Rendering::RecoverDevice(g_D3DD->TestCooperativeLevel(), FLAG(m_Flags, MMFLAG_VIDEO_RESOURCES_READY),
                                     [this] { ReleasePoolDefaultResources(); },
-                                    [] { return g_D3DD->Reset(&g_D3Dpp); },
+                                    [] { return Display::reset_device(g_D3Dpp); },
                                     [this] { CreatePoolDefaultResources(false); },
                                     [](std::chrono::milliseconds delay) { std::this_thread::sleep_for(delay); });
 }

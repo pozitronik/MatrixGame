@@ -183,7 +183,20 @@ void object_teardown_before_refresh() {
     MG_CHECK(selection->UpdatePending(TRACE_BUILDING, nullptr, 0));
     MG_CHECK(!selection->FindItem(removed));
 }
+void display_change_cancels_selection() {
+    SelectionFixture fixture;
+    fixture.building->hit = true;
+    fixture.building->rejectScan = true;
+    fixture.form.MouseMove(100, 100);
+    fixture.form.SystemEvent(SYSEV_INPUT_RESET);
+    fixture.form.MouseKey(B_UP, VK_LBUTTON, 100, 100);
+    MG_CHECK(fixture.building->calls == 0);
+    MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+    MG_CHECK(fixture.world.map->m_PlayerSide->GetCurSelGroup()->GetObjectsCnt() == 0);
+}
+
 constexpr tests::Case cases[] = {
+    {"game.selection.display_cancel", display_change_cancels_selection},
     {"game.selection.queued_moves", mouse_moves_are_queued},
     {"game.selection.latest_rectangle", latest_rectangle_once},
     {"game.selection.release_before_frame", release_before_frame},

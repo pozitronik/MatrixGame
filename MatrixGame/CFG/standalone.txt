@@ -1,3 +1,12 @@
 // Select the random generator once, before battle initialization.
 // Supported values: ParkMiller (default), LegacyCRT.
 RandomGenerator=ParkMiller
+
+// Rendering resolution in pixels. Restart the game after editing this file.
+ResolutionWidth=1024
+ResolutionHeight=768
+// Windowed, Borderless or Exclusive. Borderless scales to the primary display.
+WindowMode=Windowed
+// Alt+Enter switches between Windowed and this mode: Borderless or Exclusive.
+// Starting in Borderless or Exclusive selects that mode for subsequent toggles.
+FullscreenMode=Borderless

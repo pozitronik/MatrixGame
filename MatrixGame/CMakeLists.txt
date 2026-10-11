@@ -83,6 +83,12 @@ else()
             PROPERTY COMPILE_DEFINITIONS BUILD_EXE
     )
     add_executable(MatrixGame WIN32)
+    # Declare DPI awareness before startup without affecting the DLL host.
+    if(MSVC)
+        target_sources(MatrixGame PRIVATE MatrixGame.manifest)
+    else()
+        target_sources(MatrixGame PRIVATE MatrixGame.manifest.rc)
+    endif()
 endif()
 
 set(MATRIX_RESOURCES

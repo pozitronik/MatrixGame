@@ -7,6 +7,7 @@
 #include "3g.hpp"
 #include "Helper.hpp"
 #include "GraphicsReferences.hpp"
+#include "WindowDisplay.hpp"
 #include "../../MatrixGame/src/MatrixSampleStateManager.hpp"
 
 #include "CBlockPar.hpp"
@@ -124,8 +125,7 @@ std::wstring CExceptionD3D::Info() const
                DXGetErrorDescriptionW(m_Error)).c_str();
 }
 
-void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const wchar* captionname) {
-    RECT tr;
+void L3GInitAsEXE(HINSTANCE hinst, [[maybe_unused]] CBlockPar& bpcfg, const wchar* sysname, const wchar* captionname) {
 
     L3GDeinit();
 
@@ -133,38 +133,11 @@ void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const
     g_Wnd = NULL;
     g_WndExtern = false;
 
-    int cntpar = bpcfg.ParGet(L"FullScreen").GetCountPar(L",");
-
-    ParamParser str(bpcfg.ParGet(L"Resolution"));
-    if (str.GetCountPar(L",") < 2)
-        ERROR_E;
-    g_ScreenX = str.GetStrPar(0, L",").GetInt();
-    if (g_ScreenX <= 0)
-        g_ScreenX = 1;
-    g_ScreenY = str.GetStrPar(1, L",").GetInt();
-    if (g_ScreenY <= 0)
-        g_ScreenY = 1;
-
-    if (cntpar < 1)
-        SETFLAG(g_Flags, GFLAG_FULLSCREEN);
-    else
-        INITFLAG(g_Flags, GFLAG_FULLSCREEN, bpcfg.ParGet(L"FullScreen").GetStrPar(0, L",").GetInt() == 1);
-
-    int bpp;
-    if (cntpar < 2)
-        bpp = 32;
-    else {
-        bpp = bpcfg.ParGet(L"FullScreen").GetStrPar(1, L",").GetInt();
-        if (bpp != 16 && bpp != 32)
-            bpp = 32;
-    }
-
-    int refresh;
-
-    if (cntpar < 3)
-        refresh = 0;
-    else
-        refresh = bpcfg.ParGet(L"FullScreen").GetStrPar(2, L",").GetInt();
+    const auto selection = Display::load();
+    if (!selection.valid) lgr.error("Invalid display settings in CFG/standalone.txt; using 1024x768 Windowed");
+    Display::initialize(selection.settings);
+    g_ScreenX = selection.settings.width;
+    g_ScreenY = selection.settings.height;
 
     g_WndClassName = sysname;
     g_WndClassName += L"_wc";
@@ -186,53 +159,10 @@ void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const
     if (!(g_WndA = RegisterClassEx(&wcex)))
         ERROR_E;
 
-    tr.left = 0;
-    tr.top = 0;
-    tr.right = g_ScreenX;
-    tr.bottom = g_ScreenY;
-    lgr.debug("Requested resolution: {}x{}")(g_ScreenX, g_ScreenY);
-    if (!FLAG(g_Flags, GFLAG_FULLSCREEN))
-    {
-        lgr.debug("CreateWindow() in windowed mode");
-
-        AdjustWindowRectEx(&tr, WS_OVERLAPPED | WS_BORDER | WS_CAPTION | WS_SYSMENU, false, 0);
-
-        lgr.debug("Adjusted window: pos {}x{}, size {}x{}")(tr.left, tr.top, tr.right - tr.left, tr.bottom - tr.top);
-        g_Wnd =
-            CreateWindow(
-                classname.c_str(), utils::from_wstring(captionname).c_str(),
-                WS_OVERLAPPED | WS_BORDER | WS_CAPTION | WS_SYSMENU,
-                0, 0, tr.right - tr.left, tr.bottom - tr.top, NULL, NULL, g_HInst, NULL);
-    }
-    else
-    {
-        lgr.debug("CreateWindow() in fullscreen mode");
-        g_Wnd =
-            CreateWindow(
-                classname.c_str(), utils::from_wstring(captionname).c_str(),
-                WS_POPUP,
-                0, 0, tr.right - tr.left, tr.bottom - tr.top, NULL, NULL, g_HInst, NULL);
-    }
-    if (!g_Wnd)
-    {
-        lgr.error("CreateWindow() failed");
-        ERROR_E;
-    }
-
-    GetClientRect(g_Wnd, &tr);
-    if ((g_ScreenX != (tr.right - tr.left)) || (g_ScreenY != (tr.bottom - tr.top)))
-    {
-        auto str =
-            utils::format(
-                "Resolution error: expected %dx%d, actual %dx%d",
-                g_ScreenX,
-                g_ScreenY,
-                (int)(tr.right - tr.left),
-                (int)(tr.bottom - tr.top));
-
-        lgr.error(str);
-        ERROR_S(utils::to_wstring(str));
-    }
+    g_Wnd = CreateWindow(classname.c_str(), utils::from_wstring(captionname).c_str(),
+                         WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX,
+                         0, 0, 640, 480, NULL, NULL, g_HInst, NULL);
+    if (!g_Wnd) ERROR_S(L"Cannot create the game window");
 
     g_D3D = Direct3DCreate9(D3D_SDK_VERSION);
     owned_direct3d.adopt(g_D3D);
@@ -241,19 +171,18 @@ void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const
         ERROR_S(L"Direct3DCreate9 failed");
     }
 
-    D3DDISPLAYMODE mode;
-    FAILED_DX(g_D3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &mode));
+    auto startup_mode = Display::current_mode();
+    if (startup_mode == Display::Mode::Exclusive && !Display::supports_exclusive()) {
+        lgr.error("Exclusive display mode {}x{} is unavailable; starting Windowed")(g_ScreenX, g_ScreenY);
+        startup_mode = Display::Mode::Windowed;
+    }
+    Display::apply_window(startup_mode);
+    lgr.notice("Display mode: {}; rendering {}x{}")(Display::name(startup_mode), g_ScreenX, g_ScreenY);
 
-    D3DPRESENT_PARAMETERS d3dpp;
-    memset(&d3dpp, 0, sizeof(d3dpp));
-    d3dpp.BackBufferWidth = g_ScreenX;
-    d3dpp.BackBufferHeight = g_ScreenY;
-    d3dpp.BackBufferFormat = mode.Format;
-    d3dpp.BackBufferCount = 2;
-    d3dpp.SwapEffect = D3DSWAPEFFECT_FLIP;
-    d3dpp.Windowed = !FLAG(g_Flags, GFLAG_FULLSCREEN);
+    D3DPRESENT_PARAMETERS d3dpp{};
     d3dpp.EnableAutoDepthStencil = 0;
     d3dpp.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+    Display::configure_parameters(d3dpp);
 
     auto cd_res =
         g_D3D->CreateDevice(
@@ -289,41 +218,12 @@ void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const
         g_D3DD->ColorFill(surf, NULL, 0);
     surf->Release();
 
-    DWORD interval = D3DPRESENT_INTERVAL_IMMEDIATE;
-
-    ZeroMemory(&g_D3Dpp, sizeof(g_D3Dpp));
-    D3DDISPLAYMODE d3ddm;
-
-    if (!FLAG(g_Flags, GFLAG_FULLSCREEN)) {
-        FAILED_DX(g_D3D->GetAdapterDisplayMode(D3DADAPTER_DEFAULT, &d3ddm));
-        if (d3ddm.Format == D3DFMT_X8R8G8B8) {
-            d3ddm.Format = D3DFMT_A8R8G8B8;
-            bpp = 32;
-        }
-        else {
-            bpp = 16;
-        }
-
-        g_D3Dpp.Windowed = TRUE;
-        g_D3Dpp.BackBufferFormat = d3ddm.Format;
-        // d3dpp.AutoDepthStencilFormat = D3DFMT_D16;
-        g_D3Dpp.BackBufferCount = 2;              // triple buffer
-    }
-    else {
-        g_D3Dpp.Windowed = FALSE;
-        g_D3Dpp.BackBufferFormat = (bpp == 16) ? D3DFMT_R5G6B5 : D3DFMT_A8R8G8B8;
-        g_D3Dpp.FullScreen_RefreshRateInHz = refresh;
-    }
-
-    g_D3Dpp.SwapEffect = D3DSWAPEFFECT_FLIP;
+    g_D3Dpp = {};
+    Display::configure_parameters(g_D3Dpp);
     g_D3Dpp.EnableAutoDepthStencil = TRUE;
     g_D3Dpp.AutoDepthStencilFormat = D3DFMT_D24S8;
-    g_D3Dpp.PresentationInterval = interval;  // vsync off
-    g_D3Dpp.BackBufferWidth = g_ScreenX;
-    g_D3Dpp.BackBufferHeight = g_ScreenY;
-    g_D3Dpp.EnableAutoDepthStencil = TRUE;
+    g_D3Dpp.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
     g_D3Dpp.Flags = D3DPRESENTFLAG_DISCARD_DEPTHSTENCIL;
-    g_D3Dpp.hDeviceWindow = g_Wnd;
 
     // Set default settings
     UINT AdapterToUse = D3DADAPTER_DEFAULT;
@@ -435,6 +335,7 @@ void L3GDeinit() {
     g_Wnd = nullptr;
     g_WndOldProg = 0;
     g_WndExtern = false;
+    Display::shutdown();
 }
 
 bool processInput(UINT message, WPARAM wParam, LPARAM lParam);
@@ -526,8 +427,9 @@ int L3GRun()
  */
 bool processInput(UINT message, WPARAM wParam, LPARAM lParam)
 {
-    int16_t mouse_y = HIWORD(lParam);
-    int16_t mouse_x = LOWORD(lParam);
+    int mouse_y = static_cast<int16_t>(HIWORD(lParam));
+    int mouse_x = static_cast<int16_t>(LOWORD(lParam));
+    if (message >= WM_MOUSEFIRST && message <= WM_MOUSELAST) Display::map_mouse(message, mouse_x, mouse_y);
     int16_t hi_wparam = HIWORD(wParam);
 
     bool propagate = false;
@@ -538,7 +440,14 @@ bool processInput(UINT message, WPARAM wParam, LPARAM lParam)
             g_FormCur->MouseKey(B_WHEEL, hi_wparam / 120, mouse_x, mouse_y);
             break;
         case WM_MOUSEMOVE:
+            if (Display::enabled()) {
+                TRACKMOUSEEVENT tracking{sizeof(TRACKMOUSEEVENT), TME_LEAVE, g_Wnd, 0};
+                TrackMouseEvent(&tracking);
+            }
             g_FormCur->MouseMove(mouse_x, mouse_y);
+            break;
+        case WM_MOUSELEAVE:
+            if (Display::enabled()) g_FormCur->SystemEvent(SYSEV_POINTER_LEFT);
             break;
         case WM_LBUTTONDOWN:
             g_FormCur->MouseKey(B_DOWN, VK_LBUTTON, mouse_x, mouse_y);
@@ -589,6 +498,16 @@ bool processInput(UINT message, WPARAM wParam, LPARAM lParam)
  */
 LRESULT CALLBACK L3G_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
+    if (Display::changing()) {
+        // Reset and style changes can synchronously dispatch activation messages.
+        // Do not enter graphics or gameplay handlers until the transition returns.
+        if (message == WM_ACTIVATEAPP) {
+            INITFLAG(g_Flags, GFLAG_APPACTIVE, wParam != 0);
+            if (!wParam) ClipCursor(nullptr);
+        }
+        return DefWindowProc(hWnd, message, wParam, lParam);
+    }
+    if (g_FormCur && FLAG(g_Flags, GFLAG_APPACTIVE) && Display::handle_shortcut(message, wParam, lParam)) return 0;
     switch (message)
     {
         case WM_PAINT:
@@ -596,6 +515,7 @@ LRESULT CALLBACK L3G_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
         // case WM_ACTIVATE:
         case WM_ACTIVATEAPP:
         {
+            if (!wParam) Display::focus_lost();
             if (FLAG(g_Flags, GFLAG_KEEPALIVE))
             {
                 if (wParam == 0 && g_FormCur) {
@@ -629,7 +549,8 @@ LRESULT CALLBACK L3G_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
                     g_FormCur->SystemEvent(SYSEV_DEACTIVATING);
                 }
 
-                ShowWindow(g_Wnd, SW_MINIMIZE);
+                if (!Display::enabled() || Display::current_mode() == Display::Mode::Exclusive)
+                    ShowWindow(g_Wnd, SW_MINIMIZE);
                 ClipCursor(NULL);
             }
             break;

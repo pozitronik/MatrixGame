@@ -92,7 +92,7 @@ Use the [missing/invalid-resource cases](#map-arguments-and-failure-cases) to ch
 
 ## Focus and recovery
 
-Use a cheats-disabled windowed standalone build with packed configuration. Complete the following steps in Debug, then repeat in Release. Record the actual client resolution, adapter and driver. The ordinary window releases cursor confinement and minimizes whenever the application loses focus, including Alt+Tab or activating another application's window. Compare camera position before and after rather than trying to watch it while inactive. Camera scrolling uses the arrow keys by default; use the configured camera key if bindings have changed.
+Use a cheats-disabled windowed standalone build with packed configuration. Complete the following steps in Debug, then repeat in Release. Record the actual client resolution, adapter and driver. Windowed and borderless modes release cursor confinement and pause on focus loss without forcing minimization. Exclusive fullscreen minimizes. Compare camera position before and after returning. Camera scrolling uses the arrow keys by default; use the configured camera key if bindings have changed.
 
 1. Dismiss the introduction and inspect resource counters, robot labels and a menu hint for readable text. Select a friendly robot and issue `M` plus a click on nearby open ground.
 2. Hold Up Arrow for one second to scroll, Alt+Tab to another application, then release Up Arrow. Leave the game inactive for five seconds. Check that the desktop cursor is unrestricted.
@@ -100,7 +100,7 @@ Use a cheats-disabled windowed standalone build with packed configuration. Compl
 4. Repeat focus loss/regain twice. After each return, open Escape and inspect menu text, then Escape again to resume. Check for a black window, missing text, stale selection, an exception or an unresponsive interface.
 5. Close the window and record the process status; normal exit should be zero. A recovery diagnostic must include the failing operation and HRESULT.
 
-These steps cover the exposed windowed focus transition. Border resizing and Alt+Enter mode switching are not implemented. Exclusive fullscreen, display-mode changes, sleep/resume and physical driver loss need separately named scenarios and hardware evidence; do not report the windowed checklist as those tests. See [DirectX device recovery](DEVICE_RECOVERY.md) for automated cases and the explicit native reset check.
+These steps cover the windowed focus transition. Follow [Display settings](DISPLAY.md#verification) for Alt+Enter and borderless/exclusive scenarios. Border resizing is not supported. Sleep/resume and physical driver loss need separate hardware evidence; do not report the windowed checklist as those tests. See [DirectX device recovery](DEVICE_RECOVERY.md) for automated cases and the explicit native reset check.
 
 ## Selection dragging
 
@@ -134,7 +134,7 @@ Use a cheats-enabled build for the developer matrix below. Type cheat codes in t
 | Console editing | Type `DEVCON`. Type `ab`, press Left, type `c`, press Backspace, then Delete. The edited text becomes `a`. Escape clears it; another Escape closes the empty console. |
 | Ordinary console focus | Reopen with `DEVCON`, hold Shift and type `a`, Alt+Tab away, release Shift outside the game, then return without held keys and type `b`. Input remains present as `Ab`. Escape twice returns to the battle. |
 | Resource/toggle codes | With the console closed, type `RICHIERICH`; all four counters reach 9,000. Type `AUTO` twice and `NEED4SPEED` twice, leaving each toggle at its preceding setting. Confirm a fresh robot movement command works afterwards. `NEED4SPEED` reports true/false through the diagnostic overlay. |
-| Keep-alive input reset | Type `KEEPALIVE` once and confirm the true diagnostic. Hold the middle mouse button and rotate, Alt+Tab away, release it outside the game and return. The window remains visible and the battle keeps running; moving without buttons no longer rotates the camera. A fresh middle-button press works. Reopen `DEVCON` and repeat the Shift/`a`/focus-loss/`b` check; input is `Ab`. Escape twice closes the console. Type `KEEPALIVE` again and confirm false; ordinary focus loss minimizes the window again. |
+| Keep-alive input reset | Type `KEEPALIVE` once and confirm the true diagnostic. Hold the middle mouse button and rotate, Alt+Tab away, release it outside the game and return. The window remains visible and the battle keeps running; moving without buttons no longer rotates the camera. A fresh middle-button press works. Reopen `DEVCON` and repeat the Shift/`a`/focus-loss/`b` check; input is `Ab`. Escape twice closes the console. Type `KEEPALIVE` again and confirm false; ordinary focus loss pauses the game again (and minimizes exclusive fullscreen). |
 | Tester preset, fresh launch | Dismiss the introduction and type `IAMTESTER` with the console closed. Side/FPS diagnostics appear and the battle continues while unfocused. Repeat the console Shift and middle-button focus checks above; retained text and fresh input work. Close normally instead of trying to reverse every preset flag. |
 
 These checks do not establish every console command, every cheat, remapping, localized keyboard entry, GPU glyph rendering or complete combat coverage. Keep unperformed cases visible in the result record.

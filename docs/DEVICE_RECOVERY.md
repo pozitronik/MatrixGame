@@ -16,9 +16,9 @@ Map teardown also releases side textures, effect and water buffers, minimap reso
 
 ## Supported transitions and limits
 
-The existing windowed UI has a fixed client size. Focus loss normally minimizes it, clears held keys, releases cursor confinement and retires video resources; returning restores the window and recreates those resources. The window style does not offer border resizing, and the input handlers provide no Alt+Enter mode switch. Do not infer arbitrary resize or live window/fullscreen switching from focus recovery.
+The standalone game supports configured windowed, borderless and exclusive modes and an Alt+Enter toggle; see [Display settings](DISPLAY.md). Rendering resolution stays fixed during a battle, while borderless presentation scales it to the primary display. Windowed/borderless switches preserve the rendering surface. Exclusive transitions release resources and reset between frames; a rejected reset attempts to restore the previous mode. Lost-device results defer resource recreation to ordinary recovery. Win32 messages dispatched during reset cannot reenter graphics handlers, and each reset receives a fresh copy of the intended presentation parameters.
 
-Startup configuration can select fullscreen; video-parameter application also considers desktop format and resolution. Exclusive-fullscreen focus changes, monitor changes, sleep/resume and physical driver resets require explicit hardware playtests. A windowed reset test does not establish them. Keep unsupported or untested transitions visible in validation reports rather than treating every GPU as covered.
+Focus loss clears held input, releases confinement and retires video resources. Exclusive mode minimizes; windowed and borderless modes pause without forced minimization. Returning recreates resources and restores fullscreen confinement. Arbitrary border resizing, monitor selection, monitor changes, sleep/resume and physical driver resets are not established by synthetic recovery tests. Exclusive transitions require the explicit hardware playtest in the display guide.
 
 ## Automated and native checks
 
