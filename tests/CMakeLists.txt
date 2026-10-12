@@ -158,6 +158,12 @@ add_matrix_test(game.bomb.ground_target matrixgame_bomb_tests gameplay input)
 add_matrix_test(game.bomb.inactive_target matrixgame_bomb_tests gameplay input)
 add_matrix_test(game.bomb.destroyed_target matrixgame_bomb_tests gameplay input)
 
+add_matrix_test_executable(matrixgame_player_command_probe player_command_probe.cpp command_world.hpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_player_command_probe PRIVATE MatrixGameInternal)
+add_matrix_test(game.command_probe.replacement matrixgame_player_command_probe gameplay input)
+add_matrix_test(game.command_probe.preorder matrixgame_player_command_probe gameplay input)
+add_matrix_test(game.command_probe.repeated_sessions matrixgame_player_command_probe gameplay input lifecycle)
+
 add_matrix_test_executable(matrixgame_keepalive_tests keepalive_tests.cpp command_world.hpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_keepalive_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.input.keepalive_dispatch matrixgame_keepalive_tests gameplay input)
