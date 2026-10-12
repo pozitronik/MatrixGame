@@ -82,6 +82,111 @@ std::wstring value_text(const Values &values, std::wstring_view key) {
 
 bool space(wchar_t ch) { return ch == L' ' || ch == L'\t'; }
 
+size_t line_start(const std::wstring &text, size_t position) {
+    while (position > 0 && text[position - 1] != L'\n') --position;
+    return position;
+}
+
+// A top-level option as CBlockPar reads it: the name ends at '=' and the value at the comment.
+struct Option {
+    size_t begin, equals, end;
+};
+
+// Follows CBlockPar's statement rules to find the options it reads at the top level. Text after
+// a block's closing brace on the same line is a statement of the enclosing level, and a closing
+// brace at the top level ends the reader's input.
+class Scanner {
+public:
+    explicit Scanner(const std::wstring &source) : stop(source.size()), text(source) { scan(0, true); }
+
+    std::vector<Option> options;
+    size_t stop;  // Position of a top-level closing brace, or the end of the text.
+
+private:
+    const std::wstring &text;
+    size_t pos = 0;
+    size_t line_end = 0;
+    size_t code_end = 0;  // End of the statements; a comment follows when it precedes line_end.
+
+    void skip_space() {
+        while (pos < text.size() && space(text[pos])) ++pos;
+    }
+    void find_line() {
+        line_end = pos;
+        while (line_end < text.size() && text[line_end] != L'\n' && text[line_end] != L'\r') ++line_end;
+        size_t comment = pos;
+        while (comment + 1 < line_end && (text[comment] != L'/' || text[comment + 1] != L'/')) ++comment;
+        if (comment + 1 >= line_end) {
+            code_end = line_end;
+            return;
+        }
+        code_end = comment;
+        while (code_end > pos && space(text[code_end - 1])) --code_end;
+    }
+    bool next_line() {
+        pos = line_end;
+        while (pos < text.size() && text[pos] != L'\n') ++pos;
+        if (pos == text.size()) return false;
+        ++pos;
+        return true;
+    }
+    size_t find(wchar_t ch) const {
+        for (size_t i = pos; i < code_end; ++i) {
+            if (text[i] == ch) return i;
+        }
+        return std::wstring::npos;
+    }
+
+    size_t scan(size_t start, bool top) {
+        pos = start;
+        skip_space();
+        find_line();
+        while (pos < text.size()) {
+            if (pos >= code_end) {
+                // An empty or comment-only line.
+            }
+            else if (text[pos] == L'}') {
+                if (top) stop = pos;
+                return pos + 1;
+            }
+            else if (const size_t open = find(L'{'); open != std::wstring::npos) {
+                const bool comment = code_end < line_end;
+                size_t close = open + 1;
+                while (close < code_end && space(text[close])) ++close;
+                if (close < code_end && text[close] == L'}') {
+                    if (!comment || close + 1 < code_end) {
+                        pos = close + 1;
+                        skip_space();
+                        if (pos < line_end) continue;
+                    }
+                }
+                else {
+                    if (comment && open + 1 >= code_end) {
+                        if (!next_line()) break;
+                    }
+                    else {
+                        pos = open + 1;
+                        skip_space();
+                        if (pos < text.size() && text[pos] == L'\r') ++pos;
+                        if (pos < text.size() && text[pos] == L'\n') ++pos;
+                    }
+                    pos = scan(pos, false);
+                    skip_space();
+                    find_line();
+                    if (pos < line_end) continue;
+                }
+            }
+            else if (const size_t equals = find(L'='); equals != std::wstring::npos) {
+                if (top) options.push_back({pos, equals, code_end});
+            }
+            if (!next_line()) break;
+            skip_space();
+            find_line();
+        }
+        return pos;
+    }
+};
+
 std::string last_error(const char *operation) {
     return utils::format("%s (Windows error %lu)", operation, GetLastError());
 }
@@ -133,48 +238,67 @@ std::wstring update_text(const std::wstring &text, const Values &values) {
     const std::wstring newline = text.find(L"\r\n") != std::wstring::npos || text.find(L'\n') == std::wstring::npos
                                          ? L"\r\n"
                                          : L"\n";
+    const Scanner scanner(text);
     std::array<bool, keys.size()> written{};
     std::wstring result;
-    int depth = 0;
-    size_t start = 0;
-    while (start < text.size()) {
-        size_t end = text.find(L'\n', start);
-        const size_t next = end == std::wstring::npos ? text.size() : end + 1;
-        if (end == std::wstring::npos) end = text.size();
-        size_t content_end = end;
-        if (content_end > start && text[content_end - 1] == L'\r') --content_end;
-        const std::wstring line = text.substr(start, content_end - start);
-        const std::wstring terminator = text.substr(content_end, next - content_end);
-        start = next;
-
-        const size_t comment = std::min(line.find(L"//"), line.size());
-        const std::wstring code = line.substr(0, comment);
-        const auto opens = std::ranges::count(code, L'{');
-        const auto closes = std::ranges::count(code, L'}');
-        const size_t equals = code.find(L'=');
-        if (depth == 0 && opens == 0 && closes == 0 && equals != std::wstring::npos) {
-            const std::wstring key = utils::trim(code.substr(0, equals));
-            const auto found = std::ranges::find(keys, key);
-            if (found != keys.end()) {
-                const auto index = static_cast<size_t>(std::distance(keys.begin(), found));
-                if (written[index]) continue;  // CBlockPar rejects repeated keys; keep the first.
-                written[index] = true;
-                size_t value_begin = equals + 1;
-                while (value_begin < comment && space(line[value_begin])) ++value_begin;
-                size_t value_end = comment;
-                while (value_end > value_begin && space(line[value_end - 1])) --value_end;
-                result += line.substr(0, value_begin) + value_text(values, key) + line.substr(value_end) + terminator;
-                continue;
+    size_t copied = 0;
+    const auto copy_to = [&](size_t position) {
+        result.append(text, copied, position - copied);
+        copied = position;
+    };
+    const auto starts_line = [&](size_t position) {
+        return std::all_of(text.begin() + line_start(text, position), text.begin() + position, space);
+    };
+    for (const auto &option : scanner.options) {
+        const std::wstring key = utils::trim(text.substr(option.begin, option.equals - option.begin));
+        const auto found = std::ranges::find(keys, key);
+        if (found == keys.end()) continue;
+        const auto index = static_cast<size_t>(std::distance(keys.begin(), found));
+        if (written[index]) {
+            // CBlockPar rejects repeated keys; keep the first. A repeat that starts its line is
+            // removed with the line, one after a block only up to its comment.
+            if (starts_line(option.begin)) {
+                copy_to(line_start(text, option.begin));
+                const size_t end = text.find(L'\n', option.end);
+                copied = end == std::wstring::npos ? text.size() : end + 1;
             }
+            else {
+                size_t begin = option.begin;
+                while (space(text[begin - 1])) --begin;
+                copy_to(begin);
+                copied = option.end;
+            }
+            continue;
         }
-        depth = std::max(0, depth + static_cast<int>(opens - closes));
-        result += line + terminator;
+        written[index] = true;
+        size_t value_begin = option.equals + 1;
+        while (value_begin < option.end && space(text[value_begin])) ++value_begin;
+        size_t value_end = option.end;
+        while (value_end > value_begin && space(text[value_end - 1])) --value_end;
+        copy_to(value_begin);
+        result += value_text(values, key);
+        copied = value_end;
     }
-    if (!result.empty() && result.back() != L'\n') result += newline;
+    std::wstring missing;
     for (size_t i = 0; i < keys.size(); ++i) {
-        if (!written[i]) result += std::wstring(keys[i]) + L"=" + value_text(values, keys[i]) + newline;
+        if (!written[i]) missing += std::wstring(keys[i]) + L"=" + value_text(values, keys[i]) + newline;
     }
-    return result;
+    if (scanner.stop < text.size()) {
+        // The reader stops at a top-level closing brace, so new keys go before it.
+        if (starts_line(scanner.stop)) {
+            copy_to(line_start(text, scanner.stop));
+        }
+        else {
+            copy_to(scanner.stop);
+            missing.insert(0, newline);
+        }
+        result += missing;
+        copy_to(text.size());
+        return result;
+    }
+    copy_to(text.size());
+    if (!result.empty() && result.back() != L'\n') result += newline;
+    return result + missing;
 }
 
 bool save(const Values &values, std::string &error, const wchar_t *path) {

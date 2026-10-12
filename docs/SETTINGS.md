@@ -42,7 +42,7 @@ Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also
 
 ## Saving
 
-Apply writes the file before changing the running game. It replaces the supported keys' values in place. It keeps comments, blank lines, unknown keys, blocks and line order. It removes repeated definitions of a supported key and appends missing keys at the end. The file keeps its encoding (UTF-8, or UTF-16 with a byte-order mark) and its line endings. The new content is written to `CFG/standalone.txt.tmp` and then replaces the original. If saving fails, the window shows an error and stays open, the previous file is left unchanged, and the cause is written to `test.log`.
+Apply writes the file before changing the running game. It replaces the supported keys' values in place. It keeps comments, blank lines, unknown keys, blocks and line order. It reads the file's structure as the game does, so a key written after a block on the same line, such as `Extension {} SoundVolume=40`, is updated in place. It removes repeated definitions of a supported key and appends missing keys at the end. The game stops reading at a closing brace outside any block, so missing keys are added before such a brace instead. The file keeps its encoding (UTF-8, or UTF-16 with a byte-order mark) and its line endings. The new content is written to `CFG/standalone.txt.tmp` and then replaces the original. If saving fails, the window shows an error and stays open, the previous file is left unchanged, and the cause is written to `test.log`.
 
 Source builds stage `MatrixGame/CFG/standalone.txt` beside the EXE on every build, so a rebuild replaces settings saved in a build directory. Edit the tracked copy to change the defaults of local builds. Release packages contain the tracked defaults.
 
@@ -50,7 +50,7 @@ Source builds stage `MatrixGame/CFG/standalone.txt` beside the EXE on every buil
 
 Automated `game.settings.*` contracts cover:
 - File parsing, defaults and per-key fallback.
-- Text-preserving rewrites in both encodings.
+- Text-preserving rewrites in both encodings, including keys that follow a block on the same line.
 - Atomic saving and failed-save behavior.
 - Window selection, stepping, mode coupling, hit areas and both label languages.
 - Startup mapping of graphics options.

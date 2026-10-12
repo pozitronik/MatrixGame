@@ -149,6 +149,35 @@ void round_trip() {
     MG_CHECK(parse(StandaloneSettings::update_text(L"", exclusive)).values == exclusive);
 }
 
+void round_trip_inline_blocks() {
+    // CBlockPar reads a statement after a block's closing brace at the enclosing level.
+    struct Case {
+        const wchar_t *original;
+        int sound_volume;
+        const wchar_t *start;
+        const wchar_t *end;
+    };
+    const Case cases[] = {
+            {L"Extension {} SoundVolume=20\n", 20, L"Extension {} SoundVolume=40\nRandomGenerator=", L""},
+            {L"Block {\n    SoundVolume=7\n} SoundVolume=20 // kept\nOther { SoundVolume=8\n}\n", 20,
+             L"Block {\n    SoundVolume=7\n} SoundVolume=40 // kept\nOther { SoundVolume=8\n}\nRandomGenerator=", L""},
+            // A repeated key is invalid; saving keeps the first and the block's comment.
+            {L"SoundVolume=20\nExtension {} SoundVolume=30 // note\n", 100,
+             L"SoundVolume=40\nExtension {} // note\nRandomGenerator=", L""},
+            // A top-level closing brace ends the reader's input, so new keys must precede it.
+            {L"UnknownKey=1\n}\nSoundVolume=20\n", 100, L"UnknownKey=1\nRandomGenerator=", L"}\nSoundVolume=20\n"},
+            {L"Extension {} }\n", 100, L"Extension {} \nRandomGenerator=", L"CameraSpeed=150\n}\n"},
+    };
+    for (const auto &item : cases) {
+        MG_CHECK(parse(item.original).values.sound_volume == item.sound_volume);
+        const auto updated = StandaloneSettings::update_text(item.original, custom());
+        MG_CHECK(updated.starts_with(item.start) && updated.ends_with(item.end));
+        const auto selection = parse(updated);
+        MG_CHECK(selection.invalid.empty() && selection.values == custom());
+        MG_CHECK(StandaloneSettings::update_text(updated, custom()) == updated);
+    }
+}
+
 void save_utf8() {
     TemporaryDirectory directory;
     const std::filesystem::path path = L"CFG/standalone.txt";
@@ -215,6 +244,7 @@ constexpr tests::Case cases[] = {
     {"game.settings.invalid_values", invalid_values},
     {"game.settings.preserves_text", preserves_text},
     {"game.settings.round_trip", round_trip},
+    {"game.settings.round_trip_inline_blocks", round_trip_inline_blocks},
     {"game.settings.save_utf8", save_utf8},
     {"game.settings.save_wide", save_wide},
     {"game.settings.save_creates_file", save_creates_file},
