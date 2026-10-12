@@ -113,6 +113,7 @@ uint32_t Service::create(const std::wstring &name, bool loop) {
         auto voice = device_->create(cached->second, loop);
         if (!voice) throw std::runtime_error("Audio device did not create a voice");
         const uint32_t id = static_cast<uint32_t>(next_id_++);
+        if (master_ != 1.0f) voice->volume(master_);
         voices_.emplace(id, Entry{std::move(voice), name, 1.0f, 0.0f});
         return id;
     } catch (const std::exception &error) {
@@ -138,7 +139,7 @@ void Service::volume(uint32_t id, float value) {
     try {
         if (auto found = voices_.find(id); found != voices_.end()) {
             value = normalized(value, 0.0f, 1.0f);
-            found->second.voice->volume(value);
+            found->second.voice->volume(value * master_);
             found->second.volume = value;
         }
     } catch (const std::exception &error) { voice_failure(id, error.what()); }
@@ -151,6 +152,17 @@ void Service::pan(uint32_t id, float value) {
             found->second.pan = value;
         }
     } catch (const std::exception &error) { voice_failure(id, error.what()); }
+}
+void Service::master_volume(float value) {
+    master_ = normalized(value, 0.0f, 1.0f);
+    for (auto it = voices_.begin(); it != voices_.end();) {
+        const auto id = it->first;
+        auto &entry = it->second;
+        ++it;  // A failing voice is erased by voice_failure.
+        try {
+            entry.voice->volume(entry.volume * master_);
+        } catch (const std::exception &error) { voice_failure(id, error.what()); }
+    }
 }
 float Service::volume(uint32_t id) const {
     const auto found = voices_.find(id);

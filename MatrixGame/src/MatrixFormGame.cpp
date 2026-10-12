@@ -4,6 +4,7 @@
 // Refer to the LICENSE file included
 
 #include "MatrixFormGame.hpp"
+#include "SettingsWindow.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFlyer.hpp"
@@ -377,6 +378,8 @@ void CFormMatrixGame::Takt(int step) {
 
     if (g_MatrixMap->m_Console.IsActive())
         return;
+    if (SettingsWindow::active())
+        return;  // The arrow keys navigate the settings dialog instead of the camera.
 
     if (!g_MatrixMap->GetPlayerSide()->IsArcadeMode())
     {
@@ -475,6 +478,8 @@ void CFormMatrixGame::MouseMove(int x, int y) {
     }
 
     g_MatrixMap->m_Cursor.SetPos(x, y);
+    SettingsWindow::mouse_move(x, y);
+    SettingsWindow::menu_mouse_move(x, y);
     p_side->OnMouseMove();
 
     if (CMultiSelection::m_GameSelection) {
@@ -526,6 +531,11 @@ void CFormMatrixGame::MouseKey(ButtonStatus status, int key, int x, int y) {
     else if (status == B_UP)
     {
         Input::onKeyUp(key);
+    }
+
+    if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON &&
+        (SettingsWindow::mouse_down(x, y) || SettingsWindow::menu_mouse_down(x, y))) {
+        return;
     }
 
     if (status == B_WHEEL) {
@@ -767,6 +777,11 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
         return;
     }
 
+    if (SettingsWindow::keyboard(vk, down))
+    {
+        return;
+    }
+
 #ifdef CHEATS_ON
     if (down && Cheats::processInput(vk))
     {
@@ -783,6 +798,13 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
         }
     }
 
+    if (vk == VK_C && down) {
+        if (g_MatrixMap->m_DialogModeName && wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_MENU) == 0 &&
+            g_MatrixMap->m_DialogModeHints.size() == 1 && SettingsWindow::available()) {
+            SettingsWindow::open();
+            return;
+        }
+    }
     if (vk == VK_E && down) {
         if (g_MatrixMap->m_DialogModeName && wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_MENU) == 0) {
             if (g_MatrixMap->m_DialogModeHints.size() > 1) {}

@@ -14,4 +14,6 @@ bool playing(uint32_t id);
 void volume(uint32_t id, float value);
 void pan(uint32_t id, float value);
 float volume(uint32_t id);
+// Standalone master level for effects and speech; retained across services. Host audio ignores it.
+void master_volume(float value);
 } // namespace SoundBridge
