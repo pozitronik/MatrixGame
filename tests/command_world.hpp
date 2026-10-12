@@ -16,6 +16,8 @@ struct EngineDelete {
 template<class T>
 using EnginePtr = std::unique_ptr<T, EngineDelete<T>>;
 
+// Production constructors may depend on the zeroed storage supplied by HNew.
+// Keep that allocation contract; make_unique does not provide it.
 template<class T>
 EnginePtr<T> make_engine_object() {
     return EnginePtr<T>(HNew(g_MatrixHeap) T);

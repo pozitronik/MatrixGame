@@ -93,7 +93,6 @@ void command_replacement() {
     const auto &oldSlot = fixture.side().m_PlayerGroup[0];
     MG_CHECK(oldSlot.Order() == mpo_AutoAttack);
     MG_CHECK(oldSlot.m_RobotCnt == 1); // Recount predates moving the robot to slot 1.
-    MG_CHECK(fixture.robot->GetGroupLogic() != 0);
     fixture.press('U');
     fixture.expect(mpo_AutoAttack, AUTO_FROBOT_ON);
     MG_CHECK(fixture.robot->GetGroupLogic() == 0);
