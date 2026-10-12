@@ -59,7 +59,7 @@ The DLL `Run` (`MatrixGameDll.cpp:128-150`) follows the same path, with a stack 
 2. The target is the cursor trace computed in the previous frame's `BeforeDraw` (`MatrixMap.cpp:1120-1122`), read at `MatrixSide.cpp:838-843`. UI focus and minimap state can override it (`MatrixSide.cpp:846-857`).
 3. The order kind is chosen from the target class (`MatrixSide.cpp:862-891`). For move orders, flyers receive targets randomized from the shared RNG at input time (`MatrixSide.cpp:883-886`).
 4. `PGOrderAttack` (`MatrixSide.cpp:9182-9261`):
-   - Plays an acknowledgement sound, with `IRND(2)` only for a repeated order and only when the global flag `MMFLAG_SOUND_ORDER_ATTACK_DISABLE` is clear (`:9186-9197`).
+   - Plays an acknowledgement sound when the global flag `MMFLAG_SOUND_ORDER_ATTACK_DISABLE` is clear (`:9186-9197`). Its repeated-order `IRND(2)` branch cannot run through current routes, because every caller passes a slot that `SelGroupToLogicGroup` or `RobotToLogicGroup` has just reset to `mpo_Stop` (`:8972`, `:9012`).
    - Writes intent into `m_PlayerGroup[no]` and resets execution state on every robot in the group (`:9199-9216`).
    - Sets robot environment targets (`:9235-9252`).
    - Forces `TaktPL()` synchronously inside message dispatch (`:9256-9257`).
@@ -260,7 +260,7 @@ An abstraction is admitted only with a named second consumer: the test harness (
 
 ### 4.5 D4: Intent, execution and navigation (#95)
 
-- **Intent:** `PlayerCommand` is a value type holding the kind (the existing `EMatrixPlayerOrder`), the logic group, a map cell, an optional `EntityRef` target, a `CommandSource` (PlayerInput, Internal or Automation) and an acknowledgement policy (`Play` or `Suppress`). `IssuePlayerCommand(side, cmd)` returns accepted or rejected with a reason. The existing `PGOrder*` bodies remain the implementation. The policy, not the source, replaces the global sound-suppression flag one-for-one. PlayerInput and Automation commands use `Play`, so an Automation attack makes the same `CSound::Play` call and, when repeated, the same conditional `IRND(2)` as a human attack (U4). Internal callers pass `Suppress` exactly where they set `MMFLAG_SOUND_ORDER_ATTACK_DISABLE` today (`MatrixFlyer.cpp:1178`, `MatrixMapPrepare.cpp:1622`, `MatrixObject.cpp:1334`, `MatrixRobot.cpp:535`, `:2185`), and `Play` elsewhere. The source records provenance for results and the observer, and never changes acknowledgement or RNG consumption by itself.
+- **Intent:** `PlayerCommand` is a value type holding the kind (the existing `EMatrixPlayerOrder`), the logic group, a map cell, an optional `EntityRef` target, a `CommandSource` (PlayerInput, Internal or Automation) and an acknowledgement policy (`Play` or `Suppress`). `IssuePlayerCommand(side, cmd)` returns accepted or rejected with a reason. The existing `PGOrder*` bodies remain the implementation. The policy, not the source, replaces the global sound-suppression flag one-for-one. PlayerInput and Automation commands use `Play`, so an Automation attack makes the same `CSound::Play` call, with its two `RND` draws when audio is available, as a human attack (U4). Internal callers pass `Suppress` exactly where they set `MMFLAG_SOUND_ORDER_ATTACK_DISABLE` today (`MatrixFlyer.cpp:1178`, `MatrixMapPrepare.cpp:1622`, `MatrixObject.cpp:1334`, `MatrixRobot.cpp:535`, `:2185`), and `Play` elsewhere. The source records provenance for results and the observer, and never changes acknowledgement or RNG consumption by itself.
 - **Execution:** `SMatrixPlayerGroup` is split into intent members (order, `m_To`, target) and execution members (region path, road path, war, show-place and patrol flags) within the same struct. Synchronous `TaktPL` on issue is kept.
 - **Target resolution:** picking stays in the input layer. A command carries a resolved target, which is what automation needs.
 - **Navigation:** it stays on `CMatrixMapLogic`. Route functions already take explicit parameters (`MatrixLogic.hpp:118-153`). Only global access is removed. A separate navigation class is deferred until #81 coverage exists.
@@ -354,7 +354,7 @@ Every leaf must preserve the count and order of draws from `random::*`, `RND`, `
 
 - The map constructor draw (`MatrixLogic.cpp:50`).
 - The overwritten draw (`CConstructor.cpp:121`).
-- The conditional acknowledgement draws (`MatrixSide.cpp:9053`, `:9189` and the other `IRND(2)` sites).
+- The acknowledgement draws: the chassis `IRND(cnt)` in move and patrol, the repair `IRND(2)`, and the `CSound::Play` draws. The in-progress `IRND(2)` branches (`MatrixSide.cpp:9053`, `:9189` and similar) are unreachable today because the slot is reset first, and they must stay unreachable or be reviewed as a change.
 - The input-time flyer draws (`MatrixSide.cpp:707-710`, `:883-886`).
 - Sound draws when audio is available.
 - Render-path draws.
@@ -482,7 +482,7 @@ All of these are blocked by #69. Splits are proposed siblings under the same par
 - **Target:** every `PGOrder*` caller (section 2.3). Remove `MMFLAG_SOUND_ORDER_ATTACK_DISABLE` toggling.
 - **Depends on:** 93.1 for the target reference.
 - **Compatibility risks:** the conditional acknowledgement draws; synchronous `TaktPL`; selection-dependent sounds (U10).
-- **Evidence:** #80 command scenarios that assert RNG draw counts, including PlayerInput versus Automation attacks, first and repeated, with identical draw count and order; internal-caller scenarios that keep their current suppression; a cheats path test.
+- **Evidence:** #80 command scenarios that assert RNG draw counts, including PlayerInput versus Automation attacks, single and repeated, with identical draw count and order; internal-caller scenarios that keep their current suppression; a cheats path test.
 - **Done when:** every order enters through one function with accepted or rejected results, and the flag has no remaining writers.
 
 **95.2 Intent and execution split inside `SMatrixPlayerGroup` and `SMatrixLogicGroup`**
