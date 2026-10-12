@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "test_support.hpp"
+#include "command_world.hpp"
 
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
@@ -23,21 +24,13 @@ struct RobotCommandFixture {
 };
 
 namespace {
-template<class Object>
-struct EngineHeapDeleter {
-    void operator()(Object *object) const { HDelete(Object, object, g_MatrixHeap); }
-};
-
-template<class Object>
-auto make_engine_object() {
-    // Production constructors rely on the zeroed storage provided by HNew.
-    return std::unique_ptr<Object, EngineHeapDeleter<Object>>(HNew(g_MatrixHeap) Object);
-}
+using tests::make_engine_object;
+using tests::EnginePtr;
 
 struct World {
     CHeap heap;
     CBlockPar data;
-    std::unique_ptr<CMatrixMapLogic, EngineHeapDeleter<CMatrixMapLogic>> map;
+    EnginePtr<CMatrixMapLogic> map;
 
     World() {
         g_MatrixHeap = &heap;
@@ -90,7 +83,7 @@ struct Bomber : CMatrixRobotAI {
 
 struct Scenario {
     World world;
-    std::unique_ptr<Bomber, EngineHeapDeleter<Bomber>> robot = make_engine_object<Bomber>();
+    EnginePtr<Bomber> robot = make_engine_object<Bomber>();
     const CPoint destination{10, 10};
 
     Scenario() {

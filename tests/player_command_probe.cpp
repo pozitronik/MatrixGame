@@ -8,25 +8,42 @@
 #include "input.hpp"
 
 namespace {
-template<class T>
-struct EngineDelete {
-    void operator()(T *value) const { HDelete(T, value, g_MatrixHeap); }
+using tests::EnginePtr;
+
+struct InterfaceGlobalGuard {
+    CIFaceList *previous = g_IFaceList;
+    ~InterfaceGlobalGuard() { g_IFaceList = previous; }
 };
 
-template<class T>
-using EnginePtr = std::unique_ptr<T, EngineDelete<T>>;
+EnginePtr<CIFaceList> make_interface() {
+    auto ui = tests::make_engine_object<CIFaceList>();
+    g_IFaceList = ui.get();
+    return ui;
+}
+
+struct SelectionGuard {
+    CMatrixSideUnit &side;
+    ~SelectionGuard() {
+        Input::onFocusLost();
+        if (side.GetCurSelGroup()) side.GetCurSelGroup()->RemoveAll();
+        side.SetCurGroup(nullptr);
+    }
+};
+
+enum class SetupFailure { None, BeforeSide, AfterSelection };
 
 // This probe starts with a selected, mesh-free robot. It does not test picking,
 // movement or autonomous execution; command dispatch below is all production code.
 struct PlayerCommandWorld {
     tests::CommandWorld world;
-    EnginePtr<CIFaceList> ui{HNew(g_MatrixHeap) CIFaceList};
+    InterfaceGlobalGuard interfaceGuard; // Restore after ui is destroyed, including constructor failure.
+    EnginePtr<CIFaceList> ui = make_interface();
     EnginePtr<CMatrixRobotAI> robot{HNew(g_MatrixHeap) CMatrixRobotAI};
+    SelectionGuard selectionGuard{*world.map->GetPlayerSide()};
     CFormMatrixGame form;
-    CIFaceList *previousInterface = g_IFaceList;
 
-    PlayerCommandWorld() {
-        g_IFaceList = ui.get();
+    explicit PlayerCommandWorld(SetupFailure failure = SetupFailure::None) {
+        if (failure == SetupFailure::BeforeSide) throw std::runtime_error("fixture before side setup");
         g_Config.SetDefaults();
         Input::onFocusLost();
         side().InitPlayerSide();
@@ -37,15 +54,7 @@ struct PlayerCommandWorld {
         side().GetCurSelGroup()->AddObject(robot.get(), -4);
         side().SetCurGroup(side().GetCurSelGroup());
         side().m_CurrSel = ROBOT_SELECTED;
-    }
-
-    ~PlayerCommandWorld() {
-        Input::onFocusLost();
-        side().GetCurSelGroup()->RemoveAll();
-        side().SetCurGroup(nullptr);
-        robot.reset();
-        ui.reset();
-        g_IFaceList = previousInterface;
+        if (failure == SetupFailure::AfterSelection) throw std::runtime_error("fixture after selection setup");
     }
 
     CMatrixSideUnit &side() { return *world.map->GetPlayerSide(); }
@@ -77,10 +86,47 @@ void command_replacement() {
     PlayerCommandWorld fixture;
     fixture.press('U');
     fixture.expect(mpo_AutoAttack, AUTO_FROBOT_ON);
+    MG_CHECK(fixture.robot->GetGroupLogic() == 0);
     fixture.press('C');
     fixture.expect(mpo_AutoCapture, AUTO_CAPTURE_ON);
+    MG_CHECK(fixture.robot->GetGroupLogic() == 1);
+    const auto &oldSlot = fixture.side().m_PlayerGroup[0];
+    MG_CHECK(oldSlot.Order() == mpo_AutoAttack);
+    MG_CHECK(oldSlot.m_RobotCnt == 1); // Recount predates moving the robot to slot 1.
+    MG_CHECK(fixture.robot->GetGroupLogic() != 0);
     fixture.press('U');
     fixture.expect(mpo_AutoAttack, AUTO_FROBOT_ON);
+    MG_CHECK(fixture.robot->GetGroupLogic() == 0);
+}
+
+void active_auto_order_stops() {
+    PlayerCommandWorld fixture;
+    fixture.press('U');
+    fixture.expect(mpo_AutoAttack, AUTO_FROBOT_ON);
+    fixture.press('U');
+    const int group = fixture.robot->GetGroupLogic();
+    MG_CHECK(group == 1);
+    MG_CHECK(fixture.side().m_PlayerGroup[group].Order() == mpo_Stop);
+    MG_CHECK(fixture.side().m_PlayerGroup[group].m_RobotCnt == 1);
+    MG_CHECK(fixture.side().m_PlayerGroup[0].m_RobotCnt == 0); // Stop runs TaktPL's recount.
+    MG_CHECK((fixture.ui->m_IfListFlags & (AUTO_FROBOT_ON | AUTO_CAPTURE_ON | AUTO_PROTECT_ON)) == 0);
+    MG_CHECK(fixture.robot->GetOrdersInPool() == 0);
+    MG_CHECK(g_D3DD == nullptr);
+}
+
+void partial_setup_restores_globals() {
+    for (auto failure : {SetupFailure::BeforeSide, SetupFailure::AfterSelection}) {
+        bool caught = false;
+        try { PlayerCommandWorld fixture(failure); }
+        catch (const std::runtime_error &) { caught = true; }
+        MG_CHECK(caught);
+        MG_CHECK(g_IFaceList == nullptr);
+        MG_CHECK(g_MatrixMap == nullptr);
+        MG_CHECK(g_MatrixHeap == nullptr);
+        MG_CHECK(g_MatrixData == nullptr);
+        MG_CHECK(CMatrixMapStatic::GetFirstLogic() == nullptr);
+        command_replacement();
+    }
 }
 
 void preorder_suppresses_auto_command() {
@@ -106,9 +152,11 @@ void repeated_command_sessions() {
 }
 
 constexpr tests::Case cases[] = {
-    {"game.command_probe.replacement", command_replacement},
-    {"game.command_probe.preorder", preorder_suppresses_auto_command},
-    {"game.command_probe.repeated_sessions", repeated_command_sessions},
+    {"game.orders.replacement", command_replacement},
+    {"game.orders.toggle_stop", active_auto_order_stops},
+    {"game.orders.partial_setup", partial_setup_restores_globals},
+    {"game.orders.preorder", preorder_suppresses_auto_command},
+    {"game.orders.repeated_sessions", repeated_command_sessions},
 };
 }
 

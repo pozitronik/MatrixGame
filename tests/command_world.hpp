@@ -8,6 +8,19 @@
 #include <memory>
 
 namespace tests {
+template<class T>
+struct EngineDelete {
+    void operator()(T *value) const { HDelete(T, value, g_MatrixHeap); }
+};
+
+template<class T>
+using EnginePtr = std::unique_ptr<T, EngineDelete<T>>;
+
+template<class T>
+EnginePtr<T> make_engine_object() {
+    return EnginePtr<T>(HNew(g_MatrixHeap) T);
+}
+
 // Production map/side ownership with no meshes, packages, window or device.
 struct CommandWorld {
     CHeap heap;
