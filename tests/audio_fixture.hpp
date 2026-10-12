@@ -24,6 +24,7 @@ struct State {
     bool playing{};
     bool loop{};
     bool fail_play{};
+    bool fail_volume{};
     float volume{1};
     float pan{};
     int destroyed{};
@@ -45,7 +46,10 @@ public:
     ~FakeVoice() override { state_->playing = false; ++state_->destroyed; }
     void play() override { if (state_->fail_play) throw std::runtime_error("Synthetic device failure"); state_->playing = true; }
     bool playing() const override { return state_->playing; }
-    void volume(float n) override { state_->volume = n; }
+    void volume(float n) override {
+        if (state_->fail_volume) throw std::runtime_error("Synthetic volume failure");
+        state_->volume = n;
+    }
     void pan(float n) override { state_->pan = n; }
 };
 

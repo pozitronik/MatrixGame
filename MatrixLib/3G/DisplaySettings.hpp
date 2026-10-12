@@ -15,6 +15,7 @@ struct Settings {
     int height = 768;
     Mode mode = Mode::Windowed;
     Mode fullscreen = Mode::Borderless;
+    bool operator==(const Settings &) const = default;
 };
 struct Selection {
     Settings settings;

@@ -10,3 +10,15 @@ WindowMode=Windowed
 // Alt+Enter switches between Windowed and this mode: Borderless or Exclusive.
 // Starting in Borderless or Exclusive selects that mode for subsequent toggles.
 FullscreenMode=Borderless
+
+// The in-game Settings window (battle menu, C) rewrites the values below and keeps comments.
+// Master volume for sound effects and speech, 0-100.
+SoundVolume=100
+// On or Off. Shadow changes apply immediately.
+StencilShadows=On
+ProjectedShadows=On
+// Off, Low or High. Restart the game after changing the sky or robot shadows.
+Skybox=High
+RobotShadows=On
+// Camera scroll speed as a percentage of the configured speed, 25-300.
+CameraSpeed=100

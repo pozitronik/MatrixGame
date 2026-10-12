@@ -10,6 +10,8 @@
 
 #include "MatrixGame.h"
 #include "SoundBridge.hpp"
+#include "StandaloneRuntime.hpp"
+#include "SettingsWindow.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
 #include "Interface/CInterface.h"
@@ -327,6 +329,11 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     {
         settings = SRobotsSettings::generate_default_settings();
     }
+#ifdef BUILD_EXE
+    const auto standalone = StandaloneSettings::load();
+    for (const auto &key : standalone.invalid) lgr.error("Invalid {} in CFG/standalone.txt; using its default")(key);
+    StandaloneSettings::apply_startup(standalone.values, settings);
+#endif
 
     // Init the 3d engine
 #ifdef BUILD_EXE
@@ -362,6 +369,7 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     g_Config.ApplySettings(&settings);
 #ifdef BUILD_EXE
     SoundBridge::initialize_standalone(sound_package || voices_package);
+    StandaloneSettings::initialize_runtime(standalone.values);
 #endif
     g_Sampler.ApplySettings(&settings);
     SetMaxCameraDistance(settings.m_MaxDistance);
@@ -717,6 +725,7 @@ void CGame::Deinit(void) {
         g_Render = NULL;
     }
 
+    SettingsWindow::shutdown();
     CMatrixHint::ClearAll();
 
     if (g_MatrixMap) {
