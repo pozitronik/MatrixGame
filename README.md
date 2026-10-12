@@ -28,7 +28,7 @@ instructions and configuration options.
 
 The [packaging guide](docs/RELEASES.md) describes the minimal standalone ZIP, source archive, checksums and release checklist.
 
-Resolution, windowed/borderless/exclusive modes and Alt+Enter are configured through `CFG/standalone.txt`; see [Display settings](docs/DISPLAY.md).
+Resolution, windowed/borderless/exclusive modes, volume, shadows, camera speed and the random generator can be changed in the in-game [Settings window](docs/SETTINGS.md) (battle menu, `C`) or in `CFG/standalone.txt`; see also [Display settings](docs/DISPLAY.md).
 
 ## Development
 

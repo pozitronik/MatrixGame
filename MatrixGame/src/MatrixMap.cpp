@@ -8,6 +8,7 @@
 
 #include <windows.h>
 #include "MatrixMap.hpp"
+#include "SettingsWindow.hpp"
 #include "MatrixMapStatic.hpp"
 #include "MatrixObject.hpp"
 #include "MatrixObjectBuilding.hpp"
@@ -3141,6 +3142,7 @@ void CMatrixMap::AddEffectSpawner(float x, float y, float z, int ttl, const std:
 }
 
 void CMatrixMap::LeaveDialogMode(void) {
+    SettingsWindow::menu_closed();
     if (m_DialogModeName == NULL)
         return;
 
@@ -3222,6 +3224,7 @@ void ConfirmCancelHandler(void) {
 }
 
 static void CreateConfirmation(const wchar *hint, DialogButtonHandler handler) {
+    SettingsWindow::menu_closed();
     g_IFaceList->DisableMainMenuButton(HINT_CANCEL_MENU);
     g_IFaceList->DisableMainMenuButton(HINT_CONTINUE);
     g_IFaceList->DisableMainMenuButton(HINT_SURRENDER);
@@ -3321,6 +3324,9 @@ void CMatrixMap::EnterDialogMode(const wchar *hint_i) {
                 }
             }
 
+            if (0 == wcscmp(hint, TEMPLATE_DIALOG_MENU)) {
+                SettingsWindow::customize_menu(templ);
+            }
             CMatrixHint *h = CMatrixHint::Build(templ, g_MatrixData->BlockGet(PAR_REPLACE), hint);
 
             if (0 == wcscmp(hint, TEMPLATE_DIALOG_MENU)) {

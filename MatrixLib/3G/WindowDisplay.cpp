@@ -4,6 +4,7 @@
 #include "stupid_logger.hpp"
 
 #include <algorithm>
+#include <optional>
 
 namespace Display {
 namespace {
@@ -12,6 +13,7 @@ Mode mode = Mode::Windowed;
 bool active = false;
 bool in_change = false;
 bool pending = false;
+std::optional<Mode> requested;  // Explicit target; otherwise a pending change toggles.
 Shortcut shortcut;
 RECT windowed_rectangle{};
 bool have_windowed_rectangle = false;
@@ -50,6 +52,7 @@ void initialize(Settings settings) {
 void shutdown() {
     active = false;
     pending = false;
+    requested.reset();
     in_change = false;
     shortcut = {};
     have_windowed_rectangle = false;
@@ -60,6 +63,14 @@ void shutdown() {
 bool enabled() { return active; }
 bool changing() { return in_change; }
 Mode current_mode() { return mode; }
+Mode fullscreen_mode() { return options.fullscreen; }
+
+void request(Mode target, Mode fullscreen) {
+    if (!active || fullscreen == Mode::Windowed) return;
+    options.fullscreen = fullscreen;
+    requested = target;
+    pending = target != mode;
+}
 
 bool supports_exclusive() {
     const UINT count = g_D3D->GetAdapterModeCount(D3DADAPTER_DEFAULT, D3DFMT_X8R8G8B8);
@@ -132,7 +143,10 @@ bool handle_shortcut(UINT message, WPARAM key, LPARAM flags) {
     if (!active) return false;
     bool request = false;
     const bool consumed = shortcut.handle(message, key, flags, request);
-    if (request && !in_change) pending = !pending;
+    if (request && !in_change) {
+        pending = !pending;
+        requested.reset();
+    }
     return consumed;
 }
 
@@ -155,7 +169,8 @@ bool apply_pending(bool resources_ready, void (*release)(), void (*restore)()) {
     const HRESULT status = g_D3DD->TestCooperativeLevel();
     if (status != D3D_OK) return false; // Ordinary recovery runs before a queued change.
     pending = false;
-    const Mode target = toggle_target(mode, options.fullscreen);
+    const Mode target = requested.value_or(toggle_target(mode, options.fullscreen));
+    requested.reset();
     if (target == Mode::Exclusive && !supports_exclusive()) {
         lgr.error("Exclusive display mode {}x{} is unavailable; keeping the current mode")(options.width, options.height);
         return false;

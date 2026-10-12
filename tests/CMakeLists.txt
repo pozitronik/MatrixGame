@@ -140,6 +140,37 @@ add_matrix_test(game.random.missing_file matrixgame_random_configuration_tests g
 add_matrix_test(game.random.configuration_file matrixgame_random_configuration_tests gameplay startup random)
 add_matrix_test(game.random.configuration_report matrixgame_random_configuration_tests gameplay startup random)
 
+add_matrix_test_executable(matrixgame_standalone_settings_tests standalone_settings_tests.cpp
+    ../MatrixGame/src/StandaloneSettings.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+target_include_directories(matrixgame_standalone_settings_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+add_matrix_test(game.settings.defaults matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.explicit_values matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.invalid_values matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.preserves_text matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.round_trip matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.save_utf8 matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.save_wide matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.save_creates_file matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.save_failure matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.unreadable_file matrixgame_standalone_settings_tests startup settings)
+
+add_matrix_test_executable(matrixgame_settings_model_tests settings_model_tests.cpp
+    ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+target_include_directories(matrixgame_settings_model_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+add_matrix_test(game.settings.window_resolutions matrixgame_settings_model_tests ui settings)
+add_matrix_test(game.settings.window_selection matrixgame_settings_model_tests ui settings)
+add_matrix_test(game.settings.window_stepping matrixgame_settings_model_tests ui settings)
+add_matrix_test(game.settings.window_display_modes matrixgame_settings_model_tests ui settings)
+add_matrix_test(game.settings.window_geometry matrixgame_settings_model_tests ui settings)
+add_matrix_test(game.settings.window_text matrixgame_settings_model_tests ui settings)
+add_matrix_test(game.settings.window_hint matrixgame_settings_model_tests ui settings)
+
+add_matrix_test_executable(matrixgame_settings_runtime_tests settings_runtime_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_settings_runtime_tests PRIVATE MatrixGameInternal)
+add_matrix_test(game.settings.startup_settings matrixgame_settings_runtime_tests startup settings)
+add_matrix_test(game.settings.immediate_settings matrixgame_settings_runtime_tests gameplay audio settings)
+add_matrix_test(game.settings.restart_detection matrixgame_settings_runtime_tests settings)
+
 add_matrix_test_executable(matrixgame_random_map_tests random_map_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_random_map_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.random.shared_map_helpers matrixgame_random_map_tests gameplay startup random)
