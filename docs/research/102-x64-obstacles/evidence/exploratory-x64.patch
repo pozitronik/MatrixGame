@@ -1,0 +1,252 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 096fbb8..3075065 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -37,7 +37,7 @@ if(MSVC)
+         $<$<CONFIG:Debug>:/Zi /W3 /Od /GF /Gm- /RTC1>
+     )
+     set(LINK_OPTIONS
+-        /SUBSYSTEM:WINDOWS /DYNAMICBASE:NO /MACHINE:X86
++        /SUBSYSTEM:WINDOWS /DYNAMICBASE:NO
+         $<$<CONFIG:Release>:/INCREMENTAL:NO /OPT:REF /OPT:ICF>
+         $<$<CONFIG:Debug>:/INCREMENTAL /DEBUG>
+     )
+diff --git a/MatrixLib/3G/3g.cpp b/MatrixLib/3G/3g.cpp
+index c3eee8c..6f749be 100644
+--- a/MatrixLib/3G/3g.cpp
++++ b/MatrixLib/3G/3g.cpp
+@@ -43,7 +43,7 @@ D3DCAPS9 g_D3DDCaps;
+ ATOM g_WndA = 0;
+ HWND g_Wnd = 0;
+ bool g_WndExtern = false;
+-DWORD g_WndOldProg = 0;
++LONG_PTR g_WndOldProg = 0;
+ std::wstring g_WndClassName;
+ int g_ScreenX = 0, g_ScreenY = 0;
+ D3DPRESENT_PARAMETERS g_D3Dpp;
+@@ -210,7 +210,7 @@ void L3GInitAsEXE(HINSTANCE hinst, [[maybe_unused]] CBlockPar& bpcfg, const wcha
+             throw CExceptionD3D(__FILE__, __LINE__, cd_res);
+     }
+ 
+-    SetWindowLongPtr(g_Wnd, GWL_WNDPROC, uintptr_t((WNDPROC)L3G_WndProc));
++    SetWindowLongPtr(g_Wnd, GWLP_WNDPROC, uintptr_t((WNDPROC)L3G_WndProc));
+ 
+     IDirect3DSurface9 *surf = nullptr;
+     FAILED_DX(g_D3DD->GetRenderTarget(0, &surf));
+@@ -272,10 +272,10 @@ void L3GInitAsDLL(
+     g_D3D = (IDirect3D9 *)FDirect3D;
+     g_D3DD = (IDirect3DDevice9 *)FD3DDevice;
+ 
+-    g_WndOldProg = GetWindowLong(g_Wnd, GWL_WNDPROC);
++    g_WndOldProg = GetWindowLongPtr(g_Wnd, GWLP_WNDPROC);
+     if (g_WndOldProg == 0)
+         ERROR_E;
+-    if (SetWindowLongPtr(g_Wnd, GWL_WNDPROC, uintptr_t((WNDPROC)L3G_WndProc)) == 0)
++    if (SetWindowLongPtr(g_Wnd, GWLP_WNDPROC, uintptr_t((WNDPROC)L3G_WndProc)) == 0)
+         ERROR_E;
+ 
+     /*IDirect3DSurface9 * surf;
+@@ -330,7 +330,7 @@ void L3GDeinit() {
+         g_WndA = 0;
+     }
+     if (g_WndExtern) {
+-        SetWindowLong(g_Wnd, GWL_WNDPROC, g_WndOldProg);
++        SetWindowLongPtr(g_Wnd, GWLP_WNDPROC, g_WndOldProg);
+     }
+     g_Wnd = nullptr;
+     g_WndOldProg = 0;
+diff --git a/MatrixLib/Base/Pack.cpp b/MatrixLib/Base/Pack.cpp
+index b14a79f..09f4d57 100644
+--- a/MatrixLib/Base/Pack.cpp
++++ b/MatrixLib/Base/Pack.cpp
+@@ -222,6 +222,7 @@ bool CHsFolder::ReadFolder(uintptr_t Handle, uintptr_t Offset) {
+         Clear();
+         return false;
+     }
++    m_SubFolders.assign(m_FolderRec.m_Recnum, nullptr);
+     for (DWORD i = 0; i < m_FolderRec.m_Recnum; ++i) {
+         m_Files[i].m_Extra = 0;
+         m_Files[i].m_NType = m_Files[i].m_Type;
+@@ -232,7 +233,7 @@ bool CHsFolder::ReadFolder(uintptr_t Handle, uintptr_t Offset) {
+     for (DWORD i = 0; i < m_FolderRec.m_Recnum; ++i) {
+         if (m_Files[i].m_Type == FILEEC_FOLDER && m_Files[i].m_Free == 0) {
+             CHsFolder *PFolder = HNew(m_Heap) CHsFolder(m_Files[i].m_RealName, this, m_Heap);
+-            m_Files[i].m_Extra = uintptr_t(PFolder);
++            m_SubFolders[i] = PFolder;
+             if (!PFolder->ReadFolder(Handle, m_Files[i].m_Offset)) {
+                 Clear();
+                 return false;
+@@ -247,12 +248,13 @@ void CHsFolder::Clear(void) {
+         return;
+     for (DWORD i = 0; i < m_FolderRec.m_Recnum; ++i) {
+         if (m_Files[i].m_Type == FILEEC_FOLDER && m_Files[i].m_Free == 0) {
+-            CHsFolder *PFolder = (CHsFolder *)m_Files[i].m_Extra;
++            CHsFolder *PFolder = i < m_SubFolders.size() ? m_SubFolders[i] : nullptr;
+             if (PFolder)
+                 HDelete(CHsFolder, PFolder, m_Heap);
+             m_Files[i].m_Extra = 0;
+         }
+     }
++    m_SubFolders.clear();
+     HFree(m_Files, m_Heap);
+     m_Files = NULL;
+     m_FolderRec.m_Recnum = 0;
+@@ -270,7 +272,7 @@ bool CHsFolder::FileExists(const std::string& name) const {
+     if (PFile->m_Type == FILEEC_FOLDER) {
+         if (rem.empty())
+             return false;
+-        CHsFolder *PFolder = (CHsFolder *)PFile->m_Extra;
++        CHsFolder *PFolder = SubFolder(PFile);
+         return PFolder->FileExists(rem);
+     }
+     return rem.empty();
+@@ -375,7 +377,7 @@ bool CHsFolder::PathExists(const std::string& name) const {
+     if (PFile->m_Type == FILEEC_FOLDER) {
+         if (rem.empty())
+             return true;
+-        CHsFolder *PFolder = (CHsFolder *)PFile->m_Extra;
++        CHsFolder *PFolder = SubFolder(PFile);
+         return PFolder->PathExists(rem);
+     }
+     return rem.empty();
+@@ -391,7 +393,7 @@ SFileRec *CHsFolder::GetFileRecEx(const std::string& name) const {
+     if (PFile->m_Type == FILEEC_FOLDER) {
+         if (rem.empty())
+             return PFile;
+-        CHsFolder *PFolder = (CHsFolder *)PFile->m_Extra;
++        CHsFolder *PFolder = SubFolder(PFile);
+         return PFolder->GetFileRecEx(rem);
+     }
+     return rem.empty() ? PFile : nullptr;
+@@ -670,7 +672,7 @@ DWORD CHsFolder::CompressedFileSize(DWORD Handle, const std::string& filename) {
+     if (PFile->m_Type == FILEEC_FOLDER) {
+         if (rem.empty())
+             return 0xFFFFFFFF;
+-        CHsFolder *PFolder = (CHsFolder *)PFile->m_Extra;
++        CHsFolder *PFolder = SubFolder(PFile);
+         return PFolder->CompressedFileSize(Handle, rem);
+     }
+     if (!rem.empty())
+@@ -753,7 +755,7 @@ DWORD CHsFolder::DecompressedFileSize(DWORD Handle, const std::string& filename)
+     if (PFile->m_Type == FILEEC_FOLDER) {
+         if (rem.empty())
+             return 0xFFFFFFFF;
+-        CHsFolder *PFolder = (CHsFolder *)PFile->m_Extra;
++        CHsFolder *PFolder = SubFolder(PFile);
+         return PFolder->DecompressedFileSize(Handle, rem);
+     }
+     if (!rem.empty())
+@@ -1439,7 +1441,7 @@ void CHsFolder::ListFileNames(FILENAME_CALLBACK_FUNC Func) {
+         SFileRec *PFile = m_Files + i;
+         if (PFile->m_Free == 0) {
+             if (PFile->m_Type == FILEEC_FOLDER) {
+-                CHsFolder *PFolder = (CHsFolder *)PFile->m_Extra;
++                CHsFolder *PFolder = SubFolder(PFile);
+                 if (PFolder == NULL)
+                     ERROR_S(L"Pack file system error!");
+                 PFolder->ListFileNames(Func);
+@@ -1472,7 +1474,7 @@ CHsFolder *CHsFolder::GetFolderEx(const std::string& path) {
+     if (PFile == NULL)
+         return NULL;
+     if (PFile->m_Type == FILEEC_FOLDER) {
+-        CHsFolder *PFolder = (CHsFolder *)PFile->m_Extra;
++        CHsFolder *PFolder = SubFolder(PFile);
+         if (rem.empty())
+             return PFolder;
+         return PFolder->GetFolderEx(rem);
+diff --git a/MatrixLib/Base/Pack.hpp b/MatrixLib/Base/Pack.hpp
+index adc9a9a..d8d6869 100644
+--- a/MatrixLib/Base/Pack.hpp
++++ b/MatrixLib/Base/Pack.hpp
+@@ -44,8 +44,8 @@ struct SFileRec {
+     EFileType m_NType;                     // Тип который должен быть присвоен файлу
+     DWORD m_Free;                          // Свободна данная структура или занята
+     DWORD m_Date;                          // Дата и время файла
+-    uintptr_t m_Offset;  // Смещение данных относительно начала файла
+-    uintptr_t m_Extra;   // Данные во время работы объекта
++    uint32_t m_Offset;  // Смещение данных относительно начала файла
++    uint32_t m_Extra;   // Данные во время работы объекта
+ };
+ #pragma pack(pop)
+ typedef SFileRec *PSFileRec;
+@@ -90,6 +90,8 @@ class CHsFolder : public CMain {
+     std::string m_RealName;  // Имя папки с учетом регистров
+     SFolderRec m_FolderRec;
+     CHsFolder *m_Parent;
++    std::vector<CHsFolder *> m_SubFolders;
++    CHsFolder *SubFolder(const SFileRec *r) const { return m_SubFolders[size_t(r - m_Files)]; }
+     SFileRec *m_Files;  // Память, связанная с файлами
+     // bool        m_ToUpdate;         // Необходимо обновить информацию в пакетном файле
+     // bool        m_ToSave;           // Необходимо записать на новое место в пакетный файл
+diff --git a/MatrixLib/Bitmap/CBitmap.cpp b/MatrixLib/Bitmap/CBitmap.cpp
+index 169ea82..19bd527 100644
+--- a/MatrixLib/Bitmap/CBitmap.cpp
++++ b/MatrixLib/Bitmap/CBitmap.cpp
+@@ -884,7 +884,7 @@ bool CBitmap::LoadFromPNG(void *buf, int buflen) {
+ 
+     uint32_t lenx, leny, countcolor, format;
+ 
+-    uint32_t id = FilePNG::ReadStart_Buf(buf, buflen, &lenx, &leny, &countcolor, &format);
++    uintptr_t id = FilePNG::ReadStart_Buf(buf, buflen, &lenx, &leny, &countcolor, &format);
+     if (id == 0)
+         return false;
+ 
+diff --git a/MatrixLib/CMakeLists.txt b/MatrixLib/CMakeLists.txt
+index 8039a34..a12b161 100644
+--- a/MatrixLib/CMakeLists.txt
++++ b/MatrixLib/CMakeLists.txt
+@@ -122,3 +122,4 @@ endif()
+ target_compile_options(MatrixLib PRIVATE ${COMPILE_OPTIONS})
+ target_compile_definitions(MatrixLib PRIVATE ${COMPILE_DEFINITIONS})
+ target_link_options(MatrixLib PUBLIC "$<$<C_COMPILER_ID:MSVC>:-SAFESEH:NO>")
++set_source_files_properties(Bitmap/FilePNG.cpp PROPERTIES COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:MSVC>:/EHc->")
+diff --git a/tests/dependency_tests.cpp b/tests/dependency_tests.cpp
+index dc00f6b..b838939 100644
+--- a/tests/dependency_tests.cpp
++++ b/tests/dependency_tests.cpp
+@@ -111,7 +111,9 @@ public:
+ 
+ void legacy_pack_blocks() {
+     // Fixed little-endian x86 metadata, with two frozen zlib 1.2.11 ZL02 blocks.
++#ifndef _WIN64
+     static_assert(sizeof(Base::SFileRec) == 158);
++#endif
+     std::vector<unsigned char> bytes(174, 0);
+     put_u32(bytes, 0, 4);
+     put_u32(bytes, 4, 170);
+diff --git a/tests/dll_entry_tests.cpp b/tests/dll_entry_tests.cpp
+index fe378ee..3db90d2 100644
+--- a/tests/dll_entry_tests.cpp
++++ b/tests/dll_entry_tests.cpp
+@@ -113,8 +113,10 @@ void success_values() {
+ }
+ 
+ void interface_layout() {
++#ifndef _WIN64
+     static_assert(sizeof(SMGDRobotInterface) == 16);
+     static_assert(offsetof(SMGDRobotInterface, m_Run) == 12);
++#endif
+     SMGDRangersInterface host{};
+     auto *api = GetRobotInterface();
+     MG_CHECK(api->m_Init && api->m_Deinit && api->m_Support && api->m_Run);
+diff --git a/tests/lifecycle_tests.cpp b/tests/lifecycle_tests.cpp
+index 330c74f..ca38bf7 100644
+--- a/tests/lifecycle_tests.cpp
++++ b/tests/lifecycle_tests.cpp
+@@ -359,14 +359,14 @@ void native_graphics_lifetimes() {
+     api->Release();
+     const ULONG device_references = device->AddRef();
+     device->Release();
+-    const LONG_PTR original_procedure = GetWindowLongPtr(host_window, GWL_WNDPROC);
++    const LONG_PTR original_procedure = GetWindowLongPtr(host_window, GWLP_WNDPROC);
+     {
+         GraphicsSession session;
+         L3GInitAsDLL(GetModuleHandle(nullptr), config, L"MatrixLifecycleTest", L"Lifecycle host",
+             host_window, reinterpret_cast<uintptr_t>(api.get()), reinterpret_cast<uintptr_t>(device.get()));
+         L3GDeinit();
+         MG_CHECK(IsWindow(host_window));
+-        MG_CHECK(GetWindowLongPtr(host_window, GWL_WNDPROC) == original_procedure);
++        MG_CHECK(GetWindowLongPtr(host_window, GWLP_WNDPROC) == original_procedure);
+         MG_CHECK(g_D3D == nullptr && g_D3DD == nullptr && g_Wnd == nullptr);
+         L3GDeinit();
+         MG_CHECK(api->AddRef() == api_references);

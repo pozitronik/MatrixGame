@@ -1,0 +1,391 @@
+Issue 102 exploratory x64 MSVC rerun - CTest evidence
+Source revision: 540251d4662c590bad4684df01e0c521e6c4aee7 (git archive export, no local edits other than the patch files below)
+Patch: exploratory-x64.patch, SHA-256 66e27729f04fc35a9b9f2d4316e5e1980a7cf72502138eb1e730053d5adcfea7
+Stage (cumulative): S2: S1 plus O5 (PNG reader handle kept as uintptr_t)
+Patch files applied (git apply --include from the unmodified patch): S1 files + MatrixLib/Bitmap/CBitmap.cpp
+Compiler: Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36252 for x64
+Toolset: MSVC 14.51.36231 (Visual Studio 18 Community, vcvarsall x64), Windows SDK 10.0.26100.0, CMake/CTest 4.4.4 i386, Ninja 1.11.1
+DirectX: substitute SDK <work>/fake-dxsdk-x64 (see README-stages.txt); runtime d3dx9_43.dll from the x64 system directory
+Configuration: x64 Debug EXE; -G Ninja -DCMAKE_BUILD_TYPE=Debug -DMATRIXGAME_BUILD_DLL=OFF -DMATRIXGAME_CHEATS=OFF -DBUILD_TESTING=ON -DMATRIXGAME_PKG_BRING_FROM_GAME=OFF "-DCMAKE_CXX_FLAGS=/DWIN32 /D_WINDOWS /GR /EHsc /w14311 /w14312 /w14302 /w14267 /w14244 /w14334 /w14305 /w14826 /w14477 /w14313" "-DCMAKE_C_FLAGS=/DWIN32 /D_WINDOWS"; DXSDK_DIR=<work>/fake-dxsdk-x64
+Build directory: <work>/build-x64-Debug (incremental across stages); build succeeded (ninja exit 0)
+CTest command (working directory <work>/build-x64-Debug): <repo>/.tools/cmake-4.4.4-windows-i386/bin/ctest.exe -L engine --output-on-failure --timeout 120
+----- CTest output -----
+Test project <work>/build-x64-Debug
+        Start   1: game.audio.pcm_formats
+  1/172 Test   #1: game.audio.pcm_formats .......................   Passed    0.01 sec
+        Start   2: game.audio.malformed_wave
+  2/172 Test   #2: game.audio.malformed_wave ....................   Passed    0.01 sec
+        Start   3: game.audio.legacy_wave_headers
+  3/172 Test   #3: game.audio.legacy_wave_headers ...............   Passed    0.01 sec
+        Start   4: game.audio.handles_cache
+  4/172 Test   #4: game.audio.handles_cache .....................   Passed    0.01 sec
+        Start   5: game.audio.parameters
+  5/172 Test   #5: game.audio.parameters ........................   Passed    0.01 sec
+        Start   6: game.audio.missing_data
+  6/172 Test   #6: game.audio.missing_data ......................   Passed    0.01 sec
+        Start   7: game.audio.device_failure
+  7/172 Test   #7: game.audio.device_failure ....................   Passed    0.01 sec
+        Start   8: game.audio.shutdown_order
+  8/172 Test   #8: game.audio.shutdown_order ....................   Passed    0.01 sec
+        Start   9: game.audio.layer_lifetime
+  9/172 Test   #9: game.audio.layer_lifetime ....................   Passed    0.01 sec
+        Start  10: game.audio.clear_reentrancy
+ 10/172 Test  #10: game.audio.clear_reentrancy ..................   Passed    0.01 sec
+        Start  11: game.audio.stale_layer_slot
+ 11/172 Test  #11: game.audio.stale_layer_slot ..................   Passed    0.01 sec
+        Start  12: game.audio.host_layer_lifetime
+ 12/172 Test  #12: game.audio.host_layer_lifetime ...............   Passed    0.01 sec
+        Start  13: game.audio.frontend_missing
+ 13/172 Test  #13: game.audio.frontend_missing ..................   Passed    0.01 sec
+        Start  14: game.audio.no_optional_packages
+ 14/172 Test  #14: game.audio.no_optional_packages ..............   Passed    0.01 sec
+        Start  15: game.audio.host_routing
+ 15/172 Test  #15: game.audio.host_routing ......................   Passed    0.01 sec
+        Start  16: game.audio.default_catalog
+ 16/172 Test  #16: game.audio.default_catalog ...................   Passed    0.02 sec
+        Start  17: game.audio.map_spawner_catalog
+ 17/172 Test  #17: game.audio.map_spawner_catalog ...............   Passed    0.02 sec
+        Start  18: game.audio.mapping_override
+ 18/172 Test  #18: game.audio.mapping_override ..................   Passed    0.01 sec
+        Start  19: game.audio.mapping_fallback
+ 19/172 Test  #19: game.audio.mapping_fallback ..................   Passed    0.02 sec
+        Start  20: game.audio.startup_unavailable
+ 20/172 Test  #20: game.audio.startup_unavailable ...............   Passed    0.01 sec
+        Start  21: base.crc.empty
+ 21/172 Test  #21: base.crc.empty ...............................   Passed    0.01 sec
+        Start  22: base.crc.compatibility
+ 22/172 Test  #22: base.crc.compatibility .......................   Passed    0.01 sec
+        Start  23: base.crc.incremental
+ 23/172 Test  #23: base.crc.incremental .........................   Passed    0.01 sec
+        Start  24: base.crc.byte_range
+ 24/172 Test  #24: base.crc.byte_range ..........................   Passed    0.01 sec
+        Start  25: base.point.arithmetic
+ 25/172 Test  #25: base.point.arithmetic ........................   Passed    0.01 sec
+        Start  26: base.point.distance
+ 26/172 Test  #26: base.point.distance ..........................   Passed    0.01 sec
+        Start  27: base.rect.empty
+ 27/172 Test  #27: base.rect.empty ..............................   Passed    0.01 sec
+        Start  28: base.rect.contains
+ 28/172 Test  #28: base.rect.contains ...........................   Passed    0.01 sec
+        Start  29: base.rect.normalize
+ 29/172 Test  #29: base.rect.normalize ..........................   Passed    0.01 sec
+        Start  30: base.storage.nested_growth
+ 30/172 Test  #30: base.storage.nested_growth ...................   Passed    0.01 sec
+        Start  31: base.storage.legacy_format
+ 31/172 Test  #31: base.storage.legacy_format ...................   Passed    0.01 sec
+        Start  32: base.storage.records_and_columns
+ 32/172 Test  #32: base.storage.records_and_columns .............   Passed    0.05 sec
+        Start  33: base.storage.deletion_and_reuse
+ 33/172 Test  #33: base.storage.deletion_and_reuse ..............   Passed    0.01 sec
+        Start  34: base.storage.schema_copy
+ 34/172 Test  #34: base.storage.schema_copy .....................   Passed    0.01 sec
+        Start  35: base.storage.uncompressed_round_trip
+ 35/172 Test  #35: base.storage.uncompressed_round_trip .........   Passed    0.02 sec
+        Start  36: base.storage.compressed_round_trip
+ 36/172 Test  #36: base.storage.compressed_round_trip ...........   Passed    0.02 sec
+        Start  37: base.storage.empty_round_trip
+ 37/172 Test  #37: base.storage.empty_round_trip ................   Passed    0.01 sec
+        Start  38: base.storage.column_compression
+ 38/172 Test  #38: base.storage.column_compression ..............   Passed    0.01 sec
+        Start  39: base.storage.partial_load_cleanup
+ 39/172 Test  #39: base.storage.partial_load_cleanup ............   Passed    0.01 sec
+        Start  40: base.storage.invalid_tag
+ 40/172 Test  #40: base.storage.invalid_tag .....................   Passed    0.01 sec
+        Start  41: base.storage.unsupported_version
+ 41/172 Test  #41: base.storage.unsupported_version .............   Passed    0.01 sec
+        Start  42: base.dependencies.linked_versions
+ 42/172 Test  #42: base.dependencies.linked_versions ............   Passed    0.01 sec
+        Start  43: base.dependencies.legacy_configuration
+ 43/172 Test  #43: base.dependencies.legacy_configuration .......   Passed    0.01 sec
+        Start  44: base.dependencies.multiblock_configuration
+ 44/172 Test  #44: base.dependencies.multiblock_configuration ...   Passed    0.01 sec
+        Start  45: base.dependencies.legacy_pack_blocks
+ 45/172 Test  #45: base.dependencies.legacy_pack_blocks .........***Failed    0.01 sec
+Failed: base.dependencies.legacy_pack_blocks
+<work>\src-x64\tests\dependency_tests.cpp:137: pack.OpenPacketFile()
+
+        Start  46: bitmap.png.legacy_gray
+ 46/172 Test  #46: bitmap.png.legacy_gray .......................   Passed    0.01 sec
+        Start  47: bitmap.png.legacy_rgb
+ 47/172 Test  #47: bitmap.png.legacy_rgb ........................   Passed    0.01 sec
+        Start  48: bitmap.png.legacy_rgba
+ 48/172 Test  #48: bitmap.png.legacy_rgba .......................   Passed    0.01 sec
+        Start  49: bitmap.png.write_round_trip
+ 49/172 Test  #49: bitmap.png.write_round_trip ..................   Passed    0.01 sec
+        Start  50: bitmap.png.invalid
+ 50/172 Test  #50: bitmap.png.invalid ...........................   Passed    0.01 sec
+        Start  51: base.error.single_message
+ 51/172 Test  #51: base.error.single_message ....................   Passed    0.01 sec
+        Start  52: base.error.empty_trace
+ 52/172 Test  #52: base.error.empty_trace .......................   Passed    0.01 sec
+        Start  53: base.error.missing_file
+ 53/172 Test  #53: base.error.missing_file ......................   Passed    0.01 sec
+        Start  54: game.startup.module_unicode
+ 54/172 Test  #54: game.startup.module_unicode ..................   Passed    0.01 sec
+        Start  55: game.startup.module_long
+ 55/172 Test  #55: game.startup.module_long .....................   Passed    0.01 sec
+        Start  56: game.startup.module_failure
+ 56/172 Test  #56: game.startup.module_failure ..................   Passed    0.01 sec
+        Start  57: game.startup.module_truncated
+ 57/172 Test  #57: game.startup.module_truncated ................   Passed    0.01 sec
+        Start  58: game.startup.module_native
+ 58/172 Test  #58: game.startup.module_native ...................   Passed    0.01 sec
+        Start  59: game.startup.resources_missing
+ 59/172 Test  #59: game.startup.resources_missing ...............   Passed    0.01 sec
+        Start  60: game.startup.resources_optional
+ 60/172 Test  #60: game.startup.resources_optional ..............   Passed    0.01 sec
+        Start  61: game.startup.resources_exact_files
+ 61/172 Test  #61: game.startup.resources_exact_files ...........   Passed    0.01 sec
+        Start  62: game.startup.resources_unopened
+ 62/172 Test  #62: game.startup.resources_unopened ..............   Passed    0.01 sec
+        Start  63: base.random.unit_interval
+ 63/172 Test  #63: base.random.unit_interval ....................   Passed    0.01 sec
+        Start  64: base.random.fractional_scales
+ 64/172 Test  #64: base.random.fractional_scales ................   Passed    0.01 sec
+        Start  65: base.random.original_sequence
+ 65/172 Test  #65: base.random.original_sequence ................   Passed    0.01 sec
+        Start  66: base.random.seed_normalization
+ 66/172 Test  #66: base.random.seed_normalization ...............   Passed    0.01 sec
+        Start  67: base.random.floating_bounds
+ 67/172 Test  #67: base.random.floating_bounds ..................   Passed    0.01 sec
+        Start  68: base.random.integer_bounds
+ 68/172 Test  #68: base.random.integer_bounds ...................   Passed    0.01 sec
+        Start  69: base.random.index_bounds
+ 69/172 Test  #69: base.random.index_bounds .....................   Passed    0.01 sec
+        Start  70: base.random.shared_stream
+ 70/172 Test  #70: base.random.shared_stream ....................   Passed    0.01 sec
+        Start  71: base.random.legacy_sequence
+ 71/172 Test  #71: base.random.legacy_sequence ..................   Passed    0.01 sec
+        Start  72: base.random.legacy_seeds
+ 72/172 Test  #72: base.random.legacy_seeds .....................   Passed    0.01 sec
+        Start  73: base.random.legacy_bounds
+ 73/172 Test  #73: base.random.legacy_bounds ....................   Passed    0.01 sec
+        Start  74: base.random.legacy_floating_bounds
+ 74/172 Test  #74: base.random.legacy_floating_bounds ...........   Passed    0.01 sec
+        Start  75: base.random.legacy_width_consumption
+ 75/172 Test  #75: base.random.legacy_width_consumption .........   Passed    0.01 sec
+        Start  76: base.random.legacy_index_mapping
+ 76/172 Test  #76: base.random.legacy_index_mapping .............   Passed    0.01 sec
+        Start  77: base.random.legacy_crt_interop
+ 77/172 Test  #77: base.random.legacy_crt_interop ...............   Passed    0.01 sec
+        Start  78: game.random.default_mode
+ 78/172 Test  #78: game.random.default_mode .....................   Passed    0.01 sec
+        Start  79: game.random.explicit_mode
+ 79/172 Test  #79: game.random.explicit_mode ....................   Passed    0.01 sec
+        Start  80: game.random.invalid_mode
+ 80/172 Test  #80: game.random.invalid_mode .....................   Passed    0.01 sec
+        Start  81: game.random.fixed_battle_mode
+ 81/172 Test  #81: game.random.fixed_battle_mode ................   Passed    0.01 sec
+        Start  82: game.random.missing_file
+ 82/172 Test  #82: game.random.missing_file .....................   Passed    0.01 sec
+        Start  83: game.random.configuration_file
+ 83/172 Test  #83: game.random.configuration_file ...............   Passed    0.01 sec
+        Start  84: game.random.configuration_report
+ 84/172 Test  #84: game.random.configuration_report .............   Passed    0.01 sec
+        Start  85: game.random.shared_map_helpers
+ 85/172 Test  #85: game.random.shared_map_helpers ...............   Passed    0.02 sec
+        Start  86: game.ai.head_price
+ 86/172 Test  #86: game.ai.head_price ...........................   Passed    0.01 sec
+        Start  87: game.ai.no_head
+ 87/172 Test  #87: game.ai.no_head ..............................   Passed    0.01 sec
+        Start  88: game.ai.strength_order
+ 88/172 Test  #88: game.ai.strength_order .......................   Passed    0.01 sec
+        Start  89: game.ai.capacity_bounds
+ 89/172 Test  #89: game.ai.capacity_bounds ......................   Passed    0.01 sec
+        Start  90: game.bomb.ground_target
+ 90/172 Test  #90: game.bomb.ground_target ......................   Passed    0.02 sec
+        Start  91: game.bomb.inactive_target
+ 91/172 Test  #91: game.bomb.inactive_target ....................   Passed    0.01 sec
+        Start  92: game.bomb.destroyed_target
+ 92/172 Test  #92: game.bomb.destroyed_target ...................   Passed    0.01 sec
+        Start  93: game.input.keepalive_dispatch
+ 93/172 Test  #93: game.input.keepalive_dispatch ................   Passed    0.01 sec
+        Start  94: game.input.keepalive_keys
+ 94/172 Test  #94: game.input.keepalive_keys ....................   Passed    0.01 sec
+        Start  95: game.input.keepalive_fresh
+ 95/172 Test  #95: game.input.keepalive_fresh ...................   Passed    0.02 sec
+        Start  96: game.input.ordinary_deactivation
+ 96/172 Test  #96: game.input.ordinary_deactivation .............   Passed    0.01 sec
+        Start  97: game.lifecycle.configuration_cleanup
+ 97/172 Test  #97: game.lifecycle.configuration_cleanup .........   Passed    0.01 sec
+        Start  98: game.lifecycle.empty_configuration
+ 98/172 Test  #98: game.lifecycle.empty_configuration ...........   Passed    0.01 sec
+        Start  99: game.lifecycle.form_transitions
+ 99/172 Test  #99: game.lifecycle.form_transitions ..............   Passed    0.01 sec
+        Start 100: game.lifecycle.form_construction_failure
+100/172 Test #100: game.lifecycle.form_construction_failure .....   Passed    0.01 sec
+        Start 101: game.lifecycle.repeated_forms
+101/172 Test #101: game.lifecycle.repeated_forms ................   Passed    0.01 sec
+        Start 102: game.lifecycle.partial_startup
+102/172 Test #102: game.lifecycle.partial_startup ...............   Passed    0.01 sec
+        Start 103: game.lifecycle.safe_free_without_cache
+103/172 Test #103: game.lifecycle.safe_free_without_cache .......   Passed    0.01 sec
+        Start 104: game.lifecycle.graphics_references
+104/172 Test #104: game.lifecycle.graphics_references ...........   Passed    0.01 sec
+        Start 105: game.lifecycle.cleanup_failure
+105/172 Test #105: game.lifecycle.cleanup_failure ...............   Passed    0.01 sec
+        Start 106: game.lifecycle.standalone_partial_cleanup
+106/172 Test #106: game.lifecycle.standalone_partial_cleanup ....   Passed    0.01 sec
+        Start 107: game.lifecycle.graphics_partial_init
+107/172 Test #107: game.lifecycle.graphics_partial_init .........   Passed    0.01 sec
+        Start 108: game.font.cache_ownership
+108/172 Test #108: game.font.cache_ownership ....................   Passed    0.01 sec
+        Start 109: game.font.device_notifications
+109/172 Test #109: game.font.device_notifications ...............   Passed    0.01 sec
+        Start 110: game.font.missing_font
+110/172 Test #110: game.font.missing_font .......................   Passed    0.01 sec
+        Start 111: game.font.partial_creation
+111/172 Test #111: game.font.partial_creation ...................   Passed    0.01 sec
+        Start 112: game.font.failure_diagnostics
+112/172 Test #112: game.font.failure_diagnostics ................   Passed    0.01 sec
+        Start 113: game.device.operational
+113/172 Test #113: game.device.operational ......................   Passed    0.01 sec
+        Start 114: game.device.lost_wait
+114/172 Test #114: game.device.lost_wait ........................   Passed    0.01 sec
+        Start 115: game.device.reset_order
+115/172 Test #115: game.device.reset_order ......................   Passed    0.01 sec
+        Start 116: game.device.transient_reset
+116/172 Test #116: game.device.transient_reset ..................   Passed    0.01 sec
+        Start 117: game.device.permanent_error
+117/172 Test #117: game.device.permanent_error ..................   Passed    0.01 sec
+        Start 118: game.device.present_loss
+118/172 Test #118: game.device.present_loss .....................   Passed    0.01 sec
+        Start 119: game.display.defaults
+119/172 Test #119: game.display.defaults ........................   Passed    0.01 sec
+        Start 120: game.display.options
+120/172 Test #120: game.display.options .........................   Passed    0.01 sec
+        Start 121: game.display.invalid_options
+121/172 Test #121: game.display.invalid_options .................   Passed    0.01 sec
+        Start 122: game.display.files
+122/172 Test #122: game.display.files ...........................   Passed    0.01 sec
+        Start 123: game.display.toggle_pairs
+123/172 Test #123: game.display.toggle_pairs ....................   Passed    0.01 sec
+        Start 124: game.display.shortcut
+124/172 Test #124: game.display.shortcut ........................   Passed    0.01 sec
+        Start 125: game.display.coordinates
+125/172 Test #125: game.display.coordinates .....................   Passed    0.01 sec
+        Start 126: game.display.reset_parameters
+126/172 Test #126: game.display.reset_parameters ................   Passed    0.01 sec
+        Start 127: game.display.transition_order
+127/172 Test #127: game.display.transition_order ................   Passed    0.01 sec
+        Start 128: game.display.transition_failure
+128/172 Test #128: game.display.transition_failure ..............   Passed    0.01 sec
+        Start 129: game.selection.queued_moves
+129/172 Test #129: game.selection.queued_moves ..................   Passed    0.01 sec
+        Start 130: game.selection.latest_rectangle
+130/172 Test #130: game.selection.latest_rectangle ..............   Passed    0.01 sec
+        Start 131: game.selection.release_before_frame
+131/172 Test #131: game.selection.release_before_frame ..........   Passed    0.01 sec
+        Start 132: game.selection.reversed_mask
+132/172 Test #132: game.selection.reversed_mask .................   Passed    0.01 sec
+        Start 133: game.selection.cancel_pending
+133/172 Test #133: game.selection.cancel_pending ................   Passed    0.01 sec
+        Start 134: game.selection.canceled_release
+134/172 Test #134: game.selection.canceled_release ..............   Passed    0.01 sec
+        Start 135: game.selection.number_cancel
+135/172 Test #135: game.selection.number_cancel .................   Passed    0.01 sec
+        Start 136: game.selection.limit_order
+136/172 Test #136: game.selection.limit_order ...................   Passed    0.01 sec
+        Start 137: game.selection.small_rectangle
+137/172 Test #137: game.selection.small_rectangle ...............   Passed    0.01 sec
+        Start 138: game.selection.object_teardown
+138/172 Test #138: game.selection.object_teardown ...............   Passed    0.01 sec
+        Start 139: game.selection.display_cancel
+139/172 Test #139: game.selection.display_cancel ................   Passed    0.01 sec
+        Start 140: game.text.words_colors
+140/172 Test #140: game.text.words_colors .......................   Passed    0.01 sec
+        Start 141: game.text.inline_unicode
+141/172 Test #141: game.text.inline_unicode .....................   Passed    0.01 sec
+        Start 142: game.text.newlines
+142/172 Test #142: game.text.newlines ...........................   Passed    0.01 sec
+        Start 143: game.text.bounded_color
+143/172 Test #143: game.text.bounded_color ......................   Passed    0.01 sec
+        Start 144: game.text.invalid_color
+144/172 Test #144: game.text.invalid_color ......................   Passed    0.01 sec
+        Start 145: game.text.many_tags
+145/172 Test #145: game.text.many_tags ..........................   Passed    0.04 sec
+        Start 146: game.text.line_layout
+146/172 Test #146: game.text.line_layout ........................   Passed    0.01 sec
+        Start 147: game.cheats.suffix_matching
+147/172 Test #147: game.cheats.suffix_matching ..................   Passed    0.02 sec
+        Start 148: game.cheats.flag_toggles
+148/172 Test #148: game.cheats.flag_toggles .....................   Passed    0.02 sec
+        Start 149: game.cheats.resource_limit
+149/172 Test #149: game.cheats.resource_limit ...................   Passed    0.01 sec
+        Start 150: game.cheats.console
+150/172 Test #150: game.cheats.console ..........................   Passed    0.01 sec
+        Start 151: game.input.mouse_focus_reset
+151/172 Test #151: game.input.mouse_focus_reset .................   Passed    0.02 sec
+        Start 152: game.input.mouse_fresh_press
+152/172 Test #152: game.input.mouse_fresh_press .................   Passed    0.01 sec
+        Start 153: game.input.console_shift_focus
+153/172 Test #153: game.input.console_shift_focus ...............   Passed    0.01 sec
+        Start 154: game.input.console_editing
+154/172 Test #154: game.input.console_editing ...................   Passed    0.01 sec
+        Start 155: game.input.input_only_mouse_reset
+155/172 Test #155: game.input.input_only_mouse_reset ............   Passed    0.01 sec
+        Start 156: game.input.input_only_console_reset
+156/172 Test #156: game.input.input_only_console_reset ..........   Passed    0.01 sec
+        Start 157: game.input.display_shortcut
+157/172 Test #157: game.input.display_shortcut ..................   Passed    0.02 sec
+        Start 158: game.input.pointer_left
+158/172 Test #158: game.input.pointer_left ......................   Passed    0.01 sec
+        Start 159: game.input.screenshot_deferred
+159/172 Test #159: game.input.screenshot_deferred ...............   Passed    0.01 sec
+        Start 160: game.input.key_state
+160/172 Test #160: game.input.key_state .........................   Passed    0.01 sec
+        Start 161: game.input.focus_reset
+161/172 Test #161: game.input.focus_reset .......................   Passed    0.01 sec
+        Start 162: game.input.action_bindings
+162/172 Test #162: game.input.action_bindings ...................   Passed    0.01 sec
+        Start 163: base.compiler.exception_unwind
+163/172 Test #163: base.compiler.exception_unwind ...............   Passed    0.01 sec
+        Start 164: base.compiler.failure_report
+164/172 Test #164: base.compiler.failure_report .................   Passed    0.03 sec
+        Start 165: game.dll.engine_init_failure
+165/172 Test #165: game.dll.engine_init_failure .................   Passed    0.01 sec
+        Start 166: game.dll.standard_init_failure
+166/172 Test #166: game.dll.standard_init_failure ...............   Passed    0.01 sec
+        Start 167: game.dll.unknown_init_failure
+167/172 Test #167: game.dll.unknown_init_failure ................   Passed    0.01 sec
+        Start 168: game.dll.form_failure
+168/172 Test #168: game.dll.form_failure ........................   Passed    0.01 sec
+        Start 169: game.dll.loop_failure
+169/172 Test #169: game.dll.loop_failure ........................   Passed    0.01 sec
+        Start 170: game.dll.result_failure
+170/172 Test #170: game.dll.result_failure ......................   Passed    0.01 sec
+        Start 171: game.dll.success_values
+171/172 Test #171: game.dll.success_values ......................   Passed    0.01 sec
+        Start 172: game.dll.interface_layout
+172/172 Test #172: game.dll.interface_layout ....................   Passed    0.01 sec
+
+99% tests passed, 1 tests failed out of 172
+
+Label Time Summary:
+ai              =   0.04 sec*proc (4 tests)
+asset-free      =   1.83 sec*proc (172 tests)
+audio           =   0.25 sec*proc (22 tests)
+base            =   0.48 sec*proc (45 tests)
+bitmap          =   0.04 sec*proc (5 tests)
+compiler        =   0.04 sec*proc (2 tests)
+crc             =   0.03 sec*proc (4 tests)
+dependencies    =   0.08 sec*proc (9 tests)
+dll             =   0.09 sec*proc (8 tests)
+engine          =   1.83 sec*proc (172 tests)
+gameplay        =   0.63 sec*proc (58 tests)
+geometry        =   0.04 sec*proc (5 tests)
+input           =   0.49 sec*proc (44 tests)
+memory          =   0.09 sec*proc (8 tests)
+pack            =   0.01 sec*proc (1 test)
+png             =   0.04 sec*proc (5 tests)
+random          =   0.19 sec*proc (23 tests)
+rendering       =   0.26 sec*proc (26 tests)
+startup         =   0.48 sec*proc (45 tests)
+storage         =   0.21 sec*proc (14 tests)
+ui              =   0.08 sec*proc (7 tests)
+
+Total Test time (real) =   1.94 sec
+
+The following tests FAILED:
+	 45 - base.dependencies.legacy_pack_blocks (Failed)     asset-free base dependencies engine pack
+Errors while running CTest

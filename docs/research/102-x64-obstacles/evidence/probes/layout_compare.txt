@@ -1,0 +1,47 @@
+arch x86                                           x86  x86   x64   DIFF
+sizeof void                                           4    4     8   DIFF
+sizeof long                                           4    4     4
+sizeof dword                                          4    4     4
+sizeof DWORD                                          4    4     4
+sizeof wchar_t                                        2    2     2
+sizeof size_t                                         4    4     8   DIFF
+sizeof bool                                           1    1     1
+sizeof long                                          12    8     8   DIFF
+sizeof Base::EFileType                                4    4     4
+sizeof Base::SFileRec                               158  158   166   DIFF
+offset Base::SFileRec::m_Type                       134  134   134
+offset Base::SFileRec::m_Offset                     150  150   150
+offset Base::SFileRec::m_Extra                      154  154   158   DIFF
+sizeof Base::SFolderRec                              12   12    12
+sizeof Base::SFileHandleRec                          32   32    48   DIFF
+sizeof SCompilePoint                                 12   12    12
+sizeof SCompileMove                                  16   16    16
+sizeof SCompileMoveCell                              64   64    64
+sizeof SCompileBottomVert                             8    8     8
+sizeof Base::CRect                                   16   16    16
+sizeof SVOHeader                                     80   80    80
+sizeof SVOVertexNorTex                               32   32    32
+sizeof SVOMaterial                                  136  136   136
+sizeof SVOGroup                                      32   32    32
+sizeof SVOFrame                                      64   64    64
+sizeof SVOAnimHeader                                 80   80    80
+sizeof SVOMatrixHeader                               80   80    80
+sizeof SVOFrameEdge                                   8    8     8
+sizeof SVOEdge                                       12   12    12
+sizeof SRobotsSettings                               56   56    56
+offset SRobotsSettings::FD3DDevice                    4    4     4
+offset SRobotsSettings::m_ShowStencilShadows          8    8     8
+offset SRobotsSettings::m_BPP                        16   16    16
+offset SRobotsSettings::m_Brightness                 32   32    32
+offset SRobotsSettings::m_FSAASamples                40   40    40
+offset SRobotsSettings::m_MaxDistance                48   48    48
+offset SRobotsSettings::m_VSync                      52   52    52
+sizeof SRobotGameState                               24   24    24
+sizeof SMGDRobotInterface                            16   16    32   DIFF
+offset SMGDRobotInterface::m_Run                     12   12    24   DIFF
+sizeof SMGDRangersInterface                          64   64   128   DIFF
+offset SMGDRangersInterface::m_RangersText           36   36    72   DIFF
+offset SMGDRangersInterface::m_MusicVolumeSet        60   60   120   DIFF
+sizeof SMGDRangersInterfaceText                      20   20    32   DIFF
+offset SMGDRangersInterfaceText::m_Buf                4    4     8   DIFF
+offset SMGDRangersInterfaceText::m_Pitch              8    8    16   DIFF
