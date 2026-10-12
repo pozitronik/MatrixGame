@@ -8,6 +8,8 @@
 
 #include <windows.h>
 #include "MatrixMap.hpp"
+#include "SettingsWindow.hpp"
+#include "ShadowPasses.hpp"
 #include "MatrixMapStatic.hpp"
 #include "MatrixObject.hpp"
 #include "MatrixObjectBuilding.hpp"
@@ -1783,10 +1785,8 @@ void CMatrixMap::DrawShadowsProjFast(void) {
     ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP));
 }
 
-void CMatrixMap::DrawShadows(void) {
+void CMatrixMap::DrawShadows(const ShadowPasses &passes) {
     DTRACE();
-
-    CVOShadowStencil::BeforeRenderAll();
 
     ASSERT_DX(g_D3DD->SetTransform(D3DTS_WORLD, &GetIdentityMatrix()));
 
@@ -1807,74 +1807,78 @@ void CMatrixMap::DrawShadows(void) {
     ASSERT_DX(g_D3DD->SetRenderState(D3DRS_SRCBLEND, D3DBLEND_ZERO));
     ASSERT_DX(g_D3DD->SetRenderState(D3DRS_DESTBLEND, D3DBLEND_ONE));
 
-    if (g_D3DDCaps.StencilCaps & D3DSTENCILCAPS_TWOSIDED) {
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_TWOSIDEDSTENCILMODE, TRUE));
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CCW_STENCILFUNC, D3DCMP_ALWAYS));
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CCW_STENCILZFAIL, D3DSTENCILOP_KEEP));
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CCW_STENCILFAIL, D3DSTENCILOP_KEEP));
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CCW_STENCILPASS, D3DSTENCILOP_DECR));
+    if (passes.volumes) {
+        CVOShadowStencil::BeforeRenderAll();
 
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
+        if (g_D3DDCaps.StencilCaps & D3DSTENCILCAPS_TWOSIDED) {
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_TWOSIDEDSTENCILMODE, TRUE));
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CCW_STENCILFUNC, D3DCMP_ALWAYS));
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CCW_STENCILZFAIL, D3DSTENCILOP_KEEP));
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CCW_STENCILFAIL, D3DSTENCILOP_KEEP));
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CCW_STENCILPASS, D3DSTENCILOP_DECR));
 
-        CMatrixMapStatic::SortEndDrawShadowStencil();
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CULLMODE, D3DCULL_NONE));
 
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_TWOSIDEDSTENCILMODE, FALSE));
-    }
-    else {
-        CMatrixMapStatic::SortEndDrawShadowStencil();
+            CMatrixMapStatic::SortEndDrawShadowStencil();
 
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CULLMODE, D3DCULL_CW));
-        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_DECR));
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_TWOSIDEDSTENCILMODE, FALSE));
+        }
+        else {
+            CMatrixMapStatic::SortEndDrawShadowStencil();
 
-        CMatrixMapStatic::SortEndDrawShadowStencil();
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CULLMODE, D3DCULL_CW));
+            ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_DECR));
+
+            CMatrixMapStatic::SortEndDrawShadowStencil();
+        }
     }
     ASSERT_DX(g_D3DD->SetRenderState(D3DRS_CULLMODE, D3DCULL_CCW));
     ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_INCR));
 
 #ifdef RENDER_PROJ_SHADOWS_IN_STENCIL_PASS
-    // Shadow proj
+    if (passes.projected) {
+        CVOShadowProj::BeforeRenderAll();
 
-    CVOShadowProj::BeforeRenderAll();
+        ASSERT_DX(g_D3DD->SetTransform(D3DTS_WORLD, &GetIdentityMatrix()));
 
-    ASSERT_DX(g_D3DD->SetTransform(D3DTS_WORLD, &GetIdentityMatrix()));
+        ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP));
+        ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP));
 
-    ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_CLAMP));
-    ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_CLAMP));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_ALPHAREF, 0x8));
 
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_ALPHATESTENABLE, TRUE));
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_ALPHAFUNC, D3DCMP_GREATEREQUAL));
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_ALPHAREF, 0x8));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP));
 
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILFUNC, D3DCMP_ALWAYS));
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILZFAIL, D3DSTENCILOP_KEEP));
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILFAIL, D3DSTENCILOP_KEEP));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILREF, 0x1));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILMASK, 0xffffffff));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff));
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE));
 
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILREF, 0x1));
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILMASK, 0xffffffff));
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILWRITEMASK, 0xffffffff));
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_REPLACE));
+        SetColorOpSelect(0, D3DTA_TEXTURE);
+        SetAlphaOpSelect(0, D3DTA_TEXTURE);
+        SetColorOpDisable(1);
 
-    SetColorOpSelect(0, D3DTA_TEXTURE);
-    SetAlphaOpSelect(0, D3DTA_TEXTURE);
-    SetColorOpDisable(1);
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_COLORWRITEENABLE, 0x0));
 
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_COLORWRITEENABLE, 0x0));
+        CMatrixMapStatic::SortEndDrawShadowProj();
+        int cnt = m_VisibleGroupsCount;
+        CMatrixMapGroup **md = m_VisibleGroups;
+        while (cnt > 0) {
+            (*md)->DrawShadowProj();
+            md++;
+            cnt--;
+        }
 
-    CMatrixMapStatic::SortEndDrawShadowProj();
-    int cnt = m_VisibleGroupsCount;
-    CMatrixMapGroup **md = m_VisibleGroups;
-    while (cnt > 0) {
-        (*md)->DrawShadowProj();
-        md++;
-        cnt--;
+        ASSERT_DX(g_D3DD->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF));
+
+        ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP));
+        ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP));
+
+        ASSERT_DX(g_D3DD->SetTexture(0, NULL));
     }
-
-    ASSERT_DX(g_D3DD->SetRenderState(D3DRS_COLORWRITEENABLE, 0xF));
-
-    ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSU, D3DTADDRESS_WRAP));
-    ASSERT_DX(g_D3DD->SetSamplerState(0, D3DSAMP_ADDRESSV, D3DTADDRESS_WRAP));
-
-    ASSERT_DX(g_D3DD->SetTexture(0, NULL));
 #endif
 
     ASSERT_DX(g_D3DD->SetRenderState(D3DRS_STENCILPASS, D3DSTENCILOP_DECR));
@@ -2212,13 +2216,15 @@ void CMatrixMap::Draw(void) {
     for (int i = 0; i < 4; i++) {
         ASSERT_DX(g_D3DD->SetSamplerState(i, D3DSAMP_MIPMAPLODBIAS, *((LPDWORD)(&(fBias)))));
     }
+    auto shadows = shadow_passes(g_Config);
 #ifndef RENDER_PROJ_SHADOWS_IN_STENCIL_PASS
-    if (g_Config.m_ShowProjShadows) {
+    if (shadows.projected) {
         DrawShadowsProjFast();
     }
+    shadows.projected = false;
 #endif
-    if (g_Config.m_ShowStencilShadows) {
-        DrawShadows();
+    if (shadows.stencil_pass()) {
+        DrawShadows(shadows);
     }
 
     DrawEffects();
@@ -3141,6 +3147,7 @@ void CMatrixMap::AddEffectSpawner(float x, float y, float z, int ttl, const std:
 }
 
 void CMatrixMap::LeaveDialogMode(void) {
+    SettingsWindow::menu_closed();
     if (m_DialogModeName == NULL)
         return;
 
@@ -3222,6 +3229,7 @@ void ConfirmCancelHandler(void) {
 }
 
 static void CreateConfirmation(const wchar *hint, DialogButtonHandler handler) {
+    SettingsWindow::menu_closed();
     g_IFaceList->DisableMainMenuButton(HINT_CANCEL_MENU);
     g_IFaceList->DisableMainMenuButton(HINT_CONTINUE);
     g_IFaceList->DisableMainMenuButton(HINT_SURRENDER);
@@ -3321,6 +3329,9 @@ void CMatrixMap::EnterDialogMode(const wchar *hint_i) {
                 }
             }
 
+            if (0 == wcscmp(hint, TEMPLATE_DIALOG_MENU)) {
+                SettingsWindow::customize_menu(templ);
+            }
             CMatrixHint *h = CMatrixHint::Build(templ, g_MatrixData->BlockGet(PAR_REPLACE), hint);
 
             if (0 == wcscmp(hint, TEMPLATE_DIALOG_MENU)) {

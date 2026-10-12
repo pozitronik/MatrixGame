@@ -12,7 +12,7 @@ Values remain strings until a caller asks for a bool, integer, floating value, h
 
 During standalone startup, [CGame::Init](../MatrixGame/src/MatrixGame.cpp) looks for `CFG/robots.dat`; DLL startup uses `CFG/<lang>/robots.dat` when the host supplies a language. A present file must load successfully; an unsupported packed format is an error. If it is absent, the engine loads `CFG/robots/data.txt`. Packed startup restores the `da` tree and reads `CFG/robots/cfg.txt` when present. Nonempty text in that file clears and replaces the restored `Config` block rather than merging entries; an empty file leaves it unchanged. Interface loading uses packed `if` or the tracked interface text according to the same configuration selection. Merely placing new text beside a present packed configuration does not select text-only startup.
 
-Standalone resolution and window-mode overrides are read from the separate `CFG/standalone.txt` file and apply with either packed or text game data. They replace the embedded `Config` block's `Resolution`/`FullScreen` choices for the EXE. The DLL continues to use host-provided settings. See [Display settings](DISPLAY.md) for values and fallback behavior.
+Standalone resolution and window-mode overrides are read from the separate `CFG/standalone.txt` file and apply with either packed or text game data. They replace the embedded `Config` block's `Resolution`/`FullScreen` choices for the EXE. The DLL continues to use host-provided settings. See [Display settings](DISPLAY.md) for values and fallback behavior. The same file stores volume, shadow, sky, camera-speed and random-generator options; [Settings window](SETTINGS.md) lists every key and how the in-game window rewrites the file.
 
 ## STRG storage and packed configuration
 

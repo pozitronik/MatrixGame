@@ -78,6 +78,21 @@ void parameters() {
     f.service.destroy(id); MG_CHECK(f.service.volume(id) == 0 && f.service.pan(id) == 0);
 }
 
+void master_volume() {
+    Fixture f; const auto a = f.service.create(L"Sound.A", true); const auto b = f.service.create(L"Sound.B", false);
+    f.service.volume(a, 0.5f); f.service.master_volume(0.5f);
+    MG_CHECK(f.device->voices[0]->volume == 0.25f && f.device->voices[1]->volume == 0.5f);
+    MG_CHECK(f.service.volume(a) == 0.5f && f.service.volume(b) == 1 && f.service.master_volume() == 0.5f);
+    const auto c = f.service.create(L"Sound.A", false); MG_CHECK(f.device->voices[2]->volume == 0.5f);
+    f.service.volume(c, 0.2f); MG_CHECK(f.device->voices[2]->volume == 0.1f && f.service.volume(c) == 0.2f);
+    f.service.master_volume(std::numeric_limits<float>::quiet_NaN());
+    MG_CHECK(f.service.master_volume() == 0 && f.device->voices[0]->volume == 0 && f.device->voices[1]->volume == 0);
+    f.service.master_volume(3); MG_CHECK(f.service.master_volume() == 1 && f.device->voices[0]->volume == 0.5f);
+    f.device->voices[1]->fail_volume = true; f.service.master_volume(0.5f);
+    MG_CHECK(!f.service.playing(b) && f.device->voices[1]->destroyed == 1 && f.reports == 1);
+    MG_CHECK(f.device->voices[0]->volume == 0.25f && f.device->voices[2]->volume == 0.1f);
+}
+
 void missing_data() {
     Fixture f; f.fail_load = true;
     for (int i = 0; i < 8; ++i) MG_CHECK(f.service.create(L"Sound.A", false) == Audio::invalid_id);
@@ -122,6 +137,7 @@ constexpr tests::Case cases[] = {
     {"game.audio.pcm_formats", pcm_formats}, {"game.audio.malformed_wave", malformed_wave},
     {"game.audio.legacy_wave_headers", legacy_wave_headers},
     {"game.audio.handles_cache", handles_and_cache}, {"game.audio.parameters", parameters},
+    {"game.audio.master_volume", master_volume},
     {"game.audio.missing_data", missing_data}, {"game.audio.device_failure", device_failure},
     {"game.audio.shutdown_order", shutdown_order},
 };

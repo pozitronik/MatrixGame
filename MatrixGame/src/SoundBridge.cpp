@@ -8,11 +8,13 @@
 #include <utils.hpp>
 #include <stdexcept>
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 
 namespace SoundBridge {
 namespace {
 std::unique_ptr<Audio::Service> standalone;
+float master = 1.0f;
 Audio::Mapping sound_mapping() {
     auto mapping = Audio::default_sound_mapping();
     try {
@@ -61,7 +63,10 @@ std::vector<uint8_t> load(const std::wstring &path) {
 } // namespace
 
 bool available() { return g_RangersInterface != nullptr || standalone != nullptr; }
-void install(std::unique_ptr<Audio::Service> service) { standalone = std::move(service); }
+void install(std::unique_ptr<Audio::Service> service) {
+    standalone = std::move(service);
+    if (standalone) standalone->master_volume(master);
+}
 void shutdown() { standalone.reset(); }
 
 void initialize_standalone(bool resources_available) {
@@ -106,6 +111,10 @@ void volume(uint32_t id, float value) {
 void pan(uint32_t id, float value) {
     if (g_RangersInterface) g_RangersInterface->m_SoundPan(id, value);
     else if (standalone) standalone->pan(id, value);
+}
+void master_volume(float value) {
+    master = std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : 0.0f;
+    if (standalone) standalone->master_volume(master);
 }
 float volume(uint32_t id) {
     if (g_RangersInterface) return g_RangersInterface->m_SoundGetVolume(id);

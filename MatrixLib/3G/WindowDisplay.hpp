@@ -12,6 +12,9 @@ bool supports_exclusive();
 void apply_window(Mode mode);
 void configure_parameters(D3DPRESENT_PARAMETERS &parameters);
 HRESULT reset_device(const D3DPRESENT_PARAMETERS &parameters);
+Mode fullscreen_mode();
+// Queues a switch to target (applied by apply_pending) and sets the Alt+Enter fullscreen mode.
+void request(Mode target, Mode fullscreen);
 bool handle_shortcut(UINT message, WPARAM key, LPARAM flags);
 void focus_lost();
 void confine_cursor();

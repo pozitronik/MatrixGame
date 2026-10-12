@@ -1,6 +1,6 @@
 # Resolution and display modes
 
-Edit `CFG/standalone.txt` beside `MatrixGame.exe`, then restart the game. These settings apply to the standalone EXE with either `CFG/robots.dat` or the text game configuration. They do not change the DLL host's display settings. Source builds copy this file from `MatrixGame/CFG/standalone.txt` each time, so edit the source copy if you want settings to survive rebuilding.
+Use the in-game [Settings window](SETTINGS.md), or edit `CFG/standalone.txt` beside `MatrixGame.exe` and restart the game. These settings apply to the standalone EXE with either `CFG/robots.dat` or the text game configuration. They do not change the DLL host's display settings. Source builds copy this file from `MatrixGame/CFG/standalone.txt` each time, so edit the source copy if you want settings to survive rebuilding.
 
 ```text
 ResolutionWidth=1920
@@ -28,7 +28,7 @@ The EXE's [application manifest](https://learn.microsoft.com/en-us/windows/win32
 
 **Exclusive** asks DirectX to use an enumerated fullscreen mode at the configured resolution and the driver's default refresh rate. If that resolution is unavailable at startup, the game logs the reason and starts windowed. If it is unavailable when toggling, the current mode is retained. A failed switch attempts to restore the previous mode; a permanent recovery failure exits through the normal DirectX diagnostic.
 
-Press **Alt+Enter** to switch between windowed mode and the configured fullscreen mode. If the game starts in `Borderless` or `Exclusive`, that starting mode becomes the fullscreen member of the pair. Holding the shortcut switches once. The shortcut does not dismiss dialogs or activate Enter's robot-control command. Resolution remains fixed until restart, and toggles do not rewrite the configuration file.
+Press **Alt+Enter** to switch between windowed mode and the configured fullscreen mode. If the game starts in `Borderless` or `Exclusive`, that starting mode becomes the fullscreen member of the pair. Holding the shortcut switches once. The shortcut does not dismiss dialogs or activate Enter's robot-control command. Resolution remains fixed until restart, and toggles do not rewrite the configuration file. The Settings window shows the current mode and saves it when its changes are applied.
 
 Windowed/borderless switches change only the window; the rendering surface and game resources remain in place. Exclusive switches run between frames and use the existing device-resource release/reset/restore path. Reset receives a copy of the presentation settings because [DirectX modifies that input structure](https://learn.microsoft.com/en-us/windows/win32/api/d3d9/nf-d3d9-idirect3ddevice9-reset), including its dimensions. Failed resets retain the intended settings for recovery.
 

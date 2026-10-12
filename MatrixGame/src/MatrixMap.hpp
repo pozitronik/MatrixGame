@@ -257,6 +257,7 @@ enum {
 };
 
 class CMatrixHint;
+struct ShadowPasses;
 
 /**
  * @brief Represents game world scene.
@@ -732,7 +733,7 @@ public:
     void DrawObjects(void);
     void DrawWater(void);
     void DrawShadowsProjFast(void);
-    void DrawShadows(void);
+    void DrawShadows(const ShadowPasses &passes);
     void DrawEffects(void);
     void DrawSky(void);
 

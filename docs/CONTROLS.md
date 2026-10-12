@@ -15,9 +15,9 @@ Keyboard action defaults are defined by `CMatrixConfig::SetDefaults`. The active
 | Manual control | Enter or Space enters the selected robot and returns to tactical control. `W/A/S/D` and arrows move in robot mode; `E` detonates its bomb. |
 | Construction | Select the base and press `B` for the robot constructor; `T` opens turret construction when an eligible building is selected. |
 | Pause | The fixed Pause key toggles battle pause outside a modal dialog. |
-| Dialogs and menu | The fixed Enter key activates a confirmation checkmark. In the main menu, fixed `R`, `S`, `E` request restart, surrender and exit; Escape cancels its confirmation or closes the menu. Other dialogs ignore Escape. Outside a dialog, Escape leaves manual robot control or opens the menu; in full-auto mode it exits the loop. |
+| Dialogs and menu | The fixed Enter key activates a confirmation checkmark. In the main menu, fixed `R`, `S`, `E` request restart, surrender and exit, and `C` opens the standalone [Settings window](SETTINGS.md); Escape cancels its confirmation or closes the menu. In the Settings window, Up/Down select an option, Left/Right change it, Enter applies and Escape returns to the menu. Other dialogs ignore Escape. Outside a dialog, Escape leaves manual robot control or opens the menu; in full-auto mode it exits the loop. |
 
-Pause, Escape, Enter for the checkmark, menu `R`/`S`/`E`, the middle mouse button and the wheel are fixed handlers in [MatrixFormGame.cpp](../MatrixGame/src/MatrixFormGame.cpp). For example, rebinding the Stop action does not change the menu's `S` key. Manual-mode Enter/Space remain action bindings; their role differs from the fixed dialog Enter handler.
+Pause, Escape, Enter for the checkmark, menu `R`/`S`/`E`/`C`, the Settings window keys, the middle mouse button and the wheel are fixed handlers in [MatrixFormGame.cpp](../MatrixGame/src/MatrixFormGame.cpp). For example, rebinding the Stop action does not change the menu's `S` key. Manual-mode Enter/Space remain action bindings; their role differs from the fixed dialog Enter handler.
 
 ### Debug shortcuts
 
