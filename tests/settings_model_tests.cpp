@@ -112,7 +112,7 @@ void text() {
     MG_CHECK(window.value(row(Row::DisplayGroup)).empty());
 
     MG_CHECK(detect_language(L"settings (c)") == Language::English);
-    MG_CHECK(detect_language(L"настройки (c)") == Language::Russian);
+    MG_CHECK(detect_language(L"\u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 (c)") == Language::Russian);
     Window russian({}, {}, Language::Russian);
     for (int i = 0; i < row_count; ++i) {
         MG_CHECK(!russian.label(i).empty());

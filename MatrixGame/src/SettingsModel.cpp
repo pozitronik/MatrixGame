@@ -160,45 +160,45 @@ const wchar_t *Window::text(const wchar_t *english, const wchar_t *russian) cons
 }
 
 std::wstring Window::title() const {
-    return text(L"Settings", L"Настройки");  // Nastroiki
+    return text(L"Settings", L"\u041d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438");  // Nastroiki
 }
 
 std::wstring Window::label(int row) const {
     std::wstring result;
     switch (static_cast<Row>(row)) {
-        case Row::DisplayGroup: result = text(L"Display", L"Экран"); break;
+        case Row::DisplayGroup: result = text(L"Display", L"\u042d\u043a\u0440\u0430\u043d"); break;
         case Row::Resolution:
-            result = text(L"Resolution", L"Разрешение");
+            result = text(L"Resolution", L"\u0420\u0430\u0437\u0440\u0435\u0448\u0435\u043d\u0438\u0435");
             break;
         case Row::WindowMode:
-            result = text(L"Window mode", L"Режим окна");
+            result = text(L"Window mode", L"\u0420\u0435\u0436\u0438\u043c \u043e\u043a\u043d\u0430");
             break;
         case Row::FullscreenMode: result = L"Alt+Enter"; break;
-        case Row::SoundGroup: result = text(L"Sound", L"Звук"); break;
+        case Row::SoundGroup: result = text(L"Sound", L"\u0417\u0432\u0443\u043a"); break;
         case Row::SoundVolume:
-            result = text(L"Volume", L"Громкость");
+            result = text(L"Volume", L"\u0413\u0440\u043e\u043c\u043a\u043e\u0441\u0442\u044c");
             break;
-        case Row::GraphicsGroup: result = text(L"Graphics", L"Графика"); break;
+        case Row::GraphicsGroup: result = text(L"Graphics", L"\u0413\u0440\u0430\u0444\u0438\u043a\u0430"); break;
         case Row::StencilShadows:
             result = text(L"Stencil shadows",
-                          L"Объёмные тени");
+                          L"\u041e\u0431\u044a\u0451\u043c\u043d\u044b\u0435 \u0442\u0435\u043d\u0438");
             break;
         case Row::ProjectedShadows:
-            result = text(L"Projected shadows", L"Проекционн"
-                                                L"ые тени");
+            result = text(L"Projected shadows", L"\u041f\u0440\u043e\u0435\u043a\u0446\u0438\u043e\u043d\u043d"
+                                                L"\u044b\u0435 \u0442\u0435\u043d\u0438");
             break;
-        case Row::Skybox: result = text(L"Sky", L"Небо"); break;
+        case Row::Skybox: result = text(L"Sky", L"\u041d\u0435\u0431\u043e"); break;
         case Row::RobotShadows:
-            result = text(L"Robot shadows", L"Тени роботов");
+            result = text(L"Robot shadows", L"\u0422\u0435\u043d\u0438 \u0440\u043e\u0431\u043e\u0442\u043e\u0432");
             break;
-        case Row::GameplayGroup: result = text(L"Gameplay", L"Игра"); break;
+        case Row::GameplayGroup: result = text(L"Gameplay", L"\u0418\u0433\u0440\u0430"); break;
         case Row::CameraSpeed:
-            result = text(L"Camera speed", L"Скорость кам"
-                                           L"еры");
+            result = text(L"Camera speed", L"\u0421\u043a\u043e\u0440\u043e\u0441\u0442\u044c \u043a\u0430\u043c"
+                                           L"\u0435\u0440\u044b");
             break;
         case Row::RandomGenerator:
-            result = text(L"Random generator", L"Случайные ч"
-                                               L"исла");
+            result = text(L"Random generator", L"\u0421\u043b\u0443\u0447\u0430\u0439\u043d\u044b\u0435 \u0447"
+                                               L"\u0438\u0441\u043b\u0430");
             break;
         default: break;
     }
@@ -208,14 +208,14 @@ std::wstring Window::label(int row) const {
 
 std::wstring Window::value(int row) const {
     const auto on_off = [this](bool on) {
-        return std::wstring(on ? text(L"On", L"Вкл") : text(L"Off", L"Выкл"));
+        return std::wstring(on ? text(L"On", L"\u0412\u043a\u043b") : text(L"Off", L"\u0412\u044b\u043a\u043b"));
     };
     const auto mode = [this](Mode value) -> std::wstring {
         switch (value) {
-            case Mode::Windowed: return text(L"Windowed", L"Оконный");
-            case Mode::Borderless: return text(L"Borderless", L"Без рамки");
+            case Mode::Windowed: return text(L"Windowed", L"\u041e\u043a\u043e\u043d\u043d\u044b\u0439");
+            case Mode::Borderless: return text(L"Borderless", L"\u0411\u0435\u0437 \u0440\u0430\u043c\u043a\u0438");
             case Mode::Exclusive:
-                return text(L"Exclusive", L"Полный экран");
+                return text(L"Exclusive", L"\u041f\u043e\u043b\u043d\u044b\u0439 \u044d\u043a\u0440\u0430\u043d");
         }
         return {};
     };
@@ -231,8 +231,8 @@ std::wstring Window::value(int row) const {
         case Row::Skybox:
             switch (values.skybox) {
                 case Skybox::Off: return on_off(false);
-                case Skybox::Low: return text(L"Low", L"Низкое");
-                case Skybox::High: return text(L"High", L"Высокое");
+                case Skybox::Low: return text(L"Low", L"\u041d\u0438\u0437\u043a\u043e\u0435");
+                case Skybox::High: return text(L"High", L"\u0412\u044b\u0441\u043e\u043a\u043e\u0435");
             }
             return {};
         case Row::RobotShadows: return on_off(values.robot_shadows);
@@ -243,15 +243,15 @@ std::wstring Window::value(int row) const {
 }
 
 std::wstring Window::legend() const {
-    return text(L"* Applies after restart", L"* Применяется "
-                                            L"после переза"
-                                            L"пуска");
+    return text(L"* Applies after restart", L"* \u041f\u0440\u0438\u043c\u0435\u043d\u044f\u0435\u0442\u0441\u044f "
+                                            L"\u043f\u043e\u0441\u043b\u0435 \u043f\u0435\u0440\u0435\u0437\u0430"
+                                            L"\u043f\u0443\u0441\u043a\u0430");
 }
 
 std::wstring Window::error_text() const {
     return text(L"Settings could not be saved; see test.log",
-                L"Не удалось сохрани"
-                L"ть настройки, см. test.log");
+                L"\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0441\u043e\u0445\u0440\u0430\u043d\u0438"
+                L"\u0442\u044c \u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438, \u0441\u043c. test.log");
 }
 
 std::wstring hint_template(const Window &window) {
