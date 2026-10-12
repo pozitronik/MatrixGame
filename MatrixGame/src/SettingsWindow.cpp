@@ -100,13 +100,8 @@ void release_menu_highlight() {
 
 }  // namespace
 
-bool available() {
-#ifdef BUILD_EXE
-    return Display::enabled();
-#else
-    return false;
-#endif
-}
+// Only the standalone EXE manages its own window display; a DLL host never enables it.
+bool available() { return Display::enabled(); }
 
 bool active() {
     return model && g_MatrixMap && g_MatrixMap->m_DialogModeName &&

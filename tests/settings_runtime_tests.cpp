@@ -5,6 +5,8 @@
 #include "SoundBridge.hpp"
 #include "MatrixConfig.hpp"
 #include "MatrixGameDll.hpp"
+#include "SettingsWindow.hpp"
+#include "WindowDisplay.hpp"
 
 namespace {
 
@@ -92,10 +94,25 @@ void restart_detection() {
     SoundBridge::master_volume(1.0f);
 }
 
+void window_availability() {
+    const std::wstring disabled = L"x|_COLOR:FF6794A3|_POS:6:105|_TEXT:[setup]|y";
+    auto menu = disabled;
+    SettingsWindow::customize_menu(menu);
+    MG_CHECK(!SettingsWindow::available() && menu == disabled);  // A DLL host owns its settings.
+
+    Display::initialize({});  // The standalone EXE manages its window.
+    MG_CHECK(SettingsWindow::available());
+    SettingsWindow::customize_menu(menu);
+    MG_CHECK(menu == L"x|_COLOR:FFADA793|_POS:6:105|_TEXT:[setup]|y");
+    Display::shutdown();
+    MG_CHECK(!SettingsWindow::available());
+}
+
 constexpr tests::Case cases[] = {
     {"game.settings.startup_settings", startup_settings},
     {"game.settings.immediate_settings", immediate_settings},
     {"game.settings.restart_detection", restart_detection},
+    {"game.settings.window_availability", window_availability},
 };
 
 }  // namespace
