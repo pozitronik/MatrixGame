@@ -12,7 +12,7 @@ Recommendation: an incremental, adapter-first migration that keeps call order an
 
 1. A concrete `Session` owner that keeps the globals as aliases while callers migrate.
 2. An RAII `EntityRef` built on the existing `SObjectCore` weak-reference block, plus a 32-bit session entity id.
-3. One player-command front door that takes a value-type intent and an explicit command source. It replaces the global sound-suppression flag and keeps today's synchronous execution.
+3. One player-command front door that takes a value-type intent, an explicit command source and an explicit acknowledgement policy. The policy replaces the global sound-suppression flag, and the front door keeps today's synchronous execution.
 4. Rule extraction only along existing statement boundaries, using the existing explicit-input-plus-legacy-overload pattern. All UI and AI callers route through the extracted rule.
 5. Simulation/presentation work in three steps: classify and measure first, then move only RNG-neutral device calls, then add one optional observer for the test harness and automation.
 
@@ -178,7 +178,7 @@ Within `MatrixSide.cpp` there are 63 `g_IFaceList` and 52 `CSound::` uses. `Matr
 - Order targets come from the last frame's cursor trace (`MatrixSide.cpp:838-843`).
 - Preorder mode is UI list state (`Interface/CInterface.h:80`).
 - The move acknowledgement depends on the visual selection (`MatrixSide.cpp:9060-9062`).
-- The turret preview runs in the simulation tick using the camera (`MatrixSide.cpp:517-588`).
+- The turret preview runs in the simulation tick using the camera, and it also computes the placement state that a construction click consumes (`MatrixSide.cpp:517-588`, `:635-650`).
 
 These prevent an external command from being equivalent to a human command without the picking state.
 
@@ -260,7 +260,7 @@ An abstraction is admitted only with a named second consumer: the test harness (
 
 ### 4.5 D4: Intent, execution and navigation (#95)
 
-- **Intent:** `PlayerCommand` is a value type holding the kind (the existing `EMatrixPlayerOrder`), the logic group, a map cell, an optional `EntityRef` target and a `CommandSource` (PlayerInput, Internal or Automation). `IssuePlayerCommand(side, cmd)` returns accepted or rejected with a reason. The existing `PGOrder*` bodies remain the implementation. The source replaces the global sound-suppression flag one-for-one, so the conditional `IRND(2)` and sound draws are unchanged.
+- **Intent:** `PlayerCommand` is a value type holding the kind (the existing `EMatrixPlayerOrder`), the logic group, a map cell, an optional `EntityRef` target, a `CommandSource` (PlayerInput, Internal or Automation) and an acknowledgement policy (`Play` or `Suppress`). `IssuePlayerCommand(side, cmd)` returns accepted or rejected with a reason. The existing `PGOrder*` bodies remain the implementation. The policy, not the source, replaces the global sound-suppression flag one-for-one. PlayerInput and Automation commands use `Play`, so an Automation attack makes the same `CSound::Play` call and, when repeated, the same conditional `IRND(2)` as a human attack (U4). Internal callers pass `Suppress` exactly where they set `MMFLAG_SOUND_ORDER_ATTACK_DISABLE` today (`MatrixFlyer.cpp:1178`, `MatrixMapPrepare.cpp:1622`, `MatrixObject.cpp:1334`, `MatrixRobot.cpp:535`, `:2185`), and `Play` elsewhere. The source records provenance for results and the observer, and never changes acknowledgement or RNG consumption by itself.
 - **Execution:** `SMatrixPlayerGroup` is split into intent members (order, `m_To`, target) and execution members (region path, road path, war, show-place and patrol flags) within the same struct. Synchronous `TaktPL` on issue is kept.
 - **Target resolution:** picking stays in the input layer. A command carries a resolved target, which is what automation needs.
 - **Navigation:** it stays on `CMatrixMapLogic`. Route functions already take explicit parameters (`MatrixLogic.hpp:118-153`). Only global access is removed. A separate navigation class is deferred until #81 coverage exists.
@@ -269,7 +269,8 @@ An abstraction is admitted only with a named second consumer: the test harness (
 ### 4.6 D5: Simulation and presentation (#96)
 
 - **Stage A:** classify every effect type as gameplay-bearing or visual, and every RNG call site as simulation or presentation. Count draws per category in a test-only build (#76). No production change.
-- **Stage B:** remove only RNG-neutral presentation work from the tick. Examples are `SetMaterial` (`MatrixLogic.cpp:3072`), cursor visibility and the turret preview (`MatrixSide.cpp:517-588`, after verifying that its trace consumes no RNG), and debug-overlay text. Each move needs a native presentation check.
+- **Stage B:** remove only RNG-neutral presentation work from the tick. Examples are `SetMaterial` (`MatrixLogic.cpp:3072`), cursor visibility, the tint, cursor and render parts of the turret preview, and debug-overlay text. Each move needs a native presentation check.
+- **Turret placement is not presentation.** The turret block (`MatrixSide.cpp:517-588`) computes `m_CanBuildFlag` and writes the pending cannon's position, place and target angle. `OnLButtonDown` (`MatrixSide.cpp:635-650`) uses that flag to accept construction and copies those values into the real cannon. Placement and eligibility therefore stay on the simulation and command side in their current update order, and only the tint, cursor and render work may leave the tick. Moving the whole block would change which state a click observes, and would leave device-free construction without these updates.
 - **Stage C:** add one optional observer pointer owned by the session. It is called at existing points: command accepted or rejected, damage applied, entity died, capture changed and outcome reached. It is non-virtual unless two implementations exist, and its consumers are the harness and automation.
 - **Device-free scenarios:** they run production effects with unloaded cache entries, as the bomb fixture shows (`tests/bomb_order_tests.cpp:110-113`). They install a fake audio backend so that `available()` matches the reference configuration (U1). Render-path draws remain a declared difference until U2 is decided.
 
@@ -302,7 +303,7 @@ Difference from today: none observable. `g_LoadProgress` is cleared when Init re
 
 1. Input resolves the target from `m_TraceStopObj` and `m_TraceStopPos`, as today.
 2. Input builds `PlayerCommand{mpo_Attack, SelGroupToLogicGroup(), cell, EntityRef(target), PlayerInput}`.
-3. `IssuePlayerCommand` checks `m_RobotCnt > 0` (rejected otherwise), then runs the existing `PGOrderAttack` body with the sound condition `source == PlayerInput`, and calls `TaktPL` synchronously.
+3. `IssuePlayerCommand` checks `m_RobotCnt > 0` (rejected otherwise), then runs the existing `PGOrderAttack` body with the sound condition `ack == Play`, and calls `TaktPL` synchronously. An Automation command builds the same value with `source == Automation` and `ack == Play`.
 4. The observer receives "accepted".
 5. Internal callers pass `Internal` instead of toggling the flag.
 6. `TaktPL` validates the target with `EntityRef::get() && IsLive()` instead of the scan. This is identical except in the address-reuse case (U3).
@@ -377,7 +378,7 @@ Evidence is a draw-count trace per call-site category under a fixed schedule (#7
 | Need | Boundary that provides it | Notes |
 | --- | --- | --- |
 | Stable entity ids, invalidated on restart | `EntityId` in `SObjectCore`; id index added with #99 | Restart (`MatrixMapPrepare.cpp:1717`) invalidates every id |
-| Commands through the production path | `IssuePlayerCommand` with `CommandSource::Automation` and an explicit target (no picking) | Result codes for rejection |
+| Commands through the production path | `IssuePlayerCommand` with `CommandSource::Automation`, the player acknowledgement policy and an explicit target (no picking) | Result codes for rejection |
 | Defined injection point | After message dispatch, before `CFormMatrixGame::Takt` (`3g.cpp:362-402`) | Human input runs inside dispatch, so sub-frame equivalence is a declared limit (U4) |
 | Manual control | The existing input action state (`isKeyPressed`, polled at `MatrixRobot.cpp:929-945`), not new robot calls | |
 | Events | The session observer: command accepted or rejected, order-phase change, damage, death, capture, build, outcome | |
@@ -481,7 +482,7 @@ All of these are blocked by #69. Splits are proposed siblings under the same par
 - **Target:** every `PGOrder*` caller (section 2.3). Remove `MMFLAG_SOUND_ORDER_ATTACK_DISABLE` toggling.
 - **Depends on:** 93.1 for the target reference.
 - **Compatibility risks:** the conditional acknowledgement draws; synchronous `TaktPL`; selection-dependent sounds (U10).
-- **Evidence:** #80 command scenarios that assert RNG draw counts; a cheats path test.
+- **Evidence:** #80 command scenarios that assert RNG draw counts, including PlayerInput versus Automation attacks, first and repeated, with identical draw count and order; internal-caller scenarios that keep their current suppression; a cheats path test.
 - **Done when:** every order enters through one function with accepted or rejected results, and the flag has no remaining writers.
 
 **95.2 Intent and execution split inside `SMatrixPlayerGroup` and `SMatrixLogicGroup`**
@@ -509,8 +510,8 @@ Deferred: a separate navigation component, until #81 freezes behavior and a test
 
 **96.2 RNG-neutral device and UI calls removed from the tick**
 
-- **Target:** `MatrixLogic.cpp:3072`, `MatrixSide.cpp:437-444` and `:517-588` (after verification), and similar sites. Each is one PR.
-- **Evidence:** draw counts unchanged, plus a native presentation check under `docs/PLAYTESTING.md`.
+- **Target:** `MatrixLogic.cpp:3072`, `MatrixSide.cpp:437-444`, the tint, cursor and render parts of `:517-588` (eligibility and placement stay in the tick, see section 4.6), and similar sites. Each is one PR.
+- **Evidence:** draw counts unchanged; for the turret block, a turret-construction command regression showing that eligibility, place, position and angle are unchanged when a click follows the tick; plus a native presentation check under `docs/PLAYTESTING.md`.
 - **Done when:** the listed calls are out of the tick.
 
 **96.3 Session observer**
