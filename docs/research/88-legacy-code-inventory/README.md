@@ -2,13 +2,13 @@
 
 Investigation of `dev` at 540251d. No source was changed. References are repository-relative `path:line` at that revision.
 
-The searchable inventory is `inventory.csv` (57 grouped entries, one row each, columns: id, theme, locations, kind, configurations, callers, intended behavior, disposition, rationale, follow-up, needs, overlap). `unreferenced-functions.tsv` lists 177 engine functions that are compiled but referenced by no relocation in any of the four built configurations.
+The searchable inventory is `inventory.csv` (58 grouped entries, one row each, columns: id, theme, locations, kind, configurations, callers, intended behavior, disposition, rationale, follow-up, needs, overlap). `unreferenced-functions.tsv` lists 177 engine functions that are compiled but referenced by no relocation in any of the four built configurations.
 
 ## Summary
 
-Groups in the inventory: 6 defect candidates (D), 16 marker groups (M), 18 disabled-implementation groups (C), 1 explanatory-comment group (E), 8 preprocessor/optional-path groups (P), 4 unused-module groups (U) and 4 historical-branch groups (H).
+Groups in the inventory: 7 defect candidates (D), 16 marker groups (M), 18 disabled-implementation groups (C), 1 explanatory-comment group (E), 8 preprocessor/optional-path groups (P), 4 unused-module groups (U) and 4 historical-branch groups (H).
 
-Disposition candidates: 9 actionable, 9 active (including P6, whose selected variant is active while its alternatives are obsolete), 12 superseded, 15 obsolete and 12 unproven. Follow-ups that need evidence: 5 need a benchmark or measurement, 6 need a reproduction, 12 need a product decision and 2 need a build experiment. Some entries need more than one of these.
+Disposition candidates: 10 actionable, 9 active (including P6, whose selected variant is active while its alternatives are obsolete), 12 superseded, 15 obsolete and 12 unproven. Follow-ups that need evidence: 5 need a benchmark or measurement, 7 need a reproduction, 12 need a product decision and 2 need a build experiment. Some entries need more than one of these.
 
 Scale: 38 `TODO` lines, 9 `STUB` lines, 2 `TO DO` lines and 2 Russian task markers (`доделать` = "finish it", `Сделать` = "to do"). About 9,500 comment lines that look like code fall in 619 regions of three or more lines; 148 regions have ten or more. There are no `#if 0` blocks. Most disabled code is disabled through `//` or `/* */`, through macros that are never defined, or through code placed after an early `return`. History shows that about 7,800 commented code lines were already disabled in the 2012 import (2f7f953). About 1,000 were added later, mostly during the 2022-2023 refactoring (6a0dd2c, 5aabeba, b2a6ee7, 0b01d09, 187cafe).
 
@@ -146,6 +146,11 @@ The complete table is `inventory.csv`. The groups that matter for later decision
 6. D6 (new, unreachable):
    - Where: `MatrixLib/Base/Pack.cpp:2350-2358`. `CPackCollection::DelPacketFile` removes the pointer without `HDelete`.
    - Reach: no callers. Delete it together with D2.
+7. D7 (new, separated from M12 during review):
+   - Where: `MatrixLib/3G/Math3D.hpp:71-159`. a2dcad3 (2022) replaced the `SPlane` union of `dxplane` with `norm`/`dist` by separate members. `BuildFromPoints` and `BuildFromPointNormal` still fill only `dxplane`, while `UpdateSignBits`, `IsOnSide`, `CalcPointDist`, `Distance`, `BoxSide` and `FindIntersect` read `norm`/`dist`. This is a behavior mismatch, not syntax cleanup.
+   - Callers: `CMatrixMap::CalcVis` builds edge and shadow planes with `BuildFromPoints` and tests them with `IsOnSide` (`MatrixVisiCalc.cpp:140-141`, `154`, `157`, `178`, `287-288`). `CalcVis` runs when the standalone executable is started with a map argument (`MatrixGame.cpp:84-92`), from the console command (`DevConsole.cpp:137`) and from Debug F7 (`MatrixFormGame.cpp:1582-1585`). A Debug-only flyer cursor path uses `BuildFromPointNormal` and `FindIntersect` (`MatrixMap.cpp:1205`).
+   - Reach: normal play does not call `CalcVis`, and the live camera fills `norm`/`dist` directly, so no in-game culling failure is inferred from this.
+   - Next step: a focused geometry regression on the builders and on `CalcVis` edge planes, then restore shared storage or synchronize the members.
 
 ## Bounded follow-up proposals
 
@@ -157,7 +162,7 @@ For #89 (investigate and measure):
    - Measure frame-time and step-size distributions for the current loop and the pre-0b01d09 smoothing/limiter in a representative battle.
    - Decide whether `MaxFps` should work again (coordinate with #60 settings and #76 time control).
    - Needs a benchmark and a product decision.
-2. Defect reproductions D1, D3 and D4:
+2. Defect reproductions D1, D3, D4 and D7:
    - D1 and D4 can get synthetic regressions through production code.
    - D3 needs a synthetic place grid and an AI-choice comparison.
    - D3 needs a maintainer decision because the fix changes gameplay.
@@ -209,7 +214,7 @@ For other existing issues:
 
 - MSVC was not built locally. The MSVC macro behavior (`_DEBUG` from the Debug CRT, `_MSC_VER`) comes from the CMake configuration. The MSVC Debug DLL and the MSVC Debug EXE with cheats are also outside CI.
 - The unreferenced-function scan used MinGW objects only. It cannot see inline-only functions, and it treats every virtual function as referenced.
-- Nothing was run. No defect was reproduced and no timing was measured. D1-D6 are source-supported candidates, not demonstrated failures.
+- Nothing was run. No defect was reproduced and no timing was measured. D1-D7 are source-supported candidates, not demonstrated failures.
 - The SR2 host's own `robots.dat` was not available, so D1 reachability with host data is unknown.
 - The 619 smaller commented regions (three to nine lines) were classified by subsystem without reading each one. Only the 148 larger regions were reviewed individually.
 - The modding-fork features were compared by configuration keys and identifiers, not by behavior.
