@@ -1,0 +1,67 @@
+created smoke=1 effects=1 draw=0
+frame t=16 step=16 draw=2 puffs=1 maxz=0.127999991 hash=b14b27e2a81b6200
+frame t=23 step=7 draw=2 puffs=1 maxz=0.185433596 hash=32144b468f929233
+frame t=24 step=1 draw=2 puffs=1 maxz=0.193730295 hash=ca034a98c77a2da6
+frame t=107 step=83 draw=6 puffs=3 maxz=0.883457661 hash=6e13e33f5b1e8891
+frame t=117 step=10 draw=6 puffs=3 maxz=0.977593005 hash=8d2b3da7d7dfc360
+frame t=200 step=83 draw=10 puffs=5 maxz=1.77141738 hash=1639c34a4c8ccdfa
+frame t=275 step=75 draw=14 puffs=7 maxz=2.58398747 hash=d289bf15a74fbffb
+frame t=337 step=62 draw=16 puffs=8 maxz=3.33631897 hash=b270b980efeb51a4
+frame t=389 step=52 draw=18 puffs=9 maxz=4.02990055 hash=ec808097521c690a
+frame t=439 step=50 draw=20 puffs=10 maxz=4.75229263 hash=47195331150a9cf1
+checkpoint t=439 draw=20 puffs=10 maxz=4.75229263 hash=47195331150a9cf1
+frame t=521 step=82 draw=24 puffs=12 maxz=6.03179359 hash=cf5fe2530378e3c3
+frame t=571 step=50 draw=26 puffs=13 maxz=6.91433716 hash=6568b19d7c152404
+frame t=578 step=7 draw=26 puffs=13 maxz=7.04777765 hash=a31c59b3db311b54
+frame t=639 step=61 draw=30 puffs=15 maxz=8.22364044 hash=792f5447c3536aac
+frame t=666 step=27 draw=30 puffs=15 maxz=8.79490185 hash=e909aef01b69f9bb
+frame t=735 step=69 draw=34 puffs=14 maxz=7.81273127 hash=95795ea5c6fbd59e
+frame t=765 step=30 draw=34 puffs=14 maxz=8.427742 hash=9e3ee9341371912e
+frame t=820 step=55 draw=38 puffs=14 maxz=7.89670229 hash=406a9759898de774
+checkpoint t=820 draw=38 puffs=14 maxz=7.89670229 hash=406a9759898de774
+frame t=839 step=19 draw=38 puffs=14 maxz=8.28876209 hash=dc5ec3657169e2f1
+frame t=919 step=80 draw=42 puffs=14 maxz=8.3836813 hash=8fc5634c0aef0667
+frame t=1006 step=87 draw=46 puffs=15 maxz=8.87071419 hash=b8bb79ffb36d540a
+frame t=1049 step=43 draw=48 puffs=15 maxz=8.6863184 hash=4e02f0270a025cf8
+frame t=1141 step=92 draw=52 puffs=14 maxz=7.85176039 hash=53ae203afcf98010
+frame t=1222 step=81 draw=56 puffs=15 maxz=8.29310608 hash=4a3dd9ed3b0e0062
+checkpoint t=1222 draw=56 puffs=15 maxz=8.29310608 hash=4a3dd9ed3b0e0062
+frame t=1287 step=65 draw=58 puffs=14 maxz=7.81692648 hash=4d09a3f19424c82a
+frame t=1356 step=69 draw=62 puffs=16 maxz=9.23191547 hash=6d2a417503f0e495
+frame t=1364 step=8 draw=62 puffs=16 maxz=9.41408443 hash=b3c72caf61d2ce92
+frame t=1441 step=77 draw=66 puffs=16 maxz=8.91244316 hash=a4ac7627235f45f4
+frame t=1533 step=92 draw=70 puffs=16 maxz=9.23664856 hash=595045575dac7161
+frame t=1596 step=63 draw=72 puffs=15 maxz=8.89335346 hash=6c2b2903e81ed14a
+frame t=1601 step=5 draw=72 puffs=15 maxz=9.00450039 hash=012f0d0567cd89a8
+checkpoint t=1601 draw=72 puffs=15 maxz=9.00450039 hash=012f0d0567cd89a8
+frame t=1631 step=30 draw=74 puffs=14 maxz=7.88335371 hash=f534d27793b2c1a6
+frame t=1721 step=90 draw=78 puffs=15 maxz=8.78981686 hash=885b20cc676d0d1e
+frame t=1739 step=18 draw=78 puffs=15 maxz=9.18696308 hash=e3e86f5947735989
+frame t=1793 step=54 draw=80 puffs=14 maxz=8.43507576 hash=3975ebb48fa7dbaa
+frame t=1848 step=55 draw=84 puffs=14 maxz=7.94029856 hash=fa84ea57b502a540
+frame t=1897 step=49 draw=86 puffs=15 maxz=8.95481777 hash=ad1a257c80ae8e14
+frame t=1918 step=21 draw=86 puffs=15 maxz=9.42369938 hash=0e0528a2e7995955
+frame t=1990 step=72 draw=90 puffs=14 maxz=7.9555912 hash=9071773a45438415
+frame t=2016 step=26 draw=90 puffs=14 maxz=8.49454403 hash=40954e2f290a8dcb
+checkpoint t=2016 draw=90 puffs=14 maxz=8.49454403 hash=40954e2f290a8dcb
+frame t=2083 step=67 draw=94 puffs=14 maxz=8.3023138 hash=806b1e5e660aae61
+frame t=2133 step=50 draw=96 puffs=15 maxz=9.36649895 hash=4f3fa01a566ca70d
+frame t=2209 step=76 draw=100 puffs=15 maxz=9.04590607 hash=d874c15ddc842a8d
+frame t=2245 step=36 draw=100 puffs=14 maxz=8.38758659 hash=3137eb29d0c16cd6
+frame t=2268 step=23 draw=102 puffs=15 maxz=8.88024998 hash=a9e2c037289d6d0e
+frame t=2360 step=92 draw=106 puffs=14 maxz=7.90975904 hash=843b0eac86e0c1e5
+frame t=2452 step=92 draw=110 puffs=15 maxz=8.63224983 hash=ecb0b6a7f4565309
+checkpoint t=2452 draw=110 puffs=15 maxz=8.63224983 hash=ecb0b6a7f4565309
+frame t=2548 step=96 draw=110 puffs=13 maxz=9.45419407 hash=039d5403c29405bc
+frame t=2606 step=58 draw=110 puffs=12 maxz=9.17105484 hash=1bb22064ccad7785
+frame t=2640 step=34 draw=110 puffs=10 maxz=7.86334276 hash=5efedb4f5daa9103
+frame t=2655 step=15 draw=110 puffs=10 maxz=8.17206287 hash=2692ac485f3800eb
+frame t=2720 step=65 draw=110 puffs=8 maxz=8.1339941 hash=310ae24e8878ef89
+frame t=2814 step=94 draw=110 puffs=7 maxz=8.99013615 hash=6bd4d529cd2fafb4
+checkpoint t=2814 draw=110 puffs=7 maxz=8.99013615 hash=6bd4d529cd2fafb4
+frame t=2829 step=15 draw=110 puffs=7 maxz=9.32589912 hash=ec28dcae73b4924d
+frame t=2837 step=8 draw=110 puffs=5 maxz=7.23168087 hash=28e225c04ce131c9
+frame t=2883 step=46 draw=110 puffs=5 maxz=8.13193226 hash=16e0aab3c1914c26
+frame t=2951 step=68 draw=110 puffs=4 maxz=9.04387093 hash=04c7a381c6c3dd1c
+frame t=3000 step=49 draw=110 puffs=2 maxz=8.20163155 hash=27ca7452b4ef5c43
+final frames=58 effects=1 draw=110
