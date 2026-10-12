@@ -1,0 +1,21 @@
+Issue 102 exploratory x64 MSVC rerun - O16 wire-assertion check
+Source revision: 540251d4662c590bad4684df01e0c521e6c4aee7 with exploratory-x64.patch (SHA-256 66e27729f04fc35a9b9f2d4316e5e1980a7cf72502138eb1e730053d5adcfea7) applied through stage S4
+Change for this check: the S1 hunk that gates static_assert(sizeof(Base::SFileRec) == 158) under #ifndef _WIN64 in tests/dependency_tests.cpp was reverted, so the assertion is unconditional as at 540251d
+Compiler: Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36252 for x64
+Configuration: x64 Release EXE, same CMake configuration as ctest-x64-S4-Release.txt; target matrixgame_dependency_tests rebuilt incrementally (build succeeded)
+CTest command (working directory <work>/build-x64-Release): <repo>/.tools/cmake-4.4.4-windows-i386/bin/ctest.exe -R legacy_pack_blocks --output-on-failure
+----- CTest output -----
+Test project <work>/build-x64-Release
+    Start 45: base.dependencies.legacy_pack_blocks
+1/1 Test #45: base.dependencies.legacy_pack_blocks ...   Passed    0.01 sec
+
+100% tests passed out of 1
+
+Label Time Summary:
+asset-free      =   0.01 sec*proc (1 test)
+base            =   0.01 sec*proc (1 test)
+dependencies    =   0.01 sec*proc (1 test)
+engine          =   0.01 sec*proc (1 test)
+pack            =   0.01 sec*proc (1 test)
+
+Total Test time (real) =   0.02 sec

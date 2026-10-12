@@ -1,0 +1,6 @@
+diff --git a/MatrixGame/src/Effects/MatrixEffectSmokeAndFire.hpp b/MatrixGame/src/Effects/MatrixEffectSmokeAndFire.hpp
+index 289b272..ead2a59 100644
+--- a/MatrixGame/src/Effects/MatrixEffectSmokeAndFire.hpp
++++ b/MatrixGame/src/Effects/MatrixEffectSmokeAndFire.hpp
+@@ -66,0 +67 @@ public:
++    friend struct SmokeObserver;

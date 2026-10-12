@@ -1,0 +1,39 @@
+created smoke=1 effects=1 draw=0
+frame t=100 step=100 draw=6 puffs=3 maxz=0.799999952 hash=1d091fd99f647d2c
+frame t=200 step=100 draw=10 puffs=5 maxz=1.72799993 hash=f73385ab2225c507
+frame t=300 step=100 draw=14 puffs=7 maxz=2.80447984 hash=a5c136eb994e5240
+frame t=400 step=100 draw=18 puffs=9 maxz=4.05319643 hash=6b0a3b6cc3ec16db
+checkpoint t=400 draw=18 puffs=9 maxz=4.05319643 hash=6b0a3b6cc3ec16db
+frame t=500 step=100 draw=24 puffs=12 maxz=5.50170803 hash=4257e1edfc5ace99
+frame t=600 step=100 draw=28 puffs=14 maxz=7.18198109 hash=f2f571b28dc98898
+frame t=700 step=100 draw=32 puffs=16 maxz=9.13109779 hash=428d2b4557d157bf
+frame t=800 step=100 draw=36 puffs=15 maxz=9.13109779 hash=18746ae093cda2d4
+checkpoint t=800 draw=36 puffs=15 maxz=9.13109779 hash=18746ae093cda2d4
+frame t=900 step=100 draw=40 puffs=15 maxz=9.13109779 hash=9a05c2de89316c12
+frame t=1000 step=100 draw=46 puffs=16 maxz=9.13109779 hash=37151ecae33c9ddf
+frame t=1100 step=100 draw=50 puffs=16 maxz=9.13109779 hash=7cbb1bd8ba1d07f5
+frame t=1200 step=100 draw=54 puffs=15 maxz=9.13109779 hash=ed7b6d3e117499de
+checkpoint t=1200 draw=54 puffs=15 maxz=9.13109779 hash=ed7b6d3e117499de
+frame t=1300 step=100 draw=58 puffs=15 maxz=9.13109779 hash=c9421f652cc0fb87
+frame t=1400 step=100 draw=64 puffs=16 maxz=9.13109779 hash=c92b47f2b89117a1
+frame t=1500 step=100 draw=68 puffs=16 maxz=9.13109779 hash=10936e3ae2090cd2
+frame t=1600 step=100 draw=72 puffs=16 maxz=9.13109779 hash=5075b48402faef7e
+checkpoint t=1600 draw=72 puffs=16 maxz=9.13109779 hash=5075b48402faef7e
+frame t=1700 step=100 draw=76 puffs=15 maxz=9.13109779 hash=dba88a5987d6ac95
+frame t=1800 step=100 draw=80 puffs=15 maxz=9.13109779 hash=f0dae2cda17ce917
+frame t=1900 step=100 draw=86 puffs=16 maxz=9.13109779 hash=2473c844f5a6ebe1
+frame t=2000 step=100 draw=90 puffs=16 maxz=9.13109779 hash=4122e1982fb7b519
+checkpoint t=2000 draw=90 puffs=16 maxz=9.13109779 hash=4122e1982fb7b519
+frame t=2100 step=100 draw=94 puffs=15 maxz=9.13109779 hash=9e4f3b423a3a6d51
+frame t=2200 step=100 draw=98 puffs=15 maxz=9.13109779 hash=d465770dfaf9980a
+frame t=2300 step=100 draw=104 puffs=16 maxz=9.13109779 hash=ffc4c3a06263d095
+frame t=2400 step=100 draw=108 puffs=16 maxz=9.13109779 hash=1cc53d57c8f7d1e2
+checkpoint t=2400 draw=108 puffs=16 maxz=9.13109779 hash=1cc53d57c8f7d1e2
+frame t=2500 step=100 draw=108 puffs=14 maxz=9.13109779 hash=6c3db84d0feb7b03
+frame t=2600 step=100 draw=108 puffs=11 maxz=9.13109779 hash=d262f816b88b0d1f
+frame t=2700 step=100 draw=108 puffs=9 maxz=9.13109779 hash=565bf9515fd2ae44
+frame t=2800 step=100 draw=108 puffs=7 maxz=9.13109779 hash=af0b936df3d3387b
+checkpoint t=2800 draw=108 puffs=7 maxz=9.13109779 hash=af0b936df3d3387b
+frame t=2900 step=100 draw=108 puffs=5 maxz=9.13109779 hash=c4d942caed93f6a6
+frame t=3000 step=100 draw=108 puffs=2 maxz=9.13109779 hash=fbb8464e3ea8588a
+final frames=30 effects=1 draw=108
