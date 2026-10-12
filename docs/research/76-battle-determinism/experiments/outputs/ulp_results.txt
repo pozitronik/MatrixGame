@@ -1,0 +1,6 @@
+gO0.bin vs gOs.bin RndFloat(): differing=0 max_ulp=0 first_index=None
+gO0.bin vs gOs.bin RND(-3.7,11.2): differing=443751 max_ulp=25984 first_index=6
+gO0.bin vs gOs.bin FSRND(M_PI): differing=0 max_ulp=0 first_index=None
+gO0.bin vs msvc.bin RndFloat(): differing=228 max_ulp=1 first_index=3488
+gO0.bin vs msvc.bin RND(-3.7,11.2): differing=451340 max_ulp=93888 first_index=2
+gO0.bin vs msvc.bin FSRND(M_PI): differing=0 max_ulp=0 first_index=None

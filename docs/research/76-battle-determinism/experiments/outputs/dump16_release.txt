@@ -1,0 +1,2 @@
+dump t=16 m_Time=41800000 m_TTL=451b4000 next=42340000
+dump puff=0 angle=3fe5468a ttl=442b0000 z=3e03126e scale=4088c6f3
