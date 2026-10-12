@@ -96,17 +96,24 @@ struct World {
     }
 };
 
-// Same member sequence as CMatrixEffectSmoke (read-only observation in this probe).
-struct SmokeMirror : CMatrixEffect {
-    SSmokePuff *m_Puffs;
-    int m_PuffCnt;
-    D3DXVECTOR3 m_Pos, m_Mins, m_Maxs;
-    float m_TTL, m_PuffTTL, m_Spawn, m_Time, m_NextSpawnTime, m_Speed;
-    DWORD m_Color;
+} // namespace
+
+// Read-only access to CMatrixEffectSmoke through the friend declaration added by
+// smoke_observer.patch. Callers pass only effects whose GetType() is EFFECT_SMOKE,
+// so the downcast names the object's actual dynamic type.
+struct SmokeObserver {
+    static uint64_t hash(CMatrixEffect *e, int *count, float *maxz);
+    static void dump(CMatrixEffect *e, int t);
 };
 
+namespace {
 uint64_t smoke_hash(CMatrixEffect *e, int *count, float *maxz) {
-    auto *s = reinterpret_cast<SmokeMirror *>(e);
+    return SmokeObserver::hash(e, count, maxz);
+}
+} // namespace
+
+uint64_t SmokeObserver::hash(CMatrixEffect *e, int *count, float *maxz) {
+    const auto *s = static_cast<const CMatrixEffectSmoke *>(e);
     Fnv f;
     f.add(s->m_PuffCnt);
     f.add(s->m_Time);
@@ -126,6 +133,18 @@ uint64_t smoke_hash(CMatrixEffect *e, int *count, float *maxz) {
     return f.h;
 }
 
+void SmokeObserver::dump(CMatrixEffect *e, int t) {
+    const auto *sm = static_cast<const CMatrixEffectSmoke *>(e);
+    auto bits = [](float v) { uint32_t u; std::memcpy(&u, &v, 4); return u; };
+    std::printf("dump t=%d m_Time=%08x m_TTL=%08x next=%08x\n", t, bits(sm->m_Time), bits(sm->m_TTL), bits(sm->m_NextSpawnTime));
+    for (int i = 0; i < sm->m_PuffCnt; ++i) {
+        const auto &p = sm->m_Puffs[i];
+        std::printf("dump puff=%d angle=%08x ttl=%08x z=%08x scale=%08x\n", i, bits(p.m_PuffAngle), bits(p.m_PuffTTL),
+                    bits(p.m_Puff.m_Pos.z), bits(p.m_Puff.GetScale()));
+    }
+}
+
+namespace {
 int effect_count() {
     int n = 0;
     for (auto *e = g_MatrixMap->m_EffectsFirst; e; e = e->m_Next) ++n;
@@ -213,16 +232,8 @@ int run_smoke(int argc, char **argv) {
         const uint64_t h = smoke ? smoke_hash(smoke, &cnt, &maxz) : 0;
         const long d = idx.now();
         std::printf("frame t=%d step=%d draw=%ld puffs=%d maxz=%.9g hash=%016" PRIx64 "\n", t, step, d, cnt, maxz, h);
-        if (smoke && t == dumpat) {
-            auto *sm = reinterpret_cast<SmokeMirror *>(smoke);
-            auto bits = [](float v) { uint32_t u; std::memcpy(&u, &v, 4); return u; };
-            std::printf("dump t=%d m_Time=%08x m_TTL=%08x next=%08x\n", t, bits(sm->m_Time), bits(sm->m_TTL), bits(sm->m_NextSpawnTime));
-            for (int i = 0; i < sm->m_PuffCnt; ++i) {
-                const auto &p = sm->m_Puffs[i];
-                std::printf("dump puff=%d angle=%08x ttl=%08x z=%08x scale=%08x\n", i, bits(p.m_PuffAngle), bits(p.m_PuffTTL),
-                            bits(p.m_Puff.m_Pos.z), bits(p.m_Puff.GetScale()));
-            }
-        }
+        if (smoke && t == dumpat)
+            SmokeObserver::dump(smoke, t);
         if (t >= next_cp) {
             std::printf("checkpoint t=%d draw=%ld puffs=%d maxz=%.9g hash=%016" PRIx64 "\n", t, d, cnt, maxz, h);
             next_cp += checkpoint;
