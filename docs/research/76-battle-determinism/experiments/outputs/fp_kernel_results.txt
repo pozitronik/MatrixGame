@@ -1,0 +1,16 @@
+fp_gcc_O0: smoke_rise hash=db48b983ea88c43b z[399]=2855.57251
+ movement   hash=6ad2a6c17bcdea64 px=1.2600162 py=-3.76284456
+fp_gcc_Os: smoke_rise hash=2ecf3afe406dcacd z[399]=2855.57251
+ movement   hash=3363750048b6d092 px=4.3944335 py=4.82610035
+fp_gcc_O2: smoke_rise hash=8f97ca4e48205343 z[399]=2855.57324
+ movement   hash=f39bb519914c480c px=7.33255291 py=-4.11535835
+fp_gcc_Os_sse: smoke_rise hash=f7f69b2ca1acb197 z[399]=2855.57251
+ movement   hash=91a47c6fb669aaf3 px=7.0155549 py=-4.14061499
+fp_gcc_O0_sse: smoke_rise hash=f7f69b2ca1acb197 z[399]=2855.57251
+ movement   hash=91a47c6fb669aaf3 px=7.0155549 py=-4.14061499
+fp_msvc_Od: smoke_rise hash=f7f69b2ca1acb197 z[399]=2855.57251
+ movement   hash=91a47c6fb669aaf3 px=7.0155549 py=-4.14061499
+fp_msvc_O2: smoke_rise hash=f7f69b2ca1acb197 z[399]=2855.57251
+ movement   hash=91a47c6fb669aaf3 px=7.0155549 py=-4.14061499
+fp_msvc_O2_ia32: smoke_rise hash=db48b983ea88c43b z[399]=2855.57251
+ movement   hash=6ad2a6c17bcdea64 px=1.2600162 py=-3.76284456

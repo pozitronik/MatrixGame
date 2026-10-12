@@ -1,0 +1,8 @@
+gO0.bin vs gOs.bin RND(-3.7,11.2): differing=443751 of 1000000
+max_abs=1.776e-15 = 1.00 ulp of max(|from|,|to|) (1.776e-15)
+max_result_ulp=25984 at value=-2.833465e-05 abs_diff=8.804e-17
+|value| in [0, 0.001): differing=129 max_result_ulp=25984
+|value| in [0.001, 0.1): differing=13038 max_result_ulp=950
+|value| in [0.1, 1): differing=102758 max_result_ulp=30
+|value| in [1, 4): differing=152833 max_result_ulp=2
+|value| in [4, 16): differing=174993 max_result_ulp=1
