@@ -113,6 +113,25 @@ void map_spawner_catalog_startup() {
     MG_CHECK(startup_device->voices.size() == std::size(clips));
 }
 
+void master_level_retained() {
+    StartupFixture fixture;
+    fixture.wave("sound/ButtonClick.wav");
+    SoundBridge::master_volume(0.25f);  // Set before the service exists, as at startup.
+    SoundBridge::initialize_standalone(true);
+    fixture.play(L"Sound.ButtonClick");
+    const auto &voice = startup_device->voices[0];
+    MG_CHECK(voice->volume == 0.25f);
+    SoundBridge::volume(1, 0.5f);
+    MG_CHECK(voice->volume == 0.125f && SoundBridge::volume(1) == 0.5f);
+    SoundBridge::master_volume(1.0f);
+    MG_CHECK(voice->volume == 0.5f);
+    SoundBridge::master_volume(0.0f);
+    SoundBridge::initialize_standalone(true);  // A new battle session keeps the level.
+    fixture.play(L"Sound.ButtonClick");
+    MG_CHECK(startup_device->voices.size() == 2 && startup_device->voices[1]->volume == 0.0f);
+    SoundBridge::master_volume(1.0f);
+}
+
 void partial_mapping_override() {
     StartupFixture fixture;
     fixture.wave("synthetic.wav");
@@ -280,6 +299,7 @@ void host_layer_lifetime() {
 constexpr tests::Case cases[] = {
     {"game.audio.default_catalog", default_catalog_startup},
     {"game.audio.map_spawner_catalog", map_spawner_catalog_startup},
+    {"game.audio.master_level_retained", master_level_retained},
     {"game.audio.mapping_override", partial_mapping_override},
     {"game.audio.mapping_fallback", invalid_mapping_fallback},
     {"game.audio.startup_unavailable", startup_without_packages_or_device},

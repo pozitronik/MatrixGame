@@ -57,6 +57,7 @@ class Service {
     std::unordered_set<std::wstring> failures_;
     std::unordered_map<uint32_t, Entry> voices_;
     uint64_t next_id_{1};
+    float master_{1.0f};
 
     void failure(const std::wstring &name, const std::string &message);
     void voice_failure(uint32_t id, const std::string &message);
@@ -75,6 +76,9 @@ public:
     void pan(uint32_t id, float value);
     float volume(uint32_t id) const;
     float pan(uint32_t id) const;
+    // Scales every voice, including those already playing; per-voice volumes stay unscaled.
+    void master_volume(float value);
+    float master_volume() const { return master_; }
     void clear();
 };
 
