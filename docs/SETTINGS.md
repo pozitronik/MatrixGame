@@ -34,7 +34,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 **Sound.** Volume scales every standalone sound effect and speech voice, including sounds already playing. It does not affect a DLL host's audio.
 
-**Graphics.** The stencil and projected shadow options correspond to the original game's shadow settings. Previously the EXE always enabled them; they now default to the same values. The sky's `Low` and `High` options select the original low- and high-quality sky textures.
+**Graphics.** The stencil and projected shadow options correspond to the original game's shadow settings. Previously the EXE always enabled them; they now default to the same values. Each option controls only its own kind of shadow, so either kind can be shown alone. The sky's `Low` and `High` options select the original low- and high-quality sky textures.
 
 **Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators.
 
@@ -54,7 +54,7 @@ Automated `game.settings.*` contracts cover:
 - Atomic saving and failed-save behavior.
 - Window selection, stepping, mode coupling, hit areas and both label languages.
 - Startup mapping of graphics options.
-- Immediate routing of shadows, camera speed and volume.
+- Immediate routing of shadows, camera speed and volume, and shadow pass selection for each combination of the two shadow options.
 
 `game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions.
 
@@ -63,9 +63,10 @@ The rendered window, menu integration and real display transitions need a playte
 1. Start a battle and press Escape. The settings label must use the same color as the other menu labels and highlight when the pointer is over it or its button. Click it. The Settings window must open centered, with the battle paused.
 2. Move the pointer over the rows and step every option with the mouse, including both ends of Volume and Camera speed. Use Up/Down/Left/Right on the keyboard. Check that labels and values stay inside the frame and that the checkmark and cross sit in their holes.
 3. Press Escape. The menu must reappear and the file must be unchanged. Press `C` to reopen the window; the values must match the file.
-4. Set Volume to 30 and apply. Effects must become quieter immediately, including continuing sounds. Change shadows and camera speed, apply, and confirm the visible effect. Switch Window mode between Windowed, Borderless and Exclusive, and check the result after each Apply.
-5. Change Resolution, Sky, Robot shadows and the random generator, apply, and restart. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.
-6. Make `CFG/standalone.txt` read-only and apply a change. The window must show the save error and keep the original file. Restore write access.
-7. Repeat steps 1 and 2 at 640x480 and with a Russian and an English game configuration.
+4. Set Volume to 30 and apply. Effects must become quieter immediately, including continuing sounds. Change camera speed, apply, and confirm the visible effect. Switch Window mode between Windowed, Borderless and Exclusive, and check the result after each Apply.
+5. Starting with both shadow options on, apply in turn: Stencil shadows off, then Projected shadows off, then Stencil shadows on, then Projected shadows on. Each kind of shadow must appear only while its option is on, and a kind turned back on must reappear on objects that were already shadowed.
+6. Change Resolution, Sky, Robot shadows and the random generator, apply, and restart. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.
+7. Make `CFG/standalone.txt` read-only and apply a change. The window must show the save error and keep the original file. Restore write access.
+8. Repeat steps 1 and 2 at 640x480 and with a Russian and an English game configuration.
 
 Record the build, configuration type, resolution, modes, failures and exit codes.

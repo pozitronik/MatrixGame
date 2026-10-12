@@ -6,7 +6,10 @@
 #include "MatrixConfig.hpp"
 #include "MatrixGameDll.hpp"
 #include "SettingsWindow.hpp"
+#include "ShadowPasses.hpp"
 #include "WindowDisplay.hpp"
+
+#include <utility>
 
 namespace {
 
@@ -94,6 +97,26 @@ void restart_detection() {
     SoundBridge::master_volume(1.0f);
 }
 
+void independent_shadows() {
+    // Each shadow kind draws only while enabled, and either one needs the stencil pass that
+    // darkens it. The sequence also changes options after both kinds have been drawn.
+    StandaloneSettings::initialize_runtime(Values{});
+    const auto initial = shadow_passes(g_Config);
+    MG_CHECK(initial.volumes && initial.projected && initial.stencil_pass());
+    const std::pair<bool, bool> combinations[] = {
+            {false, true}, {true, false}, {false, false}, {true, true}, {false, true}};
+    for (const auto &[stencil, projected] : combinations) {
+        auto values = Values{};
+        values.stencil_shadows = stencil;
+        values.projected_shadows = projected;
+        StandaloneSettings::apply_runtime(values);
+        const auto passes = shadow_passes(g_Config);
+        MG_CHECK(passes.volumes == stencil && passes.projected == projected);
+        MG_CHECK(passes.stencil_pass() == (stencil || projected));
+    }
+    SoundBridge::master_volume(1.0f);
+}
+
 void window_availability() {
     const std::wstring disabled = L"x|_COLOR:FF6794A3|_POS:6:105|_TEXT:[setup]|y";
     auto menu = disabled;
@@ -112,6 +135,7 @@ constexpr tests::Case cases[] = {
     {"game.settings.startup_settings", startup_settings},
     {"game.settings.immediate_settings", immediate_settings},
     {"game.settings.restart_detection", restart_detection},
+    {"game.settings.independent_shadows", independent_shadows},
     {"game.settings.window_availability", window_availability},
 };
 
