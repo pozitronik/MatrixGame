@@ -1,0 +1,47 @@
+arch x86
+sizeof void *                          4
+sizeof long                            4
+sizeof dword                           4
+sizeof DWORD                           4
+sizeof wchar_t                         2
+sizeof size_t                          4
+sizeof bool                            1
+sizeof long double                     8
+sizeof Base::EFileType                 4
+sizeof Base::SFileRec                158
+offset Base::SFileRec::m_Type        134
+offset Base::SFileRec::m_Offset      150
+offset Base::SFileRec::m_Extra       154
+sizeof Base::SFolderRec               12
+sizeof Base::SFileHandleRec           32
+sizeof SCompilePoint                  12
+sizeof SCompileMove                   16
+sizeof SCompileMoveCell               64
+sizeof SCompileBottomVert              8
+sizeof Base::CRect                    16
+sizeof SVOHeader                      80
+sizeof SVOVertexNorTex                32
+sizeof SVOMaterial                   136
+sizeof SVOGroup                       32
+sizeof SVOFrame                       64
+sizeof SVOAnimHeader                  80
+sizeof SVOMatrixHeader                80
+sizeof SVOFrameEdge                    8
+sizeof SVOEdge                        12
+sizeof SRobotsSettings                56
+offset SRobotsSettings::FD3DDevice     4
+offset SRobotsSettings::m_ShowStencilShadows    8
+offset SRobotsSettings::m_BPP         16
+offset SRobotsSettings::m_Brightness   32
+offset SRobotsSettings::m_FSAASamples   40
+offset SRobotsSettings::m_MaxDistance   48
+offset SRobotsSettings::m_VSync       52
+sizeof SRobotGameState                24
+sizeof SMGDRobotInterface             16
+offset SMGDRobotInterface::m_Run      12
+sizeof SMGDRangersInterface           64
+offset SMGDRangersInterface::m_RangersText   36
+offset SMGDRangersInterface::m_MusicVolumeSet   60
+sizeof SMGDRangersInterfaceText       20
+offset SMGDRangersInterfaceText::m_Buf    4
+offset SMGDRangersInterfaceText::m_Pitch    8

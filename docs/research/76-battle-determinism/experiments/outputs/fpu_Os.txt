@@ -1,0 +1,5 @@
+before cw=037f RndFloat=6fc22a2f629c72ac RND=6216d36c16480558 FSRND=4170626549bc97f7 FRND=b6ba3cacbfe58ff0
+after Direct3DCreate9 cw=037f
+CreateDevice preserve=0 hr=00000000
+after cw=007f RndFloat=dc57a2f2711c5536 RND=ed39a4f5c5522bc5 FSRND=c1836d50ff882cb2 FRND=b6ba3cacbfe58ff0
+after_release cw=007f RndFloat=dc57a2f2711c5536 RND=ed39a4f5c5522bc5 FSRND=c1836d50ff882cb2 FRND=b6ba3cacbfe58ff0
