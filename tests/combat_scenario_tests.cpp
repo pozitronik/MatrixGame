@@ -1324,6 +1324,84 @@ std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EB
     trace.complete(session);
     return trace.states;
 }
+std::vector<int> building_family_impacts(EWeapon weapon) {
+    switch (weapon) {
+    case WEAPON_VOLCANO:
+    case WEAPON_LIGHTENING: return {20, 520, 1020, 1520, 2020, 2520, 3020, 3520};
+    case WEAPON_FLAMETHROWER: return {200, 230, 260, 290, 320, 700, 730, 760, 1230, 1260, 1290,
+        1760, 1790, 1820, 2260, 2290, 2320, 2350, 2820, 2850, 2880, 3410, 3440, 3470};
+    case WEAPON_GUN: return {50, 550, 1050, 1550, 2050, 2560, 3060, 3580};
+    case WEAPON_HOMING_MISSILE: return {290, 780, 1290, 1810, 2320, 2840, 3390, 3930};
+    case WEAPON_BOMB: return {1320, 2820, 3330, 3850};
+    default: throw std::runtime_error("Missing building weapon-family oracle");
+    }
+}
+std::vector<std::string> building_family_run(const Family &family, random::Mode mode, EBuildingType kind, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode, 82, 10, 1000, false, true};
+    Session session(profile);
+    assets.install();
+    MG_CHECK(session.remove(3));
+    position_fixture_robot(*robot(2), 620, 620);
+    configure_weapon(family.effect, family.heat);
+    g_Config.m_WeaponCooldown[Weap2Index(family.effect)] = 500;
+    g_Config.m_BuildingDamages[Weap2Index(family.effect)] = {2, 0, 0};
+    g_Config.m_BuildingDamages[Weap2Index(WEAPON_ABLAZE)] = {};
+    g_Config.m_BuildingDamages[Weap2Index(WEAPON_SHORTED)] = {};
+    for (int resource : {RESOURCE_BASE, RESOURCE_TITAN, RESOURCE_PLASMA, RESOURCE_ELECTRONICS, RESOURCE_ENERGY})
+        g_Config.m_Timings[resource] = 100000;
+    auto *shooter = robot(PLAYER_SIDE);
+    tests::arm_battle_robot(*shooter, family.unit);
+    auto *mesh = tests::load_battle_mesh({}, nullptr, false, 40.0f);
+    auto owned = tests::make_battle_building(*mesh, 2, kind, 200, 200, 100);
+    auto *patient = owned.get();
+    g_MatrixMap->AddObject(patient, true);
+    owned.release();
+    Trace trace(session, profile, (std::string("building-family-") + family.name + "-" + std::to_string(int(kind))).c_str(),
+        run, "synthetic-armed-building-families-v1");
+    auto *side = g_MatrixMap->GetPlayerSide();
+    trace.command(session, "order-attack-building", [&] {
+        side->PGOrderAttack(side->SelGroupToLogicGroup(), CPoint(20, 20), patient);
+        return session.robot(1).order == mpo_Attack;
+    });
+    float health = patient->GetHitPoint();
+    std::vector<std::pair<int, int>> impacts;
+    for (int i = 0; i < 400; ++i) {
+        trace.record(session, shooter, shooter, nullptr, nullptr, patient);
+        session.advance();
+        if (patient->GetHitPoint() != health) {
+            health = patient->GetHitPoint();
+            impacts.emplace_back(session.time(), int(std::lround(health * 10)));
+        }
+        MG_CHECK(patient->IsLiveBuilding() && patient->GetSide() == 2);
+        MG_CHECK(side->GetStatValue(STAT_BUILDING_KILL) == 0);
+    }
+    std::cout << "building family=" << family.name << " kind=" << int(kind) << " mode=" << int(mode) << " impacts:";
+    for (const auto &[time, hp] : impacts) std::cout << ' ' << time << ':' << hp;
+    std::cout << '\n';
+    const auto times = building_family_impacts(family.effect);
+    std::vector<std::pair<int, int>> expected;
+    for (size_t i = 0; i < times.size(); ++i) expected.emplace_back(times[i], 100 - 2 * int(i + 1));
+    MG_CHECK(impacts == expected);
+    const float expected_health = float(expected.back().second) / 10.0f;
+    MG_CHECK(std::bit_cast<uint32_t>(health) == std::bit_cast<uint32_t>(expected_health));
+    MG_CHECK(!session.robot(1).target_is_null && session.robot(1).order == mpo_Attack);
+    trace.record(session, shooter, shooter, nullptr, nullptr, patient);
+    trace.complete(session);
+    return trace.states;
+}
+void building_family_replay(const Family &family) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (auto kind : {BUILDING_BASE, BUILDING_TITAN}) {
+        const auto first = building_family_run(family, mode, kind, 0);
+        compare(first, building_family_run(family, mode, kind, 1));
+    }
+}
+void building_volcano() { building_family_replay(volcano); }
+void building_electric() { building_family_replay(electric); }
+void building_flame() { building_family_replay(flame); }
+void building_gun() { building_family_replay(gun); }
+void building_missile() { building_family_replay(missile); }
+void building_mortar() { building_family_replay(mortar); }
 void building_patient() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (bool plasma : {false, true})
@@ -1646,6 +1724,9 @@ const tests::Case cases[] = {
         {"game.combat.robot_boundaries", robot_boundaries},   {"game.combat.status_refresh", status_refresh},
         {"game.combat.status_lethal", status_lethal},         {"game.combat.friendly_difficulty", friendly_difficulty},
         {"game.combat.cannon_difficulty", cannon_difficulty},
+        {"game.combat.building_volcano", building_volcano}, {"game.combat.building_electric", building_electric},
+        {"game.combat.building_flame", building_flame}, {"game.combat.building_gun", building_gun},
+        {"game.combat.building_missile", building_missile}, {"game.combat.building_mortar", building_mortar},
         {"game.combat.building_patient", building_patient}, {"game.combat.building_dying", building_dying}};
 }  // namespace
 int main(int argc, char **argv) {
