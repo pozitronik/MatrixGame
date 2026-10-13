@@ -1,11 +1,15 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_building.hpp"
+#include "battle_material.hpp"
+#include "battle_mesh.hpp"
 #include "command_world.hpp"
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixObjectBuilding.hpp"
 #include "Interface/CInterface.h"
+#include "Interface/CConstructor.h"
+#include "MatrixSkinManager.hpp"
 #include <array>
 #include <cmath>
 #include <vector>
@@ -29,6 +33,158 @@ bool in_logic(CMatrixMapStatic *expected) {
     for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
         if (object == expected) return true;
     return false;
+}
+
+void constructor_assets() {
+    tests::install_battle_texture(OBJECT_PATH_ROBOT_CHASSIS L"2");
+    tests::install_battle_texture(OBJECT_PATH_ROBOT_ARMOR L"1");
+    const tests::MeshAttachment link{1, L"armor", 0, 0, 20};
+    tests::load_battle_material_mesh(std::span(&link, 1), OBJECT_PATH_ROBOT_CHASSIS L"2.vo",
+                                     OBJECT_PATH_ROBOT_CHASSIS L"2");
+    const tests::MeshAttachment head_link{1, L"head", 0, 0, 20};
+    tests::load_battle_material_mesh(std::span(&head_link, 1), OBJECT_PATH_ROBOT_ARMOR L"1.vo",
+                                     OBJECT_PATH_ROBOT_ARMOR L"1");
+    auto *names = g_MatrixData->BlockGetAdd(IF_LABELS_BLOCKPAR)->BlockGetAdd(L"RobotNames");
+    names->ParSetAdd(L"Hull1Key", L"Synthetic hull ");
+    names->ParSetAdd(L"Chas2Key", L"wheels");
+    g_Config.m_RobotShadow = SHADOW_OFF;
+    g_Config.m_ObjTexturesGloss = false;
+    g_Config.m_ItemChars[ARMOR1_STRUCTURE] = 500;
+    for (int i = 0; i < MAX_RESOURCES; ++i) {
+        g_Config.m_Price[CHASSIS2_TITAN + i] = 11 + i;
+        g_Config.m_Price[ARMOR1_TITAN + i] = 21 + i;
+    }
+}
+
+void constructor_assembly() {
+    // Two sessions per RNG also exercise destruction/recreation of cached skins.
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int repeat = 0; repeat < 2; ++repeat) {
+        tests::BattleMaterialProfile material_profile;
+        Session session({mode, 83, 10, 1000, false, false});
+        std::cout << "Constructor profile: " << session.metadata("synthetic-material-boxes-v1") << '\n';
+        constructor_assets();
+        auto factory = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            2, BUILDING_BASE, 100, 100);
+        CConstructor constructor;
+        constructor.SetSide(2);
+        constructor.SetBase(factory.get());
+        constructor.OperateUnit(MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+        constructor.OperateUnit(MRT_ARMOR, RUK_ARMOR_BIREX);
+        Cost price{};
+        constructor.GetConstructionPrice(price.data());
+        MG_CHECK((price == Cost{32, 34, 36, 38}));
+        MG_CHECK(constructor.GetConstructionStructure() == 150);
+        const auto before = resources();
+        const auto draws = random::draw_count();
+        Cost computer_before{};
+        auto *computer = g_MatrixMap->GetSideById(2);
+        for (int i = 0; i < MAX_RESOURCES; ++i)
+            computer_before[i] = computer->GetResourcesAmount(static_cast<ERes>(i));
+        const D3DXVECTOR3 directions[] = {{0, 1, 0}, {-1, 0, 0}, {0, -1, 0}, {1, 0, 0}};
+        for (int angle = 0; angle < 4; ++angle) {
+            factory->m_Angle = angle;
+            constructor.StackRobot(nullptr, angle == 3 ? -1 : angle);
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 1);
+            auto *built = factory->m_BS.GetTopItem()->AsRobot();
+            MG_CHECK(built->GetSide() == 2 && built->GetBase() == factory.get());
+            MG_CHECK(built->GetTeam() == (angle == 3 ? 0 : angle));
+            MG_CHECK(built->IsCrazy() == (angle == 3));
+            MG_CHECK(built->m_PosX == 100 && built->m_PosY == 100);
+            MG_CHECK(built->m_Forward == directions[angle] && built->m_HullForward == directions[angle]);
+            MG_CHECK(built->m_Name == L"Synthetic hull wheels");
+            MG_CHECK(built->m_UnitCnt == 2);
+            MG_CHECK(built->m_Unit[0].m_Type == MRT_CHASSIS && built->m_Unit[0].u1.s1.m_Kind == RUK_CHASSIS_WHEEL);
+            MG_CHECK(built->m_Unit[1].m_Type == MRT_ARMOR && built->m_Unit[1].u1.s1.m_Kind == RUK_ARMOR_BIREX);
+            for (int i = 0; i < 2; ++i) {
+                auto *graph = built->m_Unit[i].m_Graph;
+                MG_CHECK(graph && graph->GetSkin());
+                const auto *skin = static_cast<const SMatrixSkin *>(graph->GetSkin());
+                MG_CHECK(skin->m_Tex->GetPixelColor(0, 0) == 0xff204060);
+                MG_CHECK(skin->m_Tex->GetSizeX() == 2 && skin->m_Tex->GetSizeY() == 2);
+            }
+            MG_CHECK(!in_logic(built));
+            for (int i = 0; i < MAX_RESOURCES; ++i)
+                MG_CHECK(computer->GetResourcesAmount(static_cast<ERes>(i)) == computer_before[i] + angle * price[i]);
+            factory->m_BS.DeleteItem(1);
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 0);
+        }
+        // StackRobot queues a design; payment belongs to its caller.
+        MG_CHECK(resources() == before);
+        for (int i = 0; i < MAX_RESOURCES; ++i)
+            MG_CHECK(computer->GetResourcesAmount(static_cast<ERes>(i)) == computer_before[i] + 4 * price[i]);
+        MG_CHECK(random::draw_count() == draws);
+    }
+}
+
+void constructor_capacity() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::BattleMaterialProfile material_profile;
+        Session session({mode, 83, 10, 1000, false, false});
+        constructor_assets();
+        auto factory = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            2, BUILDING_BASE, 100, 100);
+        CConstructor constructor;
+        constructor.SetSide(2);
+        constructor.StackRobot(nullptr); // No base.
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 0);
+        constructor.SetBase(factory.get());
+        constructor.StackRobot(nullptr); // Empty design.
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 0);
+        constructor.OperateUnit(MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+        constructor.OperateUnit(MRT_ARMOR, RUK_ARMOR_BIREX);
+        std::vector<CMatrixRobotAI *> queued;
+        const auto draws = random::draw_count();
+        for (int i = 0; i < 6; ++i) {
+            constructor.StackRobot(nullptr, 1);
+            MG_CHECK(factory->m_BS.GetItemsCnt() == i + 1);
+        }
+        for (auto *item = factory->m_BS.GetTopItem(); item; item = item->m_NextStackItem)
+            queued.push_back(item->AsRobot());
+        MG_CHECK(queued.size() == 6);
+        constructor.StackRobot(nullptr, 2); // Reject a seventh enqueue.
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 6 && factory->m_BS.GetTopItem() == queued.front());
+        MG_CHECK(random::draw_count() == draws);
+        for (int i = 0; i < 6; ++i) {
+            MG_CHECK(factory->m_BS.GetTopItem() == queued[i]);
+            MG_CHECK(queued[i]->GetTeam() == 1 && !in_logic(queued[i]));
+            factory->m_BS.DeleteItem(1);
+        }
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 0);
+    }
+}
+
+void constructor_deployment() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::BattleMaterialProfile material_profile;
+        Session session({mode, 83, 10, 1000, false, false});
+        constructor_assets();
+        auto factory = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            2, BUILDING_BASE, 100, 100);
+        CConstructor constructor;
+        constructor.SetSide(2);
+        constructor.SetBase(factory.get());
+        SSpecialBot design;
+        design.m_Chassis.m_nKind = RUK_CHASSIS_WHEEL;
+        design.m_Armor.m_Unit.m_nKind = RUK_ARMOR_BIREX;
+        design.m_Team = 1;
+        constructor.BuildSpecialBot(design);
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 1);
+        auto *built = factory->m_BS.GetTopItem()->AsRobot();
+        auto *side = g_MatrixMap->GetSideById(2);
+        const auto statistic = side->GetStatValue(STAT_ROBOT_BUILD);
+        const auto draws = random::draw_count();
+        g_Config.m_Timings[UNIT_ROBOT] = 100;
+        factory->m_BS.TickTimer(99);
+        MG_CHECK(!in_logic(built) && factory->m_BS.GetItemsCnt() == 1);
+        factory->m_BS.TickTimer(1);
+        MG_CHECK(in_logic(built) && factory->m_BS.GetItemsCnt() == 0);
+        MG_CHECK(built->m_CurrState == ROBOT_IN_SPAWN && built->GetBase() == factory.get());
+        MG_CHECK(built->GetTeam() == 0 && built->m_UnitCnt == 2); // Spawn chooses the first empty computer team.
+        MG_CHECK(factory->m_State == BASE_OPENING && factory->IsSpawningBot());
+        MG_CHECK(side->GetStatValue(STAT_ROBOT_BUILD) == statistic + 1);
+        MG_CHECK(random::draw_count() == draws); // Computer deployment has no player sound choice.
+        g_MatrixMap->StaticDelete(built);
+    }
 }
 tests::EnginePtr<CMatrixBuilding> base() {
     return tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
@@ -379,6 +535,9 @@ const tests::Case cases[] = {{"game.production.reinforcement_occupied", reinforc
                            {"game.production.paused_production", paused_production},
                            {"game.production.cancel_waiting_during_spawn", cancel_waiting_during_spawn},
                            {"game.production.queue_deployment", queue_deployment},
+                           {"game.production.constructor_assembly", constructor_assembly},
+                           {"game.production.constructor_capacity", constructor_capacity},
+                           {"game.production.constructor_deployment", constructor_deployment},
                            {"game.production.base_exit", base_exit},
                            {"game.production.building_geometry", building_geometry},
                            {"game.production.maintenance_clock", maintenance_clock},

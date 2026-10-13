@@ -256,6 +256,9 @@ add_matrix_test(game.production.cancel_waiting_during_spawn matrixgame_productio
 foreach(contract occupied incompatible over_budget)
     add_matrix_test(game.production.reinforcement_${contract} matrixgame_production_scenarios gameplay ai)
 endforeach()
+add_matrix_test(game.production.constructor_assembly matrixgame_production_scenarios gameplay ai memory)
+add_matrix_test(game.production.constructor_capacity matrixgame_production_scenarios gameplay ai memory)
+add_matrix_test(game.production.constructor_deployment matrixgame_production_scenarios gameplay ai memory)
 
 add_matrix_test_executable(matrixgame_combat_scenarios combat_scenario_tests.cpp battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -272,9 +275,21 @@ foreach(contract volcano_firing electric_firing flame_firing gun_firing missile_
     add_matrix_test(game.combat.${contract} matrixgame_combat_scenarios gameplay ai memory)
 endforeach()
 
+add_matrix_test_executable(matrixgame_material_ruin_tests material_ruin_tests.cpp battle_combat_geometry.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_material_ruin_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_material_ruin_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_material_ruin_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_material_ruin_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(kind base titan plasma electronics energy repair)
+    add_matrix_test(game.harness.materials.demolish_${kind} matrixgame_material_ruin_tests gameplay memory tests)
+endforeach()
+
 add_matrix_test_executable(matrixgame_battle_device_tests battle_device_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_device_tests PRIVATE MatrixGameInternal)
-foreach(contract buffers invalid_buffers com_ownership state_sessions)
+foreach(contract buffers invalid_buffers com_ownership state_sessions textures invalid_textures texture_ownership managed_texture_upload resource_budget)
     add_matrix_test(game.harness.device.${contract} matrixgame_battle_device_tests tests rendering)
 endforeach()
 

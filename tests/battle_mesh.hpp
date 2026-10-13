@@ -13,4 +13,8 @@ struct MeshAttachment {
 // Height changes only synthetic initial geometry; 20 preserves existing fixtures.
 CVectorObject *load_battle_mesh(std::span<const MeshAttachment> attachments,
                                const wchar_t *cache_name = nullptr, bool combat_animations = false, float height = 20.0f);
+// A single material surface for production LoadObject/skin lookup. The texture
+// must already be present in the cache; this does not read external assets.
+CVectorObject *load_battle_material_mesh(std::span<const MeshAttachment> attachments,
+    const wchar_t *cache_name, const wchar_t *texture_name, bool combat_animations = false);
 }
