@@ -37,6 +37,12 @@ Cost resources() {
         result[i] = g_MatrixMap->GetPlayerSide()->GetResourcesAmount(static_cast<ERes>(i));
     return result;
 }
+std::set<std::size_t> map_robot_ids() {
+    std::set<std::size_t> result;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsRobot()) result.insert(object->AsRobot()->UID);
+    return result;
+}
 bool in_logic(CMatrixMapStatic *expected) {
     for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
         if (object == expected) return true;
@@ -60,7 +66,7 @@ void unavailable_robot_icons() {
         MG_CHECK(session.rejected_icon_targets() == 1 && random::draw_count() == draws);
         robot->CreateTextures();
         MG_CHECK(!robot->GetBigTexture() && !robot->GetMedTexture());
-        MG_CHECK(session.rejected_icon_targets() == 2);
+        MG_CHECK(session.rejected_icon_targets() == 2 && random::draw_count() == draws);
         MG_CHECK(session.metadata().find("storage-device-unavailable-icons") != std::string::npos);
     }
     Session ordinary;
@@ -129,6 +135,7 @@ void reinforcement_reservations() {
       for (int score : {60, 100, 130}) {
         tests::BattleMaterialProfile material_profile;
         Session session(icon_profile(mode));
+        std::cout << "score=" << score << " " << session.metadata("synthetic-reinforcement-reservations-v1") << '\n';
         tests::install_battle_transport(score);
         auto factory = base();
         // All four places are otherwise free; one live robot reserves place zero.
@@ -153,7 +160,8 @@ void reinforcement_reservations() {
             auto *carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[i]);
             MG_CHECK(carrier->CarryingRobot());
             auto *robot = static_cast<CMatrixRobotAI *>(carrier->GetCarryingRobot());
-            MG_CHECK(robot->GetEnv()->m_Place != 0 && robot->GetSide() == PLAYER_SIDE);
+            MG_CHECK(robot->GetEnv()->m_Place > 0 && robot->GetEnv()->m_Place < g_MatrixMap->m_RN.m_PlaceCnt);
+            MG_CHECK(robot->GetSide() == PLAYER_SIDE);
             MG_CHECK(places.insert(robot->GetEnv()->m_Place).second);
             robot_cores.emplace_back(robot->GetCore(DEBUG_CALL_INFO));
             carrier_cores.emplace_back(carrier->GetCore(DEBUG_CALL_INFO));
@@ -171,6 +179,7 @@ void reinforcement_carrier_limit() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         tests::BattleMaterialProfile material_profile;
         Session session(icon_profile(mode));
+        std::cout << session.metadata("synthetic-reinforcement-cap-v1") << '\n';
         tests::install_battle_transport();
         auto factory = base();
         MaintenanceInput::enable(*g_MatrixMap);
@@ -183,10 +192,12 @@ void reinforcement_carrier_limit() {
             g_MatrixMap->m_AD_Obj[g_MatrixMap->m_AD_Obj_cnt++] = carrier;
             carriers.push_back(carrier);
         }
+        const auto robots_before = map_robot_ids();
         const auto before = resources();
         const auto draws = random::draw_count();
         factory->Maintenance();
         MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == MAX_ALWAYS_DRAW_OBJ);
+        MG_CHECK(map_robot_ids() == robots_before);
         MG_CHECK(random::draw_count() == draws + 2 && session.rejected_icon_targets() == 0);
         MG_CHECK(resources() == before && g_MatrixMap->BeforeMaintenanceTime() == 1000);
         for (int i = 0; i < MAX_ALWAYS_DRAW_OBJ; ++i)
