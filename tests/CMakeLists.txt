@@ -376,8 +376,14 @@ if(MATRIXGAME_BUILD_DLL)
         TIMEOUT 30)
 endif()
 
-add_matrix_test_executable(matrixgame_presentation_integration_tests presentation_integration_tests.cpp diagnostic_overlay_stub.cpp)
+add_matrix_test_executable(matrixgame_presentation_integration_tests presentation_integration_tests.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_presentation_integration_tests PRIVATE MatrixGameInternal)
-foreach(contract push_sounds preset_matching disabled optional_audio interface_layer)
+add_dependencies(matrixgame_presentation_integration_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_presentation_integration_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_presentation_integration_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
 endforeach()
