@@ -782,6 +782,7 @@ void manual_armed_fire() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         tests::BattleCombatAssets assets;
         Session session({mode, 80, 10, 1000, false, true});
+        std::cout << session.metadata("player-manual-laser-v1") << '\n';
         assets.install();
         CFormMatrixGame form;
         auto *robot = selected(0);
@@ -831,6 +832,8 @@ void manual_armed_fire() {
 std::vector<std::string> repair_command_run(random::Mode mode, bool button_route, bool retire) {
     tests::BattleCombatAssets assets;
     Session session({mode, 80, 10, 1000, false, true});
+    std::cout << session.metadata("player-repair-routes-v1") << "\nbutton_route=" << button_route
+              << " retire=" << retire << '\n';
     assets.install();
     CFormMatrixGame form;
     auto *healer = selected(0);
@@ -914,6 +917,8 @@ std::vector<std::string> bomb_command_run(random::Mode mode, bool button_route, 
     tests::BattleCombatAssets assets;
     PlayerCraterAssets crater;
     Session session({mode, 80, 10, 4000, false, true});
+    std::cout << session.metadata("player-bomb-routes-v1") << "\nbutton_route=" << button_route
+              << " targeted=" << targeted << '\n';
     assets.install();
     crater.install();
     CFormMatrixGame form;
@@ -954,16 +959,24 @@ std::vector<std::string> bomb_command_run(random::Mode mode, bool button_route, 
     MG_CHECK(session.robot(1).target == (targeted ? 3u : 0u));
     std::vector<std::string> states;
     int dying_at = 0, removed_at = 0, damaged_at = 0;
+    int damage_events = 0;
+    float health = target->GetHitPoint();
     for (int frame = 0; frame < 3000; ++frame) {
         session.advance();
         if (core->m_Object && bomber->m_CurrState == ROBOT_DIP && !dying_at) dying_at = session.time();
         if (!core->m_Object && !removed_at) removed_at = session.time();
-        if (target->GetHitPoint() < 5 && !damaged_at) damaged_at = session.time();
+        if (target->GetHitPoint() != health) {
+            ++damage_events;
+            MG_CHECK(health == 5.0f && target->GetHitPoint() == 4.0f);
+            health = target->GetHitPoint();
+            damaged_at = session.time();
+        }
         states.push_back(session.snapshot());
     }
     std::cout << "Bomb route targeted=" << targeted << " mode=" << int(mode)
               << " dying=" << dying_at << " removed=" << removed_at << " damage=" << damaged_at << '\n';
     MG_CHECK(dying_at == (targeted ? 7920 : 10920));
+    MG_CHECK(damage_events == 1);
     MG_CHECK(damaged_at == dying_at + 290);
     MG_CHECK(removed_at == dying_at + (mode == random::Mode::ParkMiller ? 4680 : 4810));
     MG_CHECK(!core->m_Object && !session.robot(1).alive);
