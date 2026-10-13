@@ -230,7 +230,8 @@ class BattleDevice::Device final : public IDirect3DDevice9 {
     BOOL cursor_visible_{};
 public:
     BattleDeviceStats statistics;
-    Device() {
+    IconTargets icon_targets_;
+    explicit Device(IconTargets icon_targets) : icon_targets_(icon_targets) {
         D3DMATRIX identity{};
         identity._11 = identity._22 = identity._33 = identity._44 = 1.0f;
         transforms_.emplace(D3DTS_WORLD, identity);
@@ -378,8 +379,15 @@ public:
         }
         return D3D_OK;
     }
-    HRESULT STDMETHODCALLTYPE CreateRenderTarget(UINT, UINT, D3DFORMAT, D3DMULTISAMPLE_TYPE, DWORD, BOOL, IDirect3DSurface9**, HANDLE*) override {
-        unsupported("CreateRenderTarget");
+    HRESULT STDMETHODCALLTYPE CreateRenderTarget(UINT width, UINT height, D3DFORMAT format,
+        D3DMULTISAMPLE_TYPE multisample, DWORD quality, BOOL lockable, IDirect3DSurface9 **out, HANDLE *shared) override {
+        if (icon_targets_ != IconTargets::Unavailable) unsupported("CreateRenderTarget");
+        if (out) *out = nullptr;
+        if (!out || width != 256 || height != 256 || format != D3DFMT_A8R8G8B8 ||
+            multisample != D3DMULTISAMPLE_NONE || quality != 0 || !lockable || shared)
+            return D3DERR_INVALIDCALL;
+        ++statistics.rejected_icon_targets;
+        return D3DERR_NOTAVAILABLE;
     }
     HRESULT STDMETHODCALLTYPE CreateDepthStencilSurface(UINT, UINT, D3DFORMAT, D3DMULTISAMPLE_TYPE, DWORD, BOOL, IDirect3DSurface9**, HANDLE*) override {
         unsupported("CreateDepthStencilSurface");
@@ -682,9 +690,9 @@ public:
     }
 };
 
-BattleDevice::BattleDevice() : device_(nullptr), previous_(g_D3DD) {
+BattleDevice::BattleDevice(IconTargets icon_targets) : device_(nullptr), previous_(g_D3DD) {
     if (previous_) unsupported("install over an existing device");
-    device_ = new Device;
+    device_ = new Device(icon_targets);
     g_D3DD = device_;
 }
 

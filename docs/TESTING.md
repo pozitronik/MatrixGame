@@ -106,6 +106,8 @@ The [synthetic armed fixtures](testing/armed-fixtures.md) describe generated att
 
 The [synthetic building fixtures](testing/building-fixtures.md) describe building geometry, queue deployment, exact base-exit transitions and safe teardown constraints.
 
+The [synthetic reinforcement fixtures](testing/reinforcement-fixtures.md) cover real request, carrier flight, cargo landing and retirement under an explicit unavailable-icon-renderer profile.
+
 ### Extending the fixture
 
 Reuse `tests/battle_scenario.hpp` and its implementation for a bounded scenario, or extend the synthetic initial data in `battle_geometry.cpp` when a new behavior requires it. Keep scenario setup distinct from actions. Add commands through the relevant production entry point; never write a resulting path, group order or AI decision to simulate acceptance. Entity lookup checks the live logic list and original UID before dereferencing stored pointers. Observers must avoid mutating helpers such as `SOrder::GetStatic()`, reference-acquiring `GetCore()` and lazy geometry preparation.
