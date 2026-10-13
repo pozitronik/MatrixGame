@@ -3,6 +3,8 @@
 #include "battle_building.hpp"
 #include "battle_combat_geometry.hpp"
 #include "battle_material.hpp"
+#include "battle_flyer.hpp"
+#include "MatrixFlyer.hpp"
 #include "battle_mesh.hpp"
 #include "MatrixObject.hpp"
 #include <array>
@@ -884,6 +886,157 @@ void turret_does_not_prevent_elimination() {
                  (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
     }
 }
+Profile transport_outcome_profile(random::Mode mode) {
+    Profile profile;
+    profile.mode = mode;
+    profile.seed = 85;
+    profile.audio = false;
+    profile.initially_selected = false;
+    profile.unavailable_icon_targets = true;
+    return profile;
+}
+using OutcomeCore = std::unique_ptr<SObjectCore, void (*)(SObjectCore *)>;
+OutcomeCore retain_core(CMatrixMapStatic &object) {
+    return OutcomeCore(object.GetCore(DEBUG_CALL_INFO), [](SObjectCore *core) { core->Release(); });
+}
+CMatrixFlyer *order_outcome_transport(int owner) {
+    tests::install_battle_transport();
+    g_MatrixMap->GetSideById(owner)->OrderFlyer(D3DXVECTOR2(200, 300), FO_GIVE_BOT, 0, 0, CPoint(0, 0), 0);
+    MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 1);
+    auto *carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[0]);
+    MG_CHECK(carrier->GetSide() == owner && carrier->CarryingRobot());
+    // FO_GIVE_BOT creates player cargo even when invoked on another side.
+    MG_CHECK(carrier->GetCarryingRobot()->GetSide() == PLAYER_SIDE);
+    return carrier;
+}
+void flyer_does_not_prevent_elimination() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true}) {
+        tests::BattleMaterialProfile materials;
+        Session session(transport_outcome_profile(mode));
+        DialogData dialog;
+        std::cout << session.metadata("synthetic-empty-carrier-outcome-v1") << '\n';
+        const int owner = player ? PLAYER_SIDE : 2;
+        auto *carrier = order_outcome_transport(owner);
+        auto core = retain_core(*carrier);
+        // Scheduled removal isolates the flyer from the live robot it carried.
+        g_MatrixMap->StaticDelete(carrier->GetCarryingRobot());
+        MG_CHECK(!carrier->CarryingRobot());
+        MG_CHECK(session.remove(player ? 1 : 3) && session.remove(player ? 2 : 4));
+        session.advance();
+        MG_CHECK(g_MatrixMap->GetSideById(owner)->GetStatus() == SS_NONE);
+        MG_CHECK(core->m_Object == carrier && carrier->GetSide() == owner);
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player);
+        advance_to(session, 2010);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        session.advance();
+        MG_CHECK(core->m_Object == carrier && !carrier->CarryingRobot());
+        MG_CHECK(g_MatrixMap->IsPaused());
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
+                 (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+    }
+}
+void transported_robot_prevents_elimination() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::BattleMaterialProfile materials;
+        Session session(transport_outcome_profile(mode));
+        DialogData dialog;
+        std::cout << session.metadata("synthetic-last-transported-robot-v1") << '\n';
+        auto *carrier = order_outcome_transport(PLAYER_SIDE);
+        auto carrier_core = retain_core(*carrier);
+        auto *robot = carrier->GetCarryingRobot()->AsRobot();
+        auto robot_core = retain_core(*robot);
+        MG_CHECK(session.remove(1) && session.remove(2));
+        int released = 0, landed = 0, retired = 0;
+        while (session.time() < 20000) {
+            session.advance();
+            MG_CHECK(side().GetStatus() == SS_ACTIVE && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+            MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+            MG_CHECK(robot_core->m_Object == robot && robot->IsLiveRobot());
+            if (!released && robot->m_CurrState != ROBOT_CARRYING) {
+                released = session.time();
+                MG_CHECK(robot->m_CurrState == ROBOT_FALLING);
+            }
+            if (!landed && released && robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) landed = session.time();
+            if (!retired && !carrier_core->m_Object) retired = session.time();
+        }
+        std::cout << "Last robot release=" << released << " landing=" << landed << " retirement=" << retired << '\n';
+        MG_CHECK(released == (mode == random::Mode::ParkMiller ? 6100 : 4940));
+        MG_CHECK(landed == (mode == random::Mode::ParkMiller ? 6420 : 5260));
+        MG_CHECK(retired == (mode == random::Mode::ParkMiller ? 11960 : 9670));
+        MG_CHECK(carrier_core->m_Object == nullptr && g_MatrixMap->m_AD_Obj_cnt == 0);
+    }
+}
+void transported_robot_removal_outcome() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000}) {
+        tests::BattleMaterialProfile materials;
+        Session session(transport_outcome_profile(mode));
+        DialogData dialog;
+        std::cout << "remove_at=" << remove_at << ' ' << session.metadata("synthetic-transport-cargo-removal-v1") << '\n';
+        auto *carrier = order_outcome_transport(PLAYER_SIDE);
+        auto carrier_core = retain_core(*carrier);
+        auto *robot = carrier->GetCarryingRobot()->AsRobot();
+        auto robot_core = retain_core(*robot);
+        MG_CHECK(session.remove(1) && session.remove(2));
+        advance_to(session, remove_at);
+        MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->m_DialogModeName);
+        MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
+        MG_CHECK(carrier_core->m_Object == carrier && carrier->CarryingRobot() == (remove_at == 1000));
+        g_MatrixMap->StaticDelete(robot);
+        MG_CHECK(robot_core->m_Object == nullptr && !carrier->CarryingRobot());
+        const int eliminated_at = remove_at == 1000 ? 2020 : 8050;
+        advance_to(session, eliminated_at - 10);
+        MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->IsPaused());
+        session.advance();
+        MG_CHECK(side().GetStatus() == SS_NONE && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        MG_CHECK(carrier_core->m_Object == carrier);
+        advance_to(session, eliminated_at + 2000);
+        MG_CHECK(!g_MatrixMap->m_DialogModeName);
+        session.advance();
+        MG_CHECK(g_MatrixMap->IsPaused());
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+        MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    }
+}
+void carrier_removal_outcome() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000}) {
+        tests::BattleMaterialProfile materials;
+        tests::BattleCombatAssets assets;
+        CaptureCraterAssets crater;
+        Session session(transport_outcome_profile(mode));
+        assets.install();
+        crater.install();
+        DialogData dialog;
+        std::cout << "remove_at=" << remove_at << ' ' << session.metadata("synthetic-carrier-removal-outcome-v1") << '\n';
+        auto *carrier = order_outcome_transport(PLAYER_SIDE);
+        auto carrier_core = retain_core(*carrier);
+        auto *robot = carrier->GetCarryingRobot()->AsRobot();
+        auto robot_core = retain_core(*robot);
+        MG_CHECK(session.remove(1) && session.remove(2));
+        advance_to(session, remove_at);
+        MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
+        g_MatrixMap->StaticDelete(carrier);
+        MG_CHECK(carrier_core->m_Object == nullptr && g_MatrixMap->m_AD_Obj_cnt == 0);
+        MG_CHECK(robot_core->m_Object == robot && robot->IsMustDie() == (remove_at == 1000));
+        MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_FALLING : ROBOT_SUCCESSFULLY_BUILD));
+        session.advance();
+        MG_CHECK(robot_core->m_Object == robot);
+        MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_DIP : ROBOT_SUCCESSFULLY_BUILD));
+        if (remove_at == 1000) {
+            advance_to(session, 2010);
+            MG_CHECK(side().GetStatus() == SS_ACTIVE);
+            session.advance();
+            MG_CHECK(side().GetStatus() == SS_NONE && !g_MatrixMap->m_DialogModeName);
+            advance_to(session, 4030);
+            MG_CHECK(g_MatrixMap->IsPaused());
+            MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+        } else {
+            advance_to(session, 10000);
+            MG_CHECK(robot_core->m_Object == robot && robot->IsLiveRobot());
+            MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->m_DialogModeName);
+        }
+        MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    }
+}
 std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base) {
     tests::BattleMaterialProfile materials;
     tests::BattleCombatAssets assets;
@@ -1077,6 +1230,10 @@ void repeated_sessions() {
     }
 }
 constexpr tests::Case cases[] = {
+    {"game.outcome.flyer_does_not_prevent_elimination", flyer_does_not_prevent_elimination},
+    {"game.outcome.transported_robot_prevents_elimination", transported_robot_prevents_elimination},
+    {"game.outcome.transported_robot_removal", transported_robot_removal_outcome},
+    {"game.outcome.carrier_removal", carrier_removal_outcome},
     {"game.outcome.capture_target_damage", capture_target_damage},
     {"game.outcome.special_break", special_object_destruction<0>},
     {"game.outcome.special_explosion", special_object_destruction<1>},
