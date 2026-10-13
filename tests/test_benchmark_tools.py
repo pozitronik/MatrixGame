@@ -1,0 +1,126 @@
+# MatrixGame - licensed under GPLv2 or any later version.
+import copy
+import importlib.util
+import io
+import json
+from pathlib import Path
+import random
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+
+PROJECT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location("benchmark", PROJECT / "tools/benchmark.py")
+benchmark = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(benchmark)
+
+
+def process_report(samples, work=None, allocations=10):
+    return {
+        "schema": "matrixgame-benchmark/1",
+        "build": {"compiler": "GCC 13.2.0", "configuration": "Release", "architecture": "x86",
+                  "engine_heap_tracking": False},
+        "host": {"processor": "Synthetic CPU", "logical_processors": 8, "timer_frequency_hz": 10000000},
+        "runner": {"warmup": 1, "repetitions": len(samples), "validation_delay_us": 0},
+        "workloads": [{
+            "name": "navigation.crowd_move",
+            "description": "synthetic",
+            "parameters": {"robots": "48"},
+            "iterations_per_sample": 20,
+            "work_per_sample": work or {"local_searches": 960},
+            "inspection": {"rng_draws": 1},
+            "samples_ns": samples,
+            "statistics_ns": {"median": benchmark.quantile(samples, 0.5)},
+            "allocations_per_sample": {"stable": True, "allocations": [allocations] * len(samples),
+                                       "reallocations": [0] * len(samples), "frees": [allocations] * len(samples),
+                                       "requested_bytes": [100] * len(samples)},
+        }],
+    }
+
+
+def result(scale=1.0, seed=1, noise=0.02, processes=3, work=None):
+    generator = random.Random(seed)
+    reports = []
+    for _ in range(processes):
+        samples = [1.0e7 * scale * (1.0 + generator.uniform(-noise, noise)) for _ in range(15)]
+        reports.append(process_report(samples, work))
+    context = {"revision": {"commit": "synthetic", "dirty": False},
+               "cmake": {"build_type": "Release", "dll": "OFF", "cheats": "OFF"}}
+    return benchmark.combine(reports, context)
+
+
+class BenchmarkToolTests(unittest.TestCase):
+    def test_statistics_use_interpolated_quantiles(self):
+        stats = benchmark.describe([4.0, 1.0, 3.0, 2.0])
+        self.assertEqual(stats["median"], 2.5)
+        self.assertEqual(stats["min"], 1.0)
+        self.assertEqual(stats["max"], 4.0)
+        self.assertAlmostEqual(stats["p90"], 3.7)
+        self.assertEqual(stats["mad"], 1.0)
+
+    def test_processes_must_repeat_the_same_work(self):
+        reports = [process_report([1.0, 2.0]), process_report([1.0, 2.0], work={"local_searches": 959})]
+        with self.assertRaisesRegex(benchmark.BenchmarkError, "not repeatable"):
+            benchmark.combine(reports, {})
+
+    def test_combined_result_keeps_every_sample(self):
+        combined = result()
+        workload = combined["workloads"][0]
+        self.assertEqual(len(workload["samples_ns"]), 45)
+        self.assertEqual(len(workload["process_medians_ns"]), 3)
+        self.assertTrue(workload["allocations_per_sample"]["stable"])
+        self.assertEqual(combined["runner"]["processes"], 3)
+
+    def test_repeated_measurement_is_not_a_regression(self):
+        rows, problems = benchmark.compare(result(seed=1), result(seed=2))
+        self.assertEqual(problems, [])
+        self.assertEqual(rows[0]["verdict"], "no material change")
+
+    def test_material_slowdown_is_a_regression(self):
+        rows, problems = benchmark.compare(result(seed=1), result(scale=1.2, seed=2))
+        self.assertEqual(problems, [])
+        self.assertEqual(rows[0]["verdict"], "regression")
+        rows, _ = benchmark.compare(result(seed=1), result(scale=0.8, seed=2))
+        self.assertEqual(rows[0]["verdict"], "improvement")
+
+    def test_small_change_inside_noise_is_not_material(self):
+        rows, _ = benchmark.compare(result(seed=1, noise=0.2), result(scale=1.06, seed=2, noise=0.2))
+        self.assertIn(rows[0]["verdict"], ("inconclusive", "no material change"))
+
+    def test_overlapping_processes_prevent_a_regression_verdict(self):
+        self.assertEqual(benchmark.classify(1.2, 1.3, 0.05, separated=False), "inconclusive")
+        self.assertEqual(benchmark.classify(1.2, 1.3, 0.05, separated=True), "regression")
+        self.assertEqual(benchmark.classify(0.98, 1.08, 0.05, separated=True), "inconclusive")
+
+    def test_different_work_or_identity_is_not_compared(self):
+        _, problems = benchmark.compare(result(), result(work={"local_searches": 961}))
+        self.assertTrue(any("different work" in problem for problem in problems))
+        other = result()
+        other["build"]["configuration"] = "Debug"
+        _, problems = benchmark.compare(result(), other)
+        self.assertTrue(any("build.configuration" in problem for problem in problems))
+        _, problems = benchmark.compare(result(), other, allow_identity_mismatch=True)
+        self.assertEqual(problems, [])
+
+    def test_compare_command_exit_status(self):
+        base = PROJECT / "build/benchmark-tests"
+        base.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=base) as temporary:
+            root = Path(temporary)
+            reference = root / "reference.json"
+            slower = root / "slower.json"
+            reference.write_text(json.dumps(result(seed=1)))
+            slower.write_text(json.dumps(result(scale=1.3, seed=2)))
+            output = io.StringIO()
+            with redirect_stdout(output), redirect_stderr(io.StringIO()):
+                self.assertEqual(benchmark.main(["compare", str(reference), str(reference)]), 0)
+                self.assertEqual(benchmark.main(["compare", str(reference), str(slower)]), 1)
+                broken = copy.deepcopy(result())
+                broken["schema"] = "other"
+                slower.write_text(json.dumps(broken))
+                self.assertEqual(benchmark.main(["compare", str(reference), str(slower)]), 2)
+            self.assertIn("regression", output.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()
