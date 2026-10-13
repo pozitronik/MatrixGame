@@ -290,6 +290,44 @@ void ai_and_constructor_prices() {
     }
 }
 
+void weapon_slot_selection() {
+    World w;
+    auto constructor = tests::make_engine_object<CConstructor>();
+    for (int armor = 1; armor <= ROBOT_ARMOR_CNT; ++armor) {
+        auto &matrix = w.world.map->m_RobotWeaponMatrix[armor - 1];
+        matrix = {};
+        matrix.cnt = 3;
+        matrix.common = 2;
+        matrix.extra = 1;
+        matrix.list[2].access_invert = (1u << 4) | (1u << 6);
+        for (int weapon = 1; weapon <= ROBOT_WEAPON_CNT; ++weapon) {
+            SWeaponUnit slots[MAX_WEAPON_CNT]{};
+            if (weapon == RUK_WEAPON_MORTAR || weapon == RUK_WEAPON_BOMB) {
+                MG_CHECK(constructor->CheckWeaponLegality(slots, weapon, armor) == 2);
+                slots[2].m_Unit.m_nKind = RUK_WEAPON_MORTAR;
+                // Extra-slot selection permits replacing its existing weapon.
+                MG_CHECK(constructor->CheckWeaponLegality(slots, weapon, armor) == 2);
+                matrix.list[2].access_invert = 0;
+                MG_CHECK(constructor->CheckWeaponLegality(slots, weapon, armor) == -1);
+                matrix.list[2].access_invert = (1u << 4) | (1u << 6);
+            }
+            else {
+                MG_CHECK(constructor->CheckWeaponLegality(slots, weapon, armor) == 0);
+                slots[0].m_Unit.m_nKind = RUK_WEAPON_MACHINEGUN;
+                MG_CHECK(constructor->CheckWeaponLegality(slots, weapon, armor) == 1);
+                slots[1].m_Unit.m_nKind = RUK_WEAPON_REPAIR;
+                MG_CHECK(constructor->CheckWeaponLegality(slots, weapon, armor) == -1);
+            }
+        }
+        matrix.cnt = 0;
+        SWeaponUnit slots[MAX_WEAPON_CNT]{};
+        MG_CHECK(constructor->CheckWeaponLegality(slots, RUK_WEAPON_MACHINEGUN, armor) == -1);
+        MG_CHECK(constructor->CheckWeaponLegality(slots, RUK_WEAPON_BOMB, armor) == -1);
+    }
+    w.expect({100, 200, 300, 400});
+    MG_CHECK(w.base->m_BS.GetItemsCnt() == 0);
+}
+
 constexpr tests::Case cases[]{
     {"game.production.queue_order", queue_order_and_refunds},
     {"game.production.capacity", queue_capacity},
@@ -300,6 +338,7 @@ constexpr tests::Case cases[]{
     {"game.production.turret_progress", turret_progress_and_cancel},
     {"game.production.income_ticks", income_tick_boundaries},
     {"game.production.ai_constructor_prices", ai_and_constructor_prices},
+    {"game.production.weapon_slots", weapon_slot_selection},
 };
 }
 
