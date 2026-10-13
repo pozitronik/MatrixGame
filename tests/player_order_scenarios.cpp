@@ -324,6 +324,54 @@ void manual_focus() {
         MG_CHECK(session.robot(1).y > 450 && session.robot(1).in_place);
     }
 }
+void controlled_unit_removal() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode});
+        CFormMatrixGame form;
+        press(form, VK_RETURN);
+        MG_CHECK(side().GetArcadedObject() != nullptr);
+        const uint8_t forward = g_Config.m_KeyActions[KA_UNIT_FORWARD];
+        form.Keyboard(true, forward);
+        session.advance();
+        MG_CHECK(session.remove(1));
+        MG_CHECK(!session.robot(1).alive);
+        MG_CHECK(side().GetArcadedObject() == nullptr);
+        MG_CHECK(!side().IsArcadeMode());
+        // Release after retirement must not redirect the held command to another unit.
+        form.Keyboard(false, forward);
+        MG_CHECK(!Input::isVKeyPressed(forward));
+        const auto survivor = session.robot(2);
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(session.robot(2).x == survivor.x && session.robot(2).y == survivor.y);
+        MG_CHECK(session.robot(2).group == survivor.group);
+    }
+}
+void manual_exit_held() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode});
+        CFormMatrixGame form;
+        auto *robot = selected(0);
+        const float speed = robot->GetMaxSpeed();
+        press(form, VK_RETURN);
+        const uint8_t forward = g_Config.m_KeyActions[KA_UNIT_FORWARD];
+        form.Keyboard(true, forward);
+        session.advance();
+        press(form, VK_RETURN);
+        MG_CHECK(!side().IsArcadeMode());
+        MG_CHECK(Input::isVKeyPressed(forward)); // Leaving the robot does not synthesize a key release.
+        MG_CHECK(robot->GetMaxSpeed() == speed);
+        MG_CHECK(session.robot(1).order == mpo_Attack && session.robot(1).target_is_null);
+        session.ground_command(120, 500);
+        MG_CHECK(session.robot(1).order == mpo_MoveTo);
+        MG_CHECK(session.robot(2).group == -1);
+        for (int i = 0; i < 100; ++i) session.advance();
+        form.Keyboard(false, forward);
+        MG_CHECK(!Input::isVKeyPressed(forward));
+        for (int i = 0; i < 1400; ++i) session.advance();
+        MG_CHECK(session.robot(1).y > 450 && session.robot(1).in_place);
+        MG_CHECK(session.robot(2).x == 100 && session.robot(2).y == 260);
+    }
+}
 void manual_control() {
     Session session;
     CFormMatrixGame form;
@@ -332,7 +380,7 @@ void manual_control() {
     press(form, VK_RETURN);
     MG_CHECK(side().GetArcadedObject() == robot);
     MG_CHECK(side().IsRobotMode());
-    MG_CHECK(robot->GetMaxSpeed() == speed * SPEED_BOOST);
+    MG_CHECK(robot->GetMaxSpeed() == speed * 1.1f);
     MG_CHECK(robot->GetOrdersInPool() == 0);
     side().OnForward(true);
     MG_CHECK(robot->FindOrderLikeThat(ROT_MOVE_TO));
@@ -360,6 +408,8 @@ constexpr tests::Case cases[] = {
     {"game.player.patrol_reversal", patrol_reversal},
     {"game.player.auto_modes", auto_modes},
     {"game.player.manual_control", manual_control},
+    {"game.player.controlled_unit_removal", controlled_unit_removal},
+    {"game.player.manual_exit_held", manual_exit_held},
     {"game.player.manual_focus", manual_focus},
     {"game.player.cheat_dispatch_gate", cheat_dispatch_gate},
 };
