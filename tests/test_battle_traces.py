@@ -17,7 +17,9 @@ def trace():
     return [
         {"type": "header", "schema": 1, "fixture": "obstacle-v1", "rng": "ParkMiller", "seed": 79,
          "step_ms": 10, "configuration": "Debug", "compiler": "MinGW", "precision_control": 0,
-         "compiler_version": "13.2.0", "render": "no-draw", "audio": "synthetic", "revision": "abc", "dirty": False},
+         "compiler_version": "13.2.0", "render": "no-draw", "audio": "synthetic", "revision": "abc", "dirty": False,
+         "assert_off": False, "build_exe": True, "cheats": False, "viewport": [1280, 720],
+         "max_frames": 3000, "initially_selected": True},
         {"type": "command", "frame": 0, "name": "move(500,300)"},
         {"type": "snapshot", "state": {"frame": 0, "time_ms": 0, "rng_draws": 2,
          "robots": [{"id": 1, "alive": True, "x_bits": 1065353216}]}},
@@ -68,6 +70,50 @@ class TraceContracts(unittest.TestCase):
         self.assertIn("snapshot boundary 1", result)
         self.assertIn("$.state.robots[0].x_bits", result)
         self.assertIn("float32=2.000000238418579", result)
+
+    def test_override_allows_only_build_profile_fields(self):
+        changes = {"configuration": "Release", "compiler": "MSVC", "compiler_version": "19.44",
+                   "assert_off": True, "precision_control": 65536, "build_exe": False, "cheats": True}
+        for key, value in changes.items():
+            with self.subTest(key=key):
+                right = trace()
+                right[0][key] = value
+                self.assertIn("$." + key, TRACES.compare_records(validated(trace()), validated(right)))
+                self.assertIsNone(TRACES.compare_records(validated(trace()), validated(right), True))
+        right = trace()
+        right[0].update(changes)
+        self.assertIsNone(TRACES.compare_records(validated(trace()), validated(right), True))
+
+    def test_override_rejects_scenario_changes_even_with_identical_records(self):
+        changes = {"seed": 80, "rng": "LegacyCRT", "step_ms": 16, "fixture": "obstacle-v2",
+                   "audio": "unavailable", "render": "draw", "viewport": [1920, 1080],
+                   "max_frames": 1500, "initially_selected": False}
+        for key, value in changes.items():
+            with self.subTest(key=key):
+                right = trace()
+                right[0][key] = value
+                result = TRACES.compare_records(validated(trace()), validated(right), True)
+                self.assertIn("Profile mismatch at line 1", result)
+                self.assertIn("$." + key, result)
+
+    def test_override_rejects_missing_and_unknown_scenario_fields(self):
+        for key in ("audio", "render", "viewport", "max_frames", "initially_selected"):
+            with self.subTest(key=key):
+                right = trace()
+                del right[0][key]
+                self.assertIn("right=<missing>", TRACES.compare_records(validated(trace()), validated(right), True))
+        right = trace()
+        right[0]["future_scenario_option"] = True
+        result = TRACES.compare_records(validated(trace()), validated(right), True)
+        self.assertIn("$.future_scenario_option", result)
+        self.assertIn("left=<missing>", result)
+
+    def test_first_field_is_alphabetical_regardless_of_emission_order(self):
+        right = trace()
+        right[0]["seed"] += 1
+        right[0]["audio"] = "unavailable"
+        result = TRACES.compare_records(validated(trace()), validated(right), True)
+        self.assertIn("$.audio", result)
 
     def test_earliest_difference_includes_commands(self):
         right = trace()
@@ -139,14 +185,17 @@ class TraceContracts(unittest.TestCase):
                 validated(records)
 
     def test_cli_exit_codes_and_override_notice(self):
+        different_scenario = trace()
+        different_scenario[0]["seed"] += 1
         for candidate, extra, expected in [(trace(), [], 0), (trace()[:-1], [], 2), ([], [], 2),
-                                            (trace(), ["--allow-profile-difference"], 0)]:
+                                            (trace(), ["--allow-profile-difference"], 0),
+                                            (different_scenario, ["--allow-profile-difference"], 1)]:
             with self.subTest(expected=expected, extra=extra):
                 output = io.StringIO()
                 with mock.patch.object(Path, "open", side_effect=[io.StringIO(text(trace())), io.StringIO(text(candidate))]), \
                      contextlib.redirect_stdout(output), contextlib.redirect_stderr(output):
                     self.assertEqual(expected, TRACES.main(["left.jsonl", "right.jsonl"] + extra))
-                if extra:
+                if extra and expected == 0:
                     self.assertIn("not same-profile evidence", output.getvalue())
         with mock.patch.object(Path, "open", side_effect=OSError("missing")), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(2, TRACES.main(["left.jsonl", "right.jsonl"]))

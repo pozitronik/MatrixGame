@@ -117,9 +117,15 @@ def read_records(stream, source="trace"):
 
 
 _MISSING = object()
+_PROVENANCE_FIELDS = {"revision", "dirty"}
+_BUILD_PROFILE_FIELDS = {
+    "configuration", "compiler", "compiler_version", "assert_off",
+    "precision_control", "build_exe", "cheats",
+}
 
 
 def _first_difference(left, right, path="$"):
+    """Compare fields alphabetically within the earliest differing record."""
     if type(left) is not type(right):
         return path, left, right
     if isinstance(left, dict):
@@ -167,12 +173,13 @@ def _boundary(record):
 
 def compare_records(left, right, allow_profile_difference=False):
     """Return the earliest difference, or None. Inputs must be validated records."""
-    if not allow_profile_difference:
-        # Revision and dirty state identify provenance, not the execution profile.
-        a, b = ({k: v for k, v in header.items() if k not in {"revision", "dirty"}} for header in (left[0], right[0]))
-        difference = _first_difference(a, b)
-        if difference:
-            return "Profile mismatch at line 1: " + _describe(difference)
+    # The override permits cross-build diagnostics, never different scenarios.
+    # Unknown future fields remain strict until explicitly classified.
+    ignored = _PROVENANCE_FIELDS | (_BUILD_PROFILE_FIELDS if allow_profile_difference else set())
+    a, b = ({k: v for k, v in header.items() if k not in ignored} for header in (left[0], right[0]))
+    difference = _first_difference(a, b)
+    if difference:
+        return "Profile mismatch at line 1: " + _describe(difference)
     for index in range(1, max(len(left), len(right))):
         a = left[index] if index < len(left) else None
         b = right[index] if index < len(right) else None
@@ -188,7 +195,7 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("left", type=Path)
     parser.add_argument("right", type=Path)
-    parser.add_argument("--allow-profile-difference", action="store_true", help="compare records exactly across different profiles; this is not same-profile baseline evidence")
+    parser.add_argument("--allow-profile-difference", action="store_true", help="allow only build-profile differences; scenario headers and records remain exact, and this is not same-profile baseline evidence")
     args = parser.parse_args(argv)
     try:
         records = []
@@ -202,7 +209,7 @@ def main(argv=None):
     if difference:
         print(difference)
         return 1
-    print("Exact record match" + (" (profile comparison overridden; not same-profile evidence)" if args.allow_profile_difference else " (same execution profile)"))
+    print("Exact record match" + (" (build-profile comparison overridden; not same-profile evidence)" if args.allow_profile_difference else " (same execution profile)"))
     return 0
 
 
