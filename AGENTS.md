@@ -93,9 +93,11 @@ Review the actual PR diff against its current merge base and identify introduced
 
 ## Epic work
 
-Use an integration-only umbrella branch and reviewable leaf PRs as described in `CONTRIBUTING.md`. Respect dependencies, resolve blocking review notes, and verify the combined result before proposing integration into `dev`. Do not treat a merged leaf as proof that the epic is integrated or complete.
+Use the default integration-only umbrella and reviewable leaf PRs unless the maintainer has explicitly approved phased integration for the epic, as described in `CONTRIBUTING.md`. Read the recorded integration policy and phase gates before choosing a base branch. Respect dependencies, resolve blocking review notes, and verify the combined result at the defined integration boundary. A merged leaf does not establish phase or epic completion.
 
-Parallel implementation requires task authorization and separate owned worktrees. A read-only self-review needs no worktree and provides no independent approval. Honor any contributor or subagent limit. Do not assume authorization to publish, merge or change another contributor's PR merely because an epic was assigned.
+In behavior-preservation programmes, structural implementation waits for recorded maintainer acceptance of the complete baseline at an exact revision. Research and tests may proceed earlier; any production test seam must be minimal, separately reviewed and behavior-preserving. A local subsystem test or approved design does not waive the gate. Follow `CONTRIBUTING.md` for baseline evidence, reference changes and defect handling.
+
+Parallel implementation requires task authorization, one primary owner per leaf and separate owned worktrees. Coordinate shared-file ownership and prerequisite interfaces before editing; refresh dependent branches after the shared change is integrated. A read-only self-review needs no worktree and provides no independent approval. Honor any contributor or subagent limit. Do not assume authorization to publish, merge or change another contributor's PR merely because an epic was assigned.
 
 ## Private provenance
 
