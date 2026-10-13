@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_device.hpp"
 #include "test_support.hpp"
+#include "Texture.hpp"
 
 #include <cstring>
 #include <float.h>
@@ -140,6 +141,177 @@ void com_ownership() {
     MG_CHECK(index->GetType() == D3DRTYPE_INDEXBUFFER);
 }
 
+ComPtr<IDirect3DTexture9> texture(tests::BattleDevice &device) {
+    IDirect3DTexture9 *raw = nullptr;
+    const auto result = device.get()->CreateTexture(2, 2, 1, 0, D3DFMT_A8R8G8B8,
+        D3DPOOL_MANAGED, &raw, nullptr);
+    ComPtr<IDirect3DTexture9> owned(raw);
+    MG_CHECK(result == D3D_OK && owned);
+    return owned;
+}
+
+void textures() {
+    tests::BattleDevice device;
+    auto image = texture(device);
+    D3DSURFACE_DESC desc{};
+    MG_CHECK(image->GetLevelCount() == 1 && image->GetType() == D3DRTYPE_TEXTURE);
+    MG_CHECK(image->GetLevelDesc(0, &desc) == D3D_OK);
+    MG_CHECK(desc.Width == 2 && desc.Height == 2 && desc.Format == D3DFMT_A8R8G8B8);
+    MG_CHECK(desc.Type == D3DRTYPE_SURFACE && desc.Pool == D3DPOOL_MANAGED && desc.Usage == 0);
+    MG_CHECK(desc.MultiSampleType == D3DMULTISAMPLE_NONE && desc.MultiSampleQuality == 0);
+    MG_CHECK(image->SetPriority(9) == 0 && image->GetPriority() == 9);
+    MG_CHECK(image->SetPriority(2) == 9);
+    image->PreLoad();
+
+    D3DLOCKED_RECT lock{};
+    MG_CHECK(image->LockRect(0, &lock, nullptr, 0) == D3D_OK);
+    MG_CHECK(lock.Pitch == 8 && lock.pBits);
+    std::memset(lock.pBits, 17, 16);
+    MG_CHECK(image->UnlockRect(0) == D3D_OK);
+    const RECT right_column{1, 0, 2, 2};
+    MG_CHECK(image->LockRect(0, &lock, &right_column, D3DLOCK_NOSYSLOCK) == D3D_OK);
+    auto *bytes = static_cast<unsigned char *>(lock.pBits);
+    std::memset(bytes, 23, 4);
+    std::memset(bytes + lock.Pitch, 42, 4);
+    MG_CHECK(image->UnlockRect(0) == D3D_OK);
+    MG_CHECK(image->LockRect(0, &lock, nullptr, D3DLOCK_READONLY | D3DLOCK_NO_DIRTY_UPDATE) == D3D_OK);
+    const auto *read = static_cast<const unsigned char *>(lock.pBits);
+    bool retained = true;
+    for (int i = 0; i < 16; ++i)
+        retained &= read[i] == (i < 4 || (i >= 8 && i < 12) ? 17 : i < 8 ? 23 : 42);
+    MG_CHECK(image->UnlockRect(0) == D3D_OK);
+    MG_CHECK(retained);
+    MG_CHECK(device.stats().live_textures == 1 && device.stats().texture_bytes == 16);
+    MG_CHECK(device.stats().textures_created == 1 && device.stats().texture_locks == 3);
+    image.reset();
+    MG_CHECK(device.stats().live_textures == 0 && device.stats().texture_bytes == 0);
+}
+
+void invalid_textures() {
+    tests::BattleDevice device;
+    auto image = texture(device);
+    D3DSURFACE_DESC desc{};
+    MG_CHECK(image->GetLevelDesc(1, &desc) == D3DERR_INVALIDCALL);
+    MG_CHECK(image->GetLevelDesc(0, nullptr) == D3DERR_INVALIDCALL);
+    D3DLOCKED_RECT lock{};
+    MG_CHECK(image->LockRect(0, &lock, nullptr, 0) == D3D_OK);
+    D3DLOCKED_RECT nested = lock;
+    const auto result = image->LockRect(0, &nested, nullptr, 0);
+    MG_CHECK(image->UnlockRect(1) == D3DERR_INVALIDCALL);
+    MG_CHECK(image->UnlockRect(0) == D3D_OK);
+    MG_CHECK(result == D3DERR_INVALIDCALL && nested.pBits == nullptr && nested.Pitch == 0);
+    MG_CHECK(image->UnlockRect(0) == D3DERR_INVALIDCALL);
+    MG_CHECK(image->LockRect(1, &lock, nullptr, 0) == D3DERR_INVALIDCALL && !lock.pBits);
+    MG_CHECK(image->LockRect(0, nullptr, nullptr, 0) == D3DERR_INVALIDCALL);
+    MG_CHECK(image->LockRect(0, &lock, nullptr, D3DLOCK_DISCARD) == D3DERR_INVALIDCALL);
+    MG_CHECK(image->LockRect(0, &lock, nullptr, D3DLOCK_NOOVERWRITE) == D3DERR_INVALIDCALL);
+    MG_CHECK(image->LockRect(0, &lock, nullptr, 0x80000000u) == D3DERR_INVALIDCALL);
+    const RECT invalid[]{{-1, 0, 1, 1}, {0, -1, 1, 1}, {0, 0, 3, 1}, {0, 0, 1, 3},
+        {0, 0, 0, 1}, {0, 0, 1, 0}, {1, 0, 0, 1}, {0, 1, 1, 0}};
+    for (const auto &rect : invalid)
+        MG_CHECK(image->LockRect(0, &lock, &rect, 0) == D3DERR_INVALIDCALL && !lock.pBits && !lock.Pitch);
+    for (const UINT dimension : {0u, 4097u, std::numeric_limits<UINT>::max()}) {
+        IDirect3DTexture9 *bad = image.get();
+        MG_CHECK(device.get()->CreateTexture(dimension, 2, 1, 0, D3DFMT_A8R8G8B8,
+            D3DPOOL_MANAGED, &bad, nullptr) == D3DERR_INVALIDCALL && !bad);
+        MG_CHECK(device.get()->CreateTexture(2, dimension, 1, 0, D3DFMT_A8R8G8B8,
+            D3DPOOL_MANAGED, &bad, nullptr) == D3DERR_INVALIDCALL && !bad);
+    }
+    MG_CHECK(device.get()->CreateTexture(2, 2, 1, 0, D3DFMT_A8R8G8B8,
+        D3DPOOL_MANAGED, nullptr, nullptr) == D3DERR_INVALIDCALL);
+    IDirect3DTexture9 *bad = image.get();
+    HANDLE shared = nullptr;
+    MG_CHECK(device.get()->CreateTexture(2, 2, 1, 0, D3DFMT_A8R8G8B8,
+        D3DPOOL_MANAGED, &bad, &shared) == D3DERR_INVALIDCALL && !bad);
+    MG_CHECK(device.stats().textures_created == 1 && device.stats().texture_locks == 1);
+}
+
+void texture_ownership() {
+    tests::BattleDevice device;
+    auto image = texture(device);
+    identity(image.get(), __uuidof(IDirect3DTexture9), __uuidof(IDirect3DSurface9));
+    void *queried = nullptr;
+    MG_CHECK(image->QueryInterface(__uuidof(IDirect3DBaseTexture9), &queried) == S_OK);
+    ComPtr<IDirect3DBaseTexture9> base(static_cast<IDirect3DBaseTexture9 *>(queried));
+    MG_CHECK(base.get() == static_cast<IDirect3DBaseTexture9 *>(image.get()));
+    MG_CHECK(base->QueryInterface(__uuidof(IDirect3DResource9), &queried) == S_OK);
+    ComPtr<IDirect3DResource9> resource(static_cast<IDirect3DResource9 *>(queried));
+    MG_CHECK(resource->GetType() == D3DRTYPE_TEXTURE);
+    IDirect3DDevice9 *raw = nullptr;
+    MG_CHECK(resource->GetDevice(&raw) == D3D_OK);
+    ComPtr<IDirect3DDevice9> retained(raw);
+    MG_CHECK(retained.get() == device.get());
+    MG_CHECK(resource->GetDevice(nullptr) == D3DERR_INVALIDCALL);
+    image.reset();
+    base.reset();
+    MG_CHECK(device.stats().live_textures == 1);
+    resource.reset();
+    MG_CHECK(device.stats().live_textures == 0);
+}
+
+void managed_texture_upload() {
+    tests::BattleDevice device;
+    {
+        CBitmap bitmap;
+        bitmap.CreateRGBA(2, 2);
+        const unsigned char rgba[]{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
+        for (int row = 0; row < 2; ++row)
+            std::memcpy(bitmap.Data() + row * bitmap.Pitch(), rgba + row * 8, 8);
+        CTextureManaged managed;
+        managed.LoadFromBitmap(bitmap, false, 1);
+        MG_CHECK(managed.DX() && managed.GetSizeX() == 2 && managed.GetSizeY() == 2);
+        managed.Preload();
+        D3DLOCKED_RECT lock{};
+        managed.LockRect(lock, D3DLOCK_READONLY);
+        bool converted = true;
+        for (int row = 0; row < 2; ++row) {
+            const auto *bytes = static_cast<const unsigned char *>(lock.pBits) + row * lock.Pitch;
+            for (int col = 0; col < 2; ++col) {
+                const auto *source = rgba + row * 8 + col * 4;
+                converted &= bytes[col * 4] == source[2] && bytes[col * 4 + 1] == source[1] &&
+                    bytes[col * 4 + 2] == source[0] && bytes[col * 4 + 3] == source[3];
+            }
+        }
+        managed.UnlockRect();
+        MG_CHECK(converted);
+        CTextureManaged locked;
+        MG_CHECK(locked.CreateLock(D3DFMT_A8R8G8B8, 2, 2, 1, lock) == D3D_OK);
+        std::memset(lock.pBits, 53, 16);
+        locked.UnlockRect();
+        MG_CHECK(locked.GetPixelColor(1, 1) == 0x35353535u);
+        MG_CHECK(device.stats().live_textures == 2);
+    }
+    MG_CHECK(device.stats().live_textures == 0 && device.stats().texture_bytes == 0);
+}
+
+void resource_budget() {
+    tests::BattleDevice device;
+    constexpr UINT block = 64u * 1024u * 1024u;
+    IDirect3DTexture9 *raw_texture = nullptr;
+    MG_CHECK(device.get()->CreateTexture(4096, 4096, 1, 0, D3DFMT_A8R8G8B8,
+        D3DPOOL_MANAGED, &raw_texture, nullptr) == D3D_OK);
+    ComPtr<IDirect3DTexture9> image(raw_texture);
+    IDirect3DVertexBuffer9 *raw_vertex = nullptr;
+    MG_CHECK(device.get()->CreateVertexBuffer(block, 0, 0, D3DPOOL_MANAGED, &raw_vertex, nullptr) == D3D_OK);
+    ComPtr<IDirect3DVertexBuffer9> vertex(raw_vertex);
+    MG_CHECK(device.stats().texture_bytes == block && device.stats().buffer_bytes == block);
+    IDirect3DTexture9 *bad_texture = nullptr;
+    MG_CHECK(device.get()->CreateTexture(1, 1, 1, 0, D3DFMT_A8R8G8B8,
+        D3DPOOL_MANAGED, &bad_texture, nullptr) == D3DERR_INVALIDCALL && !bad_texture);
+    IDirect3DVertexBuffer9 *bad_vertex = nullptr;
+    MG_CHECK(device.get()->CreateVertexBuffer(4, 0, 0, D3DPOOL_MANAGED,
+        &bad_vertex, nullptr) == D3DERR_INVALIDCALL && !bad_vertex);
+    IDirect3DIndexBuffer9 *bad_index = nullptr;
+    MG_CHECK(device.get()->CreateIndexBuffer(4, 0, D3DFMT_INDEX16, D3DPOOL_MANAGED,
+        &bad_index, nullptr) == D3DERR_INVALIDCALL && !bad_index);
+    vertex.reset();
+    auto small = texture(device);
+    MG_CHECK(device.stats().texture_bytes == block + 16 && device.stats().buffer_bytes == 0);
+    image.reset();
+    small.reset();
+    MG_CHECK(device.stats().texture_bytes == 0 && device.stats().live_textures == 0);
+}
+
 void state_and_sessions() {
     MG_CHECK(g_D3DD == nullptr);
     const auto precision = _control87(0, 0) & _MCW_PC;
@@ -184,6 +356,11 @@ constexpr tests::Case cases[] = {
     {"game.harness.device.invalid_buffers", invalid_buffers},
     {"game.harness.device.com_ownership", com_ownership},
     {"game.harness.device.state_sessions", state_and_sessions},
+    {"game.harness.device.textures", textures},
+    {"game.harness.device.invalid_textures", invalid_textures},
+    {"game.harness.device.texture_ownership", texture_ownership},
+    {"game.harness.device.managed_texture_upload", managed_texture_upload},
+    {"game.harness.device.resource_budget", resource_budget},
 };
 } // namespace
 

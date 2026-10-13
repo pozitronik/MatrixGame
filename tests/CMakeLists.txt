@@ -266,7 +266,7 @@ add_matrix_test(game.combat.plasma_flight matrixgame_combat_scenarios gameplay a
 
 add_matrix_test_executable(matrixgame_battle_device_tests battle_device_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_device_tests PRIVATE MatrixGameInternal)
-foreach(contract buffers invalid_buffers com_ownership state_sessions)
+foreach(contract buffers invalid_buffers com_ownership state_sessions textures invalid_textures texture_ownership managed_texture_upload resource_budget)
     add_matrix_test(game.harness.device.${contract} matrixgame_battle_device_tests tests rendering)
 endforeach()
 

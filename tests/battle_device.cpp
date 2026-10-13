@@ -21,6 +21,110 @@ namespace {
 // Bounds also keep a mistaken production allocation from exhausting the runner.
 constexpr std::size_t maximum_buffer_bytes = 64u * 1024u * 1024u;
 constexpr std::size_t maximum_total_bytes = 128u * 1024u * 1024u;
+constexpr UINT maximum_texture_dimension = 4096;
+
+class Texture final : public IDirect3DTexture9 {
+    ULONG references_ = 1;
+    IDirect3DDevice9 *device_;
+    BattleDeviceStats &stats_;
+    D3DSURFACE_DESC description_;
+    std::vector<unsigned char> bytes_;
+    DWORD priority_{};
+    bool locked_{};
+public:
+    Texture(IDirect3DDevice9 *device, BattleDeviceStats &stats, UINT width, UINT height)
+      : device_(device), stats_(stats),
+        description_{D3DFMT_A8R8G8B8, D3DRTYPE_SURFACE, 0, D3DPOOL_MANAGED,
+            D3DMULTISAMPLE_NONE, 0, width, height}, bytes_(std::size_t(width) * height * 4) {
+        device_->AddRef();
+        ++stats_.live_textures;
+        ++stats_.textures_created;
+        stats_.texture_bytes += bytes_.size();
+    }
+    ~Texture() {
+        if (locked_) unsupported("destroy locked texture");
+        --stats_.live_textures;
+        stats_.texture_bytes -= bytes_.size();
+        device_->Release();
+    }
+    HRESULT STDMETHODCALLTYPE QueryInterface(REFIID iid, void **out) override {
+        if (!out) return E_POINTER;
+        *out = nullptr;
+        if (IsEqualIID(iid, __uuidof(IUnknown)) || IsEqualIID(iid, __uuidof(IDirect3DResource9)) ||
+            IsEqualIID(iid, __uuidof(IDirect3DBaseTexture9)) || IsEqualIID(iid, __uuidof(IDirect3DTexture9))) {
+            *out = static_cast<IDirect3DTexture9 *>(this);
+            AddRef();
+            return S_OK;
+        }
+        return E_NOINTERFACE;
+    }
+    ULONG STDMETHODCALLTYPE AddRef() override { return ++references_; }
+    ULONG STDMETHODCALLTYPE Release() override {
+        const ULONG remaining = --references_;
+        if (!remaining) delete this;
+        return remaining;
+    }
+    HRESULT STDMETHODCALLTYPE GetDevice(IDirect3DDevice9 **out) override {
+        if (!out) return D3DERR_INVALIDCALL;
+        *out = device_;
+        device_->AddRef();
+        return D3D_OK;
+    }
+    HRESULT STDMETHODCALLTYPE SetPrivateData(REFGUID, const void *, DWORD, DWORD) override {
+        unsupported("texture SetPrivateData");
+    }
+    HRESULT STDMETHODCALLTYPE GetPrivateData(REFGUID, void *, DWORD *) override {
+        unsupported("texture GetPrivateData");
+    }
+    HRESULT STDMETHODCALLTYPE FreePrivateData(REFGUID) override { unsupported("texture FreePrivateData"); }
+    DWORD STDMETHODCALLTYPE SetPriority(DWORD value) override {
+        const DWORD previous = priority_;
+        priority_ = value;
+        return previous;
+    }
+    DWORD STDMETHODCALLTYPE GetPriority() override { return priority_; }
+    void STDMETHODCALLTYPE PreLoad() override {} // CPU storage is already resident.
+    D3DRESOURCETYPE STDMETHODCALLTYPE GetType() override { return D3DRTYPE_TEXTURE; }
+    DWORD STDMETHODCALLTYPE SetLOD(DWORD) override { unsupported("texture SetLOD"); }
+    DWORD STDMETHODCALLTYPE GetLOD() override { unsupported("texture GetLOD"); }
+    DWORD STDMETHODCALLTYPE GetLevelCount() override { return 1; }
+    HRESULT STDMETHODCALLTYPE SetAutoGenFilterType(D3DTEXTUREFILTERTYPE) override {
+        unsupported("texture SetAutoGenFilterType");
+    }
+    D3DTEXTUREFILTERTYPE STDMETHODCALLTYPE GetAutoGenFilterType() override {
+        unsupported("texture GetAutoGenFilterType");
+    }
+    void STDMETHODCALLTYPE GenerateMipSubLevels() override { unsupported("texture GenerateMipSubLevels"); }
+    HRESULT STDMETHODCALLTYPE GetLevelDesc(UINT level, D3DSURFACE_DESC *out) override {
+        if (level != 0 || !out) return D3DERR_INVALIDCALL;
+        *out = description_;
+        return D3D_OK;
+    }
+    HRESULT STDMETHODCALLTYPE GetSurfaceLevel(UINT, IDirect3DSurface9 **) override {
+        unsupported("texture GetSurfaceLevel");
+    }
+    HRESULT STDMETHODCALLTYPE LockRect(UINT level, D3DLOCKED_RECT *out, const RECT *rect, DWORD flags) override {
+        if (!out) return D3DERR_INVALIDCALL;
+        *out = {};
+        constexpr DWORD supported = D3DLOCK_READONLY | D3DLOCK_NOSYSLOCK | D3DLOCK_NO_DIRTY_UPDATE;
+        if (level != 0 || locked_ || (flags & ~supported)) return D3DERR_INVALIDCALL;
+        const RECT area = rect ? *rect : RECT{0, 0, LONG(description_.Width), LONG(description_.Height)};
+        if (area.left < 0 || area.top < 0 || area.right <= area.left || area.bottom <= area.top ||
+            area.right > LONG(description_.Width) || area.bottom > LONG(description_.Height))
+            return D3DERR_INVALIDCALL;
+        out->Pitch = INT(description_.Width * 4);
+        out->pBits = bytes_.data() + std::size_t(area.top) * out->Pitch + std::size_t(area.left) * 4;
+        locked_ = true;
+        ++stats_.texture_locks;
+        return D3D_OK;
+    }
+    HRESULT STDMETHODCALLTYPE UnlockRect(UINT level) override {
+        if (level != 0 || !locked_) return D3DERR_INVALIDCALL;
+        locked_ = false;
+        return D3D_OK;
+    }
+    HRESULT STDMETHODCALLTYPE AddDirtyRect(const RECT *) override { unsupported("texture AddDirtyRect"); }
+};
 
 template<class Interface, class Desc>
 class Buffer final : public Interface {
@@ -134,7 +238,7 @@ public:
         transforms_.emplace(D3DTS_PROJECTION, identity);
     }
     ~Device() {
-        if (statistics.live_buffers) unsupported("device destroyed with live buffers");
+        if (statistics.live_buffers || statistics.live_textures) unsupported("device destroyed with live resources");
     }
     ULONG reference_count() const { return references_; }
     HRESULT STDMETHODCALLTYPE QueryInterface(REFIID riid, void** ppvObject) override {
@@ -219,8 +323,24 @@ public:
     void STDMETHODCALLTYPE GetGammaRamp(UINT, D3DGAMMARAMP*) override {
         unsupported("GetGammaRamp");
     }
-    HRESULT STDMETHODCALLTYPE CreateTexture(UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DTexture9**, HANDLE*) override {
-        unsupported("CreateTexture");
+    HRESULT STDMETHODCALLTYPE CreateTexture(UINT width, UINT height, UINT levels, DWORD usage, D3DFORMAT format,
+        D3DPOOL pool, IDirect3DTexture9 **out, HANDLE *shared_handle) override {
+        if (!out) return D3DERR_INVALIDCALL;
+        *out = nullptr;
+        if (!width || !height || width > maximum_texture_dimension || height > maximum_texture_dimension || shared_handle)
+            return D3DERR_INVALIDCALL;
+        if (levels != 1 || usage != 0 || format != D3DFMT_A8R8G8B8 || pool != D3DPOOL_MANAGED)
+            unsupported("CreateTexture profile (requires one managed A8R8G8B8 level, usage 0)");
+        const std::size_t bytes = std::size_t(width) * height * 4;
+        if (statistics.buffer_bytes + statistics.texture_bytes > maximum_total_bytes - bytes)
+            return D3DERR_INVALIDCALL;
+        try {
+            *out = new Texture(this, statistics, width, height);
+        }
+        catch (const std::bad_alloc &) {
+            return E_OUTOFMEMORY;
+        }
+        return D3D_OK;
     }
     HRESULT STDMETHODCALLTYPE CreateVolumeTexture(UINT, UINT, UINT, UINT, DWORD, D3DFORMAT, D3DPOOL, IDirect3DVolumeTexture9**, HANDLE*) override {
         unsupported("CreateVolumeTexture");
@@ -231,7 +351,8 @@ public:
     HRESULT STDMETHODCALLTYPE CreateVertexBuffer(UINT Length, DWORD Usage, DWORD FVF, D3DPOOL Pool, IDirect3DVertexBuffer9** ppVertexBuffer, HANDLE* pSharedHandle) override {
         if (!ppVertexBuffer) return D3DERR_INVALIDCALL;
         *ppVertexBuffer = nullptr;
-        if (!Length || Length > maximum_buffer_bytes || pSharedHandle || statistics.buffer_bytes > maximum_total_bytes - Length)
+        if (!Length || Length > maximum_buffer_bytes || pSharedHandle ||
+            statistics.buffer_bytes + statistics.texture_bytes > maximum_total_bytes - Length)
             return D3DERR_INVALIDCALL;
         D3DVERTEXBUFFER_DESC desc{D3DFMT_VERTEXDATA, D3DRTYPE_VERTEXBUFFER, Usage, Pool, Length, FVF};
         try {
@@ -245,7 +366,8 @@ public:
     HRESULT STDMETHODCALLTYPE CreateIndexBuffer(UINT Length, DWORD Usage, D3DFORMAT Format, D3DPOOL Pool, IDirect3DIndexBuffer9** ppIndexBuffer, HANDLE* pSharedHandle) override {
         if (!ppIndexBuffer) return D3DERR_INVALIDCALL;
         *ppIndexBuffer = nullptr;
-        if (!Length || Length > maximum_buffer_bytes || pSharedHandle || statistics.buffer_bytes > maximum_total_bytes - Length ||
+        if (!Length || Length > maximum_buffer_bytes || pSharedHandle ||
+            statistics.buffer_bytes + statistics.texture_bytes > maximum_total_bytes - Length ||
             (Format != D3DFMT_INDEX16 && Format != D3DFMT_INDEX32)) return D3DERR_INVALIDCALL;
         D3DINDEXBUFFER_DESC desc{Format, D3DRTYPE_INDEXBUFFER, Usage, Pool, Length};
         try {
@@ -568,8 +690,8 @@ BattleDevice::BattleDevice() : device_(nullptr), previous_(g_D3DD) {
 
 BattleDevice::~BattleDevice() {
     if (g_D3DD != device_) unsupported("device alias changed during scenario");
-    if (device_->statistics.live_buffers || device_->reference_count() != 1)
-        unsupported("scenario leaked buffers or device references");
+    if (device_->statistics.live_buffers || device_->statistics.live_textures || device_->reference_count() != 1)
+        unsupported("scenario leaked resources or device references");
     g_D3DD = previous_;
     device_->Release();
 }
