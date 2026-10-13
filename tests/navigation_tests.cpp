@@ -431,12 +431,15 @@ void disconnected() {
         group_run(NavigationLayout::Disconnected, mode, 10);
 }
 }
+namespace tests::navigation { void delivery_flights(); void delivery_carrier_damage(); }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
+        {"game.navigation.delivery_flights", tests::navigation::delivery_flights},
+        {"game.navigation.delivery_carrier_damage", tests::navigation::delivery_carrier_damage},
         {"game.navigation.local_routes", local_routes},
         {"game.navigation.passage_width", passage_width},
         {"game.navigation.placement", placement},
