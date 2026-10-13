@@ -16,17 +16,33 @@ Standalone resolution and window-mode overrides are read from the separate `CFG/
 
 ## STRG storage and packed configuration
 
-[CStorage.cpp](../MatrixLib/Base/CStorage.cpp) serializes typed record/column buffers. The supported Windows x86 representation uses little-endian 32-bit metadata and two-byte `wchar_t` strings. `CBuf` writes native scalar layouts; an x64 or endian migration needs an explicit disk-layout design.
+[CStorage.cpp](../MatrixLib/Base/CStorage.cpp) serializes typed record/column buffers. The wire layout below is specified by field width and byte order, independently of native structure sizes or pointer width. All integers are little-endian; strings are UTF-16LE code units. `CBuf` writes native scalars, which match this layout on Windows x86 and x64 because the written types are fixed-width there; another platform or byte order needs explicit encoding.
 
-| Header field | Encoding |
-| --- | --- |
-| Tag | 32-bit `0x47525453`, bytes `STRG` |
-| Version | 32-bit zero for an uncompressed body, one for a compressed body; values greater than one are rejected |
-| Body | Record count and named typed columns, directly for version zero or inside `ZL03` for version one |
+| Offset | Field | Encoding |
+| --- | --- | --- |
+| 0 | Tag | 32-bit `0x47525453`, bytes `STRG` |
+| 4 | Version | 32-bit zero for an uncompressed body, one for a compressed body; values greater than one are rejected |
+| 8 | Body | Version zero: 32-bit record count followed by the records. Version one: a `ZL03` stream whose decoded bytes are the version-zero body |
 
-`ZL03` begins with four tag bytes and a 32-bit block count. The writer splits input into chunks of at most 65,000 bytes, records each compressed chunk's 32-bit length and uses zlib compression. Column loading also accepts this framing, but whole-storage `Save` writes individual columns uncompressed before optional compression of the entire body. Keep tag/version values, field widths, string representation and decompressed content compatible when changing libraries; compressed bytes need not be identical across library versions.
+A record is its name, a 32-bit column count and the columns. A column is its name, a 32-bit type, a 32-bit body length and the body. Names are UTF-16LE code units terminated by one zero unit; an empty name is a single zero unit. Lookups compare names exactly. Types are `0` `ST_INT32` (signed 32-bit), `1` `ST_DWORD` (unsigned 32-bit), `2` `ST_BYTE`, `3` `ST_FLOAT` (IEEE-754 binary32), `4` `ST_DOUBLE` (binary64) and `5` `ST_WCHAR` (UTF-16 code unit, no terminator). Bit 31 marks a compressed column body; the reader clears it before decoding the body.
 
-`StoreBlockPar` represents each configuration block with four `ST_WCHAR` columns: `0`/`1` contain parameter names/values, and `2`/`3` contain child names/referenced record names. Child trees live in generated numeric records. The planetary `robots.dat` is this storage representation with roots including `da` and `if`; it is distinct from the original game's other `.dat` configuration formats.
+A column body holds any number of element arrays:
+
+| Body offset | Field | Encoding |
+| --- | --- | --- |
+| 0 | Table offset `T` | 32-bit offset of the array table from the body start |
+| 4 | Array count `N` | 32-bit |
+| 8 | Element size | 32-bit: 4, 4, 1, 4, 8 or 2 for types 0 to 5 |
+| 12 | Elements | Array contents |
+| `T` | Array table | `N` entries of three 32-bit values: element offset from the body start, element count and capacity |
+
+The writer compacts each column before saving: arrays are contiguous in index order from offset 12, capacity equals count, `T` is 12 plus the element bytes and the body length is `T + 12N`. The reader copies the body verbatim.
+
+`ZL03` begins with the tag bytes `ZL03` and a 32-bit block count. Each block is a 32-bit stream length followed by a zlib (RFC 1950) stream; the decoded blocks are concatenated. The writer splits input into 65,000-byte blocks, with a shorter final block, and compresses at level 9. The reader accepts shorter non-final blocks and rejects a block that decodes to more than 65,000 bytes. Whole-storage `Save` writes columns uncompressed and, for version one, compresses everything after the version field. `CStorageRecord::Save` can instead compress each column body, setting bit 31 and storing the `ZL03` stream as the body. Keep tag/version values, field widths, string representation and decompressed content compatible when changing libraries; compressed bytes need not be identical across library versions.
+
+`StoreBlockPar` represents each configuration block as a record with four `ST_WCHAR` columns named `0` to `3`, each holding one array per entry in tree order: parameter names, parameter values, child block names and child record names. Records are written parent first. Each child record receives the smallest non-negative decimal name not already used as a record name, so a root `da` with children `A` (containing `Deep`) and `B` produces records `da`, `0`, `1` and `2`. `RestoreBlockPar` appends to its destination. The planetary `robots.dat` is this storage representation with roots including `da` and `if`; it is distinct from the original game's other `.dat` configuration formats.
+
+`CStorage::Load` returns `false` for a wrong tag, a version greater than one or a compressed column whose stream cannot be decoded. It throws `Base::CException` for truncated input, counts or lengths beyond the remaining input, and version-one data with a short or mistagged `ZL03` header, no blocks, an oversized block or an invalid zlib stream. A storage object that rejected input can load valid input afterwards. The reader does not yet reject every malformed input safely: `ZL03` block counts and stream lengths are not checked against the available bytes before decoding, column bodies are not validated before their table offsets are used, record and column counts reserve memory before the entries are read, and an uncompressed column length allocates its body before the length is checked against the input. Large counts or lengths can therefore raise allocation errors other than `Base::CException`. Do not load untrusted storage until those checks exist.
 
 Storage has single ownership and supports moves. Copying a `CStorageRecord` recreates an empty schema rather than cloning column data. Record deletion uses swap-with-last ordering. Pointers returned by `GetBuf` borrow their buffers and must not outlive the owning storage/record; pointers into `CBuf` data can be invalidated by growth. See [storage_tests.cpp](../tests/storage_tests.cpp) for these contracts, a frozen version-zero byte fixture, UTF-16/duplicate-parameter round trips, compression and selected rejected/partial-load cases.
 
@@ -43,7 +59,26 @@ This parses tracked interface/data configuration and packs/restores the trees in
 
 [CFile::OpenRead](../MatrixLib/Base/CFile.cpp) first attempts a real file and then searches the registered package collection. This lets loose resources override archived content. Relative names use the process working directory, which standalone `WinMain` changes to the executable directory before loading resources. File-existence lookup also matches suffixes: a lone `robots.dat.backup` can make packed configuration appear present, but startup then opens the original `robots.dat` name and fails with `Error open file: cfg\robots.dat`. Use a different filename prefix when testing absence.
 
-[Pack.hpp](../MatrixLib/Base/Pack.hpp) and [Pack.cpp](../MatrixLib/Base/Pack.cpp) implement folder/file records, virtual handles and compressed reads. A package starts with a 32-bit offset to its root folder, whose header records directory size, record count and record size. `SFileRec` is packed to one-byte alignment and contains fixed-size names, enum/32-bit metadata and pointer-width fields. Folder loading requires its stored record size to match `sizeof(SFileRec)`. Preserve the current x86 layout and packing; changing pointer width, names or enum size changes this contract. The collection encodes package/file identity in virtual handles, and each package has 16 virtual file-handle slots.
+[Pack.hpp](../MatrixLib/Base/Pack.hpp) and [Pack.cpp](../MatrixLib/Base/Pack.cpp) implement folder/file records, virtual handles and compressed reads. All package integers are little-endian 32-bit values and offsets are absolute file positions. A package starts with the offset of its root folder. A folder is a 12-byte header (directory size, record count and record size) followed by the records. The reader ignores the directory size and requires the record size to be 158.
+
+| Record offset | Field | Encoding |
+| --- | --- | --- |
+| 0 | Size | Stored extent at the data offset, including its 4-byte prefix |
+| 4 | Real size | Decoded file size |
+| 8 | Lookup name | 63 bytes, NUL-terminated uppercase name |
+| 71 | Real name | 63 bytes, NUL-terminated case-preserving name used in listings and folder construction |
+| 134 | Type | `0` text, `1` binary, `2` compressed, `3` folder; the reader handles text and binary identically |
+| 142 | Free flag | Nonzero marks an unused record that lookup, listing and loading ignore |
+| 146 | Date | Not interpreted by the reader |
+| 150 | Offset | Folder: nested folder header. File: data prefix |
+
+The 32-bit fields at 138 (pending type) and 154 (runtime data) are replaced when a folder loads, so their stored values are ignored. Names hold at most 62 characters. A folder's lookup name must equal the uppercase form of its real name. Lookup splits paths on `/` or `\`, converts each component to uppercase and compares it with the lookup name.
+
+File data begins with a 32-bit value that the reader skips without interpreting; the synthetic fixtures store the size minus four there. An uncompressed payload of real-size bytes follows. A compressed payload is a sequence of blocks, each a 32-bit block length followed by that many bytes: the tag `ZL02`, a 32-bit decoded length and a zlib stream. Every block except the last decodes to 65,536 bytes, and a block length must not exceed the 72,112-byte read buffer.
+
+The reader's `SFileRec` matches this record only while its two `uintptr_t` fields are 32-bit; on the supported x86 build `sizeof(SFileRec)` is 158. Preserve the record layout and packing; changing pointer width, names or enum size must not change the stored record.
+
+`OpenPacketFile` returns `false` and closes the file for an empty or short file, a root offset beyond the end, a short folder header, a record size other than 158, fewer records than declared, and the same faults in a nested folder; a collection open fails when any package fails and closes the packages already opened. The collection searches packages in registration order and encodes a virtual handle as the package slot plus the package index shifted left by four; each package has 16 slots. The reader does not yet reject every malformed package safely: folder offsets forming a cycle recurse without limit; names without a terminator inside their field are read past it; the folder size is computed as a signed 32-bit record count times record size, so a large count can wrap to a small read that succeeds while initialization writes past the allocation; a folder whose lookup and real names disagree raises an error while the folder is destroyed; compressed reads ignore a failed block-length read, do not check block lengths against the read buffer and report success with stale data when a block fails to decompress; and neither compressed nor uncompressed reads are limited to the real size. Package records are trusted input until those checks exist.
 
 Open package-backed `CFile` objects must close before `CFile::ReleasePackFiles`; Debug checks track outstanding references. Read/write `CFile::Open` targets real files, while package fallback belongs to read access. Package paths and real filesystem paths are separate namespaces, so use the engine's reader when testing archived resources.
 
@@ -53,12 +88,30 @@ Open package-backed `CFile` objects must close before `CFile::ReleasePackFiles`;
 
 `PrepareMap` consumes configuration/resource data and uses an active DirectX device while constructing textures, geometry and battle objects. Full map preparation is therefore an integration procedure. Generic storage round trips cover container behavior; the automated suite does not yet freeze a complete map schema or every archived resource layout.
 
+Map payloads are `ST_BYTE` arrays that the preparation code reads as raw structures, so these compiled layouts are stored layouts. Their fields are fixed-width little-endian integers and binary32 values on Windows. `SCompilePoint` is 12 bytes (32-bit move index, binary32 height, then blue, green, red and flag bytes), `SCompileMove` 16, `SCompileMoveCell` 64 and `SCompileBottomVert` 8 (four 16-bit values). A bridge array starts with a 16-byte `CRect` (left, top, right and bottom as signed 32-bit values) followed by binary32 heights. The map readers do not validate counts or offsets in these payloads.
+
+[CVectorObject::LoadSpecial](../MatrixLib/3G/VectorObject.cpp) loads a vector object as STRG storage. `ST_WCHAR` and `ST_DWORD` columns hold properties, matrix and animation names, identifiers and offsets, and surface texture names; the geometry is in `ST_BYTE` columns whose first array is copied as raw records:
+
+| Table and column | Raw content |
+| --- | --- |
+| `simple/data` | `SVOGeometrySimple::SVOGS_asis` (48 bytes: triangle count, vertex count, minimum, maximum and center vectors, radius), then that many `SVOTriangle` (three 32-bit indices) and 12-byte vectors |
+| `verts/data` | `SVOVertex`, 32 bytes: position, normal, texture u and v |
+| `idxs/data` | 16-bit vertex indices, three per triangle |
+| `anims/frames` | `SVOFrameIndex`, 8 bytes: frame index and time |
+| `frames/data` | `SVOKadr`, 64 bytes: minimum, maximum and center vectors, radius, then union start/count, edge start/count and vertex count/start |
+| `frames/verts`, `frames/unions` | 32-bit indices |
+| `frames/edges` | `SVOKadrEdge`, 16 bytes: two 32-bit vertex byte offsets and two packed 4-byte normals |
+| `unions/data` | `SVOUnion`, 24 bytes: surface, base, minimum vertex index, vertex count, triangle count and triangle start |
+| `matrices/data` | 64-byte `D3DXMATRIX` values (16 binary32) |
+
+Vectors are three binary32 values. The loader does not validate counts, sizes or offsets in these payloads. `VectorObject.hpp` also declares an older header-based family (`SVOHeader`, `SVOMaterial`, `SVOGroup`, `SVOFrame` and related records) that is used only by commented-out code; it is not part of the current stored format.
+
 [FilePNG.cpp](../MatrixLib/Bitmap/FilePNG.cpp) adapts in-memory PNG bytes through libpng. `ReadStart_Buf` borrows the input bytes and returns an opaque handle, dimensions and a format code: gray, RGB, RGBA or palette. Sixteen-bit samples are stripped to eight bits. `Read` consumes that handle, fills caller-provided rows/palette and releases reader state, including on a caught decode error. Keep the input alive until that call finishes and provide sufficient row stride/output storage. The wrapper's writer supports additional formats, so writer support alone does not establish reader support for each combination.
 
 ## Compatibility evidence and limits
 
 Standalone sound uses a private UTF-16 `Sound` mapping from logical event suffixes to archived WAV paths. The production [WAV reader](../MatrixGame/src/Audio/Audio.cpp) accepts mono/stereo PCM8/16, checks RIFF/chunk/frame metadata and supports bounded legacy header/padding variations found in original clips. [Standalone sound](AUDIO.md) defines those variants, resource preparation and the separation between sound effects and unsupported music/Ogg playback. Synthetic audio cases exercise the reader without private clips.
 
-Frozen checksum/storage bytes and synthetic tree/column/compression cases are reproducible without private packages. Tracked text configuration can be exercised by the manual in-memory packing check. Live map loading/rendering requires the separately supplied game resources and the [standalone playtest](PLAYTESTING.md).
+Frozen checksum/storage bytes and synthetic tree/column/compression cases are reproducible without private packages. [layout_tests.cpp](../tests/layout_tests.cpp) builds the storage, `ZL03`, package and raw map and vector-object record layouts above from explicit field widths, checks that production readers parse them and writers emit the same bytes, and covers the listed rejections. Its zlib fixtures use stored blocks, so they do not depend on a compressor version. Tracked text configuration can be exercised by the manual in-memory packing check. Live map loading/rendering requires the separately supplied game resources and the [standalone playtest](PLAYTESTING.md).
 
-The existing readers validate some tags, types and lengths, but these checks do not establish rejection of every truncated, oversized or adversarial input. The initial engine suite has no complete package/PNG malformed-input coverage or full map-schema fixture. Add bounded synthetic cases when changing those readers or their dependencies; preserve original packages unchanged and keep payloads out of commits and test artifacts.
+The existing readers validate some tags, types and lengths, but these checks do not establish rejection of every truncated, oversized or adversarial input; the unsafe cases above are not exercised by tests because they can read out of bounds or terminate the process. The engine suite has no complete PNG malformed-input coverage, map payload reader fixture or full map-schema fixture. Add bounded synthetic cases when changing those readers or their dependencies; preserve original packages unchanged and keep payloads out of commits and test artifacts.

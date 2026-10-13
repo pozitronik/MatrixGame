@@ -90,6 +90,18 @@ add_matrix_test(bitmap.png.legacy_rgba matrixgame_dependency_tests bitmap depend
 add_matrix_test(bitmap.png.write_round_trip matrixgame_dependency_tests bitmap dependencies png)
 add_matrix_test(bitmap.png.invalid matrixgame_dependency_tests bitmap dependencies png)
 
+# Wire-format fixtures for storage, packages and raw-read records (docs/DATA_FORMATS.md).
+add_matrix_test_executable(matrixgame_layout_tests layout_tests.cpp wire_bytes.hpp)
+target_include_directories(matrixgame_layout_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+target_compile_definitions(matrixgame_layout_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
+foreach(contract storage_columns storage_tree storage_zl03 storage_column_zl03 storage_truncated storage_malformed)
+    add_matrix_test(base.layout.${contract} matrixgame_layout_tests base storage)
+endforeach()
+foreach(contract package_tree package_handles package_malformed package_file_fallback)
+    add_matrix_test(base.layout.${contract} matrixgame_layout_tests base storage pack)
+endforeach()
+add_matrix_test(base.layout.raw_records matrixgame_layout_tests base storage)
+
 add_matrix_test_executable(matrixgame_error_tests error_tests.cpp)
 add_matrix_test(base.error.single_message matrixgame_error_tests base startup)
 add_matrix_test(base.error.empty_trace matrixgame_error_tests base startup)
@@ -363,6 +375,18 @@ add_matrix_test(game.dll.loop_failure matrixgame_dll_entry_tests startup dll)
 add_matrix_test(game.dll.result_failure matrixgame_dll_entry_tests startup dll)
 add_matrix_test(game.dll.success_values matrixgame_dll_entry_tests startup dll)
 add_matrix_test(game.dll.interface_layout matrixgame_dll_entry_tests startup dll)
+foreach(contract host_layout entry_table borrowed_arguments)
+    add_matrix_test(game.dll.${contract} matrixgame_dll_entry_tests startup dll)
+endforeach()
+
+# Production consumers of the original host contract (settings, results, progress and sound callbacks).
+add_matrix_test_executable(matrixgame_host_contract_tests host_contract_tests.cpp wire_bytes.hpp
+    command_world.hpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_host_contract_tests PRIVATE MatrixGameInternal)
+add_matrix_test(game.host.settings_image matrixgame_host_contract_tests startup settings dll)
+add_matrix_test(game.host.result_statistics matrixgame_host_contract_tests gameplay dll)
+add_matrix_test(game.host.progress_callback matrixgame_host_contract_tests startup dll)
+add_matrix_test(game.host.sound_arguments matrixgame_host_contract_tests gameplay audio dll)
 
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_dll_host_tests dll_host_tests.cpp)
@@ -374,6 +398,13 @@ if(MATRIXGAME_BUILD_DLL)
     set_tests_properties(game.dll.native_rejected_configuration PROPERTIES
         LABELS "engine;asset-free;startup;dll"
         TIMEOUT 30)
+    foreach(contract native_entry_table native_language_configuration)
+        add_test(NAME game.dll.${contract}
+            COMMAND matrixgame_dll_host_tests game.dll.${contract} "$<TARGET_FILE:MatrixGame>")
+        set_tests_properties(game.dll.${contract} PROPERTIES
+            LABELS "engine;asset-free;startup;dll"
+            TIMEOUT 30)
+    endforeach()
 endif()
 
 add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp
@@ -392,3 +423,10 @@ add_test(NAME game.player.intentional_crash
     COMMAND "${CMAKE_COMMAND}" "-DTEST_EXECUTABLE=$<TARGET_FILE:matrixgame_player_order_scenarios>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/check_intentional_cheat_abort.cmake")
 set_tests_properties(game.player.intentional_crash PROPERTIES LABELS "engine;asset-free;gameplay;input" TIMEOUT 15)
+# Performance workloads. The executable is a measurement tool, not a
+# timing test: CTest only runs a short smoke pass that checks repeatable work.
+add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp
+    command_world.hpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
+add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
+set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
