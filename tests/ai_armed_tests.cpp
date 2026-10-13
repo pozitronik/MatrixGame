@@ -21,11 +21,12 @@ void configure() {
     g_Config.m_WeaponCooldown[Weap2Index(WEAPON_PLASMA)] = 100;
 }
 void evidence(battle::Session &session, const char *trigger, CMatrixRobotAI *robot) {
-    std::cout << session.metadata("synthetic-armed-boxes-v2") << '\n';
+    std::cout << session.metadata(robot->HaveRepair() == 2 ? "synthetic-repair-boxes-v1" : "synthetic-armed-boxes-v2") << '\n';
     std::cout << "{\"decision\":\"armed-tactical-boundary\",\"trigger\":\"" << trigger
               << "\",\"enemy_count\":" << robot->GetEnv()->GetEnemyCnt()
               << ",\"move_order\":" << (robot->FindOrderLikeThat(ROT_MOVE_TO) ? "true" : "false")
               << ",\"fire_order\":" << (robot->FindOrderLikeThat(ROT_FIRE) ? "true" : "false")
+              << ",\"target_present\":" << (robot->GetEnv()->m_Target ? "true" : "false")
               << ",\"attack_target_present\":" << (robot->GetEnv()->m_TargetAttack ? "true" : "false")
               << ",\"rng_draws\":" << random::draw_count() << "}\n";
 }
@@ -193,4 +194,131 @@ void armed_target_retention() {
         evidence(session, "retained-target-deleted", observer);
     }
 }
+namespace {
+CMatrixRobotAI *damaged_friendly(float x, float y) {
+    auto *robot = BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, x, y);
+    robot->InitMaxHitpoint(50);
+    g_MatrixMap->m_Difficulty.k_damage_enemy_to_player = 1;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {1, 0, 0};
+    MG_CHECK(!robot->Damage(WEAPON_LASER, robot->GetGeoCenter(), D3DXVECTOR3(0, 0, 0), 0, nullptr));
+    MG_CHECK(robot->NeedRepair());
+    return robot;
+}
+void require_repair_order(CMatrixRobotAI &robot) {
+    int count = 0;
+    for (int i = 0; i < robot.GetOrdersInPool(); ++i) {
+        const auto &order = *robot.GetOrder(i);
+        if (order.m_OrderType != ROT_FIRE) continue;
+        MG_CHECK(order.m_Param4 == 2);
+        ++count;
+    }
+    MG_CHECK(count == 1);
+}
+void configure_repair(CMatrixRobotAI &robot) {
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_REPAIR)] = 100;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_REPAIR)] = 100;
+    arm_battle_robot(robot, RUK_WEAPON_REPAIR);
+    MG_CHECK(robot.HaveRepair() == 2 && robot.GetRepairDist() == 100);
+}
+}
+
+void repair_acquisition_range() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (int distance : {99, 100, 101}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 79});
+        assets.install();
+        auto *observer = owner();
+        configure_repair(*observer);
+        auto *patient = damaged_friendly(observer->m_PosX + distance * 0.6f,
+                                         observer->m_PosY - distance * 0.8f);
+        session.ground_command(500, 300);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        const int group = observer->GetGroupLogic();
+        const CPoint destination = side.m_PlayerGroup[group].m_To;
+        const auto draws = random::draw_count();
+        side.RepairPL(group);
+        MG_CHECK(observer->GetEnv()->m_Target == (distance < 100 ? patient : nullptr));
+        MG_CHECK(observer->FindOrderLikeThat(ROT_FIRE) == (distance < 100));
+        if (distance < 100) require_repair_order(*observer);
+        MG_CHECK(side.m_PlayerGroup[group].Order() == mpo_MoveTo);
+        MG_CHECK(side.m_PlayerGroup[group].m_To == destination);
+        MG_CHECK(observer->FindOrderLikeThat(ROT_MOVE_TO));
+        MG_CHECK(random::draw_count() == draws);
+        evidence(session, "repair-range-boundary", observer);
+    }
+}
+
+void repair_target_retention() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 79});
+        assets.install();
+        auto *observer = owner();
+        configure_repair(*observer);
+        auto *first = damaged_friendly(160, 140);
+        session.ground_command(500, 300);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        const int group = observer->GetGroupLogic();
+        const CPoint destination = side.m_PlayerGroup[group].m_To;
+        auto &env = *observer->GetEnv();
+        side.RepairPL(group);
+        MG_CHECK(env.m_Target == first && observer->FindOrderLikeThat(ROT_FIRE));
+        require_repair_order(*observer);
+        evidence(session, "repair-first-patient-selected", observer);
+        auto *nearer = damaged_friendly(130, 160);
+        side.RepairPL(group);
+        MG_CHECK(env.m_Target == first);
+        evidence(session, "repair-nearer-patient-does-not-interrupt", observer);
+        // A production health update makes the retained patient ineligible.
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_REPAIR)] = {1, 0, 1};
+        MG_CHECK(!first->Damage(WEAPON_REPAIR, first->GetGeoCenter(), D3DXVECTOR3(0, 0, 0), 0, nullptr));
+        MG_CHECK(!first->NeedRepair());
+        side.RepairPL(group);
+        MG_CHECK(env.m_Target == nearer && observer->FindOrderLikeThat(ROT_FIRE));
+        require_repair_order(*observer);
+        evidence(session, "repair-healed-patient-replaced", observer);
+        g_MatrixMap->StaticDelete(nearer);
+        MG_CHECK(env.m_Target == nullptr);
+        side.RepairPL(group);
+        MG_CHECK(env.m_Target == nullptr);
+        MG_CHECK(side.m_PlayerGroup[group].Order() == mpo_MoveTo);
+        MG_CHECK(side.m_PlayerGroup[group].m_To == destination);
+        MG_CHECK(observer->FindOrderLikeThat(ROT_MOVE_TO));
+        evidence(session, "repair-patient-healed-and-retired", observer);
+    }
+}
+
+void repair_explicit_priority() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 79});
+        assets.install();
+        auto *observer = owner();
+        configure_repair(*observer);
+        auto *first = damaged_friendly(160, 140);
+        session.ground_command(500, 300);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        const int group = observer->GetGroupLogic();
+        side.RepairPL(group);
+        MG_CHECK(observer->GetEnv()->m_Target == first);
+        auto *requested = damaged_friendly(130, 160);
+        side.PGOrderRepair(group, requested);
+        side.RepairPL(group);
+        MG_CHECK(side.m_PlayerGroup[group].Order() == mpo_Repair);
+        MG_CHECK(side.m_PlayerGroup[group].m_Obj == requested);
+        MG_CHECK(observer->GetEnv()->m_Target == requested);
+        MG_CHECK(observer->FindOrderLikeThat(ROT_FIRE));
+        require_repair_order(*observer);
+        evidence(session, "explicit-repair-overrides-retained-patient", observer);
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_REPAIR)] = {1, 0, 1};
+        MG_CHECK(!requested->Damage(WEAPON_REPAIR, requested->GetGeoCenter(), D3DXVECTOR3(0, 0, 0), 0, nullptr));
+        MG_CHECK(!requested->NeedRepair());
+        side.TaktPL();
+        MG_CHECK(side.m_PlayerGroup[group].Order() == mpo_Stop);
+        MG_CHECK(side.m_PlayerGroup[group].m_Obj == nullptr);
+        evidence(session, "completed-explicit-repair-stops-group", observer);
+    }
+}
+
 }

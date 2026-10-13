@@ -18,6 +18,9 @@ void visual_obstruction();
 void visual_retirement_range();
 void armed_friendly_line();
 void armed_target_retention();
+void repair_acquisition_range();
+void repair_target_retention();
+void repair_explicit_priority();
 void memory_cleanup();
 void memory_clear_correctness();
 void place_bounds();
@@ -398,6 +401,9 @@ int main(int argc, char **argv) {
         {"game.ai.visual_retirement_range", tests::ai::visual_retirement_range},
         {"game.ai.armed_friendly_line", tests::ai::armed_friendly_line},
         {"game.ai.armed_target_retention", tests::ai::armed_target_retention},
+        {"game.ai.repair_acquisition_range", tests::ai::repair_acquisition_range},
+        {"game.ai.repair_target_retention", tests::ai::repair_target_retention},
+        {"game.ai.repair_explicit_priority", tests::ai::repair_explicit_priority},
         {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
         {"game.ai.place_bounds", tests::ai::place_bounds},
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
