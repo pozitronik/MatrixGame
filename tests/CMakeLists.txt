@@ -268,11 +268,21 @@ target_compile_definitions(matrixgame_combat_scenarios PRIVATE
 add_matrix_test(game.combat.cannon_firing matrixgame_combat_scenarios gameplay ai)
 add_matrix_test(game.combat.robot_firing matrixgame_combat_scenarios gameplay ai)
 add_matrix_test(game.combat.plasma_flight matrixgame_combat_scenarios gameplay ai memory)
+foreach(contract volcano_firing electric_firing flame_firing gun_firing missile_firing mortar_firing repair_firing heat_boundary bomb_detonation cannon_projectiles cannon_boundaries cannon_obstruction delayed_damage bomb_order repair_death module_modifiers module_firing splash_boundary chained_bombs repair_redirect cannon_patient cannon_acquisition robot_boundaries status_refresh status_lethal friendly_difficulty cannon_difficulty building_patient building_dying)
+    add_matrix_test(game.combat.${contract} matrixgame_combat_scenarios gameplay ai memory)
+endforeach()
 
 add_matrix_test_executable(matrixgame_battle_device_tests battle_device_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_device_tests PRIVATE MatrixGameInternal)
 foreach(contract buffers invalid_buffers com_ownership state_sessions)
     add_matrix_test(game.harness.device.${contract} matrixgame_battle_device_tests tests rendering)
+endforeach()
+
+add_matrix_test_executable(matrixgame_combat_damage_tests combat_damage_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_combat_damage_tests PRIVATE MatrixGameInternal)
+foreach(contract robot_families building_families cannon_families difficulty minimum_health repair status_effects bomb_protection
+    building_death cannon_repair_state building_repair projectile_range_callback projectile_owner_retirement)
+    add_matrix_test(game.combat.${contract} matrixgame_combat_damage_tests gameplay)
 endforeach()
 
 add_matrix_test(base.random.draw_count_reset matrixgame_random_tests base random)
