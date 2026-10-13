@@ -384,6 +384,6 @@ target_include_directories(matrixgame_battle_outcome_scenarios PRIVATE "${CMAKE_
 target_compile_definitions(matrixgame_battle_outcome_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract neutral_capture enemy_capture capture_rejection capture_rollback victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions special_survival_flags full_auto_escape legacy_loss_cheat)
+foreach(contract neutral_capture enemy_capture capture_rejection capture_rollback competing_capturers competing_color protected_base_command victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions special_survival_flags full_auto_escape legacy_loss_cheat)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
 endforeach()

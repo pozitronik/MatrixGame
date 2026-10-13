@@ -4,6 +4,7 @@
 #include "command_world.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixObjectBuilding.hpp"
+#include "MatrixObjectCannon.hpp"
 #include "MatrixRobot.hpp"
 #include "Interface/CInterface.h"
 #include "input.hpp"
@@ -130,6 +131,93 @@ void capture_rejection() {
     MG_CHECK(fixture.capture() == CAPTURE_BUSY); // A second caller cannot advance the same boundary.
     MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 1);
 }
+void competing_capturers() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode});
+        CaptureData fixture;
+        fixture.building->m_Pos = D3DXVECTOR2(100, 235);
+        auto *closer = side().GetCurGroup()->GetObjectByN(1)->AsRobot();
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_TOOFAR); // Both are in radius; the nearer robot wins.
+        MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 0);
+        MG_CHECK(fixture.building->Capture(closer) == CAPTURE_INPROGRESS);
+        MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 1);
+        MG_CHECK(fixture.building->GetSide() == 0);
+    }
+}
+void competing_color() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode});
+        CaptureData fixture;
+        auto &building = *fixture.building;
+        // A neutral building carries two points painted by the other side.
+        building.m_TrueColor.m_Color = 0xffff0000;
+        building.m_TrueColor.m_ColoredCnt = 2;
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 1 && building.m_TrueColor.m_Color == 0xffff0000);
+        advance_to(session, 750);
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 0 && building.m_TrueColor.m_Color == 0xffff0000);
+        advance_to(session, 1500);
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 0 && building.m_TrueColor.m_Color == 0);
+        advance_to(session, 2250);
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        // The erase clock still gates entry; painting then catches up two points.
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 2 && building.m_TrueColor.m_Color == 0xff00ff00);
+        MG_CHECK(building.GetSide() == 0);
+    }
+}
+void protected_base_profile(random::Mode mode) {
+    Session session({mode});
+    CaptureData fixture(2);
+    auto &building = *fixture.building;
+    building.ResetCaptured();
+    building.m_Kind = BUILDING_BASE;
+    building.m_Pos = D3DXVECTOR2(180, 400);
+    building.m_TurretsHave = 1;
+    building.AddLT();
+    auto cannon = tests::make_engine_object<CMatrixCannon>();
+    cannon->SetSide(2);
+    cannon->m_ParentBuilding = &building;
+    cannon->m_Pos = D3DXVECTOR2(200, 400);
+    cannon->AddLT();
+    fixture.robot->GetEnv()->AddToList(cannon.get());
+    g_MatrixMap->m_TraceStopObj = &building;
+    side().OnRButtonDown(CPoint(0, 0));
+    const auto &group = side().m_PlayerGroup[fixture.robot->GetGroupLogic()];
+    MG_CHECK(group.Order() == mpo_Capture && group.m_Obj == &building);
+    MG_CHECK(group.IsWar());
+    MG_CHECK(!fixture.robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_ColoredCnt == 14);
+    MG_CHECK(building.CanBeCaptured()); // Intent remains capture; execution diverts to defence first.
+    cannon.reset(); // Production turret removal updates the parent's protection count.
+    MG_CHECK(building.m_TurretsHave == 0);
+    side().OnRButtonDown(CPoint(0, 0));
+    int assigned = 0;
+    for (int index = 0; index < 2; ++index) {
+        auto *robot = side().GetCurGroup()->GetObjectByN(index)->AsRobot();
+        if (robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY)) ++assigned;
+    }
+    MG_CHECK(assigned == 1);
+    CFormMatrixGame form;
+    press(form, 'S');
+    for (int index = 0; index < 2; ++index)
+        MG_CHECK(!side().GetCurGroup()->GetObjectByN(index)->AsRobot()->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_ColoredCnt == 14);
+}
+void protected_base_command() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) protected_base_profile(mode);
+}
 void capture_rollback() {
     Session session;
     CaptureData fixture;
@@ -149,8 +237,9 @@ void capture_rollback() {
     building.LogicTakt(10);
     MG_CHECK(building.m_TrueColor.m_ColoredCnt == 0 && building.GetSide() == 0);
 }
-void outcome(bool player_loses, bool full_auto, bool simultaneous = false) {
-    Session session;
+void outcome(bool player_loses, bool full_auto, bool simultaneous = false, int step = 10,
+             random::Mode mode = random::Mode::ParkMiller) {
+    Session session({mode, 79, step});
     DialogData dialog;
     if (full_auto) SETFLAG(g_MatrixMap->m_Flags, MMFLAG_FULLAUTO);
     MG_CHECK(session.remove(player_loses ? 1 : 3));
@@ -161,7 +250,7 @@ void outcome(bool player_loses, bool full_auto, bool simultaneous = false) {
     MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player_loses);
     MG_CHECK(side().GetStatus() == (player_loses ? SS_NONE : SS_ACTIVE));
     const int frozen_loss_time = side().GetStatValue(STAT_TIME);
-    advance_to(session, 2010);
+    advance_to(session, step == 10 ? 2010 : 2016);
     MG_CHECK(!(g_Flags & GFLAG_EXITLOOP));
     MG_CHECK(!g_MatrixMap->IsPaused());
     const DWORD wall_before = timeGetTime();
@@ -193,13 +282,17 @@ void outcome(bool player_loses, bool full_auto, bool simultaneous = false) {
         MG_CHECK(!g_MatrixMap->IsPaused());
     }
 }
-void victory() { outcome(false, false); }
-void defeat() { outcome(true, false); }
-void simultaneous_loss() { outcome(true, false, true); }
-void automatic_results() { outcome(false, true); outcome(true, true); }
+void outcome_profiles(bool loss, bool automatic, bool simultaneous = false) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (int step : {10, 16}) outcome(loss, automatic, simultaneous, step, mode);
+}
+void victory() { outcome_profiles(false, false); }
+void defeat() { outcome_profiles(true, false); }
+void simultaneous_loss() { outcome_profiles(true, false, true); }
+void automatic_results() { outcome_profiles(false, true); outcome_profiles(true, true); }
 void pause_resume() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        Session session({mode});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
         CFormMatrixGame form;
         session.ground_command(500, 300);
         for (int i = 0; i < 30; ++i) session.advance();
@@ -215,8 +308,8 @@ void pause_resume() {
         press(form, VK_PAUSE);
         MG_CHECK(!g_MatrixMap->IsPaused());
         session.advance();
-        MG_CHECK(session.time() == time + 10);
-        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 1490);
+        MG_CHECK(session.time() == time + step);
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 1500 - step);
         for (int i = 0; i < 1470; ++i) session.advance();
         MG_CHECK(session.robot(1).in_place && session.robot(1).x > 400);
     }
@@ -278,6 +371,9 @@ constexpr tests::Case cases[] = {
     {"game.outcome.enemy_capture", enemy_capture},
     {"game.outcome.capture_rejection", capture_rejection},
     {"game.outcome.capture_rollback", capture_rollback},
+    {"game.outcome.competing_capturers", competing_capturers},
+    {"game.outcome.competing_color", competing_color},
+    {"game.outcome.protected_base_command", protected_base_command},
     {"game.outcome.victory", victory},
     {"game.outcome.defeat", defeat},
     {"game.outcome.simultaneous_loss", simultaneous_loss},
