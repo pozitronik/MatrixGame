@@ -10,6 +10,8 @@ The controlled battle harness can load generated meshes with named attachment ma
 
 `arm_battle_robot` adds armor and a weapon to a chassis-only fixture robot, then runs production weapon initialization, mass calculation and attachment transforms. Laser and plasma are the exercised weapon families. `create_battle_cannon` supplies the basis, turret and shaft meshes for cannon type 1, then invokes production graph loading and grouping. Synthetic dimensions and weapon configuration are explicit test inputs, not packaged balance data.
 
+After assembly, the helper invalidates the bounds timestamp before production grouping recomputes the bounding box and sphere. The chassis-only box is approximately 20 units high; the assembled robot is approximately 40 units high. Reusing the chassis bounds until the 100 ms cache interval expires would give the fixture an inconsistent initial collision shape. Exported traces identify the corrected setup as `synthetic-armed-boxes-v2`; v1 traces describe the earlier stale-bounds setup and are a different profile. This changes test initialization only. The four shared contracts retain their impact, health and target-transition expectations.
+
 Keep fixture extensions in their owning change and consume the reviewed shared implementation. Do not copy model writers or substitute targeting, collision, damage or weapon execution in a dependent suite. New mesh attachments, effect catalogs or device capabilities need assertions demonstrating the production route they enable.
 
 ## Executable evidence

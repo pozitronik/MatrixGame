@@ -33,7 +33,7 @@ struct Trace {
         const std::string base_fixture = "unarmed-chassis-obstacle-v1";
         const auto at = header.find(base_fixture);
         MG_CHECK(at != std::string::npos);
-        header.replace(at, base_fixture.size(), "synthetic-armed-boxes-v1");
+        header.replace(at, base_fixture.size(), "synthetic-armed-boxes-v2");
         header.pop_back();
         header += ",\"scenario\":\"" + std::string(name) + "\"}";
         file << header << '\n';

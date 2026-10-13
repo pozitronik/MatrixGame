@@ -90,6 +90,10 @@ void arm_battle_robot(CMatrixRobotAI &robot, ERobotUnitKind weapon) {
     robot.CalcRobotMass();
     robot.RChange(MR_Matrix);
     robot.RNeed(MR_Matrix);
+    // Assembly changes the mesh bounds at the same map time as chassis creation.
+    robot.m_CalcBoundsLastTime = g_MatrixMap->GetTime() - 100;
     robot.JoinToGroup();
+    MG_CHECK(robot.m_CalcBoundMax.z - robot.m_CalcBoundMin.z > 39.99f);
+    MG_CHECK(robot.m_CalcBoundMax.z - robot.m_CalcBoundMin.z < 40.01f);
 }
 }
