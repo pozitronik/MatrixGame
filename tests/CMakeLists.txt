@@ -375,3 +375,20 @@ if(MATRIXGAME_BUILD_DLL)
         LABELS "engine;asset-free;startup;dll"
         TIMEOUT 30)
 endif()
+
+add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_player_order_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_player_order_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_player_order_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_player_order_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract move_routes preorder_cancellation capability_rejection stop_key stop_button attack_routes control_groups group_add_cap manual_control manual_focus patrol_reversal auto_modes cheat_dispatch_gate)
+    add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
+endforeach()
+
+add_test(NAME game.player.intentional_crash
+    COMMAND "${CMAKE_COMMAND}" "-DTEST_EXECUTABLE=$<TARGET_FILE:matrixgame_player_order_scenarios>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_intentional_cheat_abort.cmake")
+set_tests_properties(game.player.intentional_crash PROPERTIES LABELS "engine;asset-free;gameplay;input" TIMEOUT 15)
