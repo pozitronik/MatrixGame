@@ -11,6 +11,13 @@
 #include <vector>
 
 namespace tests::ai {
+void visual_acquisition_range();
+void visual_enemy_range();
+void visual_filters();
+void visual_obstruction();
+void visual_retirement_range();
+void armed_friendly_line();
+void armed_target_retention();
 void memory_cleanup();
 void memory_clear_correctness();
 void place_bounds();
@@ -384,6 +391,13 @@ void interruptibility() {
 }
 int main(int argc, char **argv) {
     const tests::Case cases[] = {
+        {"game.ai.visual_acquisition_range", tests::ai::visual_acquisition_range},
+        {"game.ai.visual_enemy_range", tests::ai::visual_enemy_range},
+        {"game.ai.visual_filters", tests::ai::visual_filters},
+        {"game.ai.visual_obstruction", tests::ai::visual_obstruction},
+        {"game.ai.visual_retirement_range", tests::ai::visual_retirement_range},
+        {"game.ai.armed_friendly_line", tests::ai::armed_friendly_line},
+        {"game.ai.armed_target_retention", tests::ai::armed_target_retention},
         {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
         {"game.ai.place_bounds", tests::ai::place_bounds},
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
