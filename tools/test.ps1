@@ -6,6 +6,7 @@ param(
     [switch]$DLL,
     [switch]$Cheats,
     [switch]$NoBuild,
+    [switch]$Coverage,
     [string]$Filter = '',
     [string]$ToolchainRoot = '',
     [string]$CMakeRoot = '',
@@ -23,6 +24,7 @@ if (-not (Test-Path -LiteralPath $ctest)) {
     throw 'Pinned CTest is missing. Run tools/setup-toolchain.ps1 first.'
 }
 if ($Jobs -lt 1) { throw 'Jobs must be a positive number.' }
+if ($Coverage -and $Compiler -ne 'MinGW') { throw 'Coverage requires the pinned MinGW toolchain and its gcov.' }
 
 if (-not $NoBuild) {
     $buildParameters = @{
@@ -32,6 +34,7 @@ if (-not $NoBuild) {
         Cheats = $Cheats
         WithoutResources = $true
         TestsOnly = $true
+        Coverage = $Coverage
         ToolchainRoot = $ToolchainRoot
         CMakeRoot = $CMakeRoot
         Jobs = $Jobs
@@ -41,6 +44,7 @@ if (-not $NoBuild) {
 
 $kind = if ($DLL) { 'dll' } else { 'exe' }
 $buildName = '{0}-{1}-{2}' -f $Compiler.ToLowerInvariant(), $Configuration.ToLowerInvariant(), $kind
+if ($Coverage) { $buildName += '-coverage' }
 $buildRoot = Join-Path $repoRoot "build/$buildName"
 $cache = Join-Path $buildRoot 'CMakeCache.txt'
 if (-not (Test-Path -LiteralPath $cache) -or
@@ -55,15 +59,42 @@ if (Test-Path -LiteralPath (Join-Path $testBinaryRoot 'matrixgame_bomb_tests.exe
     Copy-Item -LiteralPath (Join-Path $repoRoot '.tools/directx-x86/d3dx9_43.dll') -Destination $testBinaryRoot -Force
 }
 
+if ($Coverage) {
+    if (-not (Select-String -LiteralPath $cache -Pattern '^MATRIXGAME_COVERAGE:BOOL=ON$' -Quiet)) {
+        throw 'Coverage is not configured. Run tools/test.ps1 -Coverage without -NoBuild.'
+    }
+    # Start from empty counters so the report describes only this test selection.
+    Get-ChildItem -LiteralPath $buildRoot -Recurse -Filter '*.gcda' -File | Remove-Item
+}
+
+# Instrumented processes merge shared counter files, so coverage runs one test at a time.
+$testJobs = if ($Coverage) { 1 } else { $Jobs }
 $ctestArgs = @(
     '--test-dir', $buildRoot, '-C', $Configuration,
     '--output-on-failure', '--no-tests=error',
-    '--parallel', $Jobs, '-L', '^engine$',
+    '--parallel', $testJobs, '-L', '^engine$',
     '--output-junit', (Join-Path $buildRoot 'test-results.xml')
 )
 if ($Filter) { $ctestArgs += @('-R', $Filter) }
+# Coverage describes verified contracts; the benchmark smoke pass only checks repeatable work.
+if ($Coverage) { $ctestArgs += @('-LE', '^benchmark$') }
 & $ctest @ctestArgs
 if ($LASTEXITCODE -ne 0) {
     throw "CTest failed (exit code $LASTEXITCODE). See $buildRoot/Testing/Temporary/LastTest.log."
 }
 Write-Output "Test report: $buildRoot/test-results.xml"
+
+if ($Coverage) {
+    $python = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $python) { throw 'Python 3.9 or newer is required to summarize coverage.' }
+    $reportArgs = @(
+        '-B', (Join-Path $PSScriptRoot 'coverage_report.py'),
+        '--build-dir', $buildRoot,
+        '--gcov', (Join-Path $ToolchainRoot 'bin/gcov.exe'),
+        '--compiler', (Join-Path $ToolchainRoot 'bin/g++.exe')
+    )
+    if ($Filter) { $reportArgs += @('--test-filter', $Filter) }
+    $reportArgs += @('--excluded-label', 'benchmark')
+    & $python.Source @reportArgs
+    if ($LASTEXITCODE -ne 0) { throw "Coverage summary failed (exit code $LASTEXITCODE)." }
+}
