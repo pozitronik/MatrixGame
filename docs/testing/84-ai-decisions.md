@@ -110,7 +110,7 @@ The registered `game.ai.uneven_team_redistribution` regression covers the correc
 
 Fresh road routes have two edges of length 10 and a cached distance of 20. Rebuilding the same route after target retirement currently retains the previous cached distance accumulator: `ClearFast` resets the list count, while `AddList` resets only its item count. The replacement test checks the actual edges, junctions and their summed length and prints the cached distance for investigation. It does not accept accumulated distance as a behavior reference. Its correction and regression acceptance remain tracked in [#138](https://github.com/pozitronik/MatrixGame/issues/138).
 
-The probes use retained live objects and in-bounds records. The default three-team redistribution read is out of bounds; the safe probe deliberately uses two teams and does not execute that variant ([#135](https://github.com/pozitronik/MatrixGame/issues/135)). The occupied-place/BFS capacity concern ([#136](https://github.com/pozitronik/MatrixGame/issues/136)) and full-capacity memory eviction ([#137](https://github.com/pozitronik/MatrixGame/issues/137)) have source evidence, not deliberately executed corruption scenarios. No production implementation is changed here.
+The remaining probes use retained live objects and in-bounds records. Before correction, the redistribution probe deliberately used two active teams to keep the erroneous donor read inside the allocated array. Its registered replacement now exercises three teams safely. The occupied-place/BFS capacity concern ([#136](https://github.com/pozitronik/MatrixGame/issues/136)) and full-capacity memory eviction ([#137](https://github.com/pozitronik/MatrixGame/issues/137)) are separate findings.
 
 ## Remaining baseline work
 
