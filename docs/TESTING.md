@@ -118,6 +118,8 @@ The [navigation contracts](testing/81-navigation.md) describe alternate topology
 
 The [presentation evidence guide](testing/87-presentation.md) maps PRES-01 through PRES-04 to interface/audio contracts, the opt-in ClearRect/SPlane probes and native procedures.
 
+The [capture and battle outcome guide](testing/85-battle-outcomes.md) describes capture transitions, survival and objective rules, transport lifetime and result/pause boundaries.
+
 ### Extending the fixture
 
 Reuse `tests/battle_scenario.hpp` and its implementation for a bounded scenario, or extend the synthetic initial data in `battle_geometry.cpp` when a new behavior requires it. Keep scenario setup distinct from actions. Add commands through the relevant production entry point; never write a resulting path, group order or AI decision to simulate acceptance. Entity lookup checks the live logic list and original UID before dereferencing stored pointers. Observers must avoid mutating helpers such as `SOrder::GetStatic()`, reference-acquiring `GetCore()` and lazy geometry preparation.
