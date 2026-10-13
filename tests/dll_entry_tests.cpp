@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "test_support.hpp"
+#include "wire_bytes.hpp"
 #include "MatrixGame.h"
 #include "MatrixFormGame.hpp"
 #include "3g.hpp"
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <type_traits>
 #include <vector>
 
 // Link the production DLL entry point, with deterministic session operations.
@@ -27,6 +29,17 @@ std::vector<int> events;
 bool end_timer;
 int exit_state;
 bool exit_flag;
+
+// Arguments received by the session operations, recorded to check forwarding from the entry point.
+struct InitArguments {
+    HINSTANCE instance;
+    HWND window;
+    const wchar *map;
+    uint32_t seed;
+    const SRobotsSettings *settings;
+    const wchar *lang, *start, *win, *loss, *planet;
+} init_arguments;
+SRobotGameState *saved_result;
 
 class FixtureDirectory {
     std::filesystem::path previous_ = std::filesystem::current_path();
@@ -124,6 +137,125 @@ void interface_layout() {
     MG_CHECK(g_RangersInterface == nullptr);
 }
 
+// The original host is a 32-bit process: pointers, long and the callback slots are four bytes wide and
+// structures use natural alignment. These checks describe that ABI and apply only to x86 builds.
+#if defined(_M_IX86) || defined(__i386__)
+static_assert(sizeof(void *) == 4 && sizeof(long) == 4 && sizeof(bool) == 1 && sizeof(wchar) == 2);
+static_assert(sizeof(dword) == 4 && sizeof(DWORD) == 4 && sizeof(float) == 4 && sizeof(Base::CRect) == 16);
+static_assert(sizeof(SRobotsSettings) == 56 && offsetof(SRobotsSettings, FD3DDevice) == 4 &&
+              offsetof(SRobotsSettings, m_ShowStencilShadows) == 8 &&
+              offsetof(SRobotsSettings, m_ShowProjShadows) == 9 && offsetof(SRobotsSettings, m_IzvratMS) == 10 &&
+              offsetof(SRobotsSettings, m_LandTexturesGloss) == 11 &&
+              offsetof(SRobotsSettings, m_ObjTexturesGloss) == 12 &&
+              offsetof(SRobotsSettings, m_SoftwareCursor) == 13 && offsetof(SRobotsSettings, m_SkyBox) == 14 &&
+              offsetof(SRobotsSettings, m_RobotShadow) == 15 && offsetof(SRobotsSettings, m_BPP) == 16 &&
+              offsetof(SRobotsSettings, m_ResolutionX) == 20 && offsetof(SRobotsSettings, m_ResolutionY) == 24 &&
+              offsetof(SRobotsSettings, m_RefreshRate) == 28 && offsetof(SRobotsSettings, m_Brightness) == 32 &&
+              offsetof(SRobotsSettings, m_Contrast) == 36 && offsetof(SRobotsSettings, m_FSAASamples) == 40 &&
+              offsetof(SRobotsSettings, m_AFDegree) == 44 && offsetof(SRobotsSettings, m_MaxDistance) == 48 &&
+              offsetof(SRobotsSettings, m_VSync) == 52);
+static_assert(sizeof(SRobotGameState) == 24 && offsetof(SRobotGameState, m_BuildRobot) == 4 &&
+              offsetof(SRobotGameState, m_KillRobot) == 8 && offsetof(SRobotGameState, m_BuildTurret) == 12 &&
+              offsetof(SRobotGameState, m_KillTurret) == 16 && offsetof(SRobotGameState, m_KillBuilding) == 20);
+static_assert(sizeof(SMGDRobotInterface) == 16 && offsetof(SMGDRobotInterface, m_Deinit) == 4 &&
+              offsetof(SMGDRobotInterface, m_Support) == 8 && offsetof(SMGDRobotInterface, m_Run) == 12);
+static_assert(sizeof(SMGDRangersInterface) == 64 && offsetof(SMGDRangersInterface, m_SoundCreate) == 4 &&
+              offsetof(SMGDRangersInterface, m_SoundDestroy) == 8 &&
+              offsetof(SMGDRangersInterface, m_SoundPlay) == 12 &&
+              offsetof(SMGDRangersInterface, m_SoundIsPlay) == 16 &&
+              offsetof(SMGDRangersInterface, m_SoundVolume) == 20 &&
+              offsetof(SMGDRangersInterface, m_SoundPan) == 24 &&
+              offsetof(SMGDRangersInterface, m_SoundGetVolume) == 28 &&
+              offsetof(SMGDRangersInterface, m_SoundGetPan) == 32 &&
+              offsetof(SMGDRangersInterface, m_RangersText) == 36 &&
+              offsetof(SMGDRangersInterface, m_RangersTextClear) == 40 &&
+              offsetof(SMGDRangersInterface, m_ProgressBar) == 44 && offsetof(SMGDRangersInterface, m_Takt) == 48 &&
+              offsetof(SMGDRangersInterface, m_Begin) == 52 &&
+              offsetof(SMGDRangersInterface, m_MusicVolumeGet) == 56 &&
+              offsetof(SMGDRangersInterface, m_MusicVolumeSet) == 60);
+static_assert(sizeof(SMGDRangersInterfaceText) == 20 && offsetof(SMGDRangersInterfaceText, m_Buf) == 4 &&
+              offsetof(SMGDRangersInterfaceText, m_Pitch) == 8 && offsetof(SMGDRangersInterfaceText, m_SizeX) == 12 &&
+              offsetof(SMGDRangersInterfaceText, m_SizeY) == 16);
+#endif
+static_assert(std::is_trivially_copyable_v<SRobotsSettings> && std::is_standard_layout_v<SRobotsSettings>);
+static_assert(std::is_trivially_copyable_v<SRobotGameState> && std::is_standard_layout_v<SMGDRangersInterface>);
+
+void host_layout() {
+    // The host reads result statistics as six little-endian 32-bit integers.
+    const auto result = wire::Bytes().u32(61000).u32(2).u32(3).u32(4).u32(5).u32(0xffffffff);
+    SRobotGameState state;
+    MG_CHECK(result.size() == sizeof(state));
+    std::memcpy(&state, result.data.data(), sizeof(state));
+    MG_CHECK(state.m_Time == 61000 && state.m_BuildRobot == 2 && state.m_KillRobot == 3);
+    MG_CHECK(state.m_BuildTurret == 4 && state.m_KillTurret == 5 && state.m_KillBuilding == -1);
+#if defined(_M_IX86) || defined(__i386__)
+    // Host text descriptors carry a 32-bit pixel pointer between 32-bit fields.
+    std::array<BYTE, 4> pixels{};
+    const auto pointer = static_cast<uint32_t>(reinterpret_cast<uintptr_t>(pixels.data()));
+    const auto text = wire::Bytes().u32(9).u32(pointer).u32(16).u32(4).u32(1);
+    SMGDRangersInterfaceText descriptor;
+    MG_CHECK(text.size() == sizeof(descriptor));
+    std::memcpy(&descriptor, text.data.data(), sizeof(descriptor));
+    MG_CHECK(descriptor.m_Image == 9 && descriptor.m_Buf == pixels.data() && descriptor.m_Pitch == 16);
+    MG_CHECK(descriptor.m_SizeX == 4 && descriptor.m_SizeY == 1);
+#endif
+}
+
+void entry_table() {
+    // The exported table is one static object; each query refills the same four entry points.
+    auto *first = GetRobotInterface();
+    const SMGDRobotInterface entries = *first;
+    auto *second = GetRobotInterface();
+    MG_CHECK(first == second && first == &g_RobotInterface);
+    MG_CHECK(std::memcmp(&entries, second, sizeof(entries)) == 0);
+    MG_CHECK(entries.m_Init && entries.m_Deinit && entries.m_Support && entries.m_Run);
+    std::array<uintptr_t, 4> slots;
+    static_assert(sizeof(slots) == sizeof(entries));
+    std::memcpy(slots.data(), &entries, sizeof(slots));
+    MG_CHECK(slots[0] == reinterpret_cast<uintptr_t>(entries.m_Init));
+    MG_CHECK(slots[1] == reinterpret_cast<uintptr_t>(entries.m_Deinit));
+    MG_CHECK(slots[2] == reinterpret_cast<uintptr_t>(entries.m_Support));
+    MG_CHECK(slots[3] == reinterpret_cast<uintptr_t>(entries.m_Run));
+
+    // The callback table is borrowed: Init stores the host pointer, a later Init replaces it, the table
+    // query does not reset it and Deinit clears it, including when repeated.
+    SMGDRangersInterface host{}, replacement{};
+    first->m_Deinit();
+    MG_CHECK(g_RangersInterface == nullptr);
+    first->m_Init(&host);
+    MG_CHECK(g_RangersInterface == &host);
+    first->m_Init(&replacement);
+    MG_CHECK(GetRobotInterface() == first && g_RangersInterface == &replacement);
+    first->m_Deinit();
+    first->m_Deinit();
+    MG_CHECK(g_RangersInterface == nullptr);
+}
+
+void borrowed_arguments() {
+    // Run forwards host pointers to the session without copying them and seeds from the current time.
+    events.clear();
+    CForm::StaticInit();
+    failure = Failure::none;
+    exit_state = 3;
+    exit_flag = true;
+    wchar map[] = L"host.cmap", lang[] = L"xx", start[] = L"1EzStart", win[] = L"Win", loss[] = L"Loss";
+    wchar planet[] = L"Planet";
+    SRobotsSettings settings{};
+    SRobotGameState result{};
+    const HINSTANCE instance = GetModuleHandleW(nullptr);
+    const HWND window = reinterpret_cast<HWND>(static_cast<uintptr_t>(0x1234));
+    const auto before = static_cast<uint32_t>(time(nullptr));
+    const int code =
+            GetRobotInterface()->m_Run(instance, window, map, &settings, lang, start, win, loss, planet, &result);
+    const auto after = static_cast<uint32_t>(time(nullptr));
+    MG_CHECK(code == 3 && events == std::vector<int>({1, 2, 3, 4}));
+    MG_CHECK(init_arguments.instance == instance && init_arguments.window == window);
+    MG_CHECK(init_arguments.map == map && init_arguments.settings == &settings && init_arguments.lang == lang);
+    MG_CHECK(init_arguments.start == start && init_arguments.win == win && init_arguments.loss == loss);
+    MG_CHECK(init_arguments.planet == planet && saved_result == &result);
+    MG_CHECK(init_arguments.seed >= before && init_arguments.seed <= after);
+}
+
 constexpr tests::Case cases[] = {
     {"game.dll.engine_init_failure", engine_init},
     {"game.dll.standard_init_failure", standard_init},
@@ -133,12 +265,16 @@ constexpr tests::Case cases[] = {
     {"game.dll.result_failure", save_failure},
     {"game.dll.success_values", success_values},
     {"game.dll.interface_layout", interface_layout},
+    {"game.dll.host_layout", host_layout},
+    {"game.dll.entry_table", entry_table},
+    {"game.dll.borrowed_arguments", borrowed_arguments},
 };
 
 }  // namespace
 
-void CGame::Init(HINSTANCE, HWND, const wchar *, uint32_t, const SRobotsSettings *, const wchar *,
-                 const wchar *, const wchar *, const wchar *, const wchar *) {
+void CGame::Init(HINSTANCE instance, HWND window, const wchar *map, uint32_t seed, const SRobotsSettings *settings,
+                 const wchar *lang, const wchar *start, const wchar *win, const wchar *loss, const wchar *planet) {
+    init_arguments = {instance, window, map, seed, settings, lang, start, win, loss, planet};
     events.push_back(1);
     if (failure == Failure::engine_init) ERROR_S(L"Synthetic engine initialization failure");
     if (failure == Failure::standard_init) throw std::runtime_error("Synthetic standard initialization failure");
@@ -155,6 +291,7 @@ void CGame::RunGameLoop(CFormMatrixGame *form) {
 }
 
 void CGame::SaveResult(SRobotGameState *result) {
+    saved_result = result;
     events.push_back(3);
     if (failure == Failure::save) throw std::runtime_error("Synthetic result failure");
     result->m_Time = 61;

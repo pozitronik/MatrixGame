@@ -341,6 +341,17 @@ add_matrix_test(game.dll.loop_failure matrixgame_dll_entry_tests startup dll)
 add_matrix_test(game.dll.result_failure matrixgame_dll_entry_tests startup dll)
 add_matrix_test(game.dll.success_values matrixgame_dll_entry_tests startup dll)
 add_matrix_test(game.dll.interface_layout matrixgame_dll_entry_tests startup dll)
+foreach(contract host_layout entry_table borrowed_arguments)
+    add_matrix_test(game.dll.${contract} matrixgame_dll_entry_tests startup dll)
+endforeach()
+
+# Production consumers of the original host contract (settings, results, progress and sound callbacks).
+add_matrix_test_executable(matrixgame_host_contract_tests host_contract_tests.cpp wire_bytes.hpp
+    command_world.hpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_host_contract_tests PRIVATE MatrixGameInternal)
+foreach(contract settings_image result_statistics progress_callback sound_arguments)
+    add_matrix_test(game.host.${contract} matrixgame_host_contract_tests startup dll)
+endforeach()
 
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_dll_host_tests dll_host_tests.cpp)
@@ -352,4 +363,11 @@ if(MATRIXGAME_BUILD_DLL)
     set_tests_properties(game.dll.native_rejected_configuration PROPERTIES
         LABELS "engine;asset-free;startup;dll"
         TIMEOUT 30)
+    foreach(contract native_entry_table native_language_configuration)
+        add_test(NAME game.dll.${contract}
+            COMMAND matrixgame_dll_host_tests game.dll.${contract} "$<TARGET_FILE:MatrixGame>")
+        set_tests_properties(game.dll.${contract} PROPERTIES
+            LABELS "engine;asset-free;startup;dll"
+            TIMEOUT 30)
+    endforeach()
 endif()
