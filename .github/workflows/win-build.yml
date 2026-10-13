@@ -187,7 +187,6 @@ jobs:
         shell: pwsh
         run: ./tools/test.ps1 -Configuration Debug -Coverage
       - name: Publish the coverage summary
-        if: success()
         shell: pwsh
         run: Get-Content -LiteralPath build/mingw-debug-exe-coverage/coverage/coverage-summary.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
       - name: Upload coverage report
