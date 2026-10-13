@@ -47,6 +47,8 @@ std::vector<std::string> demolish(EBuildingType kind, random::Mode mode) {
     tests::BattleMaterialProfile material_profile;
     tests::BattleCombatAssets effects;
     tests::battle::Session session({mode, 83, 10, 500, false, false});
+    std::cout << "Demolition kind=" << int(kind) << " profile: "
+              << session.metadata("synthetic-material-boxes-v1") << '\n';
     effects.install();
     const std::wstring texture_name = std::wstring(OBJECT_PATH_BUILDINGS_RUINS) + L"b" + std::to_wstring(int(kind));
     const std::wstring mesh_name = texture_name + L".vo";

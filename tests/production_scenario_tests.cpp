@@ -41,7 +41,9 @@ void constructor_assets() {
     const tests::MeshAttachment link{1, L"armor", 0, 0, 20};
     tests::load_battle_material_mesh(std::span(&link, 1), OBJECT_PATH_ROBOT_CHASSIS L"2.vo",
                                      OBJECT_PATH_ROBOT_CHASSIS L"2");
-    tests::load_battle_material_mesh({}, OBJECT_PATH_ROBOT_ARMOR L"1.vo", OBJECT_PATH_ROBOT_ARMOR L"1");
+    const tests::MeshAttachment head_link{1, L"head", 0, 0, 20};
+    tests::load_battle_material_mesh(std::span(&head_link, 1), OBJECT_PATH_ROBOT_ARMOR L"1.vo",
+                                     OBJECT_PATH_ROBOT_ARMOR L"1");
     auto *names = g_MatrixData->BlockGetAdd(IF_LABELS_BLOCKPAR)->BlockGetAdd(L"RobotNames");
     names->ParSetAdd(L"Hull1Key", L"Synthetic hull ");
     names->ParSetAdd(L"Chas2Key", L"wheels");
@@ -59,6 +61,7 @@ void constructor_assembly() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int repeat = 0; repeat < 2; ++repeat) {
         tests::BattleMaterialProfile material_profile;
         Session session({mode, 83, 10, 1000, false, false});
+        std::cout << "Constructor profile: " << session.metadata("synthetic-material-boxes-v1") << '\n';
         constructor_assets();
         auto factory = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
             2, BUILDING_BASE, 100, 100);
@@ -138,7 +141,7 @@ void constructor_capacity() {
         for (auto *item = factory->m_BS.GetTopItem(); item; item = item->m_NextStackItem)
             queued.push_back(item->AsRobot());
         MG_CHECK(queued.size() == 6);
-        constructor.StackRobot(nullptr, 2); // Capacity must reject before allocating.
+        constructor.StackRobot(nullptr, 2); // Reject a seventh enqueue.
         MG_CHECK(factory->m_BS.GetItemsCnt() == 6 && factory->m_BS.GetTopItem() == queued.front());
         MG_CHECK(random::draw_count() == draws);
         for (int i = 0; i < 6; ++i) {
@@ -147,6 +150,40 @@ void constructor_capacity() {
             factory->m_BS.DeleteItem(1);
         }
         MG_CHECK(factory->m_BS.GetItemsCnt() == 0);
+    }
+}
+
+void constructor_deployment() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::BattleMaterialProfile material_profile;
+        Session session({mode, 83, 10, 1000, false, false});
+        constructor_assets();
+        auto factory = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            2, BUILDING_BASE, 100, 100);
+        CConstructor constructor;
+        constructor.SetSide(2);
+        constructor.SetBase(factory.get());
+        SSpecialBot design;
+        design.m_Chassis.m_nKind = RUK_CHASSIS_WHEEL;
+        design.m_Armor.m_Unit.m_nKind = RUK_ARMOR_BIREX;
+        design.m_Team = 1;
+        constructor.BuildSpecialBot(design);
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 1);
+        auto *built = factory->m_BS.GetTopItem()->AsRobot();
+        auto *side = g_MatrixMap->GetSideById(2);
+        const auto statistic = side->GetStatValue(STAT_ROBOT_BUILD);
+        const auto draws = random::draw_count();
+        g_Config.m_Timings[UNIT_ROBOT] = 100;
+        factory->m_BS.TickTimer(99);
+        MG_CHECK(!in_logic(built) && factory->m_BS.GetItemsCnt() == 1);
+        factory->m_BS.TickTimer(1);
+        MG_CHECK(in_logic(built) && factory->m_BS.GetItemsCnt() == 0);
+        MG_CHECK(built->m_CurrState == ROBOT_IN_SPAWN && built->GetBase() == factory.get());
+        MG_CHECK(built->GetTeam() == 0 && built->m_UnitCnt == 2); // Spawn chooses the first empty computer team.
+        MG_CHECK(factory->m_State == BASE_OPENING && factory->IsSpawningBot());
+        MG_CHECK(side->GetStatValue(STAT_ROBOT_BUILD) == statistic + 1);
+        MG_CHECK(random::draw_count() == draws); // Computer deployment has no player sound choice.
+        g_MatrixMap->StaticDelete(built);
     }
 }
 tests::EnginePtr<CMatrixBuilding> base() {
@@ -318,6 +355,7 @@ void building_geometry() {
 const tests::Case cases[] = {{"game.production.queue_deployment", queue_deployment},
                            {"game.production.constructor_assembly", constructor_assembly},
                            {"game.production.constructor_capacity", constructor_capacity},
+                           {"game.production.constructor_deployment", constructor_deployment},
                            {"game.production.base_exit", base_exit},
                            {"game.production.building_geometry", building_geometry}};
 }
