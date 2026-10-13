@@ -238,7 +238,7 @@ add_matrix_test(game.combat.cannon_firing matrixgame_combat_scenarios gameplay a
 add_matrix_test(game.combat.robot_firing matrixgame_combat_scenarios gameplay ai)
 add_matrix_test(game.combat.plasma_flight matrixgame_combat_scenarios gameplay ai memory)
 add_matrix_test(game.combat.axis_aligned_trace matrixgame_combat_scenarios gameplay)
-foreach(contract volcano_firing electric_firing flame_firing gun_firing missile_firing mortar_firing repair_firing heat_boundary bomb_detonation cannon_projectiles cannon_boundaries cannon_obstruction)
+foreach(contract volcano_firing electric_firing flame_firing gun_firing missile_firing mortar_firing repair_firing heat_boundary bomb_detonation cannon_projectiles cannon_boundaries cannon_obstruction delayed_damage bomb_order repair_death)
     add_matrix_test(game.combat.${contract} matrixgame_combat_scenarios gameplay ai memory)
 endforeach()
 

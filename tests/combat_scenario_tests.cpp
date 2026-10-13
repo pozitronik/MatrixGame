@@ -19,6 +19,13 @@ CMatrixRobotAI *robot(int side, int ordinal = 0) {
         if (object->IsLiveRobot() && object->GetSide() == side && ordinal-- == 0) return object->AsRobot();
     throw std::runtime_error("Missing fixture robot");
 }
+// Forming protected member pointers in a derived observer needs no downcast of live objects.
+struct StatusObservation : CMatrixMapStatic {
+    static int ablaze(CMatrixMapStatic &target) { return (target.* &StatusObservation::GetAblazeTTL)(); }
+    static int shorted(CMatrixMapStatic &target) { return (target.* &StatusObservation::GetShortedTTL)(); }
+    static bool is_ablaze(CMatrixMapStatic &target) { return (target.* &StatusObservation::IsAblaze)(); }
+    static bool is_shorted(CMatrixMapStatic &target) { return (target.* &StatusObservation::IsShorted)(); }
+};
 struct Trace {
     std::ofstream file;
     std::vector<std::string> states;
@@ -47,7 +54,9 @@ struct Trace {
         const auto draws = random::draw_count();
         std::ostringstream out;
         out << "{\"type\":\"snapshot\",\"state\":" << session.snapshot()
-            << ",\"combat\":{\"health_bits\":" << std::bit_cast<uint32_t>(target->GetHitPoint());
+            << ",\"combat\":{\"health_bits\":" << std::bit_cast<uint32_t>(target->GetHitPoint())
+            << ",\"ablaze_ttl\":" << StatusObservation::ablaze(*target) << ",\"shorted_ttl\":" << StatusObservation::shorted(*target)
+            << ",\"robot_state\":" << target->m_CurrState;
         if (shooter) out << ",\"heat\":" << shooter->GetWeapon(0).m_Heat;
         if (cannon) out << ",\"cannon_target_is_patient\":" <<
             (cannon->m_TargetCore && cannon->m_TargetCore->m_Object == target ? "true" : "false")
@@ -651,6 +660,171 @@ void cannon_obstruction() {
     }
 }
 
+std::vector<std::string> delayed_damage_run(random::Mode mode, int variant, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode, 82, 10, 1000, false, false};
+    Session session(profile);
+    assets.install();
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_FLAMETHROWER)] = {0, 0, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LIGHTENING)] = {0, 0, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_ABLAZE)] = {1, 1, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_SHORTED)] = {2, 2, 0};
+    auto *target = robot(PLAYER_SIDE);
+    target->InitMaxHitpoint(100);
+    target->SetMaxSpeed(0);
+    Trace trace(session, profile, ("delayed-damage-" + std::to_string(variant)).c_str(), run);
+    auto apply = [&](EWeapon weapon) {
+        return !target->Damage(weapon, target->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr);
+    };
+    trace.command(session, "apply-status", [&] {
+        if (variant != 1) MG_CHECK(apply(WEAPON_FLAMETHROWER));
+        if (variant != 0) MG_CHECK(apply(WEAPON_LIGHTENING));
+        return true;
+    });
+    MG_CHECK(StatusObservation::ablaze(*target) == (variant == 1 ? 0 : 300));
+    MG_CHECK(StatusObservation::shorted(*target) == (variant == 0 ? 0 : 500));
+    float health = target->GetHitPoint();
+    std::vector<std::pair<int, int>> impacts;
+    for (int i = 0; i < 100; ++i) {
+        trace.record(session, target);
+        session.advance();
+        MG_CHECK(StatusObservation::ablaze(*target) == (variant == 1 ? 0 : std::max(0, 300 - session.time())));
+        MG_CHECK(StatusObservation::shorted(*target) == (variant == 0 ? 0 : std::max(0, 500 - session.time())));
+        MG_CHECK(StatusObservation::is_ablaze(*target) == (StatusObservation::ablaze(*target) > 0));
+        MG_CHECK(StatusObservation::is_shorted(*target) == (StatusObservation::shorted(*target) > 0));
+        if (target->GetHitPoint() != health) {
+            health = target->GetHitPoint();
+            impacts.emplace_back(session.time(), int(std::lround(health * 10)));
+        }
+    }
+    const std::vector<std::pair<int, int>> expected = variant == 0 ?
+        std::vector<std::pair<int, int>>{{10,91}, {100,82}, {190,73}, {280,64}} : variant == 1 ?
+        std::vector<std::pair<int, int>>{{10,98}, {60,96}, {110,94}, {160,92}, {210,90}, {260,88}, {310,86}, {360,84}, {410,82}, {460,80}} :
+        std::vector<std::pair<int, int>>{{10,89}, {60,87}, {100,78}, {110,76}, {160,74}, {190,65}, {210,63}, {260,61}, {280,52}, {310,50}, {360,48}, {410,46}, {460,44}};
+    MG_CHECK(impacts == expected);
+    check_health(target, expected.back().second);
+    trace.record(session, target);
+    trace.complete(session);
+    return trace.states;
+}
+void delayed_damage() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int variant : {0, 1, 2}) {
+        const auto reference = delayed_damage_run(mode, variant, 0);
+        compare(reference, delayed_damage_run(mode, variant, 1));
+    }
+}
+
+std::vector<std::string> bomb_order_run(random::Mode mode, bool targeted, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode, 82, 10, 4000, false, true};
+    Session session(profile);
+    assets.install();
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 150;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {10, 4, 0};
+    auto *bomber = robot(PLAYER_SIDE);
+    auto *target = robot(2);
+    target->InitMaxHitpoint(50);
+    target->SetMaxSpeed(0);
+    tests::arm_battle_robot(*bomber, RUK_WEAPON_BOMB);
+    CoreLease core(bomber->GetCore(DEBUG_CALL_INFO));
+    Trace trace(session, profile, targeted ? "bomb-arrival-target" : "bomb-arrival-ground", run);
+    auto *side = g_MatrixMap->GetPlayerSide();
+    trace.command(session, "order-bomb(3)", [&] {
+        side->PGOrderBomb(side->SelGroupToLogicGroup(), CPoint(50, 50), targeted ? target : nullptr);
+        return session.robot(1).order == mpo_Bomb;
+    });
+    int dying_at = 0, removed_at = 0;
+    float health = target->GetHitPoint();
+    std::vector<std::pair<int, int>> impacts;
+    for (int i = 0; i < 3000; ++i) {
+        trace.record(session, target, nullptr, nullptr, core.get());
+        session.advance();
+        if (core->m_Object && bomber->m_CurrState == ROBOT_DIP && !dying_at) dying_at = session.time();
+        if (!core->m_Object && !removed_at) removed_at = session.time();
+        if (target->GetHitPoint() != health) {
+            health = target->GetHitPoint();
+            impacts.emplace_back(session.time(), int(std::lround(health * 10)));
+        }
+    }
+    MG_CHECK(dying_at == (targeted ? 7920 : 11820));
+    MG_CHECK(removed_at == dying_at + (mode == random::Mode::ParkMiller ? 3150 : 4140));
+    const std::vector<std::pair<int, int>> expected{{targeted ? 8210 : 12110, 40}};
+    MG_CHECK(impacts == expected);
+    check_health(target, 40);
+    MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) == 0);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    trace.record(session, target, nullptr, nullptr, core.get());
+    trace.complete(session);
+    return trace.states;
+}
+void bomb_order() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        for (bool targeted : {false, true}) {
+            const auto reference = bomb_order_run(mode, targeted, 0);
+            compare(reference, bomb_order_run(mode, targeted, 1));
+        }
+    }
+}
+
+std::vector<std::string> repair_death_run(random::Mode mode, bool kill_healer, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode, 82, 10, 1000, false, true};
+    Session session(profile);
+    assets.install();
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_REPAIR)] = 600;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_REPAIR)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_REPAIR)] = {8, 4, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {20, 20, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {1000, 1000, 0};
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+    auto *healer = robot(PLAYER_SIDE);
+    auto *target = robot(PLAYER_SIDE, 1);
+    tests::arm_battle_robot(*healer, RUK_WEAPON_REPAIR);
+    target->InitMaxHitpoint(50);
+    target->SetMaxSpeed(0);
+    MG_CHECK(!target->Damage(WEAPON_LASER, target->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+    auto *victim = kill_healer ? healer : target;
+    CoreLease core(victim->GetCore(DEBUG_CALL_INFO));
+    auto *side = g_MatrixMap->GetPlayerSide();
+    Trace trace(session, profile, kill_healer ? "repair-kill-healer" : "repair-kill-patient", run);
+    trace.command(session, "order-repair(2)", [&] {
+        side->PGOrderRepair(side->SelGroupToLogicGroup(), target);
+        return session.robot(1).order == mpo_Repair;
+    });
+    int removed_at = 0;
+    for (int i = 0; i < 650; ++i) {
+        if (i == 30) {
+            check_health(target, 38);
+            trace.command(session, "lethal-damage", [&] {
+                return victim->Damage(WEAPON_GUN, victim->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr);
+            });
+            MG_CHECK(victim->m_CurrState == ROBOT_DIP);
+        }
+        auto *observed = kill_healer || i < 30 ? target : healer;
+        trace.record(session, observed, nullptr, nullptr, core.get());
+        session.advance();
+        if (!core->m_Object && !removed_at) removed_at = session.time();
+        if (i >= 30 && kill_healer) check_health(target, 38);
+        if (i >= 40 && !kill_healer) {
+            MG_CHECK(session.robot(1).target_is_null);
+            MG_CHECK(!healer->FindOrderLikeThat(ROT_FIRE));
+        }
+    }
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+    MG_CHECK(removed_at == (kill_healer ? (mode == random::Mode::ParkMiller ? 4780 : 3460) :
+        (mode == random::Mode::ParkMiller ? 3980 : 2810)));
+    trace.record(session, kill_healer ? target : healer, nullptr, nullptr, core.get());
+    trace.complete(session);
+    return trace.states;
+}
+void repair_death() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool kill_healer : {false, true}) {
+        const auto reference = repair_death_run(mode, kill_healer, 0);
+        compare(reference, repair_death_run(mode, kill_healer, 1));
+    }
+}
+
 const tests::Case cases[] = {{"game.combat.cannon_firing", cannon_firing},
     {"game.combat.robot_firing", robot_firing}, {"game.combat.plasma_flight", plasma_flight},
     {"game.combat.axis_aligned_trace", axis_aligned_trace},
@@ -658,7 +832,7 @@ const tests::Case cases[] = {{"game.combat.cannon_firing", cannon_firing},
     {"game.combat.flame_firing", flame_firing}, {"game.combat.gun_firing", gun_firing},
     {"game.combat.missile_firing", missile_firing}, {"game.combat.mortar_firing", mortar_firing},
     {"game.combat.repair_firing", repair_firing}, {"game.combat.heat_boundary", heat_boundary}, {"game.combat.bomb_detonation", bomb_detonation},
-    {"game.combat.cannon_projectiles", cannon_projectiles}, {"game.combat.cannon_boundaries", cannon_boundaries}, {"game.combat.cannon_obstruction", cannon_obstruction}};
+    {"game.combat.cannon_projectiles", cannon_projectiles}, {"game.combat.cannon_boundaries", cannon_boundaries}, {"game.combat.cannon_obstruction", cannon_obstruction}, {"game.combat.delayed_damage", delayed_damage}, {"game.combat.bomb_order", bomb_order}, {"game.combat.repair_death", repair_death}};
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
