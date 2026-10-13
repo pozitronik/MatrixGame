@@ -21,8 +21,8 @@ struct Profile {
     int max_frames = 3000;
     bool audio = true;
     bool initially_selected = true;
-    NavigationLayout layout = NavigationLayout::CentralObstacle;
     bool unavailable_icon_targets = false;
+    NavigationLayout layout = NavigationLayout::CentralObstacle;
 };
 
 // IDs belong to a session, never to a pointer, group slot or process-global UID.
