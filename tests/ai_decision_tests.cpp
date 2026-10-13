@@ -11,6 +11,13 @@
 #include <vector>
 
 namespace tests::ai {
+void memory_cleanup();
+void memory_clear_correctness();
+void place_bounds();
+void place_axis_correctness();
+void regroup_split_correctness();
+void regroup_merge_correctness();
+void bomb_escape_planning();
 void strategic_member_loss();
 void strategic_base_loss();
 void strategic_forward();
@@ -377,6 +384,13 @@ void interruptibility() {
 }
 int main(int argc, char **argv) {
     const tests::Case cases[] = {
+        {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
+        {"game.ai.place_bounds", tests::ai::place_bounds},
+        {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
+        {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
+        {"probe.ai.place_axis", tests::ai::place_axis_correctness},
+        {"probe.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
+        {"probe.ai.regroup_merge_counts", tests::ai::regroup_merge_correctness},
         {"game.ai.enemy_memory", enemy_memory},
         {"game.ai.memory_target_retirement", memory_target_retirement},
         {"game.ai.ignore_expiry", ignore_expiry},
