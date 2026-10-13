@@ -11,6 +11,7 @@ namespace {
 // Same 16807/2147483647 generator used by the original map simulation.
 std::minstd_rand0 generator;
 random::Mode active_mode = random::Mode::ParkMiller;
+std::uint64_t raw_draw_count = 0;
 
 int active_maximum() {
     return active_mode == random::Mode::LegacyCRT ? RAND_MAX : random::maximum;
@@ -29,6 +30,7 @@ void seed(unsigned int val)
 void seed(unsigned int val, Mode selected_mode)
 {
     active_mode = selected_mode;
+    raw_draw_count = 0;
     if (active_mode == Mode::LegacyCRT) {
         std::srand(val);
     } else {
@@ -41,8 +43,14 @@ Mode mode()
     return active_mode;
 }
 
+std::uint64_t draw_count()
+{
+    return raw_draw_count;
+}
+
 int Rnd()
 {
+    ++raw_draw_count;
     return active_mode == Mode::LegacyCRT ? std::rand() : static_cast<int>(generator() - 1);
 }
 

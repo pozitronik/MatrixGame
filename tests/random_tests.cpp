@@ -229,7 +229,84 @@ void legacy_crt_interop() {
     MG_CHECK(random::mode() == random::Mode::LegacyCRT);
 }
 
+void draw_count_reset() {
+    for (const auto selected : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        random::seed(1, selected);
+        MG_CHECK(random::draw_count() == 0);
+        random::Rnd();
+        random::Rnd();
+        MG_CHECK(random::draw_count() == 2);
+        random::seed(17);
+        MG_CHECK(random::mode() == selected);
+        MG_CHECK(random::draw_count() == 0);
+        random::Rnd();
+        MG_CHECK(random::draw_count() == 1);
+    }
+    random::seed(42, random::Mode::ParkMiller);
+    MG_CHECK(random::draw_count() == 0);
+}
+
+void draw_count_observation() {
+    for (const auto selected : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        std::array<int, 32> expected{};
+        random::seed(9, selected);
+        for (auto &value : expected) value = random::Rnd();
+        random::seed(9, selected);
+        for (std::size_t i = 0; i < expected.size(); ++i) {
+            for (int observation = 0; observation < 3; ++observation) {
+                MG_CHECK(random::draw_count() == i);
+                MG_CHECK(random::mode() == selected);
+            }
+            MG_CHECK(random::Rnd() == expected[i]);
+            MG_CHECK(random::draw_count() == i + 1);
+        }
+    }
+    random::seed(1, random::Mode::LegacyCRT);
+    MG_CHECK(std::rand() == 41);
+    MG_CHECK(random::draw_count() == 0);
+    MG_CHECK(random::Rnd() == 18467);
+    MG_CHECK(random::draw_count() == 1);
+    std::srand(0);
+    MG_CHECK(random::draw_count() == 1);
+    MG_CHECK(random::Rnd() == 38);
+    MG_CHECK(random::draw_count() == 2);
+}
+
+void draw_count_ranges() {
+    static_assert(RAND_MAX == 32767, "The supported Windows CRT uses 15-bit output.");
+    for (const auto selected : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        random::seed(1, selected);
+        random::Rnd(-10, 10);
+        MG_CHECK(random::draw_count() == 1);
+        random::RndFloat();
+        MG_CHECK(random::draw_count() == 2);
+        RND(1.0, 1.0);
+        MG_CHECK(random::draw_count() == 3);
+        FRND(0.25);
+        MG_CHECK(random::draw_count() == 4);
+        FSRND(0.25);
+        MG_CHECK(random::draw_count() == 5);
+        MG_CHECK(IRND(0) == 0);
+        MG_CHECK(random::draw_count() == 6);
+        MG_CHECK(random::Rnd(4, 4) == 4);
+        MG_CHECK(random::draw_count() == 7);
+
+        random::seed(1);
+        random::Rnd(0, 32768);
+        MG_CHECK(random::draw_count() == (selected == random::Mode::LegacyCRT ? 2 : 1));
+        random::seed(1);
+        random::Rnd(std::numeric_limits<int>::min(), std::numeric_limits<int>::max());
+        MG_CHECK(random::draw_count() == (selected == random::Mode::LegacyCRT ? 3 : 2));
+        random::seed(1);
+        random::Rnd(std::numeric_limits<int>::max(), std::numeric_limits<int>::min());
+        MG_CHECK(random::draw_count() == (selected == random::Mode::LegacyCRT ? 3 : 2));
+    }
+}
+
 constexpr tests::Case cases[] = {
+    {"base.random.draw_count_reset", draw_count_reset},
+    {"base.random.draw_count_observation", draw_count_observation},
+    {"base.random.draw_count_ranges", draw_count_ranges},
     {"base.random.unit_interval", unit_interval},
     {"base.random.fractional_scales", fractional_scales},
     {"base.random.original_sequence", original_sequence},
