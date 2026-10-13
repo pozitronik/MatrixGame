@@ -231,6 +231,7 @@ void cannon_firing() {
     }
 }
 // Unregistered correctness probe, not a behavior-preservation oracle.
+// Defect tracking: https://github.com/pozitronik/MatrixGame/issues/129
 // Source/reproduction: docs/testing/armed-fixtures.md, "Axis-aligned trace defect".
 void axis_aligned_trace() {
     bool all_hit = true;

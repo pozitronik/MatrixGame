@@ -35,6 +35,8 @@ These contracts establish the shared fixtures and selected COM-01 through COM-03
 
 ## Axis-aligned trace defect
 
+The correction and its gameplay disposition are tracked in [the axis-aligned trace issue](https://github.com/pozitronik/MatrixGame/issues/129).
+
 An unregistered correctness probe expects both an oblique ray and a zero-X-travel ray to hit the same synthetic robot, through both sphere intersection and mesh `Pick`. The current engine fails the axis-aligned expectations. This is a defect probe, not a passing golden gameplay rule, and it is excluded from CTest registration. The source and independent reproduction are recorded in the [review findings](https://github.com/pozitronik/MatrixGame/pull/126#pullrequestreview-5503679613).
 
 In `CMatrixMap::ScanLandscapeGroup`, `t1` starts at zero. The nonzero-X branch can increase it; the Y branch only decreases it. For zero X travel the later `t < t1 && t > t0` test rejects object hits. The rejection follows both the sphere-intersection and mesh-picking paths; it is not specific to armed robots or sphere traces. Native occurrence frequency and gameplay impact have not been measured. A separate correction needs regressions and a disposition of any changed gameplay; no production fix is included here.
