@@ -11,6 +11,7 @@
 #include "MatrixObjectBuilding.hpp"
 #include "MatrixObjectCannon.hpp"
 #include "MatrixMultiSelection.hpp"
+#include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include "Interface/CInterface.h"
 #include "Interface/CIFaceElement.h"
 #include "input.hpp"
@@ -827,6 +828,158 @@ void manual_armed_fire() {
     }
 }
 
+std::vector<std::string> repair_command_run(random::Mode mode, bool button_route, bool retire) {
+    tests::BattleCombatAssets assets;
+    Session session({mode, 80, 10, 1000, false, true});
+    assets.install();
+    CFormMatrixGame form;
+    auto *healer = selected(0);
+    auto *patient = selected(1);
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_REPAIR)] = 600;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_REPAIR)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_REPAIR)] = {8, 4, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {20, 20, 0};
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+    tests::arm_battle_robot(*healer, RUK_WEAPON_REPAIR);
+    patient->InitMaxHitpoint(50);
+    patient->SetMaxSpeed(0);
+    MG_CHECK(!patient->Damage(WEAPON_GUN, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+    MG_CHECK(patient->GetHitPoint() == 3.0f && side().GetCurGroup()->GetRepairsCnt() == 1);
+    if (button_route) {
+        auto button = tests::make_engine_object<CIFaceElement>();
+        button->m_strName = IF_ORDER_REPAIR;
+        g_IFaceList->PlayerAction(button.get());
+    } else press(form, 'R');
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR));
+    const auto before = session.snapshot();
+    ground(500, 300);
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR));
+    MG_CHECK(session.snapshot() == before);
+    CMatrixRobotAI *enemy = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot() && object->GetSide() == 2) enemy = object->AsRobot();
+    MG_CHECK(enemy);
+    g_MatrixMap->m_TraceStopObj = enemy;
+    g_MatrixMap->m_TraceStopPos = enemy->GetGeoCenter();
+    side().OnLButtonDown(CPoint(0, 0));
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR) && session.snapshot() == before);
+    g_MatrixMap->m_TraceStopObj = patient;
+    g_MatrixMap->m_TraceStopPos = patient->GetGeoCenter();
+    side().OnLButtonDown(CPoint(0, 0));
+    MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR | ORDERING_MODE));
+    MG_CHECK(session.robot(1).order == mpo_Repair && session.robot(1).target == 2);
+    std::vector<std::string> states;
+    int heals = 0;
+    float health = patient->GetHitPoint();
+    for (int frame = 0; frame < 200; ++frame) {
+        if (retire && frame == 30) {
+            MG_CHECK(session.remove(2));
+            patient = nullptr;
+            g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+        }
+        session.advance();
+        if (patient && patient->GetHitPoint() != health) {
+            health = patient->GetHitPoint();
+            ++heals;
+            MG_CHECK(session.time() == 10 + 100 * heals);
+            MG_CHECK(health == float(30 + 4 * heals) / 10.0f);
+        }
+        if (retire && session.time() >= 400)
+            MG_CHECK(session.robot(1).target_is_null && !healer->FindOrderLikeThat(ROT_FIRE));
+        states.push_back(session.snapshot());
+    }
+    MG_CHECK(heals == (retire ? 2 : 5));
+    MG_CHECK(session.robot(1).order == mpo_Stop);
+    if (patient) MG_CHECK(!patient->NeedRepair() && patient->GetHitPoint() == 5.0f);
+    return states;
+}
+void repair_command_routes() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (bool retire : {false, true}) {
+            const auto keyboard = repair_command_run(mode, false, retire);
+            MG_CHECK(keyboard == repair_command_run(mode, true, retire));
+        }
+}
+
+struct PlayerEffectAccess : CMatrixEffect { using CMatrixEffect::m_SpotProperties; };
+struct PlayerCraterAssets {
+    SSpotProperties previous = PlayerEffectAccess::m_SpotProperties[SPOT_VORONKA];
+    void install() {
+        PlayerEffectAccess::m_SpotProperties[SPOT_VORONKA] = PlayerEffectAccess::m_SpotProperties[SPOT_PLASMA_HIT];
+        PlayerEffectAccess::m_SpotProperties[SPOT_VORONKA].func = SpotTaktVoronka;
+    }
+    ~PlayerCraterAssets() { PlayerEffectAccess::m_SpotProperties[SPOT_VORONKA] = previous; }
+};
+std::vector<std::string> bomb_command_run(random::Mode mode, bool button_route, bool targeted) {
+    tests::BattleCombatAssets assets;
+    PlayerCraterAssets crater;
+    Session session({mode, 80, 10, 4000, false, true});
+    assets.install();
+    crater.install();
+    CFormMatrixGame form;
+    auto *bomber = selected(0);
+    CMatrixRobotAI *target = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot() && session.matches(3, object->AsRobot())) target = object->AsRobot();
+    MG_CHECK(target);
+    target->InitMaxHitpoint(50);
+    target->SetMaxSpeed(0);
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 150;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {10, 4, 0};
+    tests::arm_battle_robot(*bomber, RUK_WEAPON_BOMB);
+    MG_CHECK(side().GetCurGroup()->GetBombersCnt() == 1);
+    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(bomber->GetCore(DEBUG_CALL_INFO),
+        [](SObjectCore *value) { value->Release(); });
+    const auto initial = session.snapshot();
+    press(form, 'E');
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB));
+    press(form, 'X');
+    ground(500, 500);
+    MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB | ORDERING_MODE));
+    MG_CHECK(session.snapshot() == initial && !bomber->IsMustDie());
+    if (button_route) {
+        auto button = tests::make_engine_object<CIFaceElement>();
+        button->m_strName = IF_ORDER_BOMB;
+        g_IFaceList->PlayerAction(button.get());
+    } else press(form, 'E');
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB));
+    if (targeted) {
+        g_MatrixMap->m_TraceStopObj = target;
+        g_MatrixMap->m_TraceStopPos = target->GetGeoCenter();
+        side().OnLButtonDown(CPoint(0, 0));
+    } else ground(500, 500);
+    MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB | ORDERING_MODE));
+    MG_CHECK(session.robot(1).order == mpo_Bomb);
+    MG_CHECK(session.robot(1).target == (targeted ? 3u : 0u));
+    std::vector<std::string> states;
+    int dying_at = 0, removed_at = 0, damaged_at = 0;
+    for (int frame = 0; frame < 3000; ++frame) {
+        session.advance();
+        if (core->m_Object && bomber->m_CurrState == ROBOT_DIP && !dying_at) dying_at = session.time();
+        if (!core->m_Object && !removed_at) removed_at = session.time();
+        if (target->GetHitPoint() < 5 && !damaged_at) damaged_at = session.time();
+        states.push_back(session.snapshot());
+    }
+    std::cout << "Bomb route targeted=" << targeted << " mode=" << int(mode)
+              << " dying=" << dying_at << " removed=" << removed_at << " damage=" << damaged_at << '\n';
+    MG_CHECK(dying_at == (targeted ? 7920 : 10920));
+    MG_CHECK(damaged_at == dying_at + 290);
+    MG_CHECK(removed_at == dying_at + (mode == random::Mode::ParkMiller ? 4680 : 4810));
+    MG_CHECK(!core->m_Object && !session.robot(1).alive);
+    MG_CHECK(target->GetHitPoint() == 4.0f);
+    MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    return states;
+}
+void bomb_command_routes() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (bool targeted : {false, true}) {
+            const auto keyboard = bomb_command_run(mode, false, targeted);
+            MG_CHECK(keyboard == bomb_command_run(mode, true, targeted));
+        }
+}
+
 void registered_cheat_effects() {
     Profile profile;
     profile.initially_selected = false;
@@ -1035,6 +1188,8 @@ void manual_control() {
     MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
 }
 constexpr tests::Case cases[] = {
+    {"game.player.bomb_command_routes", bomb_command_routes},
+    {"game.player.repair_command_routes", repair_command_routes},
     {"game.player.megabust_cheat", megabust_cheat},
     {"game.player.registered_cheat_effects", registered_cheat_effects},
     {"game.player.manual_aim_and_fire_input", manual_aim_and_fire_input},

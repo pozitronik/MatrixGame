@@ -458,7 +458,7 @@ foreach(contract move_routes preorder_cancellation capability_rejection stop_key
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
 
-foreach(contract mixed_building_selection inactive_selection manual_armed_fire)
+foreach(contract mixed_building_selection inactive_selection manual_armed_fire repair_command_routes bomb_command_routes)
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
 
