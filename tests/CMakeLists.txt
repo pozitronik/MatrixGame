@@ -508,6 +508,22 @@ target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
 foreach(contract zone_routes road_routes chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
+add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_player_order_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_player_order_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_player_order_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_player_order_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract move_routes preorder_cancellation capability_rejection stop_key stop_button attack_routes control_groups empty_control_group control_group_camera debug_reinforcement_reset group_add_cap manual_control controlled_unit_removal manual_exit_held manual_focus patrol_reversal auto_modes cheat_dispatch_gate mesh_selection overlapping_selection_limit independent_group_commands minimap_move_routes edge_and_repeated_move auto_target_retirement mixed_auto_selection capture_target_validation cannon_and_invalid_targets manual_aim_and_fire_input registered_cheat_effects megabust_cheat)
+    add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
+endforeach()
+
+add_test(NAME game.player.intentional_crash
+    COMMAND "${CMAKE_COMMAND}" "-DTEST_EXECUTABLE=$<TARGET_FILE:matrixgame_player_order_scenarios>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_intentional_cheat_abort.cmake")
+set_tests_properties(game.player.intentional_crash PROPERTIES LABELS "engine;asset-free;gameplay;input" TIMEOUT 15)
 # Performance workloads. The executable is a measurement tool, not a
 # timing test: CTest only runs a short smoke pass that checks repeatable work.
 add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp
