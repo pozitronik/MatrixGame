@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "scenario_build_identity.hpp"
 #include "battle_device.hpp"
 #include "battle_geometry.hpp"
 #include "command_world.hpp"

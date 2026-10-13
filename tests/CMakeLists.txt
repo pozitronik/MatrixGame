@@ -205,18 +205,19 @@ add_matrix_test(game.orders.repeated_sessions matrixgame_player_command_probe ga
 add_matrix_test_executable(matrixgame_battle_scenarios battle_scenario_tests.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_scenarios PRIVATE MatrixGameInternal)
-execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-    OUTPUT_VARIABLE scenario_revision OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-if(NOT scenario_revision)
-    set(scenario_revision "unknown")
-endif()
-execute_process(COMMAND git diff --quiet HEAD -- WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
-    RESULT_VARIABLE scenario_dirty ERROR_QUIET)
-if(NOT scenario_dirty MATCHES "^[01]$")
-    set(scenario_dirty -1)
-endif()
+# Refresh provenance on every build, including plain incremental builds after a
+# commit or tracked edit. The generator preserves the header timestamp if unchanged.
+set(scenario_identity_header "${CMAKE_CURRENT_BINARY_DIR}/scenario_build_identity.hpp")
+add_custom_target(matrixgame_scenario_identity
+    COMMAND "${CMAKE_COMMAND}"
+        "-DSOURCE_ROOT=${PROJECT_SOURCE_DIR}"
+        "-DOUTPUT_HEADER=${scenario_identity_header}"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/write_scenario_identity.cmake"
+    BYPRODUCTS "${scenario_identity_header}"
+    VERBATIM)
+add_dependencies(matrixgame_battle_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_battle_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(matrixgame_battle_scenarios PRIVATE
-    MATRIXGAME_SCENARIO_REVISION="${scenario_revision}" MATRIXGAME_SCENARIO_DIRTY=${scenario_dirty}
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 add_matrix_test(game.scenario.movement matrixgame_battle_scenarios gameplay ai input)
