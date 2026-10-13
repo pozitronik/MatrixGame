@@ -8,6 +8,7 @@
 #include "Interface/CInterface.h"
 #include <array>
 #include <cmath>
+#include <vector>
 
 namespace {
 using tests::battle::Session;
@@ -38,7 +39,9 @@ CMatrixRobotAI *enqueue(CMatrixBuilding &factory) {
     robot->m_Side = PLAYER_SIDE;
     robot->m_PosX = factory.m_Pos.x;
     robot->m_PosY = factory.m_Pos.y;
-    robot->m_Forward = robot->m_HullForward = D3DXVECTOR3(1, 0, 0);
+    MG_CHECK(factory.m_Angle >= 0 && factory.m_Angle < 4);
+    const D3DXVECTOR3 directions[] = {{0, 1, 0}, {-1, 0, 0}, {0, -1, 0}, {1, 0, 0}};
+    robot->m_Forward = robot->m_HullForward = directions[factory.m_Angle];
     robot->UnitInsert(0, MRT_CHASSIS, RUK_CHASSIS_WHEEL);
     robot->m_Unit[0].m_Graph = HNew(g_MatrixHeap) CVectorObjectAnim;
     robot->m_Unit[0].m_Graph->Init(source_robot()->m_Unit[0].m_Graph->VO(), nullptr);
@@ -50,8 +53,11 @@ CMatrixRobotAI *enqueue(CMatrixBuilding &factory) {
     robot->SetBase(&factory);
     robot->RNeed(MR_Matrix);
     auto *result = robot.get();
+    const int count = factory.m_BS.GetItemsCnt();
     factory.m_BS.AddItem(result);
-    robot.release();
+    const bool accepted = factory.m_BS.GetItemsCnt() == count + 1;
+    if (accepted) robot.release(); // Transfer before any subsequent throwing check.
+    MG_CHECK(accepted);
     MG_CHECK(!in_logic(result));
     return result;
 }
@@ -110,20 +116,42 @@ void base_exit() {
         MG_CHECK(in_logic(robot) && robot->m_CurrState == ROBOT_IN_SPAWN);
         MG_CHECK(factory->m_State == BASE_OPENING && factory->IsSpawningBot());
         MG_CHECK(robot->IsDisableManual());
-        bool moving_out = false;
-        for (int i = 0; i < 1000 && robot->GetBase(); ++i) {
+        int opened = -1, moving_out = -1, detached = -1, closed = -1;
+        float detach_distance = -1;
+        for (int i = 0; i < 1000 && closed < 0; ++i) {
             session.advance();
-            moving_out |= robot->m_CurrState == ROBOT_BASE_MOVEOUT;
+            if (opened < 0 && factory->m_State == BASE_OPENED) opened = session.time();
+            if (moving_out < 0 && robot->m_CurrState == ROBOT_BASE_MOVEOUT) moving_out = session.time();
+            if (detached < 0 && robot->GetBase() == nullptr) {
+                detached = session.time();
+                const D3DXVECTOR2 distance(robot->m_PosX - factory->m_Pos.x, robot->m_PosY - factory->m_Pos.y);
+                detach_distance = D3DXVec2LengthSq(&distance);
+                MG_CHECK(detach_distance >= BASE_DIST * BASE_DIST);
+                MG_CHECK(robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD);
+                MG_CHECK(!robot->IsDisableManual() && !factory->IsSpawningBot());
+                MG_CHECK(factory->m_State == BASE_CLOSING);
+            }
+            if (detached >= 0 && factory->m_State == BASE_CLOSED) closed = session.time();
         }
-        MG_CHECK(moving_out);
+        std::cout << "base lifecycle mode=" << int(mode) << " opened=" << opened << " moving_out=" << moving_out
+                  << " detached=" << detached << " closed=" << closed << " distance_squared=" << detach_distance << '\n';
+        MG_CHECK(opened == 1340 && moving_out == 1340);
+        MG_CHECK(detached == 3590 && closed == 4840);
         MG_CHECK(robot->GetBase() == nullptr);
         MG_CHECK(robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD);
         MG_CHECK(!robot->IsDisableManual());
         MG_CHECK(!factory->IsSpawningBot());
-        MG_CHECK(factory->m_State == BASE_CLOSING);
-        for (int i = 0; i < 130; ++i) session.advance();
         MG_CHECK(factory->m_State == BASE_CLOSED && factory->m_BaseFloor == 0);
         MG_CHECK(resources() == before);
+        std::vector<SMatrixMapUnit *> footprint;
+        for (int y = 0; y < g_MatrixMap->m_Size.y; ++y)
+            for (int x = 0; x < g_MatrixMap->m_Size.x; ++x) {
+                auto *cell = g_MatrixMap->UnitGet(x, y);
+                if (cell->m_Base == factory) footprint.push_back(cell);
+            }
+        MG_CHECK(footprint.size() == 9);
+        g_MatrixMap->StaticDelete(factory);
+        for (const auto *cell : footprint) MG_CHECK(cell->m_Base == nullptr);
     }
 }
 
@@ -147,6 +175,25 @@ void building_geometry() {
         building.reset();
         MG_CHECK(cell->m_Base == nullptr);
     }
+    for (const auto &point : {CPoint(100, 300), CPoint(100, 0), CPoint(-1, 100), CPoint(10000, 100)}) {
+        bool rejected = false;
+        try {
+            auto invalid = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+                PLAYER_SIDE, BUILDING_BASE, float(point.x), float(point.y));
+        }
+        catch (const std::invalid_argument &) { rejected = true; }
+        MG_CHECK(rejected);
+        for (int y = 0; y < g_MatrixMap->m_Size.y; ++y)
+            for (int x = 0; x < g_MatrixMap->m_Size.x; ++x)
+                MG_CHECK(g_MatrixMap->UnitGet(x, y)->m_Base == nullptr);
+    }
+    // Asymmetry is allowed when the entire registered footprint can be cleared.
+    auto asymmetric = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+        PLAYER_SIDE, BUILDING_BASE, 100, 120);
+    asymmetric.reset();
+    for (int y = 0; y < g_MatrixMap->m_Size.y; ++y)
+        for (int x = 0; x < g_MatrixMap->m_Size.x; ++x)
+            MG_CHECK(g_MatrixMap->UnitGet(x, y)->m_Base == nullptr);
 }
 
 void maintenance_clock() {
@@ -215,7 +262,10 @@ int main(int argc, char **argv) {
     std::set_terminate([] { std::abort(); });
     int result = tests::run(argc, argv, cases);
 #ifdef MEM_SPY_ENABLE
-    if (Base::SMemHeader::first_mem_block != nullptr) result = EXIT_FAILURE;
+    if (Base::SMemHeader::first_mem_block != nullptr) {
+        std::cerr << "Production fixture test leaked tracked heap allocations.\n";
+        result = EXIT_FAILURE;
+    }
 #endif
     Base::CMain::BaseDeInit();
     return result;
