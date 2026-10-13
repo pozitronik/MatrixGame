@@ -54,12 +54,15 @@ def read_records(stream, source="trace"):
     previous_frame = -1
     previous_time = -1
     previous_draws = -1
+    complete = False
     for line_number, line in enumerate(stream, 1):
         try:
             record = json.loads(line, object_pairs_hook=_object, parse_constant=_constant, parse_float=_float)
             if not isinstance(record, dict):
                 raise TraceError("record must be an object")
             kind = record.get("type")
+            if complete:
+                raise TraceError("record after completion")
             if line_number == 1:
                 if kind != "header" or type(record.get("schema")) is not int or record["schema"] != 1:
                     raise TraceError("first record must be a schema-1 header")
@@ -90,6 +93,14 @@ def read_records(stream, source="trace"):
                     raise TraceError("snapshot requires a robots array of objects")
                 previous_frame, previous_time, previous_draws = state["frame"], state["time_ms"], state["rng_draws"]
                 snapshots += 1
+            elif kind == "complete":
+                if not _integer(record.get("frame")) or not _integer(record.get("time_ms")):
+                    raise TraceError("completion requires integer frame and time_ms")
+                if not snapshots or record.get("frame") != previous_frame or record.get("time_ms") != previous_time:
+                    raise TraceError("completion must match the last snapshot boundary")
+                if records[-1]["type"] != "snapshot":
+                    raise TraceError("completion must immediately follow the last snapshot")
+                complete = True
             else:
                 raise TraceError(f"unexpected record type {kind!r}")
             _bits(record)
@@ -100,6 +111,8 @@ def read_records(stream, source="trace"):
         raise TraceError(f"{source}: empty trace")
     if not snapshots:
         raise TraceError(f"{source}: trace contains no snapshots")
+    if not complete:
+        raise TraceError(f"{source}: missing completion record; the run may have failed or been truncated")
     return records
 
 
@@ -147,6 +160,8 @@ def _boundary(record):
         return "end of trace"
     if record["type"] == "snapshot":
         return f"snapshot boundary {record['state']['frame']}"
+    if record["type"] == "complete":
+        return f"completed boundary {record['frame']}"
     return f"command boundary {record['frame']}"
 
 

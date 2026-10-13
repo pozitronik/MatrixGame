@@ -42,6 +42,12 @@ struct Trace {
         file << "{\"type\":\"command\",\"frame\":" << frame << ",\"name\":\"" << name << "\"}\n";
         file.flush();
     }
+    void complete(const Session &session) {
+        file << "{\"type\":\"complete\",\"frame\":" << session.frame()
+             << ",\"time_ms\":" << session.time() << "}\n";
+        file.flush();
+        MG_CHECK(file.good());
+    }
 };
 
 std::vector<std::string> scenario(Profile profile, Scenario kind, const char *name, int run, bool observe = true) {
@@ -102,6 +108,7 @@ std::vector<std::string> scenario(Profile profile, Scenario kind, const char *na
     } else {
         MG_CHECK(session.robot(1).x > 450 && session.robot(1).y > 450);
     }
+    trace.complete(session);
     return trace.snapshots;
 }
 

@@ -23,6 +23,7 @@ def trace():
          "robots": [{"id": 1, "alive": True, "x_bits": 1065353216}]}},
         {"type": "snapshot", "state": {"frame": 1, "time_ms": 10, "rng_draws": 4,
          "robots": [{"id": 1, "alive": True, "x_bits": 1073741824}]}},
+        {"type": "complete", "frame": 1, "time_ms": 10},
     ]
 
 
@@ -78,10 +79,10 @@ class TraceContracts(unittest.TestCase):
         self.assertIn("$.name", result)
 
     def test_missing_records_and_fields_do_not_match(self):
-        right = trace()[:-1]
+        right = trace()[:3] + [{"type": "complete", "frame": 0, "time_ms": 0}]
         result = TRACES.compare_records(validated(trace()), validated(right))
         self.assertIn("line 4", result)
-        self.assertIn("right end of trace", result)
+        self.assertIn("right completed boundary 0", result)
         right = trace()
         del right[2]["state"]["robots"][0]["alive"]
         self.assertIn("right=<missing>", TRACES.compare_records(validated(trace()), validated(right)))
@@ -138,7 +139,7 @@ class TraceContracts(unittest.TestCase):
                 validated(records)
 
     def test_cli_exit_codes_and_override_notice(self):
-        for candidate, extra, expected in [(trace(), [], 0), (trace()[:-1], [], 1), ([], [], 2),
+        for candidate, extra, expected in [(trace(), [], 0), (trace()[:-1], [], 2), ([], [], 2),
                                             (trace(), ["--allow-profile-difference"], 0)]:
             with self.subTest(expected=expected, extra=extra):
                 output = io.StringIO()
@@ -149,6 +150,12 @@ class TraceContracts(unittest.TestCase):
                     self.assertIn("not same-profile evidence", output.getvalue())
         with mock.patch.object(Path, "open", side_effect=OSError("missing")), contextlib.redirect_stderr(io.StringIO()):
             self.assertEqual(2, TRACES.main(["left.jsonl", "right.jsonl"]))
+
+    def test_well_formed_truncation_and_false_completion_are_rejected(self):
+        for records in (trace()[:-1], trace()[:3], trace() + [trace()[-1]],
+                        trace()[:-1] + [{"type": "complete", "frame": 2, "time_ms": 20}]):
+            with self.subTest(records=records), self.assertRaises(TRACES.TraceError):
+                validated(records)
 
 
 if __name__ == "__main__":
