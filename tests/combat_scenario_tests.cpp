@@ -1,6 +1,8 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_combat_geometry.hpp"
+#include "battle_mesh.hpp"
+#include "battle_geometry.hpp"
 #include "test_support.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixObjectCannon.hpp"
@@ -825,6 +827,227 @@ void repair_death() {
     }
 }
 
+// Reassemble only within fixture setup; reinitializing weapons prevents modifier accumulation.
+void install_robot_modules(CMatrixRobotAI &robot, ERobotUnitKind armor, ERobotUnitKind head) {
+    MG_CHECK(robot.m_UnitCnt == 3 && robot.m_Unit[1].m_Type == MRT_ARMOR);
+    const_cast<SBotWeapon &>(robot.GetWeapon(0)).Release();
+    robot.m_Unit[1].u1.s1.m_Kind = armor;
+    if (head != RUK_UNKNOWN) {
+        robot.UnitInsert(3, MRT_HEAD, head);
+        robot.m_Unit[3].m_Graph = HNew(g_MatrixHeap) CVectorObjectAnim;
+        const tests::MeshAttachment terminal{1, L"terminal", 0, 0, 0};
+        robot.m_Unit[3].m_Graph->Init(tests::load_battle_mesh(std::span(&terminal, 1)), nullptr);
+        robot.m_Unit[3].m_Graph->FirstFrame();
+    }
+    robot.RobotWeaponInit();
+    robot.CalcRobotMass();
+    robot.RChange(MR_Matrix);
+    robot.RNeed(MR_Matrix);
+    robot.JoinToGroup();
+}
+void configure_module_heads() {
+    const wchar_t *names[] = {L"S", L"D", L"L", L"F"};
+    const wchar_t *fields[] = {L"HIT_POINT_ADD", L"COOL_DOWN", L"FIRE_DISTANCE", L"OVERHEAT", L"CHASSIS_SPEED", L"RADAR_DISTANCE", L"LIGHT_PROTECT", L"BOMB_PROTECT", L"AIM_PROTECT"};
+    const int values[][9] = {{25,-50,50,50,25,50,50,25,75}, {50,50,-50,-50,-50,-50,0,0,0},
+        {75,0,0,0,0,0,120,-20,120}, {100,-150,-150,-150,-150,-150,-20,120,-20}};
+    auto *heads = g_MatrixData->BlockGet(L"Chars")->BlockGet(L"Heads");
+    for (int n = 0; n < 4; ++n) for (int f = 0; f < 9; ++f)
+        heads->BlockGetAdd(names[n])->ParSetAdd(fields[f], std::to_wstring(values[n][f]));
+    g_Config.m_RobotRadarR = 400;
+    const int structures[] = {ARMOR1_STRUCTURE, ARMOR2_STRUCTURE, ARMOR3_STRUCTURE, ARMOR4_STRUCTURE, ARMOR5_STRUCTURE, ARMOR6_STRUCTURE};
+    const int rotations[] = {ARMOR1_ROTATION_SPEED, ARMOR2_ROTATION_SPEED, ARMOR3_ROTATION_SPEED, ARMOR4_ROTATION_SPEED, ARMOR5_ROTATION_SPEED, ARMOR6_ROTATION_SPEED};
+    for (int n = 0; n < 6; ++n) {
+        g_Config.m_ItemChars[structures[n]] = float(10 * (n + 1));
+        g_Config.m_ItemChars[rotations[n]] = 0.04f;
+    }
+}
+void module_modifiers() {
+    const int health[][6] = {{1035,1045,1055,1065,1075,1085}, {1060,1070,1080,1090,1100,1110},
+        {1085,1095,1105,1115,1125,1135}, {1110,1120,1130,1140,1150,1160}};
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int head = 1; head <= 4; ++head)
+        for (int armor = 1; armor <= 6; ++armor) {
+            tests::BattleCombatAssets assets;
+            Session session({mode, 82, 10, 1000, false, false});
+            assets.install();
+            configure_weapon(WEAPON_LASER, WEAPON_LASER_HEAT);
+            configure_module_heads();
+            auto *unit = robot(PLAYER_SIDE);
+            tests::arm_battle_robot(*unit, RUK_WEAPON_LASER);
+            install_robot_modules(*unit, ERobotUnitKind(armor), ERobotUnitKind(head));
+            check_health(unit, health[head - 1][armor - 1]);
+            MG_CHECK(unit->GetMaxHitPoint() == unit->GetHitPoint());
+            const float ranges[] = {900, 300, 600, 0}, speeds[] = {.75f, .3f, .6f, 0}, radars[] = {600,200,400,0};
+            const int heat[] = {15,5,10,0};
+            const float light[] = {.5f,0,1,0}, bomb[] = {.25f,0,0,1}, aim[] = {.75f,0,1,0};
+            MG_CHECK(unit->GetWeapon(0).GetWeaponDist() == ranges[head - 1]);
+            MG_CHECK(unit->GetWeapon(0).m_HeatMod == heat[head - 1]);
+            MG_CHECK(unit->GetMaxSpeed() == speeds[head - 1]);
+            MG_CHECK(unit->m_RadarRadius == radars[head - 1]);
+            MG_CHECK(unit->m_LightProtect == light[head - 1]);
+            MG_CHECK(unit->m_BombProtect == bomb[head - 1]);
+            MG_CHECK(unit->m_AimProtect == aim[head - 1]);
+        }
+}
+std::vector<std::string> module_firing_run(random::Mode mode, int head, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode,82,10,1000,false,true};
+    Session session(profile);
+    assets.install();
+    configure_weapon(WEAPON_LASER, WEAPON_LASER_HEAT);
+    configure_module_heads();
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 1200;
+    auto *shooter = robot(PLAYER_SIDE);
+    auto *target = robot(2);
+    tests::arm_battle_robot(*shooter, RUK_WEAPON_LASER);
+    install_robot_modules(*shooter, RUK_ARMOR_BIREX, ERobotUnitKind(head));
+    target->InitMaxHitpoint(100);
+    target->SetMaxSpeed(0);
+    Trace trace(session, profile, ("head-firing-" + std::to_string(head)).c_str(), run);
+    trace.command(session, "context-target(3)", [&] { return session.target_command(3); });
+    float health = target->GetHitPoint();
+    std::vector<int> impacts;
+    for (int i = 0; i < 200; ++i) {
+        trace.record(session, target, shooter);
+        session.advance();
+        if (health != target->GetHitPoint()) {
+            health = target->GetHitPoint();
+            impacts.push_back(session.time());
+            check_health(target, 100 - int(impacts.size()) * 2);
+        }
+    }
+    MG_CHECK(impacts.size() == (head == 0 ? 19U : head == 1 ? 37U : 13U));
+    const int interval = head == 0 ? 100 : head == 1 ? 50 : 150;
+    for (size_t i = 0; i < impacts.size(); ++i) MG_CHECK(impacts[i] == 200 + int(i) * interval);
+    check_health(target, head == 0 ? 62 : head == 1 ? 26 : 74);
+    trace.record(session, target, shooter);
+    trace.complete(session);
+    return trace.states;
+}
+void module_firing() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int head : {0,1,2}) {
+        const auto reference = module_firing_run(mode, head, 0);
+        compare(reference, module_firing_run(mode, head, 1));
+    }
+}
+
+std::vector<std::string> splash_boundary_run(random::Mode mode, int offset, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode,82,10,1000,false,false};
+    Session session(profile);
+    assets.install();
+    auto *bomber = robot(PLAYER_SIDE);
+    auto *patient = robot(PLAYER_SIDE, 1);
+    patient->InitMaxHitpoint(50);
+    patient->SetMaxSpeed(0);
+    // The expanded sphere test uses center distance minus the patient's loaded-mesh radius.
+    auto delta = patient->GetGeoCenter() - bomber->GetGeoCenter();
+    const float center_distance = D3DXVec3Length(&delta);
+    const float radius = center_distance - patient->GetRadius() + float(offset);
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = radius;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {10, 4, 0};
+    tests::arm_battle_robot(*bomber, RUK_WEAPON_BOMB);
+    // Verify that assembly preserves the center distance used to place this boundary.
+    delta = patient->GetGeoCenter() - bomber->GetGeoCenter();
+    MG_CHECK(D3DXVec3Length(&delta) == center_distance);
+    Trace trace(session, profile, ("splash-boundary-" + std::to_string(offset)).c_str(), run);
+    trace.command(session, "detonate(1)", [&] { bomber->BigBoom(); return bomber->IsMustDie(); });
+    float health = patient->GetHitPoint();
+    std::vector<int> impacts;
+    for (int i = 0; i < 100; ++i) {
+        trace.record(session, patient);
+        session.advance();
+        if (health != patient->GetHitPoint()) { health = patient->GetHitPoint(); impacts.push_back(session.time()); }
+    }
+    MG_CHECK(impacts == (offset == 1 ? std::vector<int>{310} : std::vector<int>{}));
+    check_health(patient, offset == 1 ? 46 : 50);
+    trace.record(session, patient);
+    trace.complete(session);
+    return trace.states;
+}
+void splash_boundary() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int offset : {-1,0,1}) {
+        const auto reference = splash_boundary_run(mode, offset, 0);
+        compare(reference, splash_boundary_run(mode, offset, 1));
+    }
+}
+
+void position_fixture_robot(CMatrixRobotAI &robot, float x, float y) {
+    robot.m_PosX = x;
+    robot.m_PosY = y;
+    robot.SetMaxSpeed(0);
+    robot.MapPosCalc();
+    robot.RChange(MR_Matrix);
+    robot.RNeed(MR_Matrix);
+    robot.JoinToGroup();
+}
+std::vector<std::string> chained_bombs_run(random::Mode mode, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode,82,10,1000,false,false};
+    Session session(profile);
+    assets.install();
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 150;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {10, 4, 0};
+    g_Config.m_WeaponStrengthAI[RUK_WEAPON_LASER] = 10;
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 0;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100000;
+    auto *first = robot(PLAYER_SIDE);
+    auto *patient = robot(PLAYER_SIDE, 1);
+    auto *second = robot(2);
+    auto *observer = robot(2, 1);
+    observer->SetMaxSpeed(0);
+    auto *survivor = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 500, 600);
+    survivor->SetMaxSpeed(0);
+    tests::arm_battle_robot(*first, RUK_WEAPON_BOMB);
+    tests::arm_battle_robot(*second, RUK_WEAPON_BOMB);
+    tests::arm_battle_robot(*patient, RUK_WEAPON_LASER);
+    position_fixture_robot(*second, 100, 260);
+    position_fixture_robot(*patient, 100, 320);
+    second->InitMaxHitpoint(10);
+    patient->InitMaxHitpoint(10);
+    patient->CalcStrength();
+    MG_CHECK(patient->GetStrength() == 10);
+    CoreLease first_core(first->GetCore(DEBUG_CALL_INFO)), second_core(second->GetCore(DEBUG_CALL_INFO)), patient_core(patient->GetCore(DEBUG_CALL_INFO));
+    Trace trace(session, profile, "chained-bombs", run);
+    trace.command(session, "detonate(1)", [&] { first->BigBoom(); return first->IsMustDie(); });
+    int second_dying = 0, patient_dying = 0, first_removed = 0, second_removed = 0, patient_removed = 0;
+    float patient_health = patient->GetHitPoint();
+    std::vector<std::pair<int, int>> impacts;
+    for (int i = 0; i < 650; ++i) {
+        trace.record(session, observer, nullptr, nullptr, second_core.get());
+        session.advance();
+        if (second_core->m_Object && second->m_CurrState == ROBOT_DIP && !second_dying) second_dying = session.time();
+        if (patient_core->m_Object && patient->m_CurrState == ROBOT_DIP && !patient_dying) patient_dying = session.time();
+        if (!first_core->m_Object && !first_removed) first_removed = session.time();
+        if (!second_core->m_Object && !second_removed) second_removed = session.time();
+        if (!patient_core->m_Object && !patient_removed) patient_removed = session.time();
+        if (patient_core->m_Object && patient_health != patient->GetHitPoint()) {
+            patient_health = patient->GetHitPoint();
+            impacts.emplace_back(session.time(), int(std::lround(patient_health * 10)));
+        }
+    }
+    MG_CHECK(second_dying == 310 && patient_dying == 610);
+    MG_CHECK(first_removed == (mode == random::Mode::ParkMiller ? 4080 : 4140));
+    MG_CHECK(second_removed == (mode == random::Mode::ParkMiller ? 3140 : 4290));
+    MG_CHECK(patient_removed == (mode == random::Mode::ParkMiller ? 3930 : 5110));
+    const std::vector<std::pair<int, int>> expected{{310, 6}, {610, -4}};
+    MG_CHECK(impacts == expected);
+    MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) == 1);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+    check_health(observer, 1000);
+    check_health(survivor, 1000);
+    trace.record(session, observer, nullptr, nullptr, second_core.get());
+    trace.complete(session);
+    return trace.states;
+}
+void chained_bombs() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        const auto reference = chained_bombs_run(mode, 0);
+        compare(reference, chained_bombs_run(mode, 1));
+    }
+}
+
 const tests::Case cases[] = {{"game.combat.cannon_firing", cannon_firing},
     {"game.combat.robot_firing", robot_firing}, {"game.combat.plasma_flight", plasma_flight},
     {"game.combat.axis_aligned_trace", axis_aligned_trace},
@@ -832,7 +1055,8 @@ const tests::Case cases[] = {{"game.combat.cannon_firing", cannon_firing},
     {"game.combat.flame_firing", flame_firing}, {"game.combat.gun_firing", gun_firing},
     {"game.combat.missile_firing", missile_firing}, {"game.combat.mortar_firing", mortar_firing},
     {"game.combat.repair_firing", repair_firing}, {"game.combat.heat_boundary", heat_boundary}, {"game.combat.bomb_detonation", bomb_detonation},
-    {"game.combat.cannon_projectiles", cannon_projectiles}, {"game.combat.cannon_boundaries", cannon_boundaries}, {"game.combat.cannon_obstruction", cannon_obstruction}, {"game.combat.delayed_damage", delayed_damage}, {"game.combat.bomb_order", bomb_order}, {"game.combat.repair_death", repair_death}};
+    {"game.combat.cannon_projectiles", cannon_projectiles}, {"game.combat.cannon_boundaries", cannon_boundaries}, {"game.combat.cannon_obstruction", cannon_obstruction}, {"game.combat.delayed_damage", delayed_damage}, {"game.combat.bomb_order", bomb_order}, {"game.combat.repair_death", repair_death}, {"game.combat.module_modifiers", module_modifiers},
+    {"game.combat.module_firing", module_firing}, {"game.combat.splash_boundary", splash_boundary}, {"game.combat.chained_bombs", chained_bombs}};
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
