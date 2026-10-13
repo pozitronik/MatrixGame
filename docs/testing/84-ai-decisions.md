@@ -1,6 +1,6 @@
 # Strategic and tactical AI contracts
 
-The `game.ai.*` suite includes twenty-nine decision and memory cases for [the AI behavior baseline](https://github.com/pozitronik/MatrixGame/issues/84), in addition to four robot-definition checks. They call production algorithms and use generated geometry where a decision needs positions, visibility or navigation. They do not replace the AI or change its priorities. The complete catalog remains open: the uncovered scenarios below are baseline blockers.
+The `game.ai.*` suite includes thirty-two decision and memory cases for [the AI behavior baseline](https://github.com/pozitronik/MatrixGame/issues/84), in addition to four robot-definition checks. They call production algorithms and use generated geometry where a decision needs positions, visibility or navigation. They do not replace the AI or change its priorities. The complete catalog remains open: the uncovered scenarios below are baseline blockers.
 
 ```powershell
 .\tools\test.ps1 -Configuration Debug -Filter '^game\.ai\.'
