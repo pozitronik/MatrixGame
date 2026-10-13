@@ -378,6 +378,18 @@ endif()
 
 add_matrix_test_executable(matrixgame_production_queue_tests production_queue_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_production_queue_tests PRIVATE MatrixGameInternal)
-foreach(contract queue_order capacity refund_owner price income reinforcement_gates turret_progress income_ticks ai_constructor_prices weapon_slots)
+foreach(contract queue_order capacity refund_owner neutralization price income reinforcement_gates turret_progress income_ticks ai_constructor_prices weapon_slots)
     add_matrix_test(game.production.${contract} matrixgame_production_queue_tests gameplay)
 endforeach()
+
+add_matrix_test_executable(matrixgame_production_scenarios production_scenario_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_production_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_production_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_production_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_production_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.production.queue_deployment matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.base_exit matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.building_geometry matrixgame_production_scenarios gameplay)

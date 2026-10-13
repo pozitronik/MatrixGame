@@ -111,6 +111,26 @@ void refund_owner_and_cap() {
     w.expect({9000, 8997, 9000, 31});
 }
 
+void neutralization_and_destruction() {
+    for (bool neutralize : {false, true}) {
+        World w;
+        w.enqueue();
+        w.enqueue();
+        g_Config.m_Timings[UNIT_ROBOT] = 100;
+        w.base->m_BS.TickTimer(99);
+        w.expect({100, 200, 300, 400});
+        if (neutralize) {
+            w.base->SetNeutral();
+            MG_CHECK(w.base->GetSide() == 0);
+            MG_CHECK(w.base->m_BS.GetItemsCnt() == 0);
+            w.expect({122, 234, 346, 462});
+            w.base->SetNeutral();
+        }
+        w.base.reset();
+        w.expect({122, 234, 346, 462});
+    }
+}
+
 void construction_price() {
     World w;
     auto constructor = tests::make_engine_object<CConstructor>();
@@ -332,6 +352,7 @@ constexpr tests::Case cases[]{
     {"game.production.queue_order", queue_order_and_refunds},
     {"game.production.capacity", queue_capacity},
     {"game.production.refund_owner", refund_owner_and_cap},
+    {"game.production.neutralization", neutralization_and_destruction},
     {"game.production.price", construction_price},
     {"game.production.income", income_ownership},
     {"game.production.reinforcement_gates", reinforcement_gates},
