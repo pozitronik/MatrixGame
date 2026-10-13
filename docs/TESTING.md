@@ -247,3 +247,7 @@ Record the source revision, build configuration, map or seed where available,
 steps performed and results. For a failure, include the relevant part of
 `test.log` and a debugger stack. Keep resource packages and extracted assets
 out of reports.
+
+## Coverage and performance measurements
+
+`tools/test.ps1 -Coverage` collects gcov line, function and branch coverage of the production areas with the MinGW toolchain; CI uploads the report without thresholds. `matrixgame_benchmarks` times representative navigation, selection and side-logic workloads through production code. CTest runs only its `game.benchmark.smoke` pass, which checks repeatable work without a timing limit. [Coverage and performance measurements](MEASUREMENTS.md) describes collection, the report denominator and exclusions, running and comparing benchmarks, and the manual native frame measurement.

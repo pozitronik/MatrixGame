@@ -34,6 +34,8 @@ launching it.
 
 Game builds compile the CTest executables by default. Run them with `tools/test.ps1`; use `-WithoutTests` for a game-only build or `-TestsOnly` to build the test targets without staging game resources. See [Testing](TESTING.md) for commands, results and instructions for adding a regression.
 
+`-Coverage` builds an instrumented MinGW copy in a separate directory ending in `-coverage`, for example `build/mingw-debug-exe-coverage`. See [Coverage and performance measurements](MEASUREMENTS.md).
+
 ## Game resources and configuration
 
 Place `robots.pkg` and optionally `robots.dat` at the repository root.

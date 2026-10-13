@@ -375,3 +375,11 @@ if(MATRIXGAME_BUILD_DLL)
         LABELS "engine;asset-free;startup;dll"
         TIMEOUT 30)
 endif()
+
+# Performance workloads. The executable is a measurement tool, not a
+# timing test: CTest only runs a short smoke pass that checks repeatable work.
+add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp
+    command_world.hpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
+add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
+set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
