@@ -8,6 +8,8 @@
 #include "Interface/CInterface.h"
 #include "battle_scenario.hpp"
 #include "MatrixRobot.hpp"
+#include <array>
+#include <cstring>
 #include <cmath>
 
 namespace {
@@ -247,7 +249,67 @@ void missing_speech_mapping() {
     }
 }
 
+void textured_button_hit_testing() {
+    tests::battle::Session session;
+    auto *texture = static_cast<CTextureManaged *>(g_Cache->Get(CacheClass::TextureManaged, L"synthetic-ui-atlas"));
+    D3DLOCKED_RECT locked{};
+    MG_CHECK(texture->CreateLock(D3DFMT_A8R8G8B8, 4, 4, 1, locked) == D3D_OK);
+    std::array<DWORD, 16> pixels{};
+    pixels[5] = 0x00123456; // Transparent RGB must not catch the pointer.
+    pixels[6] = 0x01123456; // Any nonzero alpha is eligible, including one.
+    pixels[9] = pixels[10] = 0xff123456;
+    for (int y = 0; y < 4; ++y)
+        std::memcpy(static_cast<BYTE *>(locked.pBits) + y * locked.Pitch,
+                    pixels.data() + y * 4, 4 * sizeof(DWORD));
+    texture->UnlockRect();
+    texture->Preload();
+
+    std::vector<std::string> events;
+    CInterface panel;
+    panel.m_VisibleAlpha = IS_VISIBLEA;
+    panel.m_xPos = 100;
+    panel.m_yPos = 200;
+    auto *button = HNew(g_MatrixHeap) CIFaceButton;
+    button->m_strName = L"synthetic-hit-test";
+    button->m_xSize = button->m_ySize = 2;
+    for (auto state : {IFACE_NORMAL, IFACE_FOCUSED, IFACE_PRESSED, IFACE_DISABLED})
+        MG_CHECK(button->SetStateImage(state, texture, 1, 1, 4, 4));
+    button->ElementGeomInit(button);
+    panel.AddElement(button);
+    button->SetVisibility(true);
+    button->m_Actions[ON_FOCUS].m_function = [&](void *) { events.push_back("focus"); };
+    button->m_Actions[ON_PRESS].m_function = [&](void *) { events.push_back("press"); };
+    button->m_Actions[ON_UN_PRESS].m_function = [&](void *) { events.push_back("release"); };
+    MG_CHECK(button->ElementCatch(CPoint(100, 200)));
+    MG_CHECK(!panel.OnMouseMove(CPoint(100, 200)));
+    MG_CHECK(button->GetState() == IFACE_NORMAL && !g_IFaceList->m_FocusedElement);
+    g_MatrixMap->m_Cursor.SetPos(100, 200);
+    MG_CHECK(!panel.OnMouseLBDown() && events.empty());
+    MG_CHECK(panel.OnMouseMove(CPoint(101, 200)));
+    MG_CHECK(g_IFaceList->m_FocusedElement == button && button->GetState() == IFACE_FOCUSED);
+    g_MatrixMap->m_Cursor.SetPos(101, 200);
+    MG_CHECK(panel.OnMouseLBDown());
+    panel.OnMouseLBUp();
+    MG_CHECK((events == std::vector<std::string>{"focus", "press", "release"}));
+    MG_CHECK(!panel.OnMouseMove(CPoint(102, 200)));
+    MG_CHECK(button->GetState() == IFACE_NORMAL && !g_IFaceList->m_FocusedElement);
+    MG_CHECK(!panel.OnMouseMove(CPoint(101, 202)));
+    MG_CHECK(panel.OnMouseMove(CPoint(100, 201)));
+    button->SetState(IFACE_DISABLED);
+    const auto event_count = events.size();
+    MG_CHECK(panel.OnMouseMove(CPoint(101, 201)));
+    g_MatrixMap->m_Cursor.SetPos(101, 201);
+    MG_CHECK(panel.OnMouseLBDown());
+    panel.OnMouseLBUp();
+    MG_CHECK(button->GetState() == IFACE_DISABLED && events.size() == event_count);
+    button->SetVisibility(false);
+    MG_CHECK(!panel.OnMouseMove(CPoint(101, 201)));
+    MG_CHECK(!g_IFaceList->m_FocusedElement);
+    MG_CHECK(!panel.OnMouseLBDown() && events.size() == event_count);
+}
+
 constexpr tests::Case cases[]{
+    {"game.presentation.textured_button_hit_testing", textured_button_hit_testing},
     {"game.presentation.push_sounds", push_sound_routes},
     {"game.presentation.preset_matching", preset_name_matching},
     {"game.presentation.disabled", disabled_and_unfocused},
