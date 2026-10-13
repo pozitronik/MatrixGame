@@ -13,11 +13,16 @@ struct BattleDeviceStats {
     std::uint64_t buffers_created{};
     std::uint64_t locks{};
     std::uint64_t material_updates{};
+    std::size_t live_textures{};
+    std::size_t texture_bytes{};
+    std::uint64_t textures_created{};
+    std::uint64_t texture_locks{};
 };
 
 // A storage/state-only device for the explicitly no-render scenario profile.
 // Creates no window or native device and never changes floating-point precision.
-// Unknown calls (including rendering, textures and Reset) terminate the test
+// Textures support one A8R8G8B8 mip level in managed CPU storage, without drawing.
+// Unknown calls (including rendering, other texture profiles and Reset) terminate the test
 // with the method name, even if the production caller ignores its HRESULT.
 class BattleDevice {
     class Device;
