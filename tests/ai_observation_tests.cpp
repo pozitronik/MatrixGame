@@ -274,7 +274,7 @@ void threat_priorities() {
     prefer(side, mlat_Forward, mlat_Defence);
 }
 
-void automatic_attack_route() {
+static void attack_route(bool check_reused_distance) {
     for (bool blocked : {false, true}) {
         Session session;
         two_regions(); region_roads();
@@ -303,10 +303,14 @@ void automatic_attack_route() {
             check_route(group, false);
             std::cout << "replacement_route actual_edge_sum=20 cached_distance="
                       << group.m_RoadPath->m_Header[0].m_Dist << '\n';
+            if (check_reused_distance) MG_CHECK(group.m_RoadPath->m_Header[0].m_Dist == 20);
         }
         MG_CHECK(group.Order() == mpo_MoveTo);
     }
 }
+
+void automatic_attack_route() { attack_route(false); }
+void reused_route_distance() { attack_route(true); }
 
 void automatic_capture_route() {
     for (bool local : {false, true}) for (bool blocked : {false, true}) {

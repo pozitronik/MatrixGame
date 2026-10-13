@@ -16,6 +16,7 @@ void radio_team_region();
 void radio_filters();
 void threat_priorities();
 void automatic_attack_route();
+void reused_route_distance();
 void automatic_capture_route();
 void automatic_defence_route();
 void production_wait_choice();
@@ -387,6 +388,8 @@ int main(int argc, char **argv) {
         {"game.ai.radio_filters", tests::ai::radio_filters},
         {"game.ai.threat_priorities", tests::ai::threat_priorities},
         {"game.ai.automatic_attack_route", tests::ai::automatic_attack_route},
+        // Opt-in correctness probe; deliberately absent from CTest until fixed.
+        {"probe.ai.reused_route_distance", tests::ai::reused_route_distance},
         {"game.ai.automatic_capture_route", tests::ai::automatic_capture_route},
         {"game.ai.automatic_defence_route", tests::ai::automatic_defence_route},
         {"game.ai.production_wait_choice", tests::ai::production_wait_choice},
