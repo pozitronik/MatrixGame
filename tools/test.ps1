@@ -85,16 +85,28 @@ if ($LASTEXITCODE -ne 0) {
 Write-Output "Test report: $buildRoot/test-results.xml"
 
 if ($Coverage) {
-    $python = Get-Command python -ErrorAction SilentlyContinue
+    # Prefer the Python launcher; skip the Microsoft Store alias, which may open the Store.
+    $python = $null
+    $candidates = @()
+    $launcher = Get-Command py -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    if ($launcher) { $candidates += , @($launcher.Source, '-3') }
+    foreach ($command in @(Get-Command python -CommandType Application -All -ErrorAction SilentlyContinue)) {
+        if ($command.Source -notmatch '\\WindowsApps\\') { $candidates += , @($command.Source) }
+    }
+    foreach ($candidate in $candidates) {
+        $prefix = @($candidate | Select-Object -Skip 1)
+        & $candidate[0] @prefix -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' 2>$null
+        if ($LASTEXITCODE -eq 0) { $python = $candidate; break }
+    }
     if (-not $python) { throw 'Python 3.9 or newer is required to summarize coverage.' }
-    $reportArgs = @(
+    $reportArgs = @(@($python | Select-Object -Skip 1) + @(
         '-B', (Join-Path $PSScriptRoot 'coverage_report.py'),
         '--build-dir', $buildRoot,
         '--gcov', (Join-Path $ToolchainRoot 'bin/gcov.exe'),
         '--compiler', (Join-Path $ToolchainRoot 'bin/g++.exe')
-    )
+    ))
     if ($Filter) { $reportArgs += @('--test-filter', $Filter) }
     $reportArgs += @('--excluded-label', 'benchmark')
-    & $python.Source @reportArgs
+    & $python[0] @reportArgs
     if ($LASTEXITCODE -ne 0) { throw "Coverage summary failed (exit code $LASTEXITCODE)." }
 }

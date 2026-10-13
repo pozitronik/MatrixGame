@@ -3,9 +3,11 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from unittest.mock import patch
 
 PROJECT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("coverage_report", PROJECT / "tools/coverage_report.py")
@@ -118,6 +120,64 @@ class CoverageReportTests(unittest.TestCase):
         note = build / "tests/CMakeFiles/matrixgame_path_tests.dir/__/MatrixGame/src/ExecutablePath.cpp.gcno"
         self.assertEqual(coverage.object_source(note, build), "MatrixGame/src/ExecutablePath.cpp")
 
+    def test_branch_merge_never_loses_executed_counts(self):
+        self.assertEqual(coverage.merge_branches([1, 0], [0, 0, 2]), [1, 0, 2])
+        self.assertEqual(coverage.merge_branches([0, 5, 1], [2]), [2, 5, 1])
+        self.assertEqual(coverage.merge_branches([], [0, 3]), [0, 3])
+        header = "MatrixLib/Base/CBuf.hpp"
+        documents = [
+            (document(header, [(10, 1)], branches={10: [{"count": 0}, {"count": 4}]}), True),
+            (document(header, [(10, 1)], branches={10: [{"count": 0}, {"count": 0}, {"count": 0}]}), True),
+        ]
+        totals = coverage.merge(documents, self.root)[header].totals()
+        self.assertEqual(totals["branches"], 3)
+        self.assertEqual(totals["branches_covered"], 1)
+
+    def test_only_notes_of_test_objects_are_measured(self):
+        build = self.root / "build"
+        library = build / "MatrixLib/CMakeFiles/MatrixLib.dir/Base"
+        game = build / "MatrixGame/CMakeFiles/MatrixGame.dir/src"
+        for directory in (library, game):
+            directory.mkdir(parents=True)
+        (library / "CRC32.cpp.gcno").write_bytes(b"")
+        (library / "CRC32.cpp.obj").write_bytes(b"")
+        (library / "Removed.cpp.gcno").write_bytes(b"")
+        (game / "MatrixGame.cpp.gcno").write_bytes(b"")
+        ninja = self.root / "ninja.exe"
+        ninja.write_bytes(b"")
+        listing = "MatrixLib/CMakeFiles/MatrixLib.dir/Base/CRC32.cpp.obj\nzlib/lib/libzsd.a\n"
+        reply = subprocess.CompletedProcess([], 0, stdout=listing, stderr="")
+        with patch.object(coverage.subprocess, "run", return_value=reply) as run:
+            measured, ignored = coverage.measured_notes(build, {"CMAKE_GENERATOR": "Ninja"}, str(ninja))
+        self.assertIn("matrixgame_tests", run.call_args[0][0])
+        self.assertEqual([note.name for note in measured], ["CRC32.cpp.gcno"])
+        self.assertEqual(sorted(note.name for note in ignored), ["MatrixGame.cpp.gcno", "Removed.cpp.gcno"])
+
+    def test_gcov_problems_name_an_accurate_remedy(self):
+        note = self.root / "CRC32.cpp.gcno"
+        newer = subprocess.CompletedProcess([], 0, stdout="", stderr="MatrixLib/Base/CRC32.cpp:source file is newer "
+                                            "than notes file 'CRC32.cpp.gcno'\n")
+        with patch.object(coverage.subprocess, "run", return_value=newer):
+            with self.assertRaisesRegex(coverage.CoverageError, "Sources changed after the instrumented build"):
+                list(coverage.run_gcov("gcov.exe", [note], self.root, []))
+        stale = subprocess.CompletedProcess([], 0, stdout="", stderr="CRC32.cpp.gcda:stamp mismatch with notes file\n")
+        with patch.object(coverage.subprocess, "run", return_value=stale):
+            with self.assertRaisesRegex(coverage.CoverageError, "different build"):
+                list(coverage.run_gcov("gcov.exe", [note], self.root, []))
+        broken = subprocess.CompletedProcess([], 0, stdout="{not json\n", stderr="")
+        with patch.object(coverage.subprocess, "run", return_value=broken):
+            with self.assertRaisesRegex(coverage.CoverageError, "malformed JSON"):
+                list(coverage.run_gcov("gcov.exe", [note], self.root, []))
+
+    def test_malformed_junit_report_fails_clearly(self):
+        build = self.root / "build"
+        build.mkdir()
+        (build / "test-results.xml").write_text("<testsuite tests=")
+        with self.assertRaisesRegex(coverage.CoverageError, "not a readable JUnit report"):
+            coverage.test_results(build)
+        (build / "test-results.xml").write_text('<testsuite tests="2" failures="0" errors="0" skipped="1"/>')
+        self.assertEqual(coverage.test_results(build), {"tests": 2, "failures": 0, "errors": 0, "skipped": 1})
+
     def test_line_ranges_are_compact(self):
         self.assertEqual(coverage.ranges([7, 1, 2, 3, 5]), "1-3,5,7")
         self.assertEqual(coverage.ranges([]), "")
@@ -150,6 +210,17 @@ class CoverageReportTests(unittest.TestCase):
         status, _, errors = self.run_main("--build-dir", str(build), "--gcov", str(self.root / "gcov.exe"))
         self.assertEqual(status, 1)
         self.assertIn("gcov was not found", errors)
+
+    def test_missing_compiler_fails_clearly(self):
+        build = self.coverage_build()
+        gcov = self.root / "gcov.exe"
+        gcov.write_bytes(b"")
+        version = subprocess.CompletedProcess([], 0, stdout="gcov 13.2.0\n", stderr="")
+        with patch.object(coverage.subprocess, "run", return_value=version):
+            status, _, errors = self.run_main("--build-dir", str(build), "--gcov", str(gcov),
+                                              "--compiler", str(self.root / "missing-g++.exe"))
+        self.assertEqual(status, 1)
+        self.assertIn("missing-g++.exe was not found", errors)
 
     def test_query_reads_an_existing_report(self):
         report = {"files": [{"path": "MatrixLib/Base/CRC32.cpp", "lines": 2, "lines_covered": 1, "functions": 1,

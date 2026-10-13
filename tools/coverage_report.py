@@ -9,6 +9,7 @@ standard library is used.
 
 import argparse
 import datetime
+import hashlib
 import json
 import os
 import re
@@ -32,6 +33,9 @@ HEADER_SUFFIXES = {'.h', '.hpp'}
 GCOV_BATCH = 64
 MISSING_DATA = re.compile(r"cannot open data file, assuming not executed", re.IGNORECASE)
 NO_FUNCTIONS = re.compile(r"^(.*[.]gcno):no functions found$", re.IGNORECASE)
+NEWER_SOURCE = re.compile(r"source file is newer than notes file", re.IGNORECASE)
+STALE_DATA = re.compile(r"stamp mismatch with notes file", re.IGNORECASE)
+TEST_TARGET = 'matrixgame_tests'
 
 
 class CoverageError(Exception):
@@ -72,6 +76,17 @@ def normalize(path, working_directory, source_root):
     return relative
 
 
+def merge_branches(first, second):
+    """Add branch counts by position and keep the longer tail, so no executed count is lost.
+
+    Translation units can describe one line with different branch sets; the merged
+    total is then approximate, but an executed branch never becomes unexecuted.
+    """
+    common = [a + b for a, b in zip(first, second)]
+    longer = first if len(first) > len(second) else second
+    return common + list(longer[len(common):])
+
+
 class FileCoverage:
     def __init__(self, path):
         self.path = path
@@ -87,11 +102,7 @@ class FileCoverage:
             self.lines[number] = self.lines.get(number, 0) + line.get('count', 0)
             counts = [branch.get('count', 0) for branch in line.get('branches', []) if not branch.get('throw')]
             if counts:
-                previous = self.branches.get(number)
-                if previous is None or len(counts) > len(previous):
-                    self.branches[number] = counts
-                elif len(counts) == len(previous):
-                    self.branches[number] = [a + b for a, b in zip(previous, counts)]
+                self.branches[number] = merge_branches(self.branches.get(number, []), counts)
         for function in record.get('functions', []):
             key = (function.get('start_line', 0), function.get('start_column', 0))
             name = function.get('demangled_name') or function.get('name', '')
@@ -261,11 +272,17 @@ def test_results(build_dir):
     report = build_dir / 'test-results.xml'
     if not report.is_file():
         return None
-    root = ElementTree.parse(report).getroot()
+    try:
+        root = ElementTree.parse(report).getroot()
+    except ElementTree.ParseError as error:
+        raise CoverageError(f'{report} is not a readable JUnit report: {error}') from error
     suite = root if root.tag == 'testsuite' else root.find('testsuite')
     if suite is None:
         return None
-    return {name: int(suite.get(name, '0')) for name in ('tests', 'failures', 'errors', 'skipped')}
+    try:
+        return {name: int(suite.get(name, '0')) for name in ('tests', 'failures', 'errors', 'skipped')}
+    except ValueError as error:
+        raise CoverageError(f'{report} has invalid test totals: {error}') from error
 
 
 def object_source(note, build_dir):
@@ -281,6 +298,47 @@ def object_source(note, build_dir):
 
 def same_file(first, second):
     return os.path.normcase(os.path.abspath(first)) == os.path.normcase(os.path.abspath(second))
+
+
+def object_key(path):
+    return os.path.normcase(os.path.normpath(str(path)))
+
+
+def measured_notes(build_dir, cache, ninja=None):
+    """Split notes into those of objects the test target builds and all others.
+
+    Other notes come from targets the coverage run does not rebuild, such as the
+    game executable after a full build, or from objects of deleted sources.
+    """
+    notes = sorted(build_dir.rglob('*.gcno'))
+    if cache.get('CMAKE_GENERATOR') not in (None, 'Ninja'):
+        raise CoverageError(f'Coverage needs a Ninja build; {build_dir} uses {cache["CMAKE_GENERATOR"]}.')
+    program = Path(ninja or cache.get('CMAKE_MAKE_PROGRAM') or '')
+    if not program.is_file():
+        raise CoverageError(f'Ninja ({program}) is needed to find the objects of {TEST_TARGET}.')
+    result = subprocess.run([str(program), '-C', str(build_dir), '-t', 'inputs', TEST_TARGET],
+                            capture_output=True, text=True, check=False)
+    if result.returncode != 0:
+        raise CoverageError(f'Cannot list the inputs of {TEST_TARGET}: {result.stderr.strip() or result.stdout.strip()}')
+    objects = {object_key(build_dir / line.strip()) for line in result.stdout.splitlines()
+               if line.strip().endswith(('.obj', '.o'))}
+    measured, ignored = [], []
+    for note in notes:
+        (measured if object_key(note.with_suffix('.obj')) in objects
+         or object_key(note.with_suffix('.o')) in objects else ignored).append(note)
+    return measured, ignored
+
+
+def executable_hashes(build_dir):
+    """SHA-256 of the test executables that produced the counters."""
+    result = []
+    for executable in sorted((build_dir / 'tests').glob('*.exe')):
+        digest = hashlib.sha256()
+        with executable.open('rb') as stream:
+            for block in iter(lambda: stream.read(1 << 20), b''):
+                digest.update(block)
+        result.append({'name': executable.name, 'sha256': digest.hexdigest()})
+    return result
 
 
 def run_gcov(gcov, notes, source_root, empty):
@@ -302,8 +360,19 @@ def run_gcov(gcov, notes, source_root, empty):
                 problems.append(line)
         if result.returncode != 0 or problems:
             detail = '\n'.join(problems[:10]) or f'exit code {result.returncode}'
-            raise CoverageError(f'gcov rejected the coverage data:\n{detail}\nRebuild and rerun the tests.')
-        documents = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+            if any(NEWER_SOURCE.search(line) for line in problems):
+                remedy = ('Sources changed after the instrumented build. Rebuild and rerun the tests with '
+                          'tools/test.ps1 -Coverage (without -NoBuild).')
+            elif any(STALE_DATA.search(line) for line in problems):
+                remedy = ('The counters come from a different build than the notes. Rerun the tests with '
+                          'tools/test.ps1 -Coverage, which removes old counters first.')
+            else:
+                remedy = 'Rebuild and rerun the tests with tools/test.ps1 -Coverage.'
+            raise CoverageError(f'gcov rejected the coverage data:\n{detail}\n{remedy}')
+        try:
+            documents = [json.loads(line) for line in result.stdout.splitlines() if line.strip()]
+        except json.JSONDecodeError as error:
+            raise CoverageError(f'gcov produced malformed JSON ({error}); check that it belongs to the compiler.')
         if len(documents) != len(batch):
             raise CoverageError(f'gcov returned {len(documents)} reports for {len(batch)} note files.')
         for note, document in zip(batch, documents):
@@ -322,21 +391,28 @@ def collect(arguments):
     if not gcov.is_file():
         raise CoverageError(f'gcov was not found at {gcov}; coverage needs the pinned MinGW toolchain.')
     gcov_version = tool_version(gcov, '--version')
-    compiler = Path(arguments.compiler) if arguments.compiler else gcov.with_name('g++.exe')
-    compiler_version = tool_version(compiler, '-dumpfullversion') if compiler.is_file() else ''
-    if compiler_version and version_number(gcov_version) != compiler_version:
+    compiler = Path(arguments.compiler or cache.get('CMAKE_CXX_COMPILER') or '')
+    if not compiler.is_file():
+        raise CoverageError(f'Compiler {compiler} was not found; the gcov version cannot be checked.')
+    compiler_version = tool_version(compiler, '-dumpfullversion')
+    if version_number(gcov_version) != compiler_version:
         raise CoverageError(f'gcov {version_number(gcov_version)} does not match compiler {compiler_version}.')
 
-    notes = sorted(build_dir.rglob('*.gcno'))
+    notes, ignored = measured_notes(build_dir, cache, arguments.ninja)
     if not notes:
-        raise CoverageError(f'No coverage notes (.gcno) below {build_dir}; build with tools/build.ps1 -Coverage.')
-    data = list(build_dir.rglob('*.gcda'))
+        raise CoverageError(f'No coverage notes (.gcno) for {TEST_TARGET} below {build_dir}; '
+                            'build with tools/test.ps1 -Coverage.')
+    data = [note for note in notes if note.with_suffix('.gcda').is_file()]
     if not data:
         raise CoverageError(f'No coverage data (.gcda) below {build_dir}; run tools/test.ps1 -Coverage first.')
 
     empty_notes = []
     files = merge(run_gcov(gcov, notes, source_root, empty_notes), source_root)
     groups, production, entries = summarize(files)
+    unclassified = sorted(coverage.path for coverage in files.values() if classify(coverage.path) == 'other')
+    if unclassified:
+        raise CoverageError('Source files outside every production area and exclusion: '
+                            + ', '.join(unclassified[:10]) + '. Extend the area or exclusion rules.')
     if production['files_with_data'] == 0 or production['lines_covered'] == 0:
         raise CoverageError('The coverage data contains no executed production code.')
     without_code = sorted({path for path in (object_source(note, build_dir) for note in empty_notes)
@@ -358,11 +434,16 @@ def collect(arguments):
         'toolchain': {'compiler': compiler_version or None, 'gcov': gcov_version},
         'tests': {'results': test_results(build_dir), 'filter': arguments.test_filter or None,
                   'excluded_labels': arguments.excluded_label or []},
-        'inputs': {'notes': len(notes), 'data_files': len(data)},
+        'inputs': {
+            'notes': len(notes),
+            'data_files': len(data),
+            'ignored_notes': [note.relative_to(build_dir).as_posix() for note in ignored],
+        },
+        'executables': executable_hashes(build_dir),
         'denominator': (
-            'Executable lines, functions and non-exception branches that gcov reports for production files '
-            'in every object compiled by this build. Objects that no executed test linked count as '
-            'unexecuted. Header lines are merged across translation units.'
+            f'Executable lines, functions and non-exception branches that gcov reports for production files '
+            f'in every object that the {TEST_TARGET} target builds. Objects that no executed test linked '
+            f'count as unexecuted. Header lines are merged across translation units.'
         ),
         'exclusions': {
             'tests': 'tests/: test drivers, fixtures and benchmarks',
@@ -405,12 +486,14 @@ def render(report):
         f'- Revision: {commit}',
         f'- Configuration: {configuration["build_type"]}, DLL {configuration["dll"]}, cheats {configuration["cheats"]}',
         f'- Toolchain: GCC {report["toolchain"]["compiler"]}; {report["toolchain"]["gcov"]}',
-        f'- Tests: ' + (f'{tests["tests"]} run, {tests["failures"]} failed, {tests["errors"]} errors'
+        f'- Tests: ' + (f'{tests["tests"]} run, {tests["failures"]} failed, {tests["errors"]} errors, '
+                        f'{tests["skipped"]} skipped'
                         if tests else 'no JUnit report found')
         + (f' (filter `{report["tests"]["filter"]}`)' if report['tests']['filter'] else '')
         + (f'; excluded labels: {", ".join(report["tests"]["excluded_labels"])}'
            if report['tests'].get('excluded_labels') else ''),
-        f'- Inputs: {report["inputs"]["notes"]} note files, {report["inputs"]["data_files"]} data files',
+        f'- Inputs: {report["inputs"]["notes"]} note files, {report["inputs"]["data_files"]} data files; '
+        f'{len(report["inputs"]["ignored_notes"])} notes outside the test target ignored',
         f'- Denominator: {report["denominator"]}',
         '',
         '| Area | Files (with data) | Lines | Line coverage | Functions | Function coverage | Branch coverage |',
@@ -471,7 +554,8 @@ def main(argv=None):
     parser.add_argument('--build-dir', help='Coverage build directory, for example build/mingw-debug-exe-coverage')
     parser.add_argument('--source-root', default=str(Path(__file__).resolve().parent.parent))
     parser.add_argument('--gcov', help='gcov executable from the toolchain that compiled the build')
-    parser.add_argument('--compiler', help='g++ executable used to check the gcov version')
+    parser.add_argument('--compiler', help='g++ used to check the gcov version (default: CMake cache)')
+    parser.add_argument('--ninja', help='Ninja used to find the test objects (default: CMake cache)')
     parser.add_argument('--output-dir', help='Report directory (default: <build-dir>/coverage)')
     parser.add_argument('--test-filter', help='CTest selection recorded in the report')
     parser.add_argument('--excluded-label', action='append', help='CTest label excluded from the run')
