@@ -24,6 +24,7 @@ inline EnginePtr<CMatrixBuilding> make_battle_building(CVectorObject &geometry,
             for (int dy = 0; dy < 3; ++dy) {
                 // The production destructor currently uses the x window on both
                 // axes. Reject unsafe footprints before OnLoad registers cells.
+                // Follow-up: https://github.com/pozitronik/MatrixGame/issues/130
                 if (!g_MatrixMap->UnitGetTest(px + dx, py + dy) ||
                     px + dx < cleanup_x - 4 || px + dx >= cleanup_x + 4 ||
                     py + dy < cleanup_x - 4 || py + dy >= cleanup_x + 4)
