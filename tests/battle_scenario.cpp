@@ -9,6 +9,7 @@
 #include "MatrixRobot.hpp"
 #include "MatrixWater.hpp"
 #include "MatrixSoundManager.hpp"
+#include "MatrixSkinManager.hpp"
 #include "SoundBridge.hpp"
 #include "Interface/CInterface.h"
 #include "Interface/CIFaceMenu.h"
@@ -160,6 +161,8 @@ struct Session::Impl {
         ui.reset();
         g_IFaceList = nullptr;
         map.reset();
+        // The map destructor frees skins but does not reset their static slots.
+        CSkinManager::StaticInit();
         g_MatrixMap = nullptr;
         CSound::Clear();
         SoundBridge::shutdown();
