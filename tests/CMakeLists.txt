@@ -375,3 +375,9 @@ if(MATRIXGAME_BUILD_DLL)
         LABELS "engine;asset-free;startup;dll"
         TIMEOUT 30)
 endif()
+
+add_matrix_test_executable(matrixgame_production_queue_tests production_queue_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_production_queue_tests PRIVATE MatrixGameInternal)
+foreach(contract queue_order capacity refund_owner price income reinforcement_gates turret_progress income_ticks ai_constructor_prices)
+    add_matrix_test(game.production.${contract} matrixgame_production_queue_tests gameplay)
+endforeach()
