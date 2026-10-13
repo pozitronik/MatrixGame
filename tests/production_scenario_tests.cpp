@@ -51,8 +51,8 @@ CMatrixRobotAI *enqueue(CMatrixBuilding &factory) {
     robot->RNeed(MR_Matrix);
     auto *result = robot.get();
     factory.m_BS.AddItem(result);
-    MG_CHECK(!in_logic(result));
     robot.release();
+    MG_CHECK(!in_logic(result));
     return result;
 }
 
@@ -149,9 +149,64 @@ void building_geometry() {
     }
 }
 
+void maintenance_clock() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 83, step, 1000, false, false});
+        g_MatrixMap->SetMaintenanceTime(32);
+        g_MatrixMap->Pause(true);
+        session.advance();
+        session.advance();
+        MG_CHECK(session.time() == 0 && g_MatrixMap->BeforeMaintenanceTime() == 32);
+        g_MatrixMap->Pause(false);
+        int remaining = 32;
+        for (int i = 1; i <= 5; ++i) {
+            session.advance();
+            remaining = std::max(0, remaining - step);
+            MG_CHECK(session.time() == i * step);
+            MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == remaining);
+        }
+        g_MatrixMap->SetMaintenanceTime(1);
+        session.advance();
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 0);
+    }
+}
+
+void scheduled_income() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (auto kind : {BUILDING_BASE, BUILDING_TITAN, BUILDING_PLASMA, BUILDING_ELECTRONIC, BUILDING_ENERGY}) {
+        Session session({mode, 83, 10, 1000, false, false});
+        auto owned = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            PLAYER_SIDE, kind, 100, 100);
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        for (int timing : {RESOURCE_BASE, RESOURCE_TITAN, RESOURCE_PLASMA, RESOURCE_ELECTRONICS, RESOURCE_ENERGY})
+            g_Config.m_Timings[timing] = 100;
+        g_MatrixMap->GetPlayerSide()->SetResourceForceUp(100);
+        const auto before = resources();
+        for (int i = 0; i < 9; ++i) session.advance();
+        MG_CHECK(resources() == before);
+        session.advance();
+        const auto paid = resources();
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            const bool matching = (kind == BUILDING_TITAN && r == TITAN) ||
+                (kind == BUILDING_PLASMA && r == PLASMA) ||
+                (kind == BUILDING_ELECTRONIC && r == ELECTRONICS) ||
+                (kind == BUILDING_ENERGY && r == ENERGY);
+            MG_CHECK(paid[r] == before[r] + (kind == BUILDING_BASE ? RESOURCES_INCOME_BASE :
+                                            matching ? RESOURCES_INCOME : 0));
+        }
+        factory->SetNeutral();
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(resources() == paid);
+    }
+}
+
 const tests::Case cases[] = {{"game.production.queue_deployment", queue_deployment},
                            {"game.production.base_exit", base_exit},
-                           {"game.production.building_geometry", building_geometry}};
+                           {"game.production.building_geometry", building_geometry},
+                           {"game.production.maintenance_clock", maintenance_clock},
+                           {"game.production.scheduled_income", scheduled_income}};
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);

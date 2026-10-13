@@ -393,3 +393,5 @@ target_compile_definitions(matrixgame_production_scenarios PRIVATE
 add_matrix_test(game.production.queue_deployment matrixgame_production_scenarios gameplay)
 add_matrix_test(game.production.base_exit matrixgame_production_scenarios gameplay)
 add_matrix_test(game.production.building_geometry matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.maintenance_clock matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.scheduled_income matrixgame_production_scenarios gameplay)
