@@ -35,15 +35,27 @@ bool in_logic(CMatrixMapStatic *expected) {
     return false;
 }
 
-void constructor_assets() {
+void constructor_assets(bool repair = false) {
     tests::install_battle_texture(OBJECT_PATH_ROBOT_CHASSIS L"2");
     tests::install_battle_texture(OBJECT_PATH_ROBOT_ARMOR L"1");
     const tests::MeshAttachment link{1, L"armor", 0, 0, 20};
     tests::load_battle_material_mesh(std::span(&link, 1), OBJECT_PATH_ROBOT_CHASSIS L"2.vo",
                                      OBJECT_PATH_ROBOT_CHASSIS L"2");
-    const tests::MeshAttachment head_link{1, L"head", 0, 0, 20};
-    tests::load_battle_material_mesh(std::span(&head_link, 1), OBJECT_PATH_ROBOT_ARMOR L"1.vo",
+    const tests::MeshAttachment links[] = {{1, L"head", 0, 0, 20}, {2, L"weapon", 0, 0, 0}};
+    tests::load_battle_material_mesh(std::span(links, repair ? 2u : 1u), OBJECT_PATH_ROBOT_ARMOR L"1.vo",
                                      OBJECT_PATH_ROBOT_ARMOR L"1");
+    if (repair) {
+        tests::install_battle_texture(OBJECT_PATH_ROBOT_WEAPON L"10");
+        const tests::MeshAttachment muzzle{1, L"muzzle", 0, 15, 0};
+        tests::load_battle_material_mesh(std::span(&muzzle, 1), OBJECT_PATH_ROBOT_WEAPON L"10.vo",
+                                         OBJECT_PATH_ROBOT_WEAPON L"10");
+        auto &slots = g_MatrixMap->m_RobotWeaponMatrix[RUK_ARMOR_BIREX - 1];
+        slots.cnt = slots.common = 1;
+        slots.list[0].id = 2;
+        slots.list[0].access_invert = 1 << (RUK_WEAPON_REPAIR - 1);
+        for (int i = 0; i < MAX_RESOURCES; ++i)
+            g_Config.m_Price[WEAPON1_TITAN + (RUK_WEAPON_REPAIR - 1) * MAX_RESOURCES + i] = 31 + i;
+    }
     auto *names = g_MatrixData->BlockGetAdd(IF_LABELS_BLOCKPAR)->BlockGetAdd(L"RobotNames");
     names->ParSetAdd(L"Hull1Key", L"Synthetic hull ");
     names->ParSetAdd(L"Chas2Key", L"wheels");
@@ -55,6 +67,95 @@ void constructor_assets() {
         g_Config.m_Price[ARMOR1_TITAN + i] = 21 + i;
     }
 }
+
+Cost side_resources(const CMatrixSideUnit &side) {
+    Cost result{};
+    for (int r = 0; r < MAX_RESOURCES; ++r) result[r] = side.GetResourcesAmount(static_cast<ERes>(r));
+    return result;
+}
+
+enum class PurchaseEnd { Queued, Neutralized, Deleted };
+void ai_production_purchase(PurchaseEnd end = PurchaseEnd::Queued) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int shortage = -1; shortage < (end == PurchaseEnd::Queued ? 4 : 0); ++shortage) {
+        tests::BattleMaterialProfile material_profile;
+        Session session({mode, 83, 10, 1000, false, false});
+        std::cout << "AI purchase shortage=" << shortage << " end=" << int(end) << " profile: "
+                  << session.metadata("synthetic-ai-purchase-v1") << '\n';
+        constructor_assets(true);
+        auto owned = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            2, BUILDING_BASE, 100, 100);
+        for (unsigned id = 1; id <= 4; ++id) MG_CHECK(session.remove(id));
+        auto *side = g_MatrixMap->GetSideById(2);
+        side->m_Constructor->SetSide(2);
+        // Run the real regional analysis with no base/definitions, before purchase.
+        side->TaktHL();
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        struct DefinitionsGuard { ~DefinitionsGuard() { SSpecialBot::ClearAIRobotType(); } } definitions_guard;
+        CBlockPar definitions;
+        definitions.ParAdd(L"1", L"W,1S,R");
+        definitions.ParAdd(L"2", L"W,1S"); // Affordable alternative after the repair purchase.
+        SSpecialBot::LoadAIRobotType(definitions, g_MatrixMap->m_RobotWeaponMatrix);
+        MG_CHECK(SSpecialBot::m_AIRobotTypeCnt == 2);
+        MG_CHECK(SSpecialBot::m_AIRobotTypeList[0].m_HaveRepair);
+        const Cost price{63, 66, 69, 72};
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            MG_CHECK(SSpecialBot::m_AIRobotTypeList[0].m_Resources[r] == price[r]);
+            side->SetResourceAmount(static_cast<ERes>(r), price[r] - (r == shortage ? 1 : 0));
+            g_Config.m_Timings[r] = 1000;
+        }
+        side->m_WaitResMul = 0; // Reject unavailable funds without an income forecast.
+        const auto before = side_resources(*side);
+        const auto player_before = resources();
+        const auto draws = random::draw_count();
+        side->BuildRobot();
+        if (shortage >= 0) {
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 0);
+            MG_CHECK(side_resources(*side) == before && random::draw_count() == draws);
+            MG_CHECK(side->m_BuildRobotLast == -1 && side->m_WaitResForBuildRobot == -1);
+        }
+        else {
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 1);
+            MG_CHECK((side_resources(*side) == Cost{}));
+            MG_CHECK(random::draw_count() == draws + 1 && side->m_BuildRobotLast == 0);
+            auto *built = factory->m_BS.GetTopItem()->AsRobot();
+            MG_CHECK(built->GetSide() == 2 && built->GetBase() == factory && !in_logic(built));
+            MG_CHECK(built->m_UnitCnt == 3 && built->m_Unit[2].m_Type == MRT_WEAPON);
+            MG_CHECK(built->m_Unit[2].u1.s1.m_Kind == RUK_WEAPON_REPAIR);
+            MG_CHECK(built->m_Unit[2].u1.s1.m_LinkMatrix == 2 && built->m_Unit[2].m_Graph->GetSkin());
+            Cost constructor_price{};
+            side->m_Constructor->GetConstructionPrice(constructor_price.data());
+            MG_CHECK(constructor_price == price);
+            if (end != PurchaseEnd::Queued) {
+                // Ownership loss/destruction, not a computer cancellation command.
+                g_Config.m_Timings[UNIT_ROBOT] = 100;
+                factory->m_BS.TickTimer(99);
+                MG_CHECK(!in_logic(built) && factory->m_BS.GetItemsCnt() == 1);
+                MG_CHECK((side_resources(*side) == Cost{}));
+                if (end == PurchaseEnd::Neutralized) {
+                    factory->SetNeutral();
+                    MG_CHECK(factory->GetSide() == 0 && factory->m_BS.GetItemsCnt() == 0);
+                    factory->SetNeutral();
+                }
+                g_MatrixMap->StaticDelete(factory);
+                MG_CHECK(side_resources(*side) == price && resources() == player_before);
+                MG_CHECK(random::draw_count() == draws + 1);
+                continue;
+            }
+            // A queued unit blocks the strategy before another proposal/debit/draw.
+            for (int r = 0; r < MAX_RESOURCES; ++r) side->SetResourceAmount(static_cast<ERes>(r), price[r]);
+            side->BuildRobot();
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 1 && factory->m_BS.GetTopItem() == built);
+            MG_CHECK(side_resources(*side) == price && random::draw_count() == draws + 1);
+        }
+        MG_CHECK(resources() == player_before);
+    }
+}
+
+void ai_purchase() { ai_production_purchase(); }
+void ai_purchase_neutralized() { ai_production_purchase(PurchaseEnd::Neutralized); }
+void ai_purchase_deleted() { ai_production_purchase(PurchaseEnd::Deleted); }
 
 void constructor_assembly() {
     // Two sessions per RNG also exercise destruction/recreation of cached skins.
@@ -529,7 +630,10 @@ void reinforcement_occupied() { reinforcement_landing_rejection(LandingRejection
 void reinforcement_incompatible() { reinforcement_landing_rejection(LandingRejection::Incompatible); }
 void reinforcement_over_budget() { reinforcement_landing_rejection(LandingRejection::OverBudget); }
 
-const tests::Case cases[] = {{"game.production.reinforcement_occupied", reinforcement_occupied},
+const tests::Case cases[] = {{"game.production.ai_purchase", ai_purchase},
+                           {"game.production.ai_purchase_neutralized", ai_purchase_neutralized},
+                           {"game.production.ai_purchase_deleted", ai_purchase_deleted},
+                           {"game.production.reinforcement_occupied", reinforcement_occupied},
                            {"game.production.reinforcement_incompatible", reinforcement_incompatible},
                            {"game.production.reinforcement_over_budget", reinforcement_over_budget},
                            {"game.production.paused_production", paused_production},
