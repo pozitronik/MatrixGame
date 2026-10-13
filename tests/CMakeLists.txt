@@ -251,6 +251,11 @@ add_matrix_test(game.production.base_exit matrixgame_production_scenarios gamepl
 add_matrix_test(game.production.building_geometry matrixgame_production_scenarios gameplay)
 add_matrix_test(game.production.maintenance_clock matrixgame_production_scenarios gameplay)
 add_matrix_test(game.production.scheduled_income matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.paused_production matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.cancel_waiting_during_spawn matrixgame_production_scenarios gameplay)
+foreach(contract occupied incompatible over_budget)
+    add_matrix_test(game.production.reinforcement_${contract} matrixgame_production_scenarios gameplay ai)
+endforeach()
 
 add_matrix_test_executable(matrixgame_combat_scenarios combat_scenario_tests.cpp battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)

@@ -249,7 +249,136 @@ void scheduled_income() {
     }
 }
 
-const tests::Case cases[] = {{"game.production.queue_deployment", queue_deployment},
+void paused_production() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (int pause_at : {90, 500}) {
+        Session session({mode, 83, 10, 1500, false, false});
+        auto owned = base();
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        g_Config.m_Timings[UNIT_ROBOT] = 100;
+        g_Config.m_Timings[RESOURCE_BASE] = 100000;
+        const auto before = resources();
+        const int initial_built = g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_BUILD);
+        auto *robot = enqueue(*factory);
+        while (session.time() < pause_at) session.advance();
+        MG_CHECK(in_logic(robot) == (pause_at >= 100));
+        const auto state = factory->m_State;
+        const float floor = factory->m_BaseFloor;
+        const auto draws = random::draw_count();
+        const int count = factory->m_BS.GetItemsCnt();
+        const float x = robot->m_PosX, y = robot->m_PosY;
+        g_MatrixMap->Pause(true);
+        for (int i = 0; i < 50; ++i) session.advance();
+        MG_CHECK(session.time() == pause_at && random::draw_count() == draws);
+        MG_CHECK(factory->m_State == state && factory->m_BaseFloor == floor);
+        MG_CHECK(factory->m_BS.GetItemsCnt() == count);
+        MG_CHECK(robot->m_PosX == x && robot->m_PosY == y);
+        MG_CHECK(resources() == before);
+        g_MatrixMap->Pause(false);
+        int opened = -1, detached = -1, closed = -1;
+        while (session.time() < 5000 && closed < 0) {
+            session.advance();
+            if (opened < 0 && factory->m_State == BASE_OPENED) opened = session.time();
+            if (detached < 0 && robot->GetBase() == nullptr) detached = session.time();
+            if (detached >= 0 && factory->m_State == BASE_CLOSED) closed = session.time();
+        }
+        MG_CHECK(opened == 1340 && detached == 3590 && closed == 4840);
+        MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_BUILD) == initial_built + 1);
+        MG_CHECK(resources() == before && factory->m_BS.GetItemsCnt() == 0);
+    }
+}
+
+void cancel_waiting_during_spawn() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 83, 10, 1500, false, false});
+        auto owned = base();
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        g_Config.m_Timings[UNIT_ROBOT] = 100;
+        g_Config.m_Timings[RESOURCE_BASE] = 100000;
+        for (int r = 0; r < MAX_RESOURCES; ++r) g_Config.m_Price[CHASSIS2_TITAN + r] = 11 + r;
+        const auto before = resources();
+        const int built = g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_BUILD);
+        auto *first = enqueue(*factory);
+        auto *waiting = enqueue(*factory);
+        while (session.time() < 500) session.advance();
+        MG_CHECK(in_logic(first) && !in_logic(waiting));
+        MG_CHECK(factory->m_State == BASE_OPENING && factory->IsSpawningBot());
+        MG_CHECK(factory->m_BS.GetTopItem() == waiting);
+        factory->m_BS.DeleteItem(waiting);
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && factory->m_BS.GetTopItem() == nullptr);
+        MG_CHECK(first->GetBase() == factory && first->IsDisableManual());
+        auto expected = before;
+        for (int r = 0; r < MAX_RESOURCES; ++r) expected[r] += 11 + r;
+        MG_CHECK(resources() == expected);
+        while (session.time() < 4840) session.advance();
+        MG_CHECK(first->GetBase() == nullptr && !first->IsDisableManual());
+        MG_CHECK(factory->m_State == BASE_CLOSED && !factory->IsSpawningBot());
+        MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_BUILD) == built + 1);
+        factory->m_BS.ClearStack();
+        MG_CHECK(resources() == expected);
+    }
+}
+
+struct MaintenanceInput : CMatrixMapLogic {
+    static void enable(CMatrixMapLogic &map) { map.*&MaintenanceInput::m_MaintenancePRC = 100; }
+};
+
+enum class LandingRejection { Occupied, Incompatible, OverBudget };
+void reinforcement_landing_rejection(LandingRejection rejection) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 83, 10, 1000, false, false});
+        auto factory = base();
+        MaintenanceInput::enable(*g_MatrixMap);
+        g_Config.m_MaintenanceTime = 1000;
+        g_MatrixMap->m_Difficulty.k_time_before_maintenance = 1;
+        g_MatrixMap->SetMaintenanceTime(0);
+        auto *definitions = g_MatrixData->BlockGetAdd(PAR_SOURCE_FLYER_ORDERS)
+            ->BlockGetAdd(PAR_SOURCE_FLYER_ORDERS_GIVE_BOT);
+        // A real rejected proposal; no robot assembly is reached at this price.
+        definitions->BlockGetAdd(L"131");
+        const int places = g_MatrixMap->m_RN.m_PlaceCnt;
+        MG_CHECK(places == 4);
+        int objects = 0, robot_index = 0;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+            ++objects;
+            if (object->IsLiveRobot()) {
+                object->AsRobot()->GetEnv()->m_Place = rejection == LandingRejection::Occupied ? robot_index : -1;
+                ++robot_index;
+            }
+        }
+        MG_CHECK(robot_index == places);
+        if (rejection == LandingRejection::Incompatible)
+            for (int p = 0; p < places; ++p) g_MatrixMap->m_RN.m_Place[p].m_Move = 31;
+        const auto before = resources();
+        const auto draws = random::draw_count();
+        factory->Maintenance();
+        MG_CHECK(resources() == before && factory->m_BS.GetItemsCnt() == 0);
+        int after = 0;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) ++after;
+        MG_CHECK(after == objects);
+        std::cout << "landing rejection=" << int(rejection) << " cooldown=" << g_MatrixMap->BeforeMaintenanceTime()
+                  << " draws=" << random::draw_count() - draws << '\n';
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 1000);
+        MG_CHECK(random::draw_count() == draws + (rejection == LandingRejection::OverBudget ? 11 : 1));
+        const auto after_draws = random::draw_count();
+        factory->Maintenance();
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 1000 && random::draw_count() == after_draws);
+    }
+}
+void reinforcement_occupied() { reinforcement_landing_rejection(LandingRejection::Occupied); }
+void reinforcement_incompatible() { reinforcement_landing_rejection(LandingRejection::Incompatible); }
+void reinforcement_over_budget() { reinforcement_landing_rejection(LandingRejection::OverBudget); }
+
+const tests::Case cases[] = {{"game.production.reinforcement_occupied", reinforcement_occupied},
+                           {"game.production.reinforcement_incompatible", reinforcement_incompatible},
+                           {"game.production.reinforcement_over_budget", reinforcement_over_budget},
+                           {"game.production.paused_production", paused_production},
+                           {"game.production.cancel_waiting_during_spawn", cancel_waiting_during_spawn},
+                           {"game.production.queue_deployment", queue_deployment},
                            {"game.production.base_exit", base_exit},
                            {"game.production.building_geometry", building_geometry},
                            {"game.production.maintenance_clock", maintenance_clock},
