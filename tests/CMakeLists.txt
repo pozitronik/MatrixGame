@@ -375,3 +375,15 @@ if(MATRIXGAME_BUILD_DLL)
         LABELS "engine;asset-free;startup;dll"
         TIMEOUT 30)
 endif()
+
+add_matrix_test_executable(matrixgame_battle_outcome_scenarios battle_outcome_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_outcome_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_battle_outcome_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_battle_outcome_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_battle_outcome_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract neutral_capture enemy_capture capture_rejection capture_rollback victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions special_survival_flags full_auto_escape legacy_loss_cheat)
+    add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
+endforeach()
