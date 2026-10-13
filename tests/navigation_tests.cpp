@@ -216,6 +216,47 @@ void carrier_lifetime() {
     MG_CHECK(!second->IsMustDie());
 }
 
+void carrier_drop_landing() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session(profile(NavigationLayout::Open, mode, step));
+        auto *robot = robot_at(100, 200);
+        auto *carrier = g_MatrixMap->StaticAdd<CMatrixFlyer>();
+        MG_CHECK(robot->Carry(carrier, true));
+        // Declared release height; this case starts after the flight reaches its drop point.
+        auto *core = robot->GetCore(DEBUG_CALL_INFO);
+        core->m_Matrix._43 = 80;
+        core->Release();
+        MG_CHECK(robot->Carry(nullptr));
+        MG_CHECK(!carrier->CarryingRobot());
+        g_MatrixMap->StaticDelete(carrier);
+        MG_CHECK(!robot->IsMustDie());
+        float previous_height = 80;
+        int landed_at = -1;
+        for (int frame = 0; frame < 200; ++frame) {
+            session.advance();
+            const float height = robot->GetMatrix()._43;
+            MG_CHECK(std::isfinite(height) && height >= 0 && height <= previous_height);
+            MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 200);
+            previous_height = height;
+            if (robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) {
+                landed_at = session.time();
+                break;
+            }
+            MG_CHECK(robot->m_CurrState == ROBOT_FALLING);
+        }
+        MG_CHECK(landed_at == (step == 10 ? 970 : 976));
+        MG_CHECK(previous_height == 0 && !robot->IsMustDie());
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        side.PGOrderMoveTo(side.RobotToLogicGroup(robot), CPoint(30, 18));
+        for (int frame = 0; frame < 1500; ++frame) session.advance();
+        MG_CHECK(robot->PLIsInPlace());
+        MG_CHECK(robot->m_PosX == 320 && robot->m_PosY == 200);
+        MG_CHECK(robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD);
+        std::cout << session.metadata("synthetic-carrier-drop-v1") << '\n';
+        std::cout << "drop step_ms " << step << " landed_at_ms " << landed_at << '\n';
+    }
+}
+
 void carrier_cap() {
     Session session;
     auto &map = *g_MatrixMap;
@@ -409,6 +450,7 @@ int main(int argc, char **argv) {
         {"game.navigation.removed_blocker", removed_blocker},
         {"game.navigation.carrier_lifetime", carrier_lifetime},
         {"game.navigation.carrier_cap", carrier_cap},
+        {"game.navigation.carrier_drop_landing", carrier_drop_landing},
         {"game.navigation.multiregion_movement", tests::navigation::multiregion_movement},
         {"game.navigation.multiregion_road_guidance", tests::navigation::multiregion_road_guidance},
         {"probe.navigation.group_speed_nonfinite", tests::navigation::group_speed_nonfinite_probe},
