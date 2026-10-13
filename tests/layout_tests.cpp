@@ -28,8 +28,50 @@ namespace {
 using wire::Bytes;
 using Arrays = std::vector<Bytes>;
 
-constexpr uint32_t storage_tag = 0x47525453;  // "STRG"
-constexpr uint32_t compressed_column = 0x80000000;
+// Documented wire values (docs/DATA_FORMATS.md). Fixtures and expectations use only these literals, never
+// production enums or macros, so a production change that alters the format cannot update the fixtures too.
+namespace wire_tag {
+constexpr uint32_t storage = 0x47525453;  // "STRG"
+constexpr uint32_t version_plain = 0;
+constexpr uint32_t version_compressed = 1;
+constexpr uint32_t column_int32 = 0;
+constexpr uint32_t column_dword = 1;
+constexpr uint32_t column_byte = 2;
+constexpr uint32_t column_float = 3;
+constexpr uint32_t column_double = 4;
+constexpr uint32_t column_wchar = 5;
+constexpr uint32_t column_compressed = 0x80000000;  // bit 31
+constexpr size_t zl03_block = 65000;
+constexpr uint32_t file_text = 0;
+constexpr uint32_t file_binary = 1;
+constexpr uint32_t file_compressed = 2;
+constexpr uint32_t file_folder = 3;
+constexpr uint32_t folder_header_size = 12;
+constexpr uint32_t file_record_size = 158;
+constexpr size_t name_field = 63;
+constexpr size_t zl02_block = 65536;
+constexpr uint32_t handle_slots = 16;
+constexpr uint32_t handle_package_shift = 4;
+}  // namespace wire_tag
+
+// Production enums and limits must keep the documented wire values; a change fails here at compile time.
+static_assert(Base::ST_INT32 == wire_tag::column_int32 && Base::ST_DWORD == wire_tag::column_dword &&
+                      Base::ST_BYTE == wire_tag::column_byte && Base::ST_FLOAT == wire_tag::column_float &&
+                      Base::ST_DOUBLE == wire_tag::column_double && Base::ST_WCHAR == wire_tag::column_wchar,
+              "EStorageType values are serialized column types");
+static_assert(static_cast<uint32_t>(Base::ST_COMPRESSED) == wire_tag::column_compressed,
+              "ST_COMPRESSED is the serialized compressed-column bit");
+static_assert(Base::FILEEC_TEXT == wire_tag::file_text && Base::FILEEC_BINARY == wire_tag::file_binary &&
+                      Base::FILEEC_COMPRESSED == wire_tag::file_compressed &&
+                      Base::FILEEC_FOLDER == wire_tag::file_folder,
+              "EFileType values are serialized package record types");
+static_assert(MAX_FILENAME_LENGTH == wire_tag::name_field, "Package name fields are 63 bytes");
+static_assert(MAX_VIRTUAL_HANDLE_COUNT == wire_tag::handle_slots &&
+                      MAX_VIRTUAL_HANDLE_COUNT_BITS == wire_tag::handle_package_shift,
+              "Virtual package handles use 16 slots per package");
+
+constexpr uint32_t storage_tag = wire_tag::storage;
+constexpr uint32_t compressed_column = wire_tag::column_compressed;
 
 enum class Load { accepted, rejected, exception };
 
@@ -80,14 +122,14 @@ Bytes utf16_array(std::u16string_view value) { return Bytes().utf16(value); }
 
 Bytes scalar_fixture() {
     Bytes out;
-    out.u32(storage_tag).u32(0).u32(2);
+    out.u32(storage_tag).u32(wire_tag::version_plain).u32(2);
     out.utf16z(u"t").u32(6);
-    column(out, u"i", Base::ST_INT32, column_body(4, {Bytes().u32(0xfffffffe).u32(0x7fffffff), Bytes()}));
-    column(out, u"d", Base::ST_DWORD, column_body(4, {Bytes().u32(0xa1b2c3d4)}));
-    column(out, u"b", Base::ST_BYTE, column_body(1, {Bytes().u8(0).u8(0xff).u8(7)}));
-    column(out, u"f", Base::ST_FLOAT, column_body(4, {Bytes().u32(0x3fc00000)}));            // 1.5f
-    column(out, u"g", Base::ST_DOUBLE, column_body(8, {Bytes().u64(0xc002000000000000ull)}));  // -2.25
-    column(out, u"w", Base::ST_WCHAR, column_body(2, {utf16_array(u"\u042F!"), Bytes()}));
+    column(out, u"i", wire_tag::column_int32, column_body(4, {Bytes().u32(0xfffffffe).u32(0x7fffffff), Bytes()}));
+    column(out, u"d", wire_tag::column_dword, column_body(4, {Bytes().u32(0xa1b2c3d4)}));
+    column(out, u"b", wire_tag::column_byte, column_body(1, {Bytes().u8(0).u8(0xff).u8(7)}));
+    column(out, u"f", wire_tag::column_float, column_body(4, {Bytes().u32(0x3fc00000)}));            // 1.5f
+    column(out, u"g", wire_tag::column_double, column_body(8, {Bytes().u64(0xc002000000000000ull)}));  // -2.25
+    column(out, u"w", wire_tag::column_wchar, column_body(2, {utf16_array(u"\u042F!"), Bytes()}));
     out.utf16z(u"empty").u32(0);
     return out;
 }
@@ -144,8 +186,11 @@ void check_scalar_values(Base::CStorage &storage) {
     MG_CHECK(bytes && bytes->GetArrayLength(0) == 3);
     MG_CHECK(element<uint8_t>(bytes, 0, 0) == 0 && element<uint8_t>(bytes, 0, 1) == 0xff);
     MG_CHECK(element<uint8_t>(bytes, 0, 2) == 7);
-    MG_CHECK(element<float>(storage.GetBuf(L"t", L"f", Base::ST_FLOAT), 0, 0) == 1.5f);
-    MG_CHECK(element<double>(storage.GetBuf(L"t", L"g", Base::ST_DOUBLE), 0, 0) == -2.25);
+    auto *floats = storage.GetBuf(L"t", L"f", Base::ST_FLOAT);
+    auto *doubles = storage.GetBuf(L"t", L"g", Base::ST_DOUBLE);
+    MG_CHECK(floats && floats->GetArraysCount() == 1 && floats->GetArrayLength(0) == 1);
+    MG_CHECK(doubles && doubles->GetArraysCount() == 1 && doubles->GetArrayLength(0) == 1);
+    MG_CHECK(element<float>(floats, 0, 0) == 1.5f && element<double>(doubles, 0, 0) == -2.25);
     auto *text = storage.GetBuf(L"t", L"w", Base::ST_WCHAR);
     MG_CHECK(text && text->GetArraysCount() == 2);
     MG_CHECK(text->GetAsWStr(0) == L"\u042F!" && text->GetAsWStr(1).empty());
@@ -180,12 +225,12 @@ Bytes wchar_column(std::u16string_view name, const std::vector<std::u16string> &
     Arrays arrays;
     for (const auto &value : values) arrays.push_back(utf16_array(value));
     Bytes out;
-    return column(out, name, Base::ST_WCHAR, column_body(2, arrays));
+    return column(out, name, wire_tag::column_wchar, column_body(2, arrays));
 }
 
 Bytes tree_fixture(const std::vector<TreeRecord> &records) {
     Bytes out;
-    out.u32(storage_tag).u32(0).u32(static_cast<uint32_t>(records.size()));
+    out.u32(storage_tag).u32(wire_tag::version_plain).u32(static_cast<uint32_t>(records.size()));
     for (const auto &record : records) {
         out.utf16z(record.name).u32(4);
         out.raw(wchar_column(u"0", record.parameter_names));
@@ -248,8 +293,8 @@ Bytes byte_storage_fixture(uint32_t size) {
     Bytes values;
     for (uint32_t i = 0; i < size; ++i) values.u8(static_cast<uint8_t>(i % 251));
     Bytes out;
-    out.u32(storage_tag).u32(0).u32(1).utf16z(u"t").u32(1);
-    return column(out, u"b", Base::ST_BYTE, column_body(1, {values}));
+    out.u32(storage_tag).u32(wire_tag::version_plain).u32(1).utf16z(u"t").u32(1);
+    return column(out, u"b", wire_tag::column_byte, column_body(1, {values}));
 }
 
 Bytes zl03(const std::vector<std::span<const uint8_t>> &blocks) {
@@ -269,11 +314,11 @@ Bytes compressed_storage(const Bytes &plain, size_t block_size) {
     for (size_t offset = 0; offset < body.size(); offset += block_size) {
         blocks.push_back(body.subspan(offset, std::min(block_size, body.size() - offset)));
     }
-    return Bytes().u32(storage_tag).u32(1).raw(zl03(blocks));
+    return Bytes().u32(storage_tag).u32(wire_tag::version_compressed).raw(zl03(blocks));
 }
 
 std::vector<uint8_t> inflate_block(std::span<const uint8_t> stream) {
-    std::vector<uint8_t> output(65000);
+    std::vector<uint8_t> output(wire_tag::zl03_block);
     uLongf length = static_cast<uLongf>(output.size());
     MG_CHECK(uncompress(output.data(), &length, stream.data(), static_cast<uLong>(stream.size())) == Z_OK);
     output.resize(length);
@@ -312,13 +357,13 @@ void storage_zl03() {
     Base::CBuf written;
     storage.Save(written, true);
     const auto bytes = from_buf(written);
-    MG_CHECK(wire::read_u32(bytes, 0) == storage_tag && wire::read_u32(bytes, 4) == 1);
+    MG_CHECK(wire::read_u32(bytes, 0) == storage_tag && wire::read_u32(bytes, 4) == wire_tag::version_compressed);
     const auto [sizes, decoded] = decode_zl03(std::span<const uint8_t>(bytes).subspan(8));
-    MG_CHECK(sizes == std::vector<size_t>({65000, 65000, 10048}));
+    MG_CHECK(sizes == std::vector<size_t>({wire_tag::zl03_block, wire_tag::zl03_block, 10048}));
     MG_CHECK(decoded == std::vector<uint8_t>(plain.data.begin() + 8, plain.data.end()));
 
     // Compressor-independent stored blocks, including a short non-final block, decode to the same content.
-    for (size_t block_size : {size_t(65000), size_t(4096)}) {
+    for (size_t block_size : {wire_tag::zl03_block, size_t(4096)}) {
         Base::CStorage loaded;
         MG_CHECK(load(loaded, compressed_storage(plain, block_size).data) == Load::accepted);
         auto *values = loaded.GetBuf(L"t", L"b", Base::ST_BYTE);
@@ -335,8 +380,8 @@ void storage_column_zl03() {
     const Bytes text = column_body(2, {utf16_array(u"payload"), utf16_array(u"\u0436")});
     const Bytes stream = zl03({std::span<const uint8_t>(text.data)});
     Bytes fixture;
-    fixture.u32(storage_tag).u32(0).u32(1).utf16z(u"t").u32(1);
-    column(fixture, u"w", Base::ST_WCHAR | compressed_column, stream);
+    fixture.u32(storage_tag).u32(wire_tag::version_plain).u32(1).utf16z(u"t").u32(1);
+    column(fixture, u"w", wire_tag::column_wchar | compressed_column, stream);
     Base::CStorage storage;
     MG_CHECK(load(storage, fixture.data) == Load::accepted);
     auto *values = storage.GetBuf(L"t", L"w", Base::ST_WCHAR);
@@ -351,7 +396,7 @@ void storage_column_zl03() {
     Base::CBuf written;
     record.Save(written, true);
     const auto bytes = from_buf(written);
-    const Bytes prefix = Bytes().utf16z(u"t").u32(1).utf16z(u"w").u32(Base::ST_WCHAR | compressed_column);
+    const Bytes prefix = Bytes().utf16z(u"t").u32(1).utf16z(u"w").u32(wire_tag::column_wchar | compressed_column);
     MG_CHECK(bytes.size() > prefix.size() + 4);
     MG_CHECK(std::equal(prefix.data.begin(), prefix.data.end(), bytes.begin()));
     const uint32_t length = wire::read_u32(bytes, prefix.size());
@@ -387,19 +432,19 @@ void storage_malformed() {
     check(Bytes().u32(storage_tag).u32(2).u32(0), Load::rejected);
     check(Bytes().u32(storage_tag).u32(0xffffffff).u32(0), Load::rejected);
     // Version one with a ZL03 body shorter than its 8-byte header, another tag, or no blocks.
-    check(Bytes().u32(storage_tag).u32(1).text("ZL03"), Load::exception);
-    check(Bytes().u32(storage_tag).u32(1).text("ZL04").u32(1), Load::exception);
-    check(Bytes().u32(storage_tag).u32(1).text("ZL03").u32(0), Load::exception);
+    check(Bytes().u32(storage_tag).u32(wire_tag::version_compressed).text("ZL03"), Load::exception);
+    check(Bytes().u32(storage_tag).u32(wire_tag::version_compressed).text("ZL04").u32(1), Load::exception);
+    check(Bytes().u32(storage_tag).u32(wire_tag::version_compressed).text("ZL03").u32(0), Load::exception);
     // A block with a wrong Adler-32 checksum.
-    Bytes corrupt = compressed_storage(scalar_fixture(), 65000);
+    Bytes corrupt = compressed_storage(scalar_fixture(), wire_tag::zl03_block);
     corrupt.data.back() ^= 1;
     check(corrupt, Load::exception);
     // Each block decodes to at most 65,000 bytes.
-    check(compressed_storage(byte_storage_fixture(64952), 65000), Load::accepted);
+    check(compressed_storage(byte_storage_fixture(64952), wire_tag::zl03_block), Load::accepted);
     check(compressed_storage(byte_storage_fixture(64953), 65001), Load::exception);
     // Counts larger than the remaining input.
-    check(Bytes().u32(storage_tag).u32(0).u32(4096), Load::exception);
-    check(Bytes().u32(storage_tag).u32(0).u32(1).utf16z(u"t").u32(4096), Load::exception);
+    check(Bytes().u32(storage_tag).u32(wire_tag::version_plain).u32(4096), Load::exception);
+    check(Bytes().u32(storage_tag).u32(wire_tag::version_plain).u32(1).utf16z(u"t").u32(4096), Load::exception);
     // A compressed column whose ZL03 stream cannot be decoded is rejected with false and leaves no table.
     // Each stream lies entirely inside its declared body, so decoding never reads past the input.
     Bytes corrupt_block = zl03({std::span<const uint8_t>(byte_storage_fixture(4).data)});
@@ -409,8 +454,8 @@ void storage_malformed() {
     for (const Bytes &stream : {Bytes().text("ZL04").u32(1), Bytes().text("ZL03"), Bytes().text("ZL03").u32(0),
                                 corrupt_block, zl03({std::span<const uint8_t>(oversized_block.data)})}) {
         Bytes fixture;
-        fixture.u32(storage_tag).u32(0).u32(1).utf16z(u"t").u32(1);
-        column(fixture, u"v", Base::ST_INT32 | compressed_column, stream);
+        fixture.u32(storage_tag).u32(wire_tag::version_plain).u32(1).utf16z(u"t").u32(1);
+        column(fixture, u"v", wire_tag::column_int32 | compressed_column, stream);
         Base::CStorage storage;
         MG_CHECK(load(storage, fixture.data) == Load::rejected);
         MG_CHECK(!storage.IsTablePresent(L"t"));
@@ -419,14 +464,14 @@ void storage_malformed() {
 
 // --- Packages -------------------------------------------------------------------------------------------
 
-constexpr uint32_t file_record_size = 158;
-constexpr uint32_t folder_header_size = 12;
+constexpr uint32_t file_record_size = wire_tag::file_record_size;
+constexpr uint32_t folder_header_size = wire_tag::folder_header_size;
 
 struct Entry {
     std::string name;  // uppercase lookup name
     std::string real_name;
-    uint32_t type = Base::FILEEC_BINARY;
-    uint32_t new_type = Base::FILEEC_BINARY;
+    uint32_t type = wire_tag::file_binary;
+    uint32_t new_type = wire_tag::file_binary;
     uint32_t free = 0;
     uint32_t offset = 0;
     uint32_t size = 0;
@@ -444,7 +489,8 @@ Bytes folder(const std::vector<Entry> &entries, uint32_t record_size = file_reco
     out.u32(folder_header_size + count * record_size).u32(count).u32(record_size);
     for (const auto &entry : entries) {
         const uint32_t start = out.size();
-        out.u32(entry.size).u32(entry.real_size).fixed(entry.name, 63).fixed(entry.real_name, 63);
+        out.u32(entry.size).u32(entry.real_size).fixed(entry.name, wire_tag::name_field)
+                .fixed(entry.real_name, wire_tag::name_field);
         out.u32(entry.type).u32(entry.new_type).u32(entry.free).u32(0x5a5a5a5a).u32(entry.offset).u32(entry.extra);
         MG_CHECK(out.size() - start == file_record_size);
         if (record_size > file_record_size) out.fixed("", record_size - file_record_size);
@@ -454,7 +500,7 @@ Bytes folder(const std::vector<Entry> &entries, uint32_t record_size = file_reco
 
 // Stored file data: a 32-bit prefix (stored size minus four) followed by the payload.
 Entry stored_file(Bytes &pack, std::string name, std::string real_name, const Bytes &content,
-                  uint32_t type = Base::FILEEC_BINARY) {
+                  uint32_t type = wire_tag::file_binary) {
     Entry entry{std::move(name), std::move(real_name), type, type};
     entry.offset = pack.size();
     entry.size = content.size() + 4;
@@ -467,13 +513,13 @@ Entry stored_file(Bytes &pack, std::string name, std::string real_name, const By
 // stream. Every block except the last decodes to 65,536 bytes.
 Entry compressed_file(Bytes &pack, std::string name, std::string real_name, const Bytes &content) {
     Bytes blocks;
-    for (size_t offset = 0; offset < content.data.size(); offset += 65536) {
+    for (size_t offset = 0; offset < content.data.size(); offset += wire_tag::zl02_block) {
         const auto part = std::span<const uint8_t>(content.data).subspan(
-                offset, std::min<size_t>(65536, content.data.size() - offset));
+                offset, std::min<size_t>(wire_tag::zl02_block, content.data.size() - offset));
         const Bytes stream = wire::zlib_stored(part);
         blocks.u32(stream.size() + 8).text("ZL02").u32(static_cast<uint32_t>(part.size())).raw(stream);
     }
-    Entry entry{std::move(name), std::move(real_name), Base::FILEEC_COMPRESSED, Base::FILEEC_TEXT};
+    Entry entry{std::move(name), std::move(real_name), wire_tag::file_compressed, wire_tag::file_text};
     entry.offset = pack.size();
     entry.size = blocks.size() + 4;
     entry.real_size = content.size();
@@ -483,7 +529,7 @@ Entry compressed_file(Bytes &pack, std::string name, std::string real_name, cons
 }
 
 Entry folder_entry(Bytes &pack, std::string name, std::string real_name, const Bytes &contents) {
-    Entry entry{std::move(name), std::move(real_name), Base::FILEEC_FOLDER, Base::FILEEC_FOLDER};
+    Entry entry{std::move(name), std::move(real_name), wire_tag::file_folder, wire_tag::file_folder};
     entry.offset = pack.size();
     entry.size = contents.size();
     entry.extra = 0xdeadbeef;
@@ -513,14 +559,14 @@ TreePackage tree_package() {
     Bytes pack;
     pack.u32(0);  // root folder offset, patched below
     const Entry readme = stored_file(pack, "README.TXT", "ReadMe.txt", Bytes().text("Synthetic text\r\n"),
-                                     Base::FILEEC_TEXT);
+                                     wire_tag::file_text);
     const Entry data = stored_file(pack, "DATA.BIN", "data.bin", pattern(300, 7));
     const Entry longest = stored_file(pack, long_name, lower(long_name), Bytes().text("deep"));
     const Entry packed = compressed_file(pack, "PACKED.BIN", "Packed.bin", pattern(65546, 13));
     const Entry deeper = folder_entry(pack, "DEEPER", "Deeper", folder({longest}));
     const Entry sub = folder_entry(pack, "SUB", "Sub", folder({data, deeper}));
     // A free record is ignored even when it claims to be a folder with an invalid offset.
-    Entry ghost{"GHOST.TXT", "Ghost.txt", Base::FILEEC_FOLDER, Base::FILEEC_FOLDER, 1, 0xfffffff0};
+    Entry ghost{"GHOST.TXT", "Ghost.txt", wire_tag::file_folder, wire_tag::file_folder, 1, 0xfffffff0};
     pack.put_u32(0, pack.size());
     pack.raw(folder({readme, ghost, sub, packed}));
     return {pack, packed};
@@ -644,9 +690,9 @@ void package_tree() {
         MG_CHECK(listed == expected_list);
 
         Base::SSearchRec search(nullptr);
-        MG_CHECK(pack.FindFirst("", 0, search) == 0 && search.Name == "ReadMe.txt" && search.T == Base::FILEEC_TEXT);
-        MG_CHECK(pack.FindNext(search) == 0 && search.Name == "Sub" && search.T == Base::FILEEC_FOLDER);
-        MG_CHECK(pack.FindNext(search) == 0 && search.Name == "Packed.bin" && search.T == Base::FILEEC_COMPRESSED);
+        MG_CHECK(pack.FindFirst("", 0, search) == 0 && search.Name == "ReadMe.txt" && search.T == wire_tag::file_text);
+        MG_CHECK(pack.FindNext(search) == 0 && search.Name == "Sub" && search.T == wire_tag::file_folder);
+        MG_CHECK(pack.FindNext(search) == 0 && search.Name == "Packed.bin" && search.T == wire_tag::file_compressed);
         MG_CHECK(pack.FindNext(search) == 1);
         MG_CHECK(pack.FindFirst("sub", 0, search) == 0 && search.Name == "data.bin");
         MG_CHECK(pack.FindNext(search) == 0 && search.Name == "Deeper" && pack.FindNext(search) == 1);
@@ -728,7 +774,7 @@ Bytes package_with_root(const Bytes &root) {
 }
 
 void package_malformed() {
-    const Entry file{"A.TXT", "a.txt", Base::FILEEC_BINARY, Base::FILEEC_BINARY, 0, 4, 5, 1};
+    const Entry file{"A.TXT", "a.txt", wire_tag::file_binary, wire_tag::file_binary, 0, 4, 5, 1};
     check_rejected_package(Bytes());
     check_rejected_package(Bytes().u8(4).u8(0).u8(0));
     check_rejected_package(Bytes().u32(4096));              // root folder beyond the end
@@ -739,10 +785,10 @@ void package_malformed() {
     check_rejected_package(package_with_root(folder({file}, file_record_size, 3)));  // missing records
 
     // A nested folder outside the file, with a wrong record size or with missing records.
-    Entry nested{"SUB", "Sub", Base::FILEEC_FOLDER, Base::FILEEC_FOLDER, 0, 0x100000};
+    Entry nested{"SUB", "Sub", wire_tag::file_folder, wire_tag::file_folder, 0, 0x100000};
     check_rejected_package(package_with_root(folder({file, nested})));
     // The nested folder is last, so a short read cannot continue into other structures.
-    const Entry sub{"SUB", "Sub", Base::FILEEC_FOLDER, Base::FILEEC_FOLDER, 0,
+    const Entry sub{"SUB", "Sub", wire_tag::file_folder, wire_tag::file_folder, 0,
                     4 + folder_header_size + 2 * file_record_size};
     for (const Bytes &contents : {folder({file}, 166), folder({file}, file_record_size, 2)}) {
         check_rejected_package(package_with_root(folder({file, sub})).raw(contents));

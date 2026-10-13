@@ -169,7 +169,7 @@ void rejected_configuration() {
             throw std::runtime_error("A C++ exception escaped the loaded DLL's Run callback");
         }
         SetUnhandledExceptionFilter(nullptr);
-        MG_CHECK(result == MATRIXGAME_RUN_ERROR);
+        MG_CHECK(result == 100);
         MG_CHECK(std::memcmp(&before, &state, sizeof(state)) == 0);
         MG_CHECK(IsWindow(window.get()));
         MG_CHECK(GetWindowLongPtrW(window.get(), GWLP_WNDPROC) == procedure);
@@ -230,14 +230,14 @@ void language_configuration() {
     const auto state_before = state;
 
     MG_CHECK(api->m_Run(GetModuleHandleW(nullptr), window.get(), map, &settings, lang, start, win, loss, planet,
-                        &state) == MATRIXGAME_RUN_ERROR);
+                        &state) == 100);
     SetUnhandledExceptionFilter(nullptr);
     MG_CHECK(diagnostics().find("Invalid packed configuration: cfg\\xx\\robots.dat") != std::string::npos);
     MG_CHECK(released(L"CFG/xx/robots.dat") && released(L"CFG/robots.dat"));
 
     // Without a language-specific file the root packed file is not used; startup falls back to text data.
     MG_CHECK(api->m_Run(GetModuleHandleW(nullptr), window.get(), map, &settings, other, start, win, loss, planet,
-                        &state) == MATRIXGAME_RUN_ERROR);
+                        &state) == 100);
     SetUnhandledExceptionFilter(nullptr);
     const auto diagnostic = diagnostics();
     MG_CHECK(diagnostic.find("cfg\\robots\\data.txt") != std::string::npos);

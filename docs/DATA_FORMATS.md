@@ -67,7 +67,7 @@ This parses tracked interface/data configuration and packs/restores the trees in
 | 4 | Real size | Decoded file size |
 | 8 | Lookup name | 63 bytes, NUL-terminated uppercase name |
 | 71 | Real name | 63 bytes, NUL-terminated case-preserving name used in listings and folder construction |
-| 134 | Type | `0` text, `1` binary, `2` compressed, `3` folder |
+| 134 | Type | `0` text, `1` binary, `2` compressed, `3` folder; the reader handles text and binary identically |
 | 142 | Free flag | Nonzero marks an unused record that lookup, listing and loading ignore |
 | 146 | Date | Not interpreted by the reader |
 | 150 | Offset | Folder: nested folder header. File: data prefix |

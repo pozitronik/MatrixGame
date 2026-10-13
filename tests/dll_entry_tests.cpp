@@ -84,7 +84,7 @@ void check_failure(Failure selected, std::string_view diagnostic, bool timer_exp
     const auto before = result;
     const int code = GetRobotInterface()->m_Run(nullptr, nullptr, nullptr, nullptr, nullptr,
                                                nullptr, nullptr, nullptr, nullptr, &result);
-    MG_CHECK(code == MATRIXGAME_RUN_ERROR && g_ExitState == MATRIXGAME_RUN_ERROR);
+    MG_CHECK(code == 100 && g_ExitState == 100);
     MG_CHECK(FLAG(g_Flags, GFLAG_EXITLOOP));
     MG_CHECK(end_timer == timer_expected);
     MG_CHECK(events.back() == 4);
@@ -179,6 +179,10 @@ static_assert(sizeof(SMGDRangersInterfaceText) == 20 && offsetof(SMGDRangersInte
               offsetof(SMGDRangersInterfaceText, m_SizeY) == 16);
 #endif
 static_assert(std::is_trivially_copyable_v<SRobotsSettings> && std::is_standard_layout_v<SRobotsSettings>);
+// Host-visible result and support codes; tests compare against these literals, not the production names.
+static_assert(MATRIXGAME_RUN_ERROR == 100, "Caught entry failures return the host's loop-error code 100");
+static_assert(SUPE_OK == 0 && SUPE_DIRECTX == 1 && SUPE_VIDEODRIVER == 2 && SUPE_VIDEOHARDWARE == 3,
+              "Support results are host-visible codes 0 to 3");
 static_assert(std::is_trivially_copyable_v<SRobotGameState> && std::is_standard_layout_v<SMGDRangersInterface>);
 
 void host_layout() {
