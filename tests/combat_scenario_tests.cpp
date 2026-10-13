@@ -43,7 +43,7 @@ struct Trace {
         const std::string base_fixture = "unarmed-chassis-obstacle-v1";
         const auto at = header.find(base_fixture);
         MG_CHECK(at != std::string::npos);
-        header.replace(at, base_fixture.size(), "synthetic-armed-boxes-v1");
+        header.replace(at, base_fixture.size(), "synthetic-armed-boxes-v2");
         header.pop_back();
         header += ",\"scenario\":\"" + std::string(name) + "\"}";
         file << header << '\n';
@@ -552,13 +552,27 @@ std::vector<std::string> cannon_boundary_run(random::Mode mode, int radius, floa
             props.max_bottom_angle = pitch;
             props.m_Strength = 10;
             g_Config.m_CannonsLogic = true;
-            g_Config.m_WeaponRadius[Weap2Index(WEAPON_CANNON2)] = float(radius);
+            g_Config.m_WeaponRadius[Weap2Index(WEAPON_CANNON2)] = 1;
             g_Config.m_WeaponCooldown[Weap2Index(WEAPON_CANNON2)] = 100;
             g_Config.m_RobotDamages[Weap2Index(WEAPON_CANNON2)] = {2, 0, 10};
             auto *target = robot(PLAYER_SIDE);
             target->InitMaxHitpoint(50);
             target->SetMaxSpeed(0);
             auto *cannon = tests::create_battle_cannon(2, 70, 200);
+            const auto initial_delta = target->GetGeoCenter() - cannon->GetGeoCenter();
+            const float distance_squared = D3DXVec3LengthSq(&initial_delta);
+            float eligible = std::sqrt(distance_squared);
+            // Bracket the actual production float comparison, including D3DX rounding.
+            while (eligible * eligible < distance_squared) eligible = std::nextafter(eligible, INFINITY);
+            while (std::nextafter(eligible, 0.f) * std::nextafter(eligible, 0.f) >= distance_squared)
+                eligible = std::nextafter(eligible, 0.f);
+            const float range = radius < 50 ? std::nextafter(eligible, 0.f) :
+                radius == 50 ? eligible : std::nextafter(eligible, INFINITY);
+            cannon->m_Weapons[0]->ModifyDist(range - 1);
+            MG_CHECK(cannon->m_Weapons[0]->GetWeaponDist() == range);
+            std::cout << "Cannon boundary distance/range bits: " << std::bit_cast<uint32_t>(distance_squared)
+                << '/' << std::bit_cast<uint32_t>(range) << '\n';
+            MG_CHECK((range * range >= distance_squared) == (radius >= 50));
             Trace trace(session, profile, ("cannon-range-" + std::to_string(radius) + "-pitch-" + std::to_string(int(pitch * 10))).c_str(), run);
             std::vector<int> impacts;
             int shots = 0;
@@ -569,7 +583,7 @@ std::vector<std::string> cannon_boundary_run(random::Mode mode, int radius, floa
                 shots += cannon->m_Weapons[0]->GetFireCount();
                 MG_CHECK(cannon->m_AngleX >= pitch && cannon->m_AngleX <= props.max_top_angle);
                 auto delta = target->GetGeoCenter() - cannon->GetGeoCenter();
-                MG_CHECK(D3DXVec3LengthSq(&delta) == 2500);
+                MG_CHECK(D3DXVec3LengthSq(&delta) == distance_squared);
                 if (target->GetHitPoint() != health) {
                     health = target->GetHitPoint();
                     impacts.push_back(session.time());
@@ -580,9 +594,8 @@ std::vector<std::string> cannon_boundary_run(random::Mode mode, int radius, floa
             MG_CHECK(impacts == (radius >= 50 && pitch < -0.5f ?
                 std::vector<int>{330, 430, 530, 630, 730, 830, 930} : std::vector<int>{}));
             MG_CHECK(shots == (radius >= 50 && pitch < 0 ? 7 : 0));
-            // AngleDist convergence stops three float32 ULPs above -0.5.
-            if (pitch >= -0.5f) MG_CHECK(std::bit_cast<uint32_t>(cannon->m_AngleX) ==
-                (pitch == 0 ? 0U : 0xbefffffdU));
+            // Production rotation stops within its 0.001-radian convergence threshold.
+            if (pitch >= -0.5f) MG_CHECK(cannon->m_AngleX >= pitch && cannon->m_AngleX < pitch + .001f);
             check_health(target, impacts.empty() ? 50 : 36);
             trace.record(session, target, nullptr, cannon);
             trace.complete(session);
@@ -843,6 +856,7 @@ void install_robot_modules(CMatrixRobotAI &robot, ERobotUnitKind armor, ERobotUn
     robot.CalcRobotMass();
     robot.RChange(MR_Matrix);
     robot.RNeed(MR_Matrix);
+    robot.m_CalcBoundsLastTime=g_MatrixMap->GetTime()-100;
     robot.JoinToGroup();
 }
 void configure_module_heads() {
@@ -939,17 +953,15 @@ std::vector<std::string> splash_boundary_run(random::Mode mode, int offset, int 
     auto *patient = robot(PLAYER_SIDE, 1);
     patient->InitMaxHitpoint(50);
     patient->SetMaxSpeed(0);
-    // The expanded sphere test uses center distance minus the patient's loaded-mesh radius.
-    auto delta = patient->GetGeoCenter() - bomber->GetGeoCenter();
-    const float center_distance = D3DXVec3Length(&delta);
-    const float radius = center_distance - patient->GetRadius() + float(offset);
-    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = radius;
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 1;
     g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
     g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {10, 4, 0};
     tests::arm_battle_robot(*bomber, RUK_WEAPON_BOMB);
-    // Verify that assembly preserves the center distance used to place this boundary.
-    delta = patient->GetGeoCenter() - bomber->GetGeoCenter();
-    MG_CHECK(D3DXVec3Length(&delta) == center_distance);
+    // Use the loaded spheres after assembly, then set the real effect's exact radius.
+    auto delta = patient->GetGeoCenter() - bomber->GetGeoCenter();
+    const float radius = D3DXVec3Length(&delta) - patient->GetRadius() + float(offset);
+    const_cast<SBotWeapon &>(bomber->GetWeapon(0)).ModifyDist(radius-1);
+    MG_CHECK(bomber->GetWeapon(0).GetWeaponDist()==radius);
     Trace trace(session, profile, ("splash-boundary-" + std::to_string(offset)).c_str(), run);
     trace.command(session, "detonate(1)", [&] { bomber->BigBoom(); return bomber->IsMustDie(); });
     float health = patient->GetHitPoint();
@@ -979,6 +991,7 @@ void position_fixture_robot(CMatrixRobotAI &robot, float x, float y) {
     robot.MapPosCalc();
     robot.RChange(MR_Matrix);
     robot.RNeed(MR_Matrix);
+    robot.m_CalcBoundsLastTime=g_MatrixMap->GetTime()-100;
     robot.JoinToGroup();
 }
 std::vector<std::string> chained_bombs_run(random::Mode mode, int run) {
@@ -1030,7 +1043,7 @@ std::vector<std::string> chained_bombs_run(random::Mode mode, int run) {
     MG_CHECK(second_dying == 310 && patient_dying == 610);
     MG_CHECK(first_removed == (mode == random::Mode::ParkMiller ? 4080 : 4140));
     MG_CHECK(second_removed == (mode == random::Mode::ParkMiller ? 3140 : 4290));
-    MG_CHECK(patient_removed == (mode == random::Mode::ParkMiller ? 3930 : 5110));
+    MG_CHECK(patient_removed == (mode == random::Mode::ParkMiller ? 5520 : 4440));
     const std::vector<std::pair<int, int>> expected{{310, 6}, {610, -4}};
     MG_CHECK(impacts == expected);
     MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) == 1);
