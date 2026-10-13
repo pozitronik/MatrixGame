@@ -238,6 +238,18 @@ foreach(contract replacement target_removal repeatability observation rejected_c
     add_matrix_test(game.scenario.${contract} matrixgame_battle_scenarios gameplay ai input)
 endforeach()
 
+add_matrix_test_executable(matrixgame_production_scenarios production_scenario_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_production_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_production_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_production_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_production_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.production.queue_deployment matrixgame_production_scenarios gameplay ai)
+add_matrix_test(game.production.base_exit matrixgame_production_scenarios gameplay ai)
+add_matrix_test(game.production.building_geometry matrixgame_production_scenarios gameplay)
+
 add_matrix_test_executable(matrixgame_battle_device_tests battle_device_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_device_tests PRIVATE MatrixGameInternal)
 foreach(contract buffers invalid_buffers com_ownership state_sessions)
@@ -406,18 +418,6 @@ if(MATRIXGAME_BUILD_DLL)
             TIMEOUT 30)
     endforeach()
 endif()
-add_matrix_test_executable(matrixgame_production_scenarios production_scenario_tests.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
-target_link_libraries(matrixgame_production_scenarios PRIVATE MatrixGameInternal)
-add_dependencies(matrixgame_production_scenarios matrixgame_scenario_identity)
-target_include_directories(matrixgame_production_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_compile_definitions(matrixgame_production_scenarios PRIVATE
-    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
-    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-add_matrix_test(game.production.queue_deployment matrixgame_production_scenarios gameplay)
-add_matrix_test(game.production.base_exit matrixgame_production_scenarios gameplay)
-add_matrix_test(game.production.building_geometry matrixgame_production_scenarios gameplay)
-
 # Performance workloads. The executable is a measurement tool, not a
 # timing test: CTest only runs a short smoke pass that checks repeatable work.
 add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp
