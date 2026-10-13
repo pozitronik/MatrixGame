@@ -484,6 +484,11 @@ void inactive_selection() {
         auto *robot = selected(0);
         auto *candidate = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200);
         const auto original = candidate->m_CurrState;
+        struct RestoreState {
+            CMatrixRobotAI &robot;
+            ERobotState state;
+            ~RestoreState() { robot.m_CurrState = state; }
+        } restore{*candidate, original};
         candidate->m_CurrState = state;
         SelectionFixture visible{candidate, robot};
         const auto point = screen_center(*robot);
