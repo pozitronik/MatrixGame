@@ -238,6 +238,9 @@ add_matrix_test(game.combat.cannon_firing matrixgame_combat_scenarios gameplay a
 add_matrix_test(game.combat.robot_firing matrixgame_combat_scenarios gameplay ai)
 add_matrix_test(game.combat.plasma_flight matrixgame_combat_scenarios gameplay ai memory)
 add_matrix_test(game.combat.axis_aligned_trace matrixgame_combat_scenarios gameplay)
+foreach(contract volcano_firing electric_firing flame_firing gun_firing missile_firing mortar_firing repair_firing heat_boundary bomb_detonation)
+    add_matrix_test(game.combat.${contract} matrixgame_combat_scenarios gameplay ai memory)
+endforeach()
 
 add_matrix_test_executable(matrixgame_battle_device_tests battle_device_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_device_tests PRIVATE MatrixGameInternal)

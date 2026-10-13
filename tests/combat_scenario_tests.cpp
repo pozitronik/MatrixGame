@@ -42,7 +42,7 @@ struct Trace {
         std::cerr << "Combat profile: " << header << "\nTrace: " << path.string() << std::endl;
     }
     void record(Session &session, CMatrixRobotAI *target, CMatrixRobotAI *shooter = nullptr,
-                CMatrixCannon *cannon = nullptr) {
+                CMatrixCannon *cannon = nullptr, SObjectCore *retired_owner = nullptr) {
         const auto draws = random::draw_count();
         std::ostringstream out;
         out << "{\"type\":\"snapshot\",\"state\":" << session.snapshot()
@@ -52,6 +52,7 @@ struct Trace {
             (cannon->m_TargetCore && cannon->m_TargetCore->m_Object == target ? "true" : "false")
             << ",\"yaw_bits\":" << std::bit_cast<uint32_t>(cannon->m_Angle)
             << ",\"pitch_bits\":" << std::bit_cast<uint32_t>(cannon->m_AngleX);
+        if (retired_owner) out << ",\"owner_present\":" << (retired_owner->m_Object ? "true" : "false");
         out << "}}";
         states.push_back(out.str());
         file << states.back() << '\n';
@@ -238,9 +239,228 @@ void axis_aligned_trace() {
         MG_CHECK(g_MatrixMap->Trace(nullptr, D3DXVECTOR3(80, 100, 50), end, mask, nullptr) == target);
     }
 }
+struct Family {
+    const char *name;
+    EWeapon effect;
+    ERobotUnitKind unit;
+    int heat;
+    std::vector<std::pair<int, int>> impacts;
+    uint64_t pm_draws, crt_draws;
+};
+const Family volcano{"volcano", WEAPON_VOLCANO, RUK_WEAPON_MACHINEGUN, WEAPON_VOLCANO_HEAT,
+    {{200,48},{700,46},{1200,44},{1700,42},{2200,40},{2700,38}}, 263, 263};
+const Family electric{"electric", WEAPON_LIGHTENING, RUK_WEAPON_ELECTRIC, WEAPON_LIGHTENING_HEAT,
+    {{200,48},{700,46},{1200,44},{1700,42},{2200,40},{2700,38}}, 43841, 42476};
+const Family flame{"flame", WEAPON_FLAMETHROWER, RUK_WEAPON_FLAMETHROWER, WEAPON_FLAMETHROWER_HEAT,
+    {{1820,48},{1850,46},{1880,44},{1910,42},{1940,40},{1970,38},{2000,36}}, 18770, 18758};
+const Family gun{"gun", WEAPON_GUN, RUK_WEAPON_CANNON, WEAPON_GUN_HEAT,
+    {{410,46},{900,44},{1390,42},{1890,38},{2380,36},{2880,32}}, 90177, 91297};
+const Family missile{"missile", WEAPON_HOMING_MISSILE, RUK_WEAPON_MISSILE, WEAPON_HOMING_MISSILE_HEAT,
+    {{980,48},{1470,46},{1950,44},{2430,42},{2920,40},{3410,38}}, 76405, 76405};
+const Family mortar{"mortar", WEAPON_BOMB, RUK_WEAPON_MORTAR, WEAPON_BOMB_HEAT,
+    {{1590,48},{2080,46},{2580,44},{3080,42},{3580,40}}, 41251, 41203};
+
+std::vector<std::string> family_run(const Family &family, random::Mode mode, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode, 82, 10, 1000, false, true};
+    Session session(profile);
+    assets.install();
+    configure_weapon(family.effect, family.heat);
+    g_Config.m_WeaponCooldown[Weap2Index(family.effect)] = 500;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_ABLAZE)] = {0, 0, 10};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_SHORTED)] = {0, 0, 10};
+    auto *shooter = robot(PLAYER_SIDE);
+    auto *target = robot(2);
+    tests::arm_battle_robot(*shooter, family.unit);
+    target->InitMaxHitpoint(50);
+    target->SetMaxSpeed(0);
+    Trace trace(session, profile, family.name, run);
+    trace.command(session, "context-target(3)", [&] { return session.target_command(3); });
+    float health = target->GetHitPoint();
+    size_t impact = 0;
+    for (int i = 0; i < 400; ++i) {
+        trace.record(session, target, shooter);
+        session.advance();
+        if (target->GetHitPoint() != health) {
+            health = target->GetHitPoint();
+            MG_CHECK(impact < family.impacts.size());
+            MG_CHECK(session.time() == family.impacts[impact].first);
+            check_health(target, family.impacts[impact].second);
+            ++impact;
+        }
+    }
+    MG_CHECK(impact == family.impacts.size());
+    MG_CHECK(random::draw_count() == (mode == random::Mode::ParkMiller ? family.pm_draws : family.crt_draws));
+    trace.record(session, target, shooter);
+    trace.complete(session);
+    return trace.states;
+}
+void family_replay(const Family &family) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        const auto reference = family_run(family, mode, 0);
+        compare(reference, family_run(family, mode, 1));
+    }
+}
+void volcano_firing() { family_replay(volcano); }
+void electric_firing() { family_replay(electric); }
+void flame_firing() { family_replay(flame); }
+void gun_firing() { family_replay(gun); }
+void missile_firing() { family_replay(missile); }
+void mortar_firing() { family_replay(mortar); }
+
+std::vector<std::string> repair_run(random::Mode mode, bool retire, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode, 82, 10, 1000, false, true};
+    Session session(profile);
+    assets.install();
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_REPAIR)] = 600;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_REPAIR)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_REPAIR)] = {8, 4, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {20, 20, 0};
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+    auto *shooter = robot(PLAYER_SIDE);
+    auto *target = robot(PLAYER_SIDE, 1);
+    tests::arm_battle_robot(*shooter, RUK_WEAPON_REPAIR);
+    target->InitMaxHitpoint(50);
+    target->SetMaxSpeed(0);
+    MG_CHECK(!target->Damage(WEAPON_GUN, target->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+    check_health(target, 30);
+    auto *side = g_MatrixMap->GetPlayerSide();
+    Trace trace(session, profile, retire ? "repair-retire" : "repair-full", run);
+    trace.command(session, "order-repair(2)", [&] {
+        side->PGOrderRepair(side->SelGroupToLogicGroup(), target);
+        return session.robot(1).order == mpo_Repair;
+    });
+    float health = target->GetHitPoint();
+    int repairs = 0;
+    for (int i = 0; i < 200; ++i) {
+        if (retire && i == 30) {
+            trace.command(session, "remove-patient(2)", [&] { return session.remove(2); });
+            target = nullptr;
+        }
+        trace.record(session, target ? target : shooter, shooter);
+        session.advance();
+        if (target && health != target->GetHitPoint()) {
+            health = target->GetHitPoint();
+            ++repairs;
+            MG_CHECK(session.time() == 10 + repairs * 100);
+            check_health(target, 30 + repairs * 4);
+        }
+        if (!target && session.time() >= 400) {
+            MG_CHECK(session.robot(1).target_is_null);
+            MG_CHECK(!shooter->FindOrderLikeThat(ROT_FIRE));
+        }
+    }
+    MG_CHECK(repairs == (retire ? 2 : 5));
+    if (target) {
+        MG_CHECK(!target->NeedRepair());
+        check_health(target, 50);
+    }
+    trace.record(session, target ? target : shooter, shooter);
+    trace.complete(session);
+    return trace.states;
+}
+void repair_firing() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool retire : {false, true}) {
+        const auto reference = repair_run(mode, retire, 0);
+        compare(reference, repair_run(mode, retire, 1));
+    }
+}
+void heat_boundary() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int heat : {500, 501}) {
+        tests::BattleCombatAssets assets;
+        const Profile profile{mode, 82, 10, 1000, false, true};
+        Session session(profile);
+        assets.install();
+        configure_weapon(WEAPON_LASER, WEAPON_LASER_HEAT);
+        g_Config.m_Overheat[WEAPON_LASER_HEAT] = heat;
+        g_Config.m_Overheat[WEAPON_LASER_COOL] = 100;
+        auto *shooter = robot(PLAYER_SIDE);
+        auto *target = robot(2);
+        tests::arm_battle_robot(*shooter, RUK_WEAPON_LASER);
+        target->InitMaxHitpoint(50);
+        target->SetMaxSpeed(0);
+        Trace trace(session, profile, heat == 500 ? "heat-500" : "heat-501", 0);
+        trace.command(session, "context-target(3)", [&] { return session.target_command(3); });
+        float health = target->GetHitPoint();
+        int max_heat = 0;
+        std::vector<int> impacts;
+        for (int i = 0; i < 200; ++i) {
+            trace.record(session, target, shooter);
+            session.advance();
+            max_heat = std::max(max_heat, shooter->GetWeapon(0).m_Heat);
+            if (health != target->GetHitPoint()) {
+                health = target->GetHitPoint();
+                impacts.push_back(session.time());
+                check_health(target, 50 - int(impacts.size()) * 2);
+            }
+        }
+        MG_CHECK(impacts == (heat == 500 ? std::vector<int>{200, 790, 1380, 1970} : std::vector<int>{}));
+        check_health(target, heat == 500 ? 42 : 50);
+        MG_CHECK(max_heat == (heat == 500 ? 500 : 0));
+        trace.record(session, target, shooter);
+        trace.complete(session);
+    }
+}
+
+struct CoreRelease { void operator()(SObjectCore *core) const { core->Release(); } };
+using CoreLease = std::unique_ptr<SObjectCore, CoreRelease>;
+std::vector<std::string> bomb_run(random::Mode mode, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode, 82, 10, 1000, false, false};
+    Session session(profile);
+    assets.install();
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 150;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {10, 4, 0};
+    auto *bomber = robot(PLAYER_SIDE);
+    auto *neighbor = robot(PLAYER_SIDE, 1);
+    auto *enemy = robot(2);
+    neighbor->InitMaxHitpoint(50);
+    neighbor->SetMaxSpeed(0);
+    enemy->InitMaxHitpoint(50);
+    enemy->SetMaxSpeed(0);
+    tests::arm_battle_robot(*bomber, RUK_WEAPON_BOMB);
+    CoreLease core(bomber->GetCore(DEBUG_CALL_INFO));
+    Trace trace(session, profile, "bomb-manual", run);
+    trace.command(session, "detonate(1)", [&] { bomber->BigBoom(); return bomber->IsMustDie(); });
+    session.advance();
+    MG_CHECK(bomber->m_CurrState == ROBOT_DIP);
+    int removed_at = 0;
+    float health = neighbor->GetHitPoint();
+    for (int i = 0; i < 600; ++i) {
+        trace.record(session, neighbor, nullptr, nullptr, core.get());
+        session.advance();
+        if (health != neighbor->GetHitPoint()) {
+            health = neighbor->GetHitPoint();
+            MG_CHECK(session.time() == 310);
+            check_health(neighbor, 46);
+        }
+        if (!core->m_Object && !removed_at) removed_at = session.time();
+    }
+    MG_CHECK(removed_at == (mode == random::Mode::ParkMiller ? 4080 : 4140));
+    check_health(neighbor, 46);
+    MG_CHECK(g_MatrixMap->GetSideById(PLAYER_SIDE)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    check_health(enemy, 50);
+    trace.record(session, neighbor, nullptr, nullptr, core.get());
+    trace.complete(session);
+    return trace.states;
+}
+void bomb_detonation() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        const auto reference = bomb_run(mode, 0);
+        compare(reference, bomb_run(mode, 1));
+    }
+}
+
 const tests::Case cases[] = {{"game.combat.cannon_firing", cannon_firing},
     {"game.combat.robot_firing", robot_firing}, {"game.combat.plasma_flight", plasma_flight},
-    {"game.combat.axis_aligned_trace", axis_aligned_trace}};
+    {"game.combat.axis_aligned_trace", axis_aligned_trace},
+    {"game.combat.volcano_firing", volcano_firing}, {"game.combat.electric_firing", electric_firing},
+    {"game.combat.flame_firing", flame_firing}, {"game.combat.gun_firing", gun_firing},
+    {"game.combat.missile_firing", missile_firing}, {"game.combat.mortar_firing", mortar_firing},
+    {"game.combat.repair_firing", repair_firing}, {"game.combat.heat_boundary", heat_boundary}, {"game.combat.bomb_detonation", bomb_detonation}};
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
