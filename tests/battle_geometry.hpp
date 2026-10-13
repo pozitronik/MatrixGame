@@ -3,8 +3,11 @@
 
 class CMatrixMapLogic;
 class CMatrixRobotAI;
+enum ERobotUnitKind : unsigned int;
 
 namespace tests {
+
+enum class NavigationLayout { CentralObstacle, Open, Corridor, DeadEnd, Disconnected, MultiRegion };
 
 // Initial fixture data only. Commands, navigation and ticks remain production code.
 class BattleGeometry {
@@ -16,9 +19,10 @@ public:
     static constexpr int obstacle_bottom = 44;
 
     // Requires the active map/heap/config aliases. All allocations become map-owned.
-    static void configure(CMatrixMapLogic &map);
+    static void configure(CMatrixMapLogic &map, NavigationLayout layout = NavigationLayout::CentralObstacle);
     // Coordinates are world units. Returned units belong to map.StaticClear().
     static CMatrixRobotAI *create_robot(CMatrixMapLogic &map, int side, float x, float y);
+    static CMatrixRobotAI *create_robot(CMatrixMapLogic &map, int side, float x, float y, ERobotUnitKind chassis);
 };
 
 }

@@ -483,6 +483,31 @@ target_compile_definitions(matrixgame_battle_outcome_scenarios PRIVATE
 foreach(contract registered_enemy_capture capture_target_removal registered_base_capture capture_candidate_lifetime registered_capture base_survival factory_does_not_prevent_elimination neutral_capture enemy_capture capture_rejection capture_rollback competing_capturers competing_color protected_base_command victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions special_survival_flags full_auto_escape legacy_loss_cheat statistics_formatting scheduled_capture acquisition_after_removal enemy_capture_rollback capture_queue_refund paused_orders pending_result_pause pending_result_late_elimination)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
 endforeach()
+
+add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_integrated_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_navigation_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_navigation_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_navigation_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_navigation_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract local_routes passage_width placement region_routes destination_weights group_movement disconnected opposing_flow corridor_movement mixed_chassis removed_blocker carrier_lifetime carrier_cap
+                 multiregion_movement multiregion_road_guidance unreachable_replacement)
+    add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
+endforeach()
+
+add_matrix_test_executable(matrixgame_navigation_boundary_tests navigation_boundary_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_navigation_boundary_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_navigation_boundary_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_navigation_boundary_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract zone_routes road_routes chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
+    add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
+endforeach()
 # Performance workloads. The executable is a measurement tool, not a
 # timing test: CTest only runs a short smoke pass that checks repeatable work.
 add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp

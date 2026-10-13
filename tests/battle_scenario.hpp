@@ -2,6 +2,7 @@
 #pragma once
 
 #include "random.hpp"
+#include "battle_geometry.hpp"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -20,6 +21,7 @@ struct Profile {
     int max_frames = 3000;
     bool audio = true;
     bool initially_selected = true;
+    NavigationLayout layout = NavigationLayout::CentralObstacle;
     int initial_time_ms = 0;
 };
 

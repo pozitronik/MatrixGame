@@ -172,7 +172,7 @@ void build_group(CDataBuf &groups, int x, int y) {
 }
 }
 
-void BattleGeometry::configure(CMatrixMapLogic &map) {
+void BattleGeometry::configure(CMatrixMapLogic &map, NavigationLayout layout) {
     MG_CHECK(g_MatrixMap == &map);
     MG_CHECK(map.m_Unit == nullptr && map.m_Move == nullptr && map.m_Point == nullptr);
     map.m_Size = CPoint(32, 32);
@@ -190,8 +190,26 @@ void BattleGeometry::configure(CMatrixMapLogic &map) {
         auto &cell = *map.MoveGet(x, y);
         cell.m_Zone = 0;
         for (int size = 1; size <= 5; ++size) {
-            const bool obstacle = x < obstacle_right && x + size > obstacle_left &&
-                                  y < obstacle_bottom && y + size > obstacle_top;
+            const auto overlaps = [&](int left, int top, int right, int bottom) {
+                return x < right && x + size > left && y < bottom && y + size > top;
+            };
+            bool obstacle = false;
+            switch (layout) {
+            case NavigationLayout::CentralObstacle:
+            case NavigationLayout::MultiRegion:
+                obstacle = overlaps(obstacle_left, obstacle_top, obstacle_right, obstacle_bottom);
+                break;
+            case NavigationLayout::Open: break;
+            case NavigationLayout::Corridor:
+                obstacle = overlaps(28, 2, 36, 28) || overlaps(28, 32, 36, 62);
+                break;
+            case NavigationLayout::DeadEnd:
+                obstacle = overlaps(24, 16, 40, 20) || overlaps(24, 20, 28, 44) || overlaps(36, 20, 40, 44);
+                break;
+            case NavigationLayout::Disconnected:
+                obstacle = overlaps(28, 2, 36, 62);
+                break;
+            }
             const bool border = x < 2 || y < 2 || x + size > movement_size - 2 || y + size > movement_size - 2;
             if (obstacle || border) cell.m_Stop |= DWORD{31} << (6 * (size - 1));
         }
@@ -224,6 +242,99 @@ void BattleGeometry::configure(CMatrixMapLogic &map) {
     }
     road.m_Zone[0].m_PlaceCnt = 4;
     road.m_Region[0].m_PlaceCnt = road.m_Region[0].m_PlaceAllCnt = 4;
+    if (layout == NavigationLayout::Disconnected) {
+        // A closed barrier separates both the movement grid and the road graph.
+        // Keeping one region here would manufacture an invalid-map retry case.
+        road.SetZoneCntMax(2);
+        road.m_ZoneCnt = 2;
+        HFree(road.m_Region, g_MatrixHeap);
+        road.m_Region = allocate<SMatrixRegion>(2);
+        road.m_RegionCnt = 2;
+        for (int region = 0; region < 2; ++region) {
+            road.m_Zone[region] = SMatrixMapZone{};
+            road.m_Zone[region].m_Rect = region == 0 ? CRect(2, 2, 28, 62) : CRect(36, 2, 62, 62);
+            road.m_Zone[region].m_Center = CPoint(region == 0 ? 16 : 48, 32);
+            road.m_Zone[region].m_Size = 26 * 60;
+            road.m_Zone[region].m_Region = region;
+            road.m_Region[region].m_Center = road.m_Zone[region].m_Center;
+            road.m_Region[region].m_RadiusPlace = 64;
+            for (int i = 0; i < 2; ++i) {
+                const int index = region + i * 2;
+                road.m_Place[index].m_Region = region;
+                road.m_Place[index].m_NearCnt = 1;
+                road.m_Place[index].m_Near[0] = index ^ 2;
+                road.m_Zone[region].m_Place[i] = index;
+                road.m_Region[region].m_Place[i] = index;
+                road.m_Region[region].m_PlaceAll[i] = index;
+            }
+            road.m_Zone[region].m_PlaceCnt = 2;
+            road.m_Region[region].m_PlaceCnt = road.m_Region[region].m_PlaceAllCnt = 2;
+        }
+        for (int y = 0; y < movement_size; ++y) for (int x = 0; x < movement_size; ++x)
+            map.MoveGet(x, y)->m_Zone = x >= 36 ? 1 : 0;
+    }
+    if (layout == NavigationLayout::Corridor) {
+        road.m_Place[0].m_Pos = CPoint(8, 28);
+        road.m_Place[1].m_Pos = CPoint(48, 28);
+        // The upper pair is connected through the gap; the lower pair only connects vertically.
+        road.m_Place[2].m_NearCnt = road.m_Place[3].m_NearCnt = 1;
+        road.m_Place[2].m_Near[0] = 0;
+        road.m_Place[3].m_Near[0] = 1;
+    }
+    if (layout == NavigationLayout::MultiRegion) {
+        // Four quadrants surround the central obstacle; left/right pairs form regions.
+        // Keep the physical grid identical to CentralObstacle and supply all hierarchy levels.
+        road.SetZoneCntMax(4);
+        road.m_ZoneCnt = 4;
+        HFree(road.m_Region, g_MatrixHeap);
+        road.m_Region = allocate<SMatrixRegion>(2);
+        road.m_RegionCnt = 2;
+        std::array<CMatrixCrotch *, 4> junctions{};
+        for (int i = 0; i < 4; ++i) {
+            const int side = i % 2;
+            const int row = i / 2;
+            auto &zone = road.m_Zone[i];
+            zone = {};
+            zone.m_Rect = CRect(side ? 32 : 2, row ? 32 : 2, side ? 62 : 32, row ? 62 : 32);
+            zone.m_Center = road.m_Place[i].m_Pos;
+            zone.m_Size = 30 * 30 - 4 * 12;
+            zone.m_Region = side;
+            zone.m_PlaceCnt = 1;
+            zone.m_Place[0] = i;
+            road.m_Place[i].m_Region = side;
+            auto &region = road.m_Region[side];
+            region.m_Center = CPoint(side ? 48 : 16, 32);
+            region.m_RadiusPlace = 64;
+            region.m_NearCnt = 1;
+            region.m_Near[0] = 1 - side;
+            region.m_Place[region.m_PlaceCnt++] = i;
+            region.m_PlaceAll[region.m_PlaceAllCnt++] = i;
+            junctions[i] = road.AddCrotch();
+            junctions[i]->m_Center = zone.m_Center;
+            junctions[i]->m_Region = side;
+            junctions[i]->m_Zone = i;
+            region.m_Crotch[region.m_CrotchCnt++] = junctions[i];
+        }
+        for (auto endpoints : {std::pair{0, 1}, {0, 2}, {1, 3}, {2, 3}}) {
+            const auto [a, b] = endpoints;
+            auto &first = road.m_Zone[a];
+            auto &second = road.m_Zone[b];
+            first.m_NearZone[first.m_NearZoneCnt] = b;
+            first.m_NearZoneConnectSize[first.m_NearZoneCnt++] = (a ^ b) == 1 ? 18 : 26;
+            second.m_NearZone[second.m_NearZoneCnt] = a;
+            second.m_NearZoneConnectSize[second.m_NearZoneCnt++] = (a ^ b) == 1 ? 18 : 26;
+            auto *edge = road.AddRoad();
+            edge->m_Start = junctions[a]; edge->m_End = junctions[b];
+            edge->m_Start->AddRoad(edge); edge->m_End->AddRoad(edge);
+            edge->AddPath(first.m_Center.x, first.m_Center.y);
+            edge->AddPath(second.m_Center.x, second.m_Center.y);
+            edge->AddZone(a); edge->AddZone(b);
+            edge->CalcDist();
+            MG_CHECK(edge->m_Dist == 40);
+        }
+        for (int y = 0; y < movement_size; ++y) for (int x = 0; x < movement_size; ++x)
+            map.MoveGet(x, y)->m_Zone = (x >= 32 ? 1 : 0) + (y >= 32 ? 2 : 0);
+    }
     road.InitPL(movement_size, movement_size);
     map.m_TexUnionDim = 1;
     CStorage groups;
@@ -233,22 +344,29 @@ void BattleGeometry::configure(CMatrixMapLogic &map) {
                     x * MAP_GROUP_SIZE, y * MAP_GROUP_SIZE);
     }
     map.GroupBuild(groups);
-    MG_CHECK(map.MoveGet(30, 30)->GetType(RUK_CHASSIS_WHEEL - 1) == 0);
-    MG_CHECK(map.MoveGet(10, 10)->GetType(RUK_CHASSIS_WHEEL - 1) == 0xff);
-    const int chassis = RUK_CHASSIS_WHEEL - 1;
-    MG_CHECK(!map.CanMoveFromTo(chassis, 4, 8, 28, 48, 28, nullptr));
-    MG_CHECK(map.CanMoveFromTo(chassis, 4, 8, 8, 48, 8, nullptr));
-    CPoint path[MatrixPathMoveMax];
-    int zone = 0;
-    const int count = map.FindLocalPath(chassis, 4, 8, 28, &zone, 1, 48, 28, path,
-                                       0, nullptr, nullptr, nullptr, nullptr, false);
-    MG_CHECK(count > 2);
-    for (int i = 1; i < count; ++i)
-        MG_CHECK(map.CanMoveFromTo(chassis, 4, path[i - 1].x, path[i - 1].y,
-                                  path[i].x, path[i].y, nullptr));
+    if (layout == NavigationLayout::CentralObstacle) {
+        MG_CHECK(map.MoveGet(30, 30)->GetType(RUK_CHASSIS_WHEEL - 1) == 0);
+        MG_CHECK(map.MoveGet(10, 10)->GetType(RUK_CHASSIS_WHEEL - 1) == 0xff);
+        const int chassis = RUK_CHASSIS_WHEEL - 1;
+        MG_CHECK(!map.CanMoveFromTo(chassis, 4, 8, 28, 48, 28, nullptr));
+        MG_CHECK(map.CanMoveFromTo(chassis, 4, 8, 8, 48, 8, nullptr));
+        CPoint path[MatrixPathMoveMax];
+        int zone = 0;
+        const int count = map.FindLocalPath(chassis, 4, 8, 28, &zone, 1, 48, 28, path,
+                                           0, nullptr, nullptr, nullptr, nullptr, false);
+        MG_CHECK(count > 2);
+        for (int i = 1; i < count; ++i)
+            MG_CHECK(map.CanMoveFromTo(chassis, 4, path[i - 1].x, path[i - 1].y,
+                                      path[i].x, path[i].y, nullptr));
+    }
 }
 
 CMatrixRobotAI *BattleGeometry::create_robot(CMatrixMapLogic &map, int side, float x, float y) {
+    return create_robot(map, side, x, y, RUK_CHASSIS_WHEEL);
+}
+
+CMatrixRobotAI *BattleGeometry::create_robot(CMatrixMapLogic &map, int side, float x, float y, ERobotUnitKind chassis) {
+    MG_CHECK(chassis == RUK_CHASSIS_WHEEL || chassis == RUK_CHASSIS_TRACK);
     const MeshAttachment attachment{1, L"chassis-link", 0, 0, 20};
     auto *geometry = load_battle_mesh(std::span(&attachment, 1));
     auto *robot = map.StaticAdd<CMatrixRobotAI>();
@@ -257,7 +375,7 @@ CMatrixRobotAI *BattleGeometry::create_robot(CMatrixMapLogic &map, int side, flo
     robot->m_PosX = x;
     robot->m_PosY = y;
     robot->m_Forward = robot->m_HullForward = D3DXVECTOR3(1, 0, 0);
-    robot->UnitInsert(0, MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+    robot->UnitInsert(0, MRT_CHASSIS, chassis);
     robot->m_Unit[0].m_Graph = HNew(g_MatrixHeap) CVectorObjectAnim;
     robot->m_Unit[0].m_Graph->Init(geometry, nullptr);
     robot->m_Unit[0].m_Graph->FirstFrame();

@@ -124,7 +124,7 @@ struct Session::Impl {
         }
         map->m_PlayerSide = map->m_Side;
         side().InitPlayerSide();
-        BattleGeometry::configure(*map);
+        BattleGeometry::configure(*map, profile.layout);
         map->m_Camera.SetXYStrategy(D3DXVECTOR2(320, 320));
         map->m_Camera.Takt(0);
         map->m_Camera.BeforeDraw();
@@ -319,9 +319,11 @@ std::string Session::metadata(std::string_view fixture) const {
     MG_CHECK(!fixture.empty() && fixture.find_first_not_of(
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") == std::string_view::npos);
     std::ostringstream out;
+    const char *layouts[] = {"central-obstacle-v1", "open-v1", "corridor-v1", "dead-end-v1", "disconnected-v1", "multi-region-v1"};
     out << "{";
     if (impl_->profile.initial_time_ms) out << "\"initial_time_ms\":" << impl_->profile.initial_time_ms << ',';
     out << "\"type\":\"header\",\"schema\":1,\"fixture\":\"" << fixture << "\","
+        << "\"navigation_layout\":\"" << layouts[static_cast<unsigned>(impl_->profile.layout)] << "\","
         << "\"revision\":\"" << MATRIXGAME_SCENARIO_REVISION << "\",\"dirty\":" << MATRIXGAME_SCENARIO_DIRTY << ','
         << "\"render\":\"storage-device-no-draw-cursor-surrogate\",\"viewport\":[1280,720],"
         << "\"audio\":\"" << (impl_->profile.audio ? "synthetic-next-frame-completion" : "unavailable") << "\","
