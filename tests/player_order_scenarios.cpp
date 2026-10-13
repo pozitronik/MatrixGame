@@ -279,6 +279,76 @@ void control_groups() {
     MG_CHECK(session.robot(1).order == mpo_MoveTo);
     MG_CHECK(!session.robot(2).alive);
 }
+void empty_control_group() {
+    Session session;
+    CFormMatrixGame form;
+    auto *first = selected(0);
+    auto *second = selected(1);
+    press(form, 'M');
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE));
+    press(form, '2');
+    MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE));
+    MG_CHECK(side().GetCurGroup()->GetRobotsCnt() == 2);
+    MG_CHECK(side().GetCurGroup()->GetObjectByN(0) == first);
+    MG_CHECK(side().GetCurGroup()->GetObjectByN(1) == second);
+    side().Select(NOTHING, nullptr);
+    MG_CHECK(side().GetCurGroup() == nullptr);
+    press(form, '2');
+    MG_CHECK(side().GetCurGroup() == nullptr);
+    MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
+    MG_CHECK(session.robot(1).alive && session.robot(2).alive);
+}
+void control_group_camera() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (int elapsed : {0, 190, 200, 210}) {
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        CFormMatrixGame form;
+        std::cout << session.metadata() << "\nControl-group recall interval: " << elapsed << " ms\n";
+        auto *first = selected(0);
+        auto *second = selected(1);
+        form.Keyboard(true, VK_CONTROL);
+        press(form, '1');
+        form.Keyboard(false, VK_CONTROL);
+        // Prime the production function's static recall state through another key.
+        // This also isolates repetitions that construct a fresh map at time zero.
+        press(form, '2');
+        auto &camera = g_MatrixMap->m_Camera;
+        const D3DXVECTOR2 initial(320, 320);
+        camera.SetXYStrategy(initial);
+        press(form, '1');
+        MG_CHECK(camera.GetXYStrategy().x == initial.x && camera.GetXYStrategy().y == initial.y);
+        for (int time = 0; time < elapsed; time += profile.step_ms) session.advance();
+        MG_CHECK(session.time() == elapsed);
+        camera.SetXYStrategy(initial);
+        press(form, '1');
+        const D3DXVECTOR2 expected = elapsed < 200
+            ? D3DXVECTOR2(first->GetGeoCenter().x, first->GetGeoCenter().y + 100)
+            : initial;
+        MG_CHECK(camera.GetXYStrategy().x == expected.x && camera.GetXYStrategy().y == expected.y);
+        MG_CHECK(side().GetCurGroup()->GetRobotsCnt() == 2);
+        MG_CHECK(side().GetCurGroup()->GetObjectByN(0) == first);
+        MG_CHECK(side().GetCurGroup()->GetObjectByN(1) == second);
+    }
+}
+void debug_reinforcement_reset() {
+    Profile profile; profile.initially_selected = false;
+    Session session(profile);
+    CFormMatrixGame form;
+    for (auto *trace : {TRACE_STOP_LANDSCAPE, static_cast<CMatrixMapStatic *>(nullptr)})
+        for (int remaining : {0, 1234}) {
+        g_MatrixMap->m_TraceStopObj = trace;
+        g_MatrixMap->SetMaintenanceTime(remaining);
+        press(form, 'F');
+#if defined(_DEBUG) && !defined(_RELDEBUG)
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 0);
+#else
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == remaining);
+#endif
+        MG_CHECK(session.time() == 0 && session.frame() == 0);
+        MG_CHECK(session.robot(1).alive && session.robot(2).alive);
+    }
+}
 void group_add_cap() {
     Session session;
     auto *first = selected(0);
@@ -868,6 +938,9 @@ constexpr tests::Case cases[] = {
     {"game.player.stop_button", stop_button},
     {"game.player.attack_routes", attack_routes},
     {"game.player.control_groups", control_groups},
+    {"game.player.empty_control_group", empty_control_group},
+    {"game.player.control_group_camera", control_group_camera},
+    {"game.player.debug_reinforcement_reset", debug_reinforcement_reset},
     {"game.player.group_add_cap", group_add_cap},
     {"game.player.patrol_reversal", patrol_reversal},
     {"game.player.auto_modes", auto_modes},
