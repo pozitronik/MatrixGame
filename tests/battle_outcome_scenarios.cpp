@@ -884,6 +884,72 @@ void turret_does_not_prevent_elimination() {
                  (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
     }
 }
+std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, 10, 1500, false});
+    assets.install();
+    crater.install();
+    const auto kind = base ? BUILDING_BASE : BUILDING_TITAN;
+    const auto texture = std::wstring(OBJECT_PATH_BUILDINGS_RUINS) + L"b" + std::to_wstring(int(kind));
+    tests::install_battle_texture(texture.c_str());
+    tests::load_battle_material_mesh({}, (texture + L".vo").c_str(), texture.c_str());
+    if (!base) {
+        const auto secondary = texture + L"?Trans";
+        tests::install_battle_texture(secondary.c_str());
+        tests::load_battle_material_mesh({}, (texture + L"p.vo").c_str(), secondary.c_str());
+    }
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 20;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    g_Config.m_BuildingDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    g_Config.m_CannonDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    auto *building = register_building(0, kind, base ? 100 : 160, base ? 100 : 200);
+    auto *capturer = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+    g_MatrixMap->m_TraceStopObj = building;
+    side().OnRButtonDown(CPoint(0, 0));
+    const int group = capturer->GetGroupLogic();
+    MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+    advance_to(session, base ? 2000 : 1000);
+    MG_CHECK(capturer->GetCaptureFactory() == building && building->m_Capturer == capturer);
+    if (base) MG_CHECK(building->m_State == BASE_OPENED && capturer->IsDisableManual());
+    else MG_CHECK(building->m_TrueColor.m_ColoredCnt == 1);
+    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(building->GetCore(DEBUG_CALL_INFO),
+        [](SObjectCore *value) { value->Release(); });
+    g_Config.m_BuildingDamages[Weap2Index(WEAPON_LASER)] = {10000, 0, 0};
+    MG_CHECK(building->Damage(WEAPON_LASER, building->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+    MG_CHECK(building->m_State == BUILDING_DIP);
+    MG_CHECK(capturer->GetBase() == nullptr && capturer->IsMustDie() == base);
+    MG_CHECK(capturer->GetCaptureFactory() == nullptr && !capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_BUILDING_KILL) == 1);
+    int removed = 0, target_cleared = 0;
+    std::vector<std::string> trace;
+    while (session.time() < 10000) {
+        session.advance();
+        if (!removed && !core->m_Object) removed = session.time();
+        if (!target_cleared && side().m_PlayerGroup[group].m_Obj == nullptr) target_cleared = session.time();
+        if (core->m_Object) MG_CHECK(building->GetSide() == 0);
+        trace.push_back(session.snapshot() + ":" + std::to_string(core->m_Object != nullptr));
+    }
+    std::cout << "capture target base=" << base << " removed=" << removed << " target=" << target_cleared
+              << " alive=" << session.robot(1).alive << '\n';
+    MG_CHECK(removed == (base ? 5010 : 2010) && target_cleared == (base ? 2010 : 1010));
+    MG_CHECK(side().m_PlayerGroup[group].m_Obj == nullptr && side().m_PlayerGroup[group].Order() == mpo_Stop);
+    MG_CHECK(session.robot(1).alive == !base);
+    MG_CHECK(core->m_Object == nullptr);
+    MG_CHECK(session.robot(2).alive && !g_MatrixMap->IsPaused());
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_BUILDING_KILL) == 1);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    return trace;
+}
+void capture_target_damage() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool base : {false, true}) {
+        const auto first = capture_target_damage_run(mode, base);
+        MG_CHECK(first == capture_target_damage_run(mode, base));
+    }
+}
 std::wstring objective_descriptor(const std::wstring &behavior) {
     std::array<std::wstring, OTP_COUNT> fields{};
     fields[OTP_PATH] = L"synthetic-objective/";
@@ -1011,6 +1077,7 @@ void repeated_sessions() {
     }
 }
 constexpr tests::Case cases[] = {
+    {"game.outcome.capture_target_damage", capture_target_damage},
     {"game.outcome.special_break", special_object_destruction<0>},
     {"game.outcome.special_explosion", special_object_destruction<1>},
     {"game.outcome.special_animation", special_object_destruction<2>},
