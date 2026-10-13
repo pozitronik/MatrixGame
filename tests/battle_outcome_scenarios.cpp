@@ -1,6 +1,8 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_building.hpp"
+#include "battle_combat_geometry.hpp"
+#include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include "test_support.hpp"
 #include "command_world.hpp"
 #include "MatrixFormGame.hpp"
@@ -754,6 +756,130 @@ void factory_does_not_prevent_elimination() {
                  (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
     }
 }
+// Robot death creates a crater as well as ordinary combat effects. Restore its
+// borrowed static properties only after Session has retired the effects.
+struct CaptureEffectAccess : CMatrixEffect { using CMatrixEffect::m_SpotProperties; };
+struct CaptureCraterAssets {
+    SSpotProperties previous = CaptureEffectAccess::m_SpotProperties[SPOT_VORONKA];
+    void install() {
+        CaptureEffectAccess::m_SpotProperties[SPOT_VORONKA] = CaptureEffectAccess::m_SpotProperties[SPOT_PLASMA_HIT];
+        CaptureEffectAccess::m_SpotProperties[SPOT_VORONKA].func = SpotTaktVoronka;
+    }
+    ~CaptureCraterAssets() { CaptureEffectAccess::m_SpotProperties[SPOT_VORONKA] = previous; }
+};
+std::vector<std::string> capture_death_run(random::Mode mode) {
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, 10, 1500, false});
+    assets.install();
+    crater.install();
+    auto *building = register_building(0, BUILDING_TITAN, 160, 200);
+    auto *capturer = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+    g_MatrixMap->m_TraceStopObj = building;
+    side().OnRButtonDown(CPoint(0, 0));
+    advance_to(session, 1000);
+    MG_CHECK(capturer->GetCaptureFactory() == building && building->m_Capturer == capturer);
+    MG_CHECK(building->m_TrueColor.m_ColoredCnt == 1 && building->GetSide() == 0);
+    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(capturer->GetCore(DEBUG_CALL_INFO),
+        [](SObjectCore *value) { value->Release(); });
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {10000, 0, 0};
+    MG_CHECK(capturer->Damage(WEAPON_LASER, capturer->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+    MG_CHECK(capturer->m_CurrState == ROBOT_DIP);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+    MG_CHECK(building->m_Capturer == nullptr);
+    int replacement = 0, captured = 0, removed = 0;
+    std::vector<std::string> trace;
+    for (int i = 0; i < 1000; ++i) {
+        session.advance();
+        if (!replacement && building->m_Capturer) replacement = session.time();
+        if (!captured && building->GetSide() == PLAYER_SIDE) captured = session.time();
+        if (!removed && !core->m_Object) removed = session.time();
+        trace.push_back(session.snapshot() + ":" + std::to_string(building->GetSide()) + ":" +
+            std::to_string(building->m_TrueColor.m_ColoredCnt) + ":" + std::to_string(core->m_Object != nullptr));
+    }
+    std::cout << "capture death mode=" << int(mode) << " owner=" << building->GetSide()
+              << " paint=" << building->m_TrueColor.m_ColoredCnt << " replacement=" << replacement << " captured=" << captured << " removed=" << removed << " core=" << bool(core->m_Object) << '\n';
+    MG_CHECK(replacement == 1020 && captured == 7530);
+    MG_CHECK(removed == (mode == random::Mode::ParkMiller ? 5430 : 4110));
+    MG_CHECK(building->GetSide() == PLAYER_SIDE && building->m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+    MG_CHECK(building->m_TrueColor.m_Color == 0xff00ff00);
+    MG_CHECK(!session.robot(1).alive && session.robot(2).alive);
+    MG_CHECK(core->m_Object == nullptr);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+    MG_CHECK(!g_MatrixMap->IsPaused() && side().GetStatus() == SS_ACTIVE);
+    return trace;
+}
+void capture_combat_death() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        const auto first = capture_death_run(mode);
+        MG_CHECK(first == capture_death_run(mode));
+    }
+}
+std::vector<std::string> base_interruption_run(random::Mode mode, int interrupt_at) {
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, 10, 1500, false});
+    assets.install();
+    crater.install();
+    auto *building = register_building(0, BUILDING_BASE, 100, 100);
+    auto *capturer = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+    g_MatrixMap->m_TraceStopObj = building;
+    side().OnRButtonDown(CPoint(0, 0));
+    advance_to(session, interrupt_at);
+    MG_CHECK(building->m_State == (interrupt_at == 200 ? BASE_OPENING : interrupt_at == 2000 ? BASE_OPENED : BASE_CLOSING));
+    MG_CHECK(capturer->GetCaptureFactory() == building && building->m_Capturer == capturer);
+    MG_CHECK(capturer->IsDisableManual() == (interrupt_at != 200));
+    CFormMatrixGame form;
+    press(form, 'S');
+    MG_CHECK(capturer->GetCaptureFactory() == nullptr && building->m_Capturer == nullptr);
+    MG_CHECK(session.robot(1).order == mpo_Stop);
+    MG_CHECK(capturer->IsMustDie() == (interrupt_at != 200));
+    std::vector<std::string> trace;
+    while (session.time() < 10000) {
+        session.advance();
+        MG_CHECK(building->GetSide() == 0);
+        trace.push_back(session.snapshot() + ":" + std::to_string(building->m_State) + ":" + std::to_string(building->m_Capturer != nullptr));
+    }
+    std::cout << "base interruption owner=" << building->GetSide() << " state=" << building->m_State
+              << " robot1=" << session.robot(1).alive << " robot2=" << session.robot(2).alive << '\n';
+    MG_CHECK(building->m_State == BASE_CLOSED && building->GetSide() == 0);
+    MG_CHECK(session.robot(1).alive == (interrupt_at == 200) && session.robot(2).alive);
+    MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    MG_CHECK(!g_MatrixMap->IsPaused());
+    return trace;
+}
+void base_capture_interruption() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int interrupt_at : {200, 2000, 4500}) {
+        const auto first = base_interruption_run(mode, interrupt_at);
+        MG_CHECK(first == base_interruption_run(mode, interrupt_at));
+    }
+}
+void turret_does_not_prevent_elimination() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true})
+    for (bool constructing : {false, true}) {
+        tests::BattleCombatAssets assets;
+        Session session({mode, 85, 10, 1000, false});
+        assets.install();
+        DialogData dialog;
+        auto &props = g_Config.m_CannonsProps[0];
+        props = {};
+        props.m_Hitpoint = 100;
+        props.weapon = WEAPON_CANNON2;
+        props.seek_radius = 1;
+        auto *cannon = tests::create_battle_cannon(player ? PLAYER_SIDE : 2, 400, 100);
+        cannon->m_CurrState = constructing ? CANNON_UNDER_CONSTRUCTION : CANNON_IDLE;
+        MG_CHECK(session.remove(player ? 1 : 3) && session.remove(player ? 2 : 4));
+        session.advance();
+        MG_CHECK(g_MatrixMap->GetSideById(player ? PLAYER_SIDE : 2)->GetStatus() == SS_NONE);
+        MG_CHECK(cannon->IsLiveCannon() && cannon->GetSide() == (player ? PLAYER_SIDE : 2));
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player);
+        advance_to(session, 2020);
+        MG_CHECK(g_MatrixMap->IsPaused());
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
+                 (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+    }
+}
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
         outcome(run % 2 == 0, true);
@@ -770,6 +896,9 @@ void repeated_sessions() {
     }
 }
 constexpr tests::Case cases[] = {
+    {"game.outcome.capture_combat_death", capture_combat_death},
+    {"game.outcome.base_capture_interruption", base_capture_interruption},
+    {"game.outcome.turret_does_not_prevent_elimination", turret_does_not_prevent_elimination},
     {"game.outcome.registered_enemy_capture", registered_enemy_capture},
     {"game.outcome.capture_target_removal", capture_target_removal},
     {"game.outcome.registered_base_capture", registered_base_capture},
