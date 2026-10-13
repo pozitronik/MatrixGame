@@ -22,6 +22,7 @@ struct Profile {
     bool audio = true;
     bool initially_selected = true;
     NavigationLayout layout = NavigationLayout::CentralObstacle;
+    bool unavailable_icon_targets = false;
 };
 
 // IDs belong to a session, never to a pointer, group slot or process-global UID.
@@ -57,6 +58,7 @@ public:
     bool matches(EntityId id, const CMatrixRobotAI *candidate) const;
     int frame() const;
     int time() const;
+    std::uint64_t rejected_icon_targets() const;
     void check_running() const;
     std::string metadata(std::string_view fixture = "unarmed-chassis-obstacle-v1") const;
 

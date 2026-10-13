@@ -60,7 +60,8 @@ struct Session::Impl {
     SSpotProperties previous_spot{};
     std::chrono::steady_clock::time_point started = std::chrono::steady_clock::now();
 
-    explicit Impl(Profile p) : profile(p) {
+    explicit Impl(Profile p) : profile(p), device(p.unavailable_icon_targets ?
+        BattleDevice::IconTargets::Unavailable : BattleDevice::IconTargets::Forbidden) {
         MG_CHECK(g_MatrixMap == nullptr && g_MatrixHeap == nullptr && g_MatrixData == nullptr);
         MG_CHECK(g_IFaceList == nullptr && g_Cache == nullptr && !SoundBridge::available());
         MG_CHECK(g_PopupMenu == nullptr);
@@ -242,6 +243,7 @@ void Session::advance() {
 #endif
 }
 int Session::frame() const { return impl_->frames; }
+std::uint64_t Session::rejected_icon_targets() const { return impl_->device.stats().rejected_icon_targets; }
 int Session::time() const { return impl_->map->GetTime(); }
 bool Session::matches(EntityId id, const CMatrixRobotAI *candidate) const {
     return candidate != nullptr && impl_->lookup(id) == candidate;
@@ -319,7 +321,9 @@ std::string Session::metadata(std::string_view fixture) const {
     out << "{\"type\":\"header\",\"schema\":1,\"fixture\":\"" << fixture << "\","
         << "\"navigation_layout\":\"" << layouts[static_cast<unsigned>(impl_->profile.layout)] << "\","
         << "\"revision\":\"" << MATRIXGAME_SCENARIO_REVISION << "\",\"dirty\":" << MATRIXGAME_SCENARIO_DIRTY << ','
-        << "\"render\":\"storage-device-no-draw-cursor-surrogate\",\"viewport\":[1280,720],"
+        << "\"render\":\"" << (impl_->profile.unavailable_icon_targets
+            ? "storage-device-unavailable-icons-no-draw-cursor-surrogate"
+            : "storage-device-no-draw-cursor-surrogate") << "\",\"viewport\":[1280,720],"
         << "\"audio\":\"" << (impl_->profile.audio ? "synthetic-next-frame-completion" : "unavailable") << "\","
         << "\"rng\":\"" << (impl_->profile.mode == random::Mode::ParkMiller ? "ParkMiller" : "LegacyCRT") << "\","
         << "\"seed\":" << impl_->profile.seed << ",\"step_ms\":" << impl_->profile.step_ms
