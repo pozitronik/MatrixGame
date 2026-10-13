@@ -351,6 +351,201 @@ void legacy_loss_cheat() {
     MG_CHECK(side().GetStatValue(STAT_TIME) == 1234);
     MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP));
 }
+void statistics_formatting() {
+    for (DWORD flag : {MMFLAG_STAT_DIALOG, MMFLAG_STAT_DIALOG_D}) {
+        Session session;
+        DialogData dialog;
+        auto *replacements = g_MatrixData->BlockGetAdd(PAR_REPLACE);
+        g_MatrixData->BlockGetAdd(L"Side")->ParSetAdd(L"2", L"Red");
+        auto &enemy = *g_MatrixMap->GetSideById(2);
+        side().SetStatValue(STAT_TIME, -3661000);
+        enemy.SetStatValue(STAT_TIME, 125000);
+        const EStat counters[] = {STAT_ROBOT_BUILD, STAT_ROBOT_KILL, STAT_TURRET_BUILD,
+                                      STAT_TURRET_KILL, STAT_BUILDING_KILL};
+        for (int i = 0; i < 5; ++i) {
+            side().SetStatValue(counters[i], 11 + i);
+            enemy.SetStatValue(counters[i], 21 + i);
+        }
+        // Start at the statistics-request boundary; no confirmation callback is substituted.
+        SETFLAG(g_MatrixMap->m_Flags, flag);
+        session.advance();
+        MG_CHECK(replacements->ParGet(L"_p_c6") == L"<color=0,255,0>01:01:01</color>");
+        MG_CHECK(replacements->ParGet(L"_r_c6") == L"00:02:05");
+        for (int i = 1; i <= 5; ++i) {
+            MG_CHECK(replacements->ParGet(L"_p_c" + std::to_wstring(i)) == std::to_wstring(10 + i));
+            MG_CHECK(replacements->ParGet(L"_r_c" + std::to_wstring(i)) == std::to_wstring(20 + i));
+        }
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
+                 (flag == MMFLAG_STAT_DIALOG ? TEMPLATE_DIALOG_STATISTICS : TEMPLATE_DIALOG_STATISTICS_D));
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG | MMFLAG_STAT_DIALOG_D));
+        MG_CHECK(g_MatrixMap->IsPaused() && session.time() == 0);
+        MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+        g_MatrixMap->LeaveDialogMode();
+        // An unused side clears time only: previously formatted counters remain in replacements.
+        side().SetStatValue(STAT_TIME, 0);
+        enemy.SetStatValue(STAT_TIME, -999);
+        SETFLAG(g_MatrixMap->m_Flags, flag);
+        session.advance();
+        MG_CHECK(replacements->ParGet(L"_p_c6").empty());
+        MG_CHECK(replacements->ParGet(L"_p_c1") == L"11");
+        MG_CHECK(replacements->ParGet(L"_r_c6") == L"00:00:00");
+        MG_CHECK(session.time() == 0);
+    }
+}
+void scheduled_capture() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        CaptureData fixture;
+        auto &building = *fixture.building;
+        // Keep the fixture's capturer marker to suppress candidate publication;
+        // the independent nearest-robot scanner still obtains its own live target.
+        building.m_CaptureSeekRobotNextTime = 0;
+        int first_paint = 0, completed = 0;
+        for (int i = 0; i < 900 && !completed; ++i) {
+            session.advance();
+            building.LogicTakt(step); // The production acquisition scanner invokes Capture.
+            if (!first_paint && building.m_TrueColor.m_ColoredCnt) first_paint = session.time();
+            if (building.GetSide() == PLAYER_SIDE) completed = session.time();
+        }
+        MG_CHECK(first_paint == (step == 10 ? 120 : 128));
+        MG_CHECK(completed == (step == 10 ? 7050 : 7072));
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+        MG_CHECK(building.m_TrueColor.m_Color == 0xff00ff00);
+    }
+}
+void acquisition_after_removal() {
+    for (bool substitute : {false, true}) {
+        Session session;
+        CaptureData fixture;
+        auto &building = *fixture.building;
+        building.m_CaptureSeekRobotNextTime = 0;
+        if (substitute) building.m_Pos = D3DXVECTOR2(100, 235);
+        for (int i = 0; i < 60; ++i) { session.advance(); building.LogicTakt(10); }
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 2);
+        // Remove the currently nearest robot; the next scan must search the live list again.
+        // Preserve that fixture marker on a live object; it is not the scanner's target.
+        if (!substitute) building.SetCapturedBy(side().GetCurGroup()->GetObjectByN(1));
+        MG_CHECK(session.remove(substitute ? 2 : 1));
+        for (int i = 0; i < 690; ++i) { session.advance(); building.LogicTakt(10); }
+        MG_CHECK(building.GetSide() == (substitute ? PLAYER_SIDE : 0));
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == (substitute ? MAX_ZAHVAT_POINTS : 0));
+    }
+}
+void enemy_capture_rollback() {
+    Session session;
+    CaptureData fixture(2);
+    auto &building = *fixture.building;
+    MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+    session.advance();
+    MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+    MG_CHECK(building.m_TrueColor.m_ColoredCnt == 13);
+    building.LogicTakt(1250);
+    MG_CHECK(building.m_InCaptureTime == 0 && building.m_TrueColor.m_ColoredCnt == 13);
+    session.advance();
+    building.LogicTakt(10);
+    MG_CHECK(building.m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+    MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_Color == 0xffff0000);
+}
+void capture_queue_refund() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode});
+        CaptureData fixture(2);
+        auto &building = *fixture.building;
+        building.m_Kind = BUILDING_BASE;
+        auto &enemy = *g_MatrixMap->GetSideById(2);
+        const ERes resources[] = {TITAN, ELECTRONICS, ENERGY, PLASMA};
+        for (int i = 0; i < 4; ++i) {
+            g_Config.m_Price[CHASSIS2_TITAN + i] = 11 + i;
+            enemy.SetResourceAmount(resources[i], 100);
+            side().SetResourceAmount(resources[i], 200);
+        }
+        for (int i = 0; i < 2; ++i) {
+            auto robot = tests::make_engine_object<CMatrixRobotAI>();
+            robot->m_Side = 2;
+            robot->UnitInsert(0, MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+            building.m_BS.AddItem(robot.get());
+            robot.release(); // The production queue owns deletion and refund.
+        }
+        MG_CHECK(building.m_BS.GetItemsCnt() == 2);
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        while (session.time() < 10500) { session.advance(); fixture.capture(); }
+        MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_ColoredCnt == 0);
+        MG_CHECK(building.m_BS.GetItemsCnt() == 2);
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        MG_CHECK(building.GetSide() == 0 && building.m_BS.GetItemsCnt() == 0);
+        MG_CHECK(building.m_BS.GetTopItem() == nullptr);
+        for (int i = 0; i < 4; ++i) {
+            MG_CHECK(enemy.GetResourcesAmount(resources[i]) == 100 + 2 * (11 + i));
+            MG_CHECK(side().GetResourcesAmount(resources[i]) == 200);
+        }
+        for (int i = 0; i < 1000 && building.GetSide() != PLAYER_SIDE; ++i) {
+            session.advance(); fixture.capture();
+        }
+        MG_CHECK(building.GetSide() == PLAYER_SIDE);
+        for (int i = 0; i < 4; ++i) {
+            MG_CHECK(enemy.GetResourcesAmount(resources[i]) == 100 + 2 * (11 + i));
+            MG_CHECK(side().GetResourcesAmount(resources[i]) == 200);
+        }
+    }
+}
+void paused_orders() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode});
+        CFormMatrixGame form;
+        press(form, VK_PAUSE);
+        session.ground_command(500, 300);
+        const auto ordered = session.robot(1);
+        MG_CHECK(ordered.order == mpo_MoveTo && ordered.destination_x == 48 && ordered.destination_y == 28);
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(session.time() == 0 && session.robot(1).x == ordered.x && session.robot(1).y == ordered.y);
+        press(form, 'S');
+        MG_CHECK(session.robot(1).order == mpo_Stop);
+        session.ground_command(120, 500);
+        MG_CHECK(session.robot(1).destination_x == 10 && session.robot(1).destination_y == 48);
+        press(form, VK_PAUSE);
+        for (int i = 0; i < 1600; ++i) session.advance();
+        MG_CHECK(session.robot(1).in_place && session.robot(1).y > 400 && session.robot(1).x < 200);
+    }
+}
+void pending_result_pause() {
+    for (bool loss : {false, true}) {
+        Session session;
+        DialogData dialog;
+        CFormMatrixGame form;
+        MG_CHECK(session.remove(loss ? 1 : 3) && session.remove(loss ? 2 : 4));
+        advance_to(session, 2010);
+        press(form, VK_PAUSE);
+        for (int i = 0; i < 100; ++i) session.advance();
+        MG_CHECK(session.time() == 2010 && g_MatrixMap->m_DialogModeName == nullptr);
+        press(form, VK_PAUSE);
+        session.advance();
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
+                 (loss ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+        press(form, VK_ESCAPE);
+        MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
+                 (loss ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+    }
+}
+void pending_result_late_elimination() {
+    for (bool loss_first : {false, true}) {
+        Session session;
+        DialogData dialog;
+        MG_CHECK(session.remove(loss_first ? 1 : 3) && session.remove(loss_first ? 2 : 4));
+        session.advance();
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !loss_first);
+        // The opposite army disappears after the first status decision but before the dialog.
+        MG_CHECK(session.remove(loss_first ? 3 : 1) && session.remove(loss_first ? 4 : 2));
+        advance_to(session, 2010);
+        MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
+        session.advance();
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
+                 (loss_first ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !loss_first);
+        MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+    }
+}
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
         outcome(run % 2 == 0, true);
@@ -383,6 +578,14 @@ constexpr tests::Case cases[] = {
     {"game.outcome.special_survival_flags", special_survival_flags},
     {"game.outcome.full_auto_escape", full_auto_escape},
     {"game.outcome.legacy_loss_cheat", legacy_loss_cheat},
+    {"game.outcome.statistics_formatting", statistics_formatting},
+    {"game.outcome.scheduled_capture", scheduled_capture},
+    {"game.outcome.acquisition_after_removal", acquisition_after_removal},
+    {"game.outcome.enemy_capture_rollback", enemy_capture_rollback},
+    {"game.outcome.capture_queue_refund", capture_queue_refund},
+    {"game.outcome.paused_orders", paused_orders},
+    {"game.outcome.pending_result_pause", pending_result_pause},
+    {"game.outcome.pending_result_late_elimination", pending_result_late_elimination},
 };
 }
 int main(int argc, char **argv) {
