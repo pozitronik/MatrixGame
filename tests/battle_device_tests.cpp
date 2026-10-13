@@ -305,10 +305,10 @@ void resource_budget() {
     MG_CHECK(device.get()->CreateIndexBuffer(4, 0, D3DFMT_INDEX16, D3DPOOL_MANAGED,
         &bad_index, nullptr) == D3DERR_INVALIDCALL && !bad_index);
     vertex.reset();
-    auto small = texture(device);
+    auto replacement_texture = texture(device);
     MG_CHECK(device.stats().texture_bytes == block + 16 && device.stats().buffer_bytes == 0);
     image.reset();
-    small.reset();
+    replacement_texture.reset();
     MG_CHECK(device.stats().texture_bytes == 0 && device.stats().live_textures == 0);
 }
 
