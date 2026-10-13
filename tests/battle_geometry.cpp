@@ -52,8 +52,13 @@ struct MeshFile {
     }
 };
 
-void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachment> attachments, bool combat_animations) {
+void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachment> attachments,
+                bool combat_animations, const wchar_t *texture_name = nullptr) {
     CStorage storage;
+    if (texture_name) {
+        schema(storage, L"surfs", {{L"texs", ST_WCHAR}});
+        storage.GetBuf(L"surfs", L"texs", ST_WCHAR)->AddWStr(texture_name);
+    }
     schema(storage, L"verts", {{L"data", ST_BYTE}});
     schema(storage, L"idxs", {{L"data", ST_BYTE}});
     schema(storage, L"unions", {{L"data", ST_BYTE}});
@@ -137,6 +142,20 @@ CVectorObject *load_battle_mesh(std::span<const MeshAttachment> attachments, con
         MG_CHECK(g_Cache->Find(CacheClass::VO, cache_name) == nullptr);
         geometry->m_Name = cache_name;
     }
+    return geometry;
+}
+
+CVectorObject *load_battle_material_mesh(std::span<const MeshAttachment> attachments,
+    const wchar_t *cache_name, const wchar_t *texture_name, bool combat_animations) {
+    MG_CHECK(cache_name && *cache_name && texture_name && *texture_name);
+    MG_CHECK(g_Cache->Find(CacheClass::VO, cache_name) == nullptr);
+    MG_CHECK(g_Cache->Find(CacheClass::TextureManaged, texture_name) != nullptr);
+    MeshFile file;
+    write_mesh(file.path, attachments, combat_animations, texture_name);
+    auto *geometry = static_cast<CVectorObject *>(g_Cache->Get(CacheClass::VO, file.path.c_str()));
+    geometry->LoadSpecial(OLF_NO_TEX, nullptr, 0);
+    MG_CHECK(std::filesystem::remove(file.path));
+    geometry->m_Name = cache_name;
     return geometry;
 }
 }
