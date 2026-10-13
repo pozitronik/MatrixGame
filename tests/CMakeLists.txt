@@ -375,3 +375,9 @@ if(MATRIXGAME_BUILD_DLL)
         LABELS "engine;asset-free;startup;dll"
         TIMEOUT 30)
 endif()
+
+add_matrix_test_executable(matrixgame_presentation_integration_tests presentation_integration_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_presentation_integration_tests PRIVATE MatrixGameInternal)
+foreach(contract push_sounds preset_matching disabled optional_audio interface_layer)
+    add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
+endforeach()
