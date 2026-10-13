@@ -5,14 +5,44 @@
 #include "command_world.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixRobot.hpp"
+#include "MatrixFlyer.hpp"
+#include "MatrixObjectBuilding.hpp"
+#include "MatrixObjectCannon.hpp"
+#include "MatrixMultiSelection.hpp"
 #include "Interface/CInterface.h"
 #include "Interface/CIFaceElement.h"
 #include "input.hpp"
 #include "cheats.hpp"
+#include <algorithm>
+#include <initializer_list>
 #include <csignal>
 #include <cstdlib>
 #include <vector>
 #include <iostream>
+
+// Reuse the existing visibility-fixture friendship without substituting InRect.
+// Only the precomputed visible-object order is supplied; mesh picking is real.
+struct SelectionFixture {
+    SelectionFixture(std::initializer_list<CMatrixMapStatic *> visible) {
+        MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+        CMatrixMapStatic::objects_left = 0;
+        CMatrixMapStatic::objects_rite = 0;
+        for (auto *object : visible) append(object);
+        g_IFaceList->m_InFocus = UNKNOWN;
+    }
+    void append(CMatrixMapStatic *object) {
+        MG_CHECK(CMatrixMapStatic::objects_rite < MAX_OBJECTS_PER_SCREEN);
+        CMatrixMapStatic::objects[CMatrixMapStatic::objects_rite++] = object;
+    }
+    ~SelectionFixture() {
+        while (CMultiSelection::m_First) {
+            auto *selection = CMultiSelection::m_First;
+            HDelete(CMultiSelection, selection, g_MatrixHeap);
+        }
+        for (int i = 0; i < CMatrixMapStatic::objects_rite; ++i) CMatrixMapStatic::objects[i] = nullptr;
+        CMatrixMapStatic::objects_left = CMatrixMapStatic::objects_rite = 0;
+    }
+};
 
 namespace {
 using namespace tests::battle;
@@ -270,6 +300,423 @@ void group_add_cap() {
     for (int i = 0; i < 9; ++i) MG_CHECK(selected(i)->GetGroupLogic() == group);
     MG_CHECK(additional.back()->GetGroupLogic() == -1);
 }
+CPoint screen_center(CMatrixRobotAI &robot) {
+    D3DXMATRIX identity;
+    D3DXMatrixIdentity(&identity);
+    const auto p = g_MatrixMap->m_Camera.Project(robot.GetGeoCenter(), identity);
+    return CPoint(static_cast<int>(p.x), static_cast<int>(p.y));
+}
+void drag(CFormMatrixGame &form, CPoint from, CPoint to) {
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
+    form.MouseMove(from.x, from.y);
+    form.MouseKey(B_DOWN, VK_LBUTTON, from.x, from.y);
+    MG_CHECK(CMultiSelection::m_GameSelection != nullptr);
+    form.MouseMove(to.x, to.y);
+    form.MouseKey(B_UP, VK_LBUTTON, to.x, to.y);
+    MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+    MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON));
+}
+void mesh_selection() {
+    Session session;
+    CFormMatrixGame form;
+    auto *first = selected(0), *second = selected(1);
+    auto *enemy = tests::BattleGeometry::create_robot(*g_MatrixMap, 2, 100, 200);
+    enemy->SetTeam(0);
+    auto flyer = tests::make_engine_object<CMatrixFlyer>();
+    flyer->SetSide(PLAYER_SIDE);
+    SelectionFixture visible{enemy, flyer.get(), first, second};
+    const auto a = screen_center(*first), b = screen_center(*second);
+    MG_CHECK(first->InRect(CRect(a.x - 2, a.y - 2, a.x + 2, a.y + 2)));
+    MG_CHECK(enemy->InRect(CRect(a.x - 2, a.y - 2, a.x + 2, a.y + 2)));
+    side().Select(NOTHING, nullptr);
+    side().ResetSystemSelection();
+    drag(form, CPoint(a.x - 2, a.y - 2), CPoint(a.x + 2, a.y + 2));
+    MG_CHECK(side().m_CurrSel == ROBOT_SELECTED);
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == first);
+    form.Keyboard(true, g_Config.m_KeyActions[KA_SHIFT]);
+    drag(form, CPoint(b.x - 2, b.y - 2), CPoint(b.x + 2, b.y + 2));
+    form.Keyboard(false, g_Config.m_KeyActions[KA_SHIFT]);
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 2);
+    MG_CHECK(selected(0) == first && selected(1) == second);
+    form.Keyboard(true, g_Config.m_KeyActions[KA_SHIFT]);
+    drag(form, CPoint(a.x - 2, a.y - 2), CPoint(a.x + 2, a.y + 2));
+    form.Keyboard(false, g_Config.m_KeyActions[KA_SHIFT]);
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == second);
+    // A reversed rectangle finds both meshes in visibility order.
+    drag(form, CPoint(std::max(a.x, b.x) + 20, std::max(a.y, b.y) + 20),
+               CPoint(std::min(a.x, b.x) - 20, std::min(a.y, b.y) - 20));
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 2);
+    MG_CHECK(selected(0) == first && selected(1) == second);
+    drag(form, CPoint(0, 0), CPoint(2, 2));
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 2); // Empty drag retains the selected group.
+    MG_CHECK(selected(0) == first && selected(1) == second);
+    session.ground_command(500, 300);
+    expect_order(session, mpo_MoveTo);
+    for (int i = 0; i < 1500; ++i) session.advance();
+    MG_CHECK(session.robot(1).x > 400 && session.robot(2).x > 400);
+}
+void overlapping_selection_limit() {
+    Session session;
+    CFormMatrixGame form;
+    auto *first = selected(0), *second = selected(1);
+    auto *overlap = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200);
+    SelectionFixture visible{overlap, first, second};
+    const auto p = screen_center(*first);
+    side().Select(NOTHING, nullptr);
+    side().ResetSystemSelection();
+    drag(form, p, CPoint(p.x + 1, p.y + 1));
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == overlap);
+    // Area 9 is no longer the single-hit fast path (whose condition is < 9).
+    drag(form, CPoint(p.x - 1, p.y - 1), CPoint(p.x + 2, p.y + 2));
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 2);
+    MG_CHECK(selected(0) == overlap && selected(1) == first);
+    std::vector<CMatrixRobotAI *> extras;
+    for (int i = 0; i < 30; ++i) {
+        auto *robot = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200);
+        visible.append(robot);
+        extras.push_back(robot);
+    }
+    drag(form, CPoint(p.x - 10, p.y - 10), CPoint(p.x + 10, p.y + 10));
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 30);
+    MG_CHECK(selected(0) == overlap && selected(1) == first);
+    for (int i = 0; i < 28; ++i) MG_CHECK(selected(i + 2) == extras[i]);
+    MG_CHECK(!side().GetCurGroup()->FindObject(extras[28]));
+    MG_CHECK(!side().GetCurGroup()->FindObject(extras[29]));
+}
+void independent_group_commands() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode});
+        CFormMatrixGame form;
+        auto *first = selected(0), *second = selected(1);
+        side().CreateGroupFromCurrent(first);
+        side().Select(ROBOT, nullptr);
+        session.ground_command(500, 180);
+        const auto first_group = session.robot(1).group;
+        side().CreateGroupFromCurrent(second);
+        side().Select(ROBOT, nullptr);
+        session.ground_command(120, 500);
+        MG_CHECK(session.robot(2).group != first_group);
+        const auto first_destination = side().m_PlayerGroup[first_group].m_To;
+        for (int i = 0; i < 100; ++i) session.advance();
+        press(form, 'S');
+        MG_CHECK(session.robot(2).order == mpo_Stop);
+        MG_CHECK(session.robot(1).order == mpo_MoveTo);
+        MG_CHECK(side().m_PlayerGroup[first_group].m_To == first_destination);
+        for (int i = 0; i < 1900; ++i) session.advance();
+        MG_CHECK(session.robot(1).x > 400 && session.robot(1).in_place);
+        MG_CHECK(session.robot(2).y < 450);
+    }
+}
+void minimap_move_routes() {
+    for (bool explicit_order : {false, true}) {
+        Session session;
+        CFormMatrixGame form;
+        auto minimap = tests::make_engine_object<CInterface>();
+        minimap->m_strName = IF_MINI_MAP;
+        g_IFaceList->m_InFocus = INTERFACE;
+        g_IFaceList->m_FocusedInterface = minimap.get();
+        g_MatrixMap->m_Minimap.SetOutParams(10, 20, 320, 320, D3DXVECTOR2(320, 320), 1, 0xffffffff);
+        g_MatrixMap->m_Minimap.SetAngle(0);
+        g_MatrixMap->m_Minimap.BeforeDraw();
+        g_MatrixMap->m_Cursor.SetPos(260, 170); // The 320-pixel map represents 640 world units.
+        g_MatrixMap->m_TraceStopObj = TRACE_STOP_WATER;
+        g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(120, 500, 10); // The world trace must be superseded.
+        if (explicit_order) {
+            press(form, 'M');
+            side().OnLButtonDown(CPoint(260, 170));
+        } else side().OnRButtonDown(CPoint(260, 170));
+        expect_order(session, mpo_MoveTo);
+        MG_CHECK(session.robot(1).destination_x == 48 && session.robot(1).destination_y == 28);
+        MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE));
+        g_IFaceList->m_InFocus = UNKNOWN;
+        g_IFaceList->m_FocusedInterface = nullptr;
+        for (int i = 0; i < 1500; ++i) session.advance();
+        MG_CHECK(session.robot(1).x > 400 && session.robot(2).x > 400);
+    }
+}
+void edge_and_repeated_move() {
+    for (const CPoint target : {CPoint(0, 0), CPoint(640, 640)}) {
+        Session session;
+        CFormMatrixGame form;
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            session.ground_command(float(target.x), float(target.y));
+            expect_order(session, mpo_MoveTo);
+            MG_CHECK(session.robot(1).destination_x == target.x / 10 - 2);
+            MG_CHECK(session.robot(1).destination_y == target.y / 10 - 2);
+            for (int i = 0; i < 10; ++i) session.advance();
+        }
+        for (int i = 0; i < 2000; ++i) session.advance();
+        for (auto id : {1u, 2u}) {
+            MG_CHECK(session.robot(id).in_place);
+            MG_CHECK(session.robot(id).x >= 20 && session.robot(id).x <= 620);
+            MG_CHECK(session.robot(id).y >= 20 && session.robot(id).y <= 620);
+            if (!target.x) MG_CHECK(session.robot(id).x < 100 && session.robot(id).y < 100);
+            else MG_CHECK(session.robot(id).x > 500 && session.robot(id).y > 500);
+        }
+        side().Select(NOTHING, nullptr);
+        side().ResetSystemSelection();
+        const auto before = session.snapshot();
+        session.ground_command(120, 300);
+        press(form, 'M');
+        MG_CHECK(session.snapshot() == before);
+        MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE));
+    }
+}
+void auto_target_retirement() {
+    for (char key : {'U', 'D'}) {
+        for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+            Session session({mode});
+            CFormMatrixGame form;
+            press(form, key);
+            session.advance();
+            MG_CHECK(session.robot(1).target == 3);
+            for (int i = 0; i < 29; ++i) session.advance();
+            MG_CHECK(session.robot(1).x != 100 || session.robot(1).y != 200);
+            MG_CHECK(session.remove(3));
+            for (int i = 0; i < 30; ++i) session.advance();
+            MG_CHECK(session.robot(1).target == 4);
+            MG_CHECK(session.remove(4));
+            for (int i = 0; i < 30; ++i) session.advance();
+            expect_order(session, key == 'U' ? mpo_AutoAttack : mpo_AutoDefence);
+            MG_CHECK(session.robot(1).target_is_null);
+            MG_CHECK(session.robot(2).target_is_null);
+            // Keep below the first result poll: this case isolates tactical target replacement.
+            MG_CHECK(session.time() == 900);
+        }
+    }
+}
+void mixed_auto_selection() {
+    Session session;
+    CFormMatrixGame form;
+    auto *first = selected(0), *second = selected(1);
+    side().CreateGroupFromCurrent(first);
+    side().Select(ROBOT, nullptr);
+    press(form, 'U');
+    MG_CHECK(session.robot(1).order == mpo_AutoAttack);
+    side().CreateGroupFromCurrent(second);
+    side().Select(ROBOT, nullptr);
+    press(form, 'D');
+    MG_CHECK(session.robot(2).order == mpo_AutoDefence);
+    side().GetCurSelGroup()->AddObject(first, -4);
+    side().AddToCurrentGroup();
+    side().Select(GROUP, nullptr);
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, AUTO_FROBOT_ON));
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, AUTO_PROTECT_ON));
+    press(form, 'U'); // Active for one member: the first press stops the whole mixed selection.
+    expect_order(session, mpo_Stop);
+    MG_CHECK(!(g_IFaceList->m_IfListFlags & (AUTO_FROBOT_ON | AUTO_CAPTURE_ON | AUTO_PROTECT_ON)));
+    press(form, 'U');
+    expect_order(session, mpo_AutoAttack);
+    for (int i = 0; i < 30; ++i) session.advance();
+    MG_CHECK(session.robot(1).target == 3);
+    MG_CHECK(session.remove(1));
+    MG_CHECK(session.remove(2));
+    session.advance();
+    MG_CHECK(side().GetCurGroup() == nullptr);
+    MG_CHECK(side().m_CurrSel == NOTHING_SELECTED);
+    press(form, 'U');
+    MG_CHECK(!session.robot(1).alive && !session.robot(2).alive);
+}
+void capture_target_validation() {
+    for (int owner : {0, 1, 2}) for (bool explicit_order : {false, true}) {
+        Session session;
+        CFormMatrixGame form;
+        auto building = tests::make_engine_object<CMatrixBuilding>();
+        building->m_Kind = BUILDING_TITAN;
+        building->m_State = BASE_CLOSED;
+        building->m_Side = owner;
+        building->m_Pos = D3DXVECTOR2(180, 400);
+        building->InitMaxHitpoint(1000);
+        building->AddLT();
+        g_MatrixMap->m_TraceStopObj = building.get();
+        g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(180, 400, 10);
+        if (explicit_order) {
+            press(form, 'K');
+            side().OnLButtonDown(CPoint(0, 0));
+        } else side().OnRButtonDown(CPoint(0, 0));
+        if (owner != PLAYER_SIDE) {
+            expect_order(session, mpo_Capture);
+            MG_CHECK(side().m_PlayerGroup[session.robot(1).group].m_Obj == building.get());
+            MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE));
+            const int capturing = int(selected(0)->FindOrderLikeThat(ROT_CAPTURE_FACTORY)) +
+                                  int(selected(1)->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+            MG_CHECK(capturing == 1);
+            MG_CHECK(building->GetSide() == owner); // Acceptance does not instantly transfer ownership.
+            press(form, 'S');
+            for (int i = 0; i < 2; ++i) MG_CHECK(!selected(i)->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+        } else if (explicit_order) {
+            MG_CHECK((g_IFaceList->m_IfListFlags & (PREORDER_CAPTURE | ORDERING_MODE)) ==
+                     (PREORDER_CAPTURE | ORDERING_MODE));
+            MG_CHECK(session.robot(1).group == -1 && session.robot(2).group == -1);
+            press(form, 'X');
+        } else {
+            expect_order(session, mpo_MoveTo);
+            MG_CHECK(session.robot(1).target_is_null);
+            MG_CHECK(session.robot(1).destination_x == 16 && session.robot(1).destination_y == 38);
+            press(form, 'S');
+        }
+        g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+        // This mesh-free target is used only for synchronous validation/order transfer.
+    }
+}
+void cannon_and_invalid_targets() {
+    Session session;
+    CFormMatrixGame form;
+    auto cannon = tests::make_engine_object<CMatrixCannon>();
+    cannon->SetSide(2);
+    cannon->m_Num = 1;
+    cannon->AddLT();
+    cannon->m_Pos = D3DXVECTOR2(180, 400);
+    g_MatrixMap->m_TraceStopObj = cannon.get();
+    g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(180, 400, 10);
+    side().OnRButtonDown(CPoint(0, 0));
+    expect_order(session, mpo_Attack);
+    MG_CHECK(side().m_PlayerGroup[session.robot(1).group].m_Obj == cannon.get());
+    press(form, 'S');
+    cannon->SetSide(PLAYER_SIDE);
+    side().OnRButtonDown(CPoint(0, 0));
+    expect_order(session, mpo_MoveTo);
+    MG_CHECK(session.robot(1).destination_x == 16 && session.robot(1).destination_y == 38);
+    press(form, 'A');
+    side().OnLButtonDown(CPoint(0, 0));
+    expect_order(session, mpo_Attack);
+    MG_CHECK(side().m_PlayerGroup[session.robot(1).group].m_Obj == cannon.get());
+    press(form, 'S');
+    cannon->m_CurrState = CANNON_DIP;
+    press(form, 'A');
+    side().OnLButtonDown(CPoint(0, 0));
+    expect_order(session, mpo_Attack);
+    MG_CHECK(session.robot(1).target_is_null); // A non-live object is treated as ground.
+    MG_CHECK(session.robot(1).destination_x == 16 && session.robot(1).destination_y == 38);
+    press(form, 'K');
+    side().OnLButtonDown(CPoint(0, 0));
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_CAPTURE));
+    press(form, 'X');
+    press(form, 'S');
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+    const auto before = session.snapshot();
+    side().OnRButtonDown(CPoint(0, 0));
+    MG_CHECK(session.snapshot() == before);
+}
+void manual_aim_and_fire_input() {
+    Session session;
+    CFormMatrixGame form;
+    auto *robot = selected(0);
+    press(form, VK_RETURN);
+    g_IFaceList->m_InFocus = UNKNOWN;
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
+    g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(180, 240, 35);
+    MG_CHECK(g_Config.m_KeyActions[KA_FIRE] == VK_LBUTTON);
+    form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+    session.advance();
+    MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE));
+    float x = 0, y = 0, z = 0;
+    int fire_type = -1;
+    robot->GetOrder(0)->GetParams(&x, &y, &z, &fire_type);
+    MG_CHECK(x == 180 && y == 240 && z == 35 && fire_type == 0);
+    MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+    g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(140, 270, 20);
+    session.advance();
+    MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE));
+    form.MouseKey(B_UP, VK_LBUTTON, 640, 360);
+    session.advance();
+    MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE));
+    g_IFaceList->m_InFocus = INTERFACE;
+    form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+    // Isolate the unit's focus guard: a full map tick recomputes hover from UI artwork.
+    robot->LogicTakt(10);
+    MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE));
+    g_IFaceList->m_InFocus = UNKNOWN;
+    session.advance();
+    MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE)); // Still held when the pointer returns to the world.
+    form.SystemEvent(SYSEV_INPUT_RESET);
+    session.advance();
+    MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE));
+    MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON));
+    const auto direction = robot->m_Forward;
+    form.MouseKey(B_DOWN, VK_MBUTTON, 640, 360);
+    form.MouseMove(660, 360);
+    session.advance();
+    MG_CHECK(robot->m_Forward != direction);
+    MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 200);
+    form.MouseKey(B_UP, VK_MBUTTON, 660, 360);
+    MG_CHECK(!g_MatrixMap->IsMouseCam());
+    press(form, VK_RETURN);
+    MG_CHECK(!side().IsArcadeMode());
+}
+void registered_cheat_effects() {
+    Profile profile;
+    profile.initially_selected = false;
+    Session session(profile);
+    CFormMatrixGame form;
+    auto type = [&](std::string_view value) { for (char key : value) press(form, key); };
+    const DWORD flags = g_Flags;
+    type("NEED4SPEED");
+#if MATRIXGAME_SCENARIO_CHEATS
+    MG_CHECK(g_Flags == (flags ^ GFLAG_4SPEED));
+#else
+    MG_CHECK(g_Flags == flags);
+#endif
+    type("NEED4SPEED");
+    MG_CHECK(g_Flags == flags);
+    const DWORD map_flags = g_MatrixMap->m_Flags;
+    type("AUTO");
+#if MATRIXGAME_SCENARIO_CHEATS
+    MG_CHECK(g_MatrixMap->m_Flags == (map_flags ^ MMFLAG_AUTOMATIC_MODE));
+#else
+    MG_CHECK(g_MatrixMap->m_Flags == map_flags);
+#endif
+    type("AUTO");
+    MG_CHECK(g_MatrixMap->m_Flags == map_flags);
+    const DWORD diagnostic = g_Config.m_DIFlags;
+    type("BABKI");
+#if MATRIXGAME_SCENARIO_CHEATS
+    MG_CHECK(g_Config.m_DIFlags == (diagnostic ^ DI_SIDEINFO));
+#else
+    MG_CHECK(g_Config.m_DIFlags == diagnostic);
+#endif
+    type("BABKI");
+    MG_CHECK(g_Config.m_DIFlags == diagnostic);
+    for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+        side().SetResourceAmount(static_cast<ERes>(resource), resource * 100);
+    type("RICHIERICH");
+    type("RICHIERICH");
+    for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+        MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(resource)) ==
+                 (MATRIXGAME_SCENARIO_CHEATS ? 9000 : resource * 100));
+    g_MatrixMap->SetMaintenanceTime(1234);
+    type("HURRY");
+    MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == (MATRIXGAME_SCENARIO_CHEATS ? 1 : 1234));
+    g_MatrixMap->SetMaintenanceTime(0);
+    type("HURRY");
+    MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 0);
+}
+void megabust_cheat() {
+    Session session;
+    CFormMatrixGame form;
+    auto *first = selected(0), *second = selected(1);
+    auto *enemy = CMatrixMapStatic::GetFirstLogic();
+    while (enemy && enemy->GetSide() == PLAYER_SIDE) enemy = enemy->GetNextLogic();
+    MG_CHECK(enemy && enemy->IsLiveRobot());
+    const float first_hp = first->GetMaxHitPoint(), second_hp = second->GetMaxHitPoint();
+    const float enemy_hp = enemy->AsRobot()->GetMaxHitPoint();
+    MG_CHECK(first_hp > 0 && second_hp > 0);
+    side().Select(NOTHING, nullptr);
+    side().ResetSystemSelection();
+    auto type = [&] { for (char key : std::string("MEGABUST")) press(form, key); };
+    type();
+    // GetMaxHitPoint reports tenths of the units consumed by InitMaxHitpoint: visible HP doubles.
+    MG_CHECK(first->GetMaxHitPoint() == first_hp * (MATRIXGAME_SCENARIO_CHEATS ? 2 : 1));
+    MG_CHECK(second->GetMaxHitPoint() == second_hp * (MATRIXGAME_SCENARIO_CHEATS ? 2 : 1));
+    MG_CHECK(enemy->AsRobot()->GetMaxHitPoint() == enemy_hp);
+    second->m_CurrState = ROBOT_IN_SPAWN;
+    type();
+    MG_CHECK(first->IsMustDie() == bool(MATRIXGAME_SCENARIO_CHEATS));
+    MG_CHECK(!second->IsMustDie() && !enemy->AsRobot()->IsMustDie());
+    MG_CHECK(first->GetMaxHitPoint() == first_hp * (MATRIXGAME_SCENARIO_CHEATS ? 2 : 1));
+    second->m_CurrState = ROBOT_SUCCESSFULLY_BUILD;
+    // Pending destruction is the cheat's immediate contract; no death-effect tick is simulated here.
+}
 void cheat_dispatch_gate() {
     Profile profile;
     profile.initially_selected = false;
@@ -405,6 +852,15 @@ void manual_control() {
     MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
 }
 constexpr tests::Case cases[] = {
+    {"game.player.megabust_cheat", megabust_cheat},
+    {"game.player.registered_cheat_effects", registered_cheat_effects},
+    {"game.player.manual_aim_and_fire_input", manual_aim_and_fire_input},
+    {"game.player.cannon_and_invalid_targets", cannon_and_invalid_targets},
+    {"game.player.capture_target_validation", capture_target_validation},
+    {"game.player.mixed_auto_selection", mixed_auto_selection},
+    {"game.player.auto_target_retirement", auto_target_retirement},
+    {"game.player.edge_and_repeated_move", edge_and_repeated_move},
+    {"game.player.minimap_move_routes", minimap_move_routes},
     {"game.player.move_routes", move_routes},
     {"game.player.preorder_cancellation", preorder_cancellation},
     {"game.player.capability_rejection", capability_rejection},
@@ -420,6 +876,9 @@ constexpr tests::Case cases[] = {
     {"game.player.manual_exit_held", manual_exit_held},
     {"game.player.manual_focus", manual_focus},
     {"game.player.cheat_dispatch_gate", cheat_dispatch_gate},
+    {"game.player.mesh_selection", mesh_selection},
+    {"game.player.overlapping_selection_limit", overlapping_selection_limit},
+    {"game.player.independent_group_commands", independent_group_commands},
 };
 }
 int main(int argc, char **argv) {

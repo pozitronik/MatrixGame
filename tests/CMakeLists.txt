@@ -384,7 +384,7 @@ target_include_directories(matrixgame_player_order_scenarios PRIVATE "${CMAKE_CU
 target_compile_definitions(matrixgame_player_order_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract move_routes preorder_cancellation capability_rejection stop_key stop_button attack_routes control_groups group_add_cap manual_control controlled_unit_removal manual_exit_held manual_focus patrol_reversal auto_modes cheat_dispatch_gate)
+foreach(contract move_routes preorder_cancellation capability_rejection stop_key stop_button attack_routes control_groups group_add_cap manual_control controlled_unit_removal manual_exit_held manual_focus patrol_reversal auto_modes cheat_dispatch_gate mesh_selection overlapping_selection_limit independent_group_commands minimap_move_routes edge_and_repeated_move auto_target_retirement mixed_auto_selection capture_target_validation cannon_and_invalid_targets manual_aim_and_fire_input registered_cheat_effects megabust_cheat)
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
 
