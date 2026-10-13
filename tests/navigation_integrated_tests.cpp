@@ -142,8 +142,8 @@ void multiregion_road_guidance() {
         const auto *road = group.m_RoadPath->m_Units[1].m_Road;
         MG_CHECK(road && road->m_ZoneCnt == 2 && road->m_PathCnt == 2);
         MG_CHECK(road->m_Zone[0] == 0 && road->m_Zone[1] == 1);
-        // A real region route is supplied as initial group state. Robot ticks choose
-        // the route-aware ZonePathCalc branch while crossing non-adjacent zones 0 and 3.
+        // Supplying a real route must not disturb arrival. This topology does not
+        // distinguish route following from ordinary zone search.
         movement.advance(session, 16000, step);
         arrived(session, 500, 500);
         MG_CHECK(group.m_RoadPath->m_ListCnt == 1 && group.m_RoadPath->m_Units[1].m_Road == road);
@@ -155,6 +155,7 @@ void multiregion_road_guidance() {
 
 // Manual correctness probe, intentionally absent from CTest baseline registration.
 // It must fail at nonfinite state, never accept that state as a gameplay reference.
+// Tracked defect: https://github.com/pozitronik/MatrixGame/issues/134.
 void group_speed_nonfinite_probe() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         Session session(profile(mode, step));

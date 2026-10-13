@@ -68,7 +68,7 @@ The `game.scenario.*` cases run synthetic battles through `CMatrixMapLogic::Takt
 
 For synthetic building geometry, queue deployment and exact base-exit lifecycle contracts, see [Synthetic building fixtures](testing/building-fixtures.md).
 
-The world is a 64 by 64 movement grid with flat terrain, real terrain groups, navigation zones/places and an obstacle occupying cells `[28,36) by [20,44)`. Small generated storage-format meshes supply actual animation, bounds and chassis attachment data. Temporary mesh files are eagerly loaded and removed; supplied game packages are never read. The production pathfinder chooses the route. Two friendly chassis start at `(100,200)` and `(100,260)` in world coordinates; unarmed autonomous enemy chassis start at `(500,500)` and `(540,540)`.
+`BattleGeometry` accepts a navigation layout; `CentralObstacle` remains the default. The default world is a 64 by 64 movement grid with flat terrain, real terrain groups, navigation zones/places and an obstacle occupying cells `[28,36) by [20,44)`. Small generated storage-format meshes supply actual animation, bounds and chassis attachment data. Temporary mesh files are eagerly loaded and removed; supplied game packages are never read. The production pathfinder chooses the route. Two friendly chassis start at `(100,200)` and `(100,260)` in world coordinates; unarmed autonomous enemy chassis start at `(500,500)` and `(540,540)`.
 
 | Contract | Evidence |
 | --- | --- |
@@ -113,6 +113,8 @@ The [synthetic reinforcement fixtures](testing/reinforcement-fixtures.md) cover 
 The [construction and production contracts](testing/83-production.md) cover queue ownership and refunds, income, AI and player purchase, and reinforcement gates. They distinguish tested callbacks and components from remaining rendered UI and strategic coverage.
 
 The [combat contracts](testing/82-combat.md) describe firing, damage, status and object lifetime oracles; select them with `^game\.combat\.`.
+
+The [navigation contracts](testing/81-navigation.md) describe alternate topology, local movement and carrier lifetime; select them with `^game\.navigation\.`.
 
 ### Extending the fixture
 

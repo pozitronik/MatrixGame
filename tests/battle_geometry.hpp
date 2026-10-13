@@ -1,6 +1,8 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #pragma once
 
+#include <stdexcept>
+
 class CMatrixMapLogic;
 class CMatrixRobotAI;
 enum ERobotUnitKind : unsigned int;
@@ -8,6 +10,19 @@ enum ERobotUnitKind : unsigned int;
 namespace tests {
 
 enum class NavigationLayout { CentralObstacle, Open, Corridor, DeadEnd, Disconnected, MultiRegion };
+
+inline const char *navigation_layout_name(NavigationLayout layout) {
+    switch (layout) {
+    case NavigationLayout::CentralObstacle: return "central-obstacle-v1";
+    case NavigationLayout::Open: return "open-v1";
+    case NavigationLayout::Corridor: return "corridor-v1";
+    case NavigationLayout::DeadEnd: return "dead-end-v1";
+    case NavigationLayout::Disconnected: return "disconnected-v1";
+    case NavigationLayout::MultiRegion: return "multi-region-v1";
+    }
+    throw std::runtime_error("Unsupported synthetic navigation layout");
+}
+
 
 // Initial fixture data only. Commands, navigation and ticks remain production code.
 class BattleGeometry {

@@ -280,10 +280,11 @@ std::vector<std::string> group_run(NavigationLayout layout, random::Mode mode, i
     Session session(profile(layout, mode, step));
     const auto directory = std::filesystem::current_path() / "navigation-traces";
     std::filesystem::create_directories(directory);
-    const auto name = std::to_string(static_cast<int>(layout)) + "-" + std::to_string(static_cast<int>(mode)) + "-" + std::to_string(step) + "-" + std::to_string(run);
+    const auto name = std::string(navigation_layout_name(layout)) + "-" +
+        (mode == random::Mode::ParkMiller ? "pm" : "crt") + "-" + std::to_string(step) + "-" + std::to_string(run);
     std::ofstream trace(directory / (name + ".jsonl"));
     MG_CHECK(trace.good());
-    trace << session.metadata() << '\n';
+    trace << session.metadata(std::string("unarmed-chassis-") + navigation_layout_name(layout)) << '\n';
     session.ground_command(500, 300);
     trace << "{\"type\":\"command\",\"frame\":0,\"name\":\"context-ground(500,300)\"}\n";
     trace.flush();
@@ -303,7 +304,7 @@ std::vector<std::string> group_run(NavigationLayout layout, random::Mode mode, i
         }
     }
     session.check_running();
-    std::cout << session.metadata() << '\n' << session.snapshot() << '\n';
+    std::cout << session.metadata(std::string("unarmed-chassis-") + navigation_layout_name(layout)) << '\n' << session.snapshot() << '\n';
     if (layout == NavigationLayout::Disconnected) {
         MG_CHECK(!crossed);
         MG_CHECK(!session.robot(1).in_place && !session.robot(2).in_place);

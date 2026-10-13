@@ -324,11 +324,10 @@ std::string Session::metadata(std::string_view fixture) const {
     MG_CHECK(!fixture.empty() && fixture.find_first_not_of(
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") == std::string_view::npos);
     std::ostringstream out;
-    const char *layouts[] = {"central-obstacle-v1", "open-v1", "corridor-v1", "dead-end-v1", "disconnected-v1", "multi-region-v1"};
-    out << "{";
-    if (impl_->profile.initial_time_ms) out << "\"initial_time_ms\":" << impl_->profile.initial_time_ms << ',';
-    out << "\"type\":\"header\",\"schema\":1,\"fixture\":\"" << fixture << "\","
-        << "\"navigation_layout\":\"" << layouts[static_cast<unsigned>(impl_->profile.layout)] << "\","
+    out << "{\"type\":\"header\",\"schema\":1,\"fixture\":\"" << fixture << "\",";
+    if (impl_->profile.layout != NavigationLayout::CentralObstacle)
+        out << "\"navigation_layout\":\"" << navigation_layout_name(impl_->profile.layout) << "\",";
+    out
         << "\"revision\":\"" << MATRIXGAME_SCENARIO_REVISION << "\",\"dirty\":" << MATRIXGAME_SCENARIO_DIRTY << ','
         << "\"render\":\"" << (impl_->profile.unavailable_icon_targets
             ? "storage-device-unavailable-icons-no-draw-cursor-surrogate"
@@ -336,7 +335,9 @@ std::string Session::metadata(std::string_view fixture) const {
         << "\"audio\":\"" << (impl_->profile.audio ? "synthetic-next-frame-completion" : "unavailable") << "\","
         << "\"rng\":\"" << (impl_->profile.mode == random::Mode::ParkMiller ? "ParkMiller" : "LegacyCRT") << "\","
         << "\"seed\":" << impl_->profile.seed << ",\"step_ms\":" << impl_->profile.step_ms
-        << ",\"max_frames\":" << impl_->profile.max_frames << ",\"precision_control\":" << (_controlfp(0, 0) & _MCW_PC)
+        << ",\"max_frames\":" << impl_->profile.max_frames;
+    if (impl_->profile.initial_time_ms) out << ",\"initial_time_ms\":" << impl_->profile.initial_time_ms;
+    out << ",\"precision_control\":" << (_controlfp(0, 0) & _MCW_PC)
         << ",\"initially_selected\":" << (impl_->profile.initially_selected ? "true" : "false")
 #if MATRIXGAME_SCENARIO_BUILD_DLL
         << ",\"build_exe\":false"
