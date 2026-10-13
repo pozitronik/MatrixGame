@@ -16,9 +16,9 @@ struct Profile {
     unsigned seed = 79;
     int step_ms = 10;
     int max_frames = 3000;
-    NavigationLayout layout = NavigationLayout::CentralObstacle;
     bool audio = true;
     bool initially_selected = true;
+    NavigationLayout layout = NavigationLayout::CentralObstacle;
 };
 
 // IDs belong to a session, never to a pointer, group slot or process-global UID.
