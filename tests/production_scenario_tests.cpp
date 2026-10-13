@@ -9,9 +9,13 @@
 #include "MatrixObjectBuilding.hpp"
 #include "Interface/CInterface.h"
 #include "Interface/CConstructor.h"
+#include "Interface/CCounter.h"
+#include "Interface/CHistory.h"
+#include "MatrixGame.h"
 #include "MatrixSkinManager.hpp"
 #include <array>
 #include <cmath>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -35,15 +39,27 @@ bool in_logic(CMatrixMapStatic *expected) {
     return false;
 }
 
-void constructor_assets() {
+void constructor_assets(bool repair = false) {
     tests::install_battle_texture(OBJECT_PATH_ROBOT_CHASSIS L"2");
     tests::install_battle_texture(OBJECT_PATH_ROBOT_ARMOR L"1");
     const tests::MeshAttachment link{1, L"armor", 0, 0, 20};
     tests::load_battle_material_mesh(std::span(&link, 1), OBJECT_PATH_ROBOT_CHASSIS L"2.vo",
                                      OBJECT_PATH_ROBOT_CHASSIS L"2");
-    const tests::MeshAttachment head_link{1, L"head", 0, 0, 20};
-    tests::load_battle_material_mesh(std::span(&head_link, 1), OBJECT_PATH_ROBOT_ARMOR L"1.vo",
+    const tests::MeshAttachment links[] = {{1, L"head", 0, 0, 20}, {2, L"weapon", 0, 0, 0}};
+    tests::load_battle_material_mesh(std::span(links, repair ? 2u : 1u), OBJECT_PATH_ROBOT_ARMOR L"1.vo",
                                      OBJECT_PATH_ROBOT_ARMOR L"1");
+    if (repair) {
+        tests::install_battle_texture(OBJECT_PATH_ROBOT_WEAPON L"10");
+        const tests::MeshAttachment muzzle{1, L"muzzle", 0, 15, 0};
+        tests::load_battle_material_mesh(std::span(&muzzle, 1), OBJECT_PATH_ROBOT_WEAPON L"10.vo",
+                                         OBJECT_PATH_ROBOT_WEAPON L"10");
+        auto &slots = g_MatrixMap->m_RobotWeaponMatrix[RUK_ARMOR_BIREX - 1];
+        slots.cnt = slots.common = 1;
+        slots.list[0].id = 2;
+        slots.list[0].access_invert = 1 << (RUK_WEAPON_REPAIR - 1);
+        for (int i = 0; i < MAX_RESOURCES; ++i)
+            g_Config.m_Price[WEAPON1_TITAN + (RUK_WEAPON_REPAIR - 1) * MAX_RESOURCES + i] = 31 + i;
+    }
     auto *names = g_MatrixData->BlockGetAdd(IF_LABELS_BLOCKPAR)->BlockGetAdd(L"RobotNames");
     names->ParSetAdd(L"Hull1Key", L"Synthetic hull ");
     names->ParSetAdd(L"Chas2Key", L"wheels");
@@ -53,6 +69,189 @@ void constructor_assets() {
     for (int i = 0; i < MAX_RESOURCES; ++i) {
         g_Config.m_Price[CHASSIS2_TITAN + i] = 11 + i;
         g_Config.m_Price[ARMOR1_TITAN + i] = 21 + i;
+    }
+}
+
+Cost side_resources(const CMatrixSideUnit &side) {
+    Cost result{};
+    for (int r = 0; r < MAX_RESOURCES; ++r) result[r] = side.GetResourcesAmount(static_cast<ERes>(r));
+    return result;
+}
+
+enum class PurchaseEnd { Queued, Neutralized, Deleted };
+void ai_production_purchase(PurchaseEnd end = PurchaseEnd::Queued) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int shortage = -1; shortage < (end == PurchaseEnd::Queued ? 4 : 0); ++shortage) {
+        tests::BattleMaterialProfile material_profile;
+        Session session({mode, 83, 10, 1000, false, false});
+        std::cout << "AI purchase shortage=" << shortage << " end=" << int(end) << " profile: "
+                  << session.metadata("synthetic-ai-purchase-v1") << '\n';
+        constructor_assets(true);
+        auto owned = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            2, BUILDING_BASE, 100, 100);
+        for (unsigned id = 1; id <= 4; ++id) MG_CHECK(session.remove(id));
+        auto *side = g_MatrixMap->GetSideById(2);
+        side->m_Constructor->SetSide(2);
+        // Run the real regional analysis with no base/definitions, before purchase.
+        side->TaktHL();
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        struct DefinitionsGuard { ~DefinitionsGuard() { SSpecialBot::ClearAIRobotType(); } } definitions_guard;
+        CBlockPar definitions;
+        definitions.ParAdd(L"1", L"W,1S,R");
+        definitions.ParAdd(L"2", L"W,1S"); // Affordable alternative after the repair purchase.
+        SSpecialBot::LoadAIRobotType(definitions, g_MatrixMap->m_RobotWeaponMatrix);
+        MG_CHECK(SSpecialBot::m_AIRobotTypeCnt == 2);
+        MG_CHECK(SSpecialBot::m_AIRobotTypeList[0].m_HaveRepair);
+        const Cost price{63, 66, 69, 72};
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            MG_CHECK(SSpecialBot::m_AIRobotTypeList[0].m_Resources[r] == price[r]);
+            side->SetResourceAmount(static_cast<ERes>(r), price[r] - (r == shortage ? 1 : 0));
+            g_Config.m_Timings[r] = 1000;
+        }
+        side->m_WaitResMul = 0; // Reject unavailable funds without an income forecast.
+        const auto before = side_resources(*side);
+        const auto player_before = resources();
+        const auto draws = random::draw_count();
+        side->BuildRobot();
+        if (shortage >= 0) {
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 0);
+            MG_CHECK(side_resources(*side) == before && random::draw_count() == draws);
+            MG_CHECK(side->m_BuildRobotLast == -1 && side->m_WaitResForBuildRobot == -1);
+        }
+        else {
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 1);
+            MG_CHECK((side_resources(*side) == Cost{}));
+            MG_CHECK(random::draw_count() == draws + 1 && side->m_BuildRobotLast == 0);
+            auto *built = factory->m_BS.GetTopItem()->AsRobot();
+            MG_CHECK(built->GetSide() == 2 && built->GetBase() == factory && !in_logic(built));
+            MG_CHECK(built->m_UnitCnt == 3 && built->m_Unit[2].m_Type == MRT_WEAPON);
+            MG_CHECK(built->m_Unit[2].u1.s1.m_Kind == RUK_WEAPON_REPAIR);
+            MG_CHECK(built->m_Unit[2].u1.s1.m_LinkMatrix == 2 && built->m_Unit[2].m_Graph->GetSkin());
+            Cost constructor_price{};
+            side->m_Constructor->GetConstructionPrice(constructor_price.data());
+            MG_CHECK(constructor_price == price);
+            if (end != PurchaseEnd::Queued) {
+                // Ownership loss/destruction, not a computer cancellation command.
+                g_Config.m_Timings[UNIT_ROBOT] = 100;
+                factory->m_BS.TickTimer(99);
+                MG_CHECK(!in_logic(built) && factory->m_BS.GetItemsCnt() == 1);
+                MG_CHECK((side_resources(*side) == Cost{}));
+                if (end == PurchaseEnd::Neutralized) {
+                    factory->SetNeutral();
+                    MG_CHECK(factory->GetSide() == 0 && factory->m_BS.GetItemsCnt() == 0);
+                    factory->SetNeutral();
+                }
+                g_MatrixMap->StaticDelete(factory);
+                MG_CHECK(side_resources(*side) == price && resources() == player_before);
+                MG_CHECK(random::draw_count() == draws + 1);
+                continue;
+            }
+            // A queued unit blocks the strategy before another proposal/debit/draw.
+            for (int r = 0; r < MAX_RESOURCES; ++r) side->SetResourceAmount(static_cast<ERes>(r), price[r]);
+            side->BuildRobot();
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 1 && factory->m_BS.GetTopItem() == built);
+            MG_CHECK(side_resources(*side) == price && random::draw_count() == draws + 1);
+        }
+        MG_CHECK(resources() == player_before);
+    }
+}
+
+void ai_purchase() { ai_production_purchase(); }
+void ai_purchase_neutralized() { ai_production_purchase(PurchaseEnd::Neutralized); }
+void ai_purchase_deleted() { ai_production_purchase(PurchaseEnd::Deleted); }
+
+void player_constructor_purchase() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (int requested : {1, 3}) for (bool cancel : {false, true}) {
+        tests::BattleMaterialProfile material_profile;
+        tests::battle::Profile profile;
+        profile.mode = mode;
+        profile.seed = 83;
+        profile.audio = false;
+        profile.initially_selected = false;
+        profile.unavailable_icon_targets = true;
+        Session session(profile);
+        constructor_assets();
+        std::cout << "requested=" << requested << " cancel=" << cancel << " "
+                  << session.metadata("synthetic-player-constructor-v1") << '\n';
+        MG_CHECK(g_ConfigHistory == nullptr);
+        CHistory history;
+        struct HistoryReset { ~HistoryReset() { g_ConfigHistory = nullptr; } } history_reset;
+        g_ConfigHistory = &history;
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        auto &constructor = *side.m_Constructor;
+        auto owned = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            PLAYER_SIDE, BUILDING_BASE, 100, 100);
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        constructor.SetSide(PLAYER_SIDE);
+        constructor.SetBase(factory);
+        constructor.OperateUnit(MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+        constructor.OperateUnit(MRT_ARMOR, RUK_ARMOR_BIREX);
+        auto &config = side.m_ConstructPanel->m_Configs[0];
+        config.m_Chassis.m_nKind = RUK_CHASSIS_WHEEL;
+        config.m_Hull.m_Unit.m_nKind = RUK_ARMOR_BIREX;
+        const Cost price{32, 34, 36, 38};
+        Cost actual{};
+        constructor.GetConstructionPrice(actual.data());
+        MG_CHECK(actual == price);
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            side.SetResourceAmount(static_cast<ERes>(r), requested * price[r]);
+        const auto before = resources();
+        g_IFaceList->m_RCountControl->Reset();
+        for (int i = 1; i < requested; ++i) g_IFaceList->m_RCountControl->Inc();
+        g_IFaceList->m_RCountControl->CheckUp();
+        MG_CHECK(g_IFaceList->m_RCountControl->GetCounter() == requested);
+        const auto draws = random::draw_count();
+        constructor.RemoteBuild(nullptr); // The constructor's production build-button callback.
+        MG_CHECK(factory->m_BS.GetItemsCnt() == requested && resources() == Cost{});
+        MG_CHECK(random::draw_count() == draws && session.rejected_icon_targets() == requested);
+        MG_CHECK(g_IFaceList->m_RCountControl->GetCounter() == 0);
+        MG_CHECK(!side.m_ConstructPanel->IsActive());
+        MG_CHECK(history.m_FirstConfig == history.m_LastConfig && history.m_FirstConfig);
+        MG_CHECK(history.m_FirstConfig->m_Chassis.m_nKind == RUK_CHASSIS_WHEEL);
+        MG_CHECK(history.m_FirstConfig->m_Hull.m_Unit.m_nKind == RUK_ARMOR_BIREX);
+        std::vector<CMatrixRobotAI *> robots;
+        struct ReleaseCore { void operator()(SObjectCore *core) const { core->Release(); } };
+        std::vector<std::unique_ptr<SObjectCore, ReleaseCore>> robot_cores;
+        for (auto *item = factory->m_BS.GetTopItem(); item; item = item->m_NextStackItem) {
+            auto *robot = item->AsRobot();
+            MG_CHECK(robot->GetSide() == PLAYER_SIDE && robot->GetBase() == factory);
+            MG_CHECK(!in_logic(robot) && robot->m_UnitCnt == 2);
+            MG_CHECK(!robot->GetBigTexture() && !robot->GetMedTexture());
+            robots.push_back(robot);
+            robot_cores.emplace_back(robot->GetCore(DEBUG_CALL_INFO));
+        }
+        MG_CHECK(robots.size() == static_cast<std::size_t>(requested));
+        if (cancel) {
+            for (int i = 0; i < requested; ++i) {
+                MG_CHECK(factory->m_BS.GetTopItem() == robots[i]);
+                factory->m_BS.DeleteItem(1);
+                MG_CHECK(robot_cores[i]->m_Object == nullptr);
+                for (int r = 0; r < MAX_RESOURCES; ++r)
+                    MG_CHECK(resources()[r] == (i + 1) * price[r]);
+            }
+            MG_CHECK(resources() == before && factory->m_BS.GetItemsCnt() == 0);
+        } else {
+            g_Config.m_Timings[UNIT_ROBOT] = 100;
+            g_Config.m_Timings[RESOURCE_BASE] = 100000;
+            const int built = side.GetStatValue(STAT_ROBOT_BUILD);
+            while (session.time() < 20000 &&
+                   (factory->m_BS.GetItemsCnt() || factory->IsSpawningBot() || factory->m_State != BASE_CLOSED))
+                session.advance();
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && !factory->IsSpawningBot());
+            MG_CHECK(factory->m_State == BASE_CLOSED && resources() == Cost{});
+            MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == built + requested);
+            for (std::size_t i = 0; i < robots.size(); ++i) {
+                auto *robot = robots[i];
+                MG_CHECK(robot_cores[i]->m_Object == robot);
+                MG_CHECK(in_logic(robot) && robot->GetBase() == nullptr);
+                MG_CHECK(robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD && !robot->IsDisableManual());
+            }
+        }
+        constructor.SetBase(nullptr);
     }
 }
 
@@ -352,12 +551,196 @@ void building_geometry() {
             MG_CHECK(g_MatrixMap->UnitGet(x, y)->m_Base == nullptr);
 }
 
-const tests::Case cases[] = {{"game.production.queue_deployment", queue_deployment},
+void maintenance_clock() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 83, step, 1000, false, false});
+        g_MatrixMap->SetMaintenanceTime(32);
+        g_MatrixMap->Pause(true);
+        session.advance();
+        session.advance();
+        MG_CHECK(session.time() == 0 && g_MatrixMap->BeforeMaintenanceTime() == 32);
+        g_MatrixMap->Pause(false);
+        int remaining = 32;
+        for (int i = 1; i <= 5; ++i) {
+            session.advance();
+            remaining = std::max(0, remaining - step);
+            MG_CHECK(session.time() == i * step);
+            MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == remaining);
+        }
+        g_MatrixMap->SetMaintenanceTime(1);
+        session.advance();
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 0);
+    }
+}
+
+void scheduled_income() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (auto kind : {BUILDING_BASE, BUILDING_TITAN, BUILDING_PLASMA, BUILDING_ELECTRONIC, BUILDING_ENERGY}) {
+        Session session({mode, 83, 10, 1000, false, false});
+        auto owned = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            PLAYER_SIDE, kind, 100, 100);
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        for (int timing : {RESOURCE_BASE, RESOURCE_TITAN, RESOURCE_PLASMA, RESOURCE_ELECTRONICS, RESOURCE_ENERGY})
+            g_Config.m_Timings[timing] = 100;
+        g_MatrixMap->GetPlayerSide()->SetResourceForceUp(100);
+        const auto before = resources();
+        for (int i = 0; i < 9; ++i) session.advance();
+        MG_CHECK(resources() == before);
+        session.advance();
+        const auto paid = resources();
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            const bool matching = (kind == BUILDING_TITAN && r == TITAN) ||
+                (kind == BUILDING_PLASMA && r == PLASMA) ||
+                (kind == BUILDING_ELECTRONIC && r == ELECTRONICS) ||
+                (kind == BUILDING_ENERGY && r == ENERGY);
+            MG_CHECK(paid[r] == before[r] + (kind == BUILDING_BASE ? RESOURCES_INCOME_BASE :
+                                            matching ? RESOURCES_INCOME : 0));
+        }
+        factory->SetNeutral();
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(resources() == paid);
+    }
+}
+
+void paused_production() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (int pause_at : {90, 500}) {
+        Session session({mode, 83, 10, 1500, false, false});
+        auto owned = base();
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        g_Config.m_Timings[UNIT_ROBOT] = 100;
+        g_Config.m_Timings[RESOURCE_BASE] = 100000;
+        const auto before = resources();
+        const int initial_built = g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_BUILD);
+        auto *robot = enqueue(*factory);
+        while (session.time() < pause_at) session.advance();
+        MG_CHECK(in_logic(robot) == (pause_at >= 100));
+        const auto state = factory->m_State;
+        const float floor = factory->m_BaseFloor;
+        const auto draws = random::draw_count();
+        const int count = factory->m_BS.GetItemsCnt();
+        const float x = robot->m_PosX, y = robot->m_PosY;
+        g_MatrixMap->Pause(true);
+        for (int i = 0; i < 50; ++i) session.advance();
+        MG_CHECK(session.time() == pause_at && random::draw_count() == draws);
+        MG_CHECK(factory->m_State == state && factory->m_BaseFloor == floor);
+        MG_CHECK(factory->m_BS.GetItemsCnt() == count);
+        MG_CHECK(robot->m_PosX == x && robot->m_PosY == y);
+        MG_CHECK(resources() == before);
+        g_MatrixMap->Pause(false);
+        int opened = -1, detached = -1, closed = -1;
+        while (session.time() < 5000 && closed < 0) {
+            session.advance();
+            if (opened < 0 && factory->m_State == BASE_OPENED) opened = session.time();
+            if (detached < 0 && robot->GetBase() == nullptr) detached = session.time();
+            if (detached >= 0 && factory->m_State == BASE_CLOSED) closed = session.time();
+        }
+        MG_CHECK(opened == 1340 && detached == 3590 && closed == 4840);
+        MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_BUILD) == initial_built + 1);
+        MG_CHECK(resources() == before && factory->m_BS.GetItemsCnt() == 0);
+    }
+}
+
+void cancel_waiting_during_spawn() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 83, 10, 1500, false, false});
+        auto owned = base();
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        g_Config.m_Timings[UNIT_ROBOT] = 100;
+        g_Config.m_Timings[RESOURCE_BASE] = 100000;
+        for (int r = 0; r < MAX_RESOURCES; ++r) g_Config.m_Price[CHASSIS2_TITAN + r] = 11 + r;
+        const auto before = resources();
+        const int built = g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_BUILD);
+        auto *first = enqueue(*factory);
+        auto *waiting = enqueue(*factory);
+        while (session.time() < 500) session.advance();
+        MG_CHECK(in_logic(first) && !in_logic(waiting));
+        MG_CHECK(factory->m_State == BASE_OPENING && factory->IsSpawningBot());
+        MG_CHECK(factory->m_BS.GetTopItem() == waiting);
+        factory->m_BS.DeleteItem(waiting);
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && factory->m_BS.GetTopItem() == nullptr);
+        MG_CHECK(first->GetBase() == factory && first->IsDisableManual());
+        auto expected = before;
+        for (int r = 0; r < MAX_RESOURCES; ++r) expected[r] += 11 + r;
+        MG_CHECK(resources() == expected);
+        while (session.time() < 4840) session.advance();
+        MG_CHECK(first->GetBase() == nullptr && !first->IsDisableManual());
+        MG_CHECK(factory->m_State == BASE_CLOSED && !factory->IsSpawningBot());
+        MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_BUILD) == built + 1);
+        factory->m_BS.ClearStack();
+        MG_CHECK(resources() == expected);
+    }
+}
+
+enum class LandingRejection { Occupied, Incompatible, OverBudget };
+void reinforcement_landing_rejection(LandingRejection rejection) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 83, 10, 1000, false, false});
+        auto factory = base();
+        MG_CHECK(!g_MatrixMap->MaintenanceDisabled());
+        g_Config.m_MaintenanceTime = 1000;
+        g_MatrixMap->m_Difficulty.k_time_before_maintenance = 1;
+        g_MatrixMap->SetMaintenanceTime(0);
+        auto *definitions = g_MatrixData->BlockGetAdd(PAR_SOURCE_FLYER_ORDERS)
+            ->BlockGetAdd(PAR_SOURCE_FLYER_ORDERS_GIVE_BOT);
+        // A real rejected proposal; no robot assembly is reached at this price.
+        definitions->BlockGetAdd(L"131");
+        const int places = g_MatrixMap->m_RN.m_PlaceCnt;
+        MG_CHECK(places == 4);
+        int objects = 0, robot_index = 0;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+            ++objects;
+            if (object->IsLiveRobot()) {
+                object->AsRobot()->GetEnv()->m_Place = rejection == LandingRejection::Occupied ? robot_index : -1;
+                ++robot_index;
+            }
+        }
+        MG_CHECK(robot_index == places);
+        if (rejection == LandingRejection::Incompatible)
+            for (int p = 0; p < places; ++p) g_MatrixMap->m_RN.m_Place[p].m_Move = 31;
+        const auto before = resources();
+        const auto draws = random::draw_count();
+        factory->Maintenance();
+        MG_CHECK(resources() == before && factory->m_BS.GetItemsCnt() == 0);
+        int after = 0;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) ++after;
+        MG_CHECK(after == objects);
+        std::cout << "landing rejection=" << int(rejection) << " cooldown=" << g_MatrixMap->BeforeMaintenanceTime()
+                  << " draws=" << random::draw_count() - draws << '\n';
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 1000);
+        MG_CHECK(random::draw_count() == draws + (rejection == LandingRejection::OverBudget ? 11 : 1));
+        const auto after_draws = random::draw_count();
+        factory->Maintenance();
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 1000 && random::draw_count() == after_draws);
+    }
+}
+void reinforcement_occupied() { reinforcement_landing_rejection(LandingRejection::Occupied); }
+void reinforcement_incompatible() { reinforcement_landing_rejection(LandingRejection::Incompatible); }
+void reinforcement_over_budget() { reinforcement_landing_rejection(LandingRejection::OverBudget); }
+
+const tests::Case cases[] = {{"game.production.ai_purchase", ai_purchase},
+                           {"game.production.player_purchase", player_constructor_purchase},
+                           {"game.production.ai_purchase_neutralized", ai_purchase_neutralized},
+                           {"game.production.ai_purchase_deleted", ai_purchase_deleted},
+                           {"game.production.reinforcement_occupied", reinforcement_occupied},
+                           {"game.production.reinforcement_incompatible", reinforcement_incompatible},
+                           {"game.production.reinforcement_over_budget", reinforcement_over_budget},
+                           {"game.production.paused_production", paused_production},
+                           {"game.production.cancel_waiting_during_spawn", cancel_waiting_during_spawn},
+                           {"game.production.queue_deployment", queue_deployment},
                            {"game.production.constructor_assembly", constructor_assembly},
                            {"game.production.constructor_capacity", constructor_capacity},
                            {"game.production.constructor_deployment", constructor_deployment},
                            {"game.production.base_exit", base_exit},
-                           {"game.production.building_geometry", building_geometry}};
+                           {"game.production.building_geometry", building_geometry},
+                           {"game.production.maintenance_clock", maintenance_clock},
+                           {"game.production.scheduled_income", scheduled_income}};
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);

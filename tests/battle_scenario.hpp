@@ -2,6 +2,7 @@
 #pragma once
 
 #include "random.hpp"
+#include "battle_geometry.hpp"
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -21,6 +22,8 @@ struct Profile {
     bool audio = true;
     bool initially_selected = true;
     bool unavailable_icon_targets = false;
+    NavigationLayout layout = NavigationLayout::CentralObstacle;
+    int initial_time_ms = 0;
 };
 
 // IDs belong to a session, never to a pointer, group slot or process-global UID.

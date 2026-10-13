@@ -68,7 +68,7 @@ The `game.scenario.*` cases run synthetic battles through `CMatrixMapLogic::Takt
 
 For synthetic building geometry, queue deployment and exact base-exit lifecycle contracts, see [Synthetic building fixtures](testing/building-fixtures.md).
 
-The world is a 64 by 64 movement grid with flat terrain, real terrain groups, navigation zones/places and an obstacle occupying cells `[28,36) by [20,44)`. Small generated storage-format meshes supply actual animation, bounds and chassis attachment data. Temporary mesh files are eagerly loaded and removed; supplied game packages are never read. The production pathfinder chooses the route. Two friendly chassis start at `(100,200)` and `(100,260)` in world coordinates; unarmed autonomous enemy chassis start at `(500,500)` and `(540,540)`.
+`BattleGeometry` accepts a navigation layout; `CentralObstacle` remains the default. The default world is a 64 by 64 movement grid with flat terrain, real terrain groups, navigation zones/places and an obstacle occupying cells `[28,36) by [20,44)`. Small generated storage-format meshes supply actual animation, bounds and chassis attachment data. Temporary mesh files are eagerly loaded and removed; supplied game packages are never read. The production pathfinder chooses the route. Two friendly chassis start at `(100,200)` and `(100,260)` in world coordinates; unarmed autonomous enemy chassis start at `(500,500)` and `(540,540)`.
 
 | Contract | Evidence |
 | --- | --- |
@@ -102,13 +102,27 @@ The comparator rejects incompatible profile headers by default, checks command r
 
 ### Shared scenario fixtures
 
+The [player command guide](testing/player-orders.md) maps input and cheat contracts to the behavior catalog and distinguishes real form routes from supplied fixture preconditions.
+
 The [synthetic armed fixtures](testing/armed-fixtures.md) describe generated attachment meshes, weapon/effect dependencies, ownership and bounded firing evidence. Scenario-specific fixture guides live under `docs/testing/`; this page remains their navigation entry point and the authority for common validation rules.
 
 The [synthetic building fixtures](testing/building-fixtures.md) describe building geometry, queue deployment, exact base-exit transitions and safe teardown constraints.
 
+The [synthetic material fixtures](testing/material-fixtures.md) describe CPU textures, production skin loading, constructor assembly and complete building demolition. Their material-bearing models extend the no-render profile without establishing native graphical correctness.
+
 The [synthetic reinforcement fixtures](testing/reinforcement-fixtures.md) cover real request, carrier flight, cargo landing and retirement under an explicit unavailable-icon-renderer profile.
 
+The [construction and production contracts](testing/83-production.md) cover queue ownership and refunds, income, AI and player purchase, and reinforcement gates. They distinguish tested callbacks and components from remaining rendered UI and strategic coverage.
+
 The [combat contracts](testing/82-combat.md) describe firing, damage, status and object lifetime oracles; select them with `^game\.combat\.`.
+
+The [navigation contracts](testing/81-navigation.md) describe alternate topology, local movement and carrier lifetime; select them with `^game\.navigation\.`.
+
+The [presentation evidence guide](testing/87-presentation.md) maps PRES-01 through PRES-04 to interface/audio contracts, the opt-in ClearRect/SPlane probes and native procedures.
+
+The [capture and battle outcome guide](testing/85-battle-outcomes.md) describes capture transitions, survival and objective rules, transport lifetime and result/pause boundaries.
+
+The [strategic and tactical AI guide](testing/84-ai-decisions.md) describes decision fixtures, declared initial state and separately tracked correctness probes.
 
 ### Extending the fixture
 

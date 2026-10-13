@@ -249,6 +249,17 @@ target_compile_definitions(matrixgame_production_scenarios PRIVATE
 add_matrix_test(game.production.queue_deployment matrixgame_production_scenarios gameplay ai)
 add_matrix_test(game.production.base_exit matrixgame_production_scenarios gameplay ai)
 add_matrix_test(game.production.building_geometry matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.maintenance_clock matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.scheduled_income matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.paused_production matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.cancel_waiting_during_spawn matrixgame_production_scenarios gameplay)
+foreach(contract occupied incompatible over_budget)
+    add_matrix_test(game.production.reinforcement_${contract} matrixgame_production_scenarios gameplay ai)
+endforeach()
+add_matrix_test(game.production.player_purchase matrixgame_production_scenarios gameplay rendering memory)
+foreach(contract ai_purchase ai_purchase_neutralized ai_purchase_deleted)
+    add_matrix_test(game.production.${contract} matrixgame_production_scenarios gameplay ai memory)
+endforeach()
 add_matrix_test(game.production.constructor_assembly matrixgame_production_scenarios gameplay ai memory)
 add_matrix_test(game.production.constructor_capacity matrixgame_production_scenarios gameplay ai memory)
 add_matrix_test(game.production.constructor_deployment matrixgame_production_scenarios gameplay ai memory)
@@ -288,7 +299,7 @@ target_include_directories(matrixgame_reinforcement_scenarios PRIVATE "${CMAKE_C
 target_compile_definitions(matrixgame_reinforcement_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract unavailable_robot_icons delivery reservations carrier_limit)
+foreach(contract unavailable_robot_icons delivery reservations carrier_limit player_request mixed_proposals)
     add_matrix_test(game.reinforcement.${contract} matrixgame_reinforcement_scenarios gameplay ai rendering)
 endforeach()
 
@@ -467,6 +478,112 @@ if(MATRIXGAME_BUILD_DLL)
             TIMEOUT 30)
     endforeach()
 endif()
+
+add_matrix_test_executable(matrixgame_production_queue_tests production_queue_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_production_queue_tests PRIVATE MatrixGameInternal)
+foreach(contract reinforcement_gates reinforcement_disabled reinforcement_scaling)
+    add_matrix_test(game.production.${contract} matrixgame_production_queue_tests gameplay ai)
+endforeach()
+foreach(contract queue_order capacity refund_owner neutralization price income turret_progress income_ticks ai_constructor_prices weapon_slots)
+    add_matrix_test(game.production.${contract} matrixgame_production_queue_tests gameplay)
+endforeach()
+
+add_matrix_test_executable(matrixgame_ai_decision_tests ai_decision_tests.cpp ai_observation_tests.cpp ai_cleanup_tests.cpp ai_armed_tests.cpp ai_capture_tests.cpp ai_reinforcement_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_ai_decision_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_ai_decision_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_ai_decision_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_ai_decision_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildings automatic_reinforcement_choices automatic_reinforcement_delivery capture_guard_interruption capture_guard_filters visual_acquisition_range visual_enemy_range visual_filters visual_obstruction visual_retirement_range armed_friendly_line armed_target_retention repair_acquisition_range repair_target_retention repair_explicit_priority memory_cleanup place_bounds bomb_escape_planning enemy_memory memory_target_retirement ignore_expiry bad_positions regroup_thresholds
+                 regroup_teams_and_actions action_priorities action_ties interruptibility automatic_reinforcement_gate strategic_tick tactical_target_choice tactical_blocked_line
+                 strategic_member_loss strategic_base_loss strategic_forward
+                 strategic_objective_replacement strategic_objective_ties strategic_empty_team_split
+                 radio_group radio_team_region radio_filters threat_priorities
+                 automatic_attack_route automatic_capture_route automatic_defence_route
+                 production_wait_choice production_wait_limits production_unaffordable)
+    add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
+endforeach()
+
+add_matrix_test_executable(matrixgame_battle_outcome_scenarios battle_outcome_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_outcome_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_battle_outcome_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_battle_outcome_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_battle_outcome_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract carrier_removal flyer_does_not_prevent_elimination transported_robot_prevents_elimination transported_robot_removal capture_target_damage special_break special_explosion special_animation capture_combat_death turret_does_not_prevent_elimination registered_enemy_capture capture_target_removal registered_base_capture capture_candidate_lifetime registered_capture base_survival factory_does_not_prevent_elimination neutral_capture enemy_capture capture_rejection capture_rollback competing_capturers competing_color special_survival_flags statistics_formatting scheduled_capture acquisition_after_removal enemy_capture_rollback capture_queue_refund)
+    add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay)
+endforeach()
+foreach(contract base_capture_interruption protected_base_command full_auto_escape legacy_loss_cheat paused_orders)
+    add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
+endforeach()
+foreach(contract victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions pending_result_pause pending_result_late_elimination)
+    add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay startup)
+endforeach()
+
+add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_navigation_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_navigation_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_navigation_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_navigation_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract delivery_flights delivery_carrier_damage local_routes passage_width placement region_routes destination_weights group_movement disconnected opposing_flow corridor_movement mixed_chassis removed_blocker carrier_lifetime carrier_cap carrier_drop_landing
+                 multiregion_movement multiregion_road_guidance unreachable_replacement)
+    add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
+endforeach()
+
+add_matrix_test_executable(matrixgame_navigation_boundary_tests navigation_boundary_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_navigation_boundary_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_navigation_boundary_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_navigation_boundary_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract zone_routes road_routes chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
+    add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
+endforeach()
+add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_player_order_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_player_order_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_player_order_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_player_order_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract move_routes preorder_cancellation capability_rejection stop_key stop_button attack_routes control_groups empty_control_group control_group_camera debug_reinforcement_reset group_add_cap shift_rectangle_group_cap manual_control controlled_unit_removal manual_exit_held manual_focus patrol_reversal auto_modes cheat_dispatch_gate mesh_selection overlapping_selection_limit independent_group_commands minimap_move_routes edge_and_repeated_move auto_target_retirement mixed_auto_selection capture_target_validation cannon_and_invalid_targets manual_aim_and_fire_input registered_cheat_effects megabust_cheat)
+    add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
+endforeach()
+
+foreach(contract mixed_building_selection inactive_selection manual_armed_fire repair_command_routes bomb_command_routes)
+    add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
+endforeach()
+
+add_test(NAME game.cheats.intentional_crash
+    COMMAND "${CMAKE_COMMAND}" "-DTEST_EXECUTABLE=$<TARGET_FILE:matrixgame_player_order_scenarios>"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_intentional_cheat_abort.cmake")
+set_tests_properties(game.cheats.intentional_crash PROPERTIES LABELS "engine;asset-free;cheats;parser" TIMEOUT 15)
+add_matrix_test_executable(matrixgame_presentation_integration_tests presentation_integration_tests.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_presentation_integration_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_presentation_integration_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_presentation_integration_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_presentation_integration_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech textured_button_hit_testing)
+    add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
+endforeach()
+
+# Manual correctness probes for catalog defect candidates, intentionally outside
+# CTest until separately reviewed fixes establish the expected invariants.
+add_matrix_test_executable(matrixgame_presentation_defect_probes presentation_defect_probes.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_presentation_defect_probes PRIVATE MatrixGameInternal)
 # Performance workloads. The executable is a measurement tool, not a
 # timing test: CTest only runs a short smoke pass that checks repeatable work.
 add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp

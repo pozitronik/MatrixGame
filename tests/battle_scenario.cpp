@@ -38,12 +38,17 @@ struct EffectSetup : CMatrixEffect {
     static void restore(SSpotProperties previous) { m_SpotProperties[SPOT_SOLE_WHEEL] = previous; }
 };
 
+// Initial clock input only; all subsequent time advances use the production map tick.
+struct ScenarioMap : CMatrixMapLogic {
+    void initial_time(int value) { m_Time = value; }
+};
+
 struct Session::Impl {
     Profile profile;
     CHeap heap;
     CBlockPar data;
     BattleDevice device;
-    EnginePtr<CMatrixMapLogic> map;
+    EnginePtr<ScenarioMap> map;
     EnginePtr<CIFaceList> ui;
     std::vector<CMatrixRobotAI *> entities;
     std::vector<size_t> entity_uids;
@@ -69,6 +74,7 @@ struct Session::Impl {
         MG_CHECK(CMatrixMapStatic::GetFirstLogic() == nullptr);
         MG_CHECK(p.step_ms == 10 || p.step_ms == 16);
         MG_CHECK(p.max_frames > 0 && p.max_frames <= 6000);
+        MG_CHECK(p.initial_time_ms >= 0 && p.initial_time_ms <= 60000);
     }
 
     void setup(SetupFailure failure) {
@@ -103,7 +109,8 @@ struct Session::Impl {
                 [](const std::wstring &) { return audio_fixture::wave(); },
                 [](const std::wstring &, const std::string &error) { throw std::runtime_error(error); }));
         }
-        map.reset(HNew(g_MatrixHeap) CMatrixMapLogic);
+        map.reset(HNew(g_MatrixHeap) ScenarioMap);
+        map->initial_time(profile.initial_time_ms);
         g_MatrixMap = map.get();
         ui.reset(HNew(g_MatrixHeap) CIFaceList);
         g_IFaceList = ui.get();
@@ -119,7 +126,7 @@ struct Session::Impl {
         }
         map->m_PlayerSide = map->m_Side;
         side().InitPlayerSide();
-        BattleGeometry::configure(*map);
+        BattleGeometry::configure(*map, profile.layout);
         map->m_Camera.SetXYStrategy(D3DXVECTOR2(320, 320));
         map->m_Camera.Takt(0);
         map->m_Camera.BeforeDraw();
@@ -307,7 +314,7 @@ std::string Session::snapshot() const {
     return out.str();
 }
 void Session::check_running() const {
-    MG_CHECK(impl_->map->GetTime() == frame() * impl_->profile.step_ms);
+    MG_CHECK(impl_->map->GetTime() == impl_->profile.initial_time_ms + frame() * impl_->profile.step_ms);
     MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP));
     MG_CHECK(impl_->device.stats().material_updates > 0 && impl_->device.stats().locks > 0);
     if (impl_->profile.audio) MG_CHECK(!impl_->audio_state->voices.empty());
@@ -317,7 +324,10 @@ std::string Session::metadata(std::string_view fixture) const {
     MG_CHECK(!fixture.empty() && fixture.find_first_not_of(
         "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") == std::string_view::npos);
     std::ostringstream out;
-    out << "{\"type\":\"header\",\"schema\":1,\"fixture\":\"" << fixture << "\","
+    out << "{\"type\":\"header\",\"schema\":1,\"fixture\":\"" << fixture << "\",";
+    if (impl_->profile.layout != NavigationLayout::CentralObstacle)
+        out << "\"navigation_layout\":\"" << navigation_layout_name(impl_->profile.layout) << "\",";
+    out
         << "\"revision\":\"" << MATRIXGAME_SCENARIO_REVISION << "\",\"dirty\":" << MATRIXGAME_SCENARIO_DIRTY << ','
         << "\"render\":\"" << (impl_->profile.unavailable_icon_targets
             ? "storage-device-unavailable-icons-no-draw-cursor-surrogate"
@@ -325,7 +335,9 @@ std::string Session::metadata(std::string_view fixture) const {
         << "\"audio\":\"" << (impl_->profile.audio ? "synthetic-next-frame-completion" : "unavailable") << "\","
         << "\"rng\":\"" << (impl_->profile.mode == random::Mode::ParkMiller ? "ParkMiller" : "LegacyCRT") << "\","
         << "\"seed\":" << impl_->profile.seed << ",\"step_ms\":" << impl_->profile.step_ms
-        << ",\"max_frames\":" << impl_->profile.max_frames << ",\"precision_control\":" << (_controlfp(0, 0) & _MCW_PC)
+        << ",\"max_frames\":" << impl_->profile.max_frames;
+    if (impl_->profile.initial_time_ms) out << ",\"initial_time_ms\":" << impl_->profile.initial_time_ms;
+    out << ",\"precision_control\":" << (_controlfp(0, 0) & _MCW_PC)
         << ",\"initially_selected\":" << (impl_->profile.initially_selected ? "true" : "false")
 #if MATRIXGAME_SCENARIO_BUILD_DLL
         << ",\"build_exe\":false"

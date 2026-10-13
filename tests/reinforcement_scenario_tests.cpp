@@ -4,6 +4,10 @@
 #include "battle_flyer.hpp"
 #include "MatrixFlyer.hpp"
 #include "MatrixRobot.hpp"
+#include "MatrixFormGame.hpp"
+#include "Interface/CInterface.h"
+#include "Interface/CIFaceStatic.h"
+#include "input.hpp"
 #include "test_support.hpp"
 #include <array>
 #include <memory>
@@ -52,9 +56,6 @@ tests::EnginePtr<CMatrixBuilding> base() {
     return tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
         PLAYER_SIDE, BUILDING_BASE, 100, 100);
 }
-struct MaintenanceInput : CMatrixMapLogic {
-    static void enable(CMatrixMapLogic &map) { map.*&MaintenanceInput::m_MaintenancePRC = 100; }
-};
 void unavailable_robot_icons() {
     for (int repeat = 0; repeat < 2; ++repeat) {
         Session session(icon_profile(random::Mode::ParkMiller));
@@ -82,7 +83,7 @@ void reinforcement_delivery() {
         tests::install_battle_transport();
         auto factory = base();
         MG_CHECK(session.remove(2) && session.remove(4));
-        MaintenanceInput::enable(*g_MatrixMap);
+        MG_CHECK(!g_MatrixMap->MaintenanceDisabled());
         g_Config.m_MaintenanceTime = 1000;
         g_MatrixMap->m_Difficulty.k_time_before_maintenance = 1;
         g_MatrixMap->SetMaintenanceTime(0);
@@ -142,7 +143,7 @@ void reinforcement_reservations() {
         for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
             if (object->IsLiveRobot()) object->AsRobot()->GetEnv()->m_Place = -1;
         source_robot()->GetEnv()->m_Place = 0;
-        MaintenanceInput::enable(*g_MatrixMap);
+        MG_CHECK(!g_MatrixMap->MaintenanceDisabled());
         g_Config.m_MaintenanceTime = 1000;
         g_MatrixMap->m_Difficulty.k_time_before_maintenance = 1.5f;
         g_MatrixMap->SetMaintenanceTime(0);
@@ -182,7 +183,7 @@ void reinforcement_carrier_limit() {
         std::cout << session.metadata("synthetic-reinforcement-cap-v1") << '\n';
         tests::install_battle_transport();
         auto factory = base();
-        MaintenanceInput::enable(*g_MatrixMap);
+        MG_CHECK(!g_MatrixMap->MaintenanceDisabled());
         g_Config.m_MaintenanceTime = 1000;
         g_MatrixMap->m_Difficulty.k_time_before_maintenance = 1;
         g_MatrixMap->SetMaintenanceTime(0);
@@ -208,7 +209,135 @@ void reinforcement_carrier_limit() {
     }
 }
 
+void reinforcement_player_request() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (bool keyboard : {false, true}) for (auto kind : {BUILDING_BASE, BUILDING_TITAN}) {
+        tests::BattleMaterialProfile material_profile;
+        Session session(icon_profile(mode));
+        std::cout << "keyboard=" << keyboard << " building=" << kind << " "
+                  << session.metadata("synthetic-reinforcement-command-v1") << '\n';
+        tests::install_battle_transport();
+        auto factory = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            PLAYER_SIDE, kind, 100, 100);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        struct SelectionReset {
+            CMatrixSideUnit &side;
+            ~SelectionReset() {
+                side.m_ActiveObject = nullptr;
+                side.m_CurrSel = NOTHING_SELECTED;
+                Input::onFocusLost();
+            }
+        } reset{side};
+        CFormMatrixGame form;
+        CIFaceStatic button;
+        button.m_strName = IF_CALL_FROM_HELL;
+        auto request = [&] {
+            if (keyboard) {
+                form.Keyboard(true, 'H');
+                form.Keyboard(false, 'H');
+                MG_CHECK(!Input::isVKeyPressed('H'));
+            } else g_IFaceList->PlayerAction(&button);
+        };
+        g_Config.m_MaintenanceTime = 1000;
+        g_MatrixMap->m_Difficulty.k_time_before_maintenance = 1;
+        g_MatrixMap->SetMaintenanceTime(0);
+        MG_CHECK(!g_MatrixMap->MaintenanceDisabled());
+        const auto before = resources();
+        const auto initial_robots = map_robot_ids();
+        const auto draws = random::draw_count();
+        side.m_ActiveObject = factory.get();
+        side.m_CurrSel = NOTHING_SELECTED;
+        request();
+        MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 0 && random::draw_count() == draws);
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 0);
+        side.m_CurrSel = kind == BUILDING_BASE ? BASE_SELECTED : BUILDING_SELECTED;
+        factory->m_Side = 0; // A formerly owned, now neutral selection cannot request help.
+        request();
+        MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 0 && random::draw_count() == draws);
+        factory->m_Side = PLAYER_SIDE;
+        request();
+        MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 1 && random::draw_count() == draws + 3);
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 1000 && resources() == before);
+        auto *carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[0]);
+        MG_CHECK(carrier->CarryingRobot());
+        auto *robot = static_cast<CMatrixRobotAI *>(carrier->GetCarryingRobot());
+        CoreLease robot_core(robot->GetCore(DEBUG_CALL_INFO));
+        CoreLease carrier_core(carrier->GetCore(DEBUG_CALL_INFO));
+        MG_CHECK(robot->GetSide() == PLAYER_SIDE && !initial_robots.contains(robot->UID));
+        MG_CHECK(map_robot_ids().size() == initial_robots.size() + 1);
+        MG_CHECK(session.rejected_icon_targets() == 1);
+        const auto requested = random::draw_count();
+        request();
+        MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 1 && random::draw_count() == requested);
+        MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 1000);
+        side.m_ActiveObject = nullptr;
+        side.m_CurrSel = NOTHING_SELECTED;
+        while (g_MatrixMap->m_AD_Obj_cnt && session.frame() < 1500) session.advance();
+        MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 0 && carrier_core->m_Object == nullptr);
+        MG_CHECK(robot_core->m_Object == robot && robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD);
+        MG_CHECK(map_robot_ids().size() == initial_robots.size() + 1 && resources() == before);
+    }
+}
+
+void reinforcement_mixed_proposals() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (unsigned seed : {83u, 84u}) {
+        tests::BattleMaterialProfile material_profile;
+        auto profile = icon_profile(mode);
+        profile.seed = seed;
+        Session session(profile);
+        std::cout << session.metadata("synthetic-reinforcement-proposals-v1") << '\n';
+        auto &order = tests::install_battle_transport(60);
+        auto *second = order.BlockAdd(L"100");
+        second->ParAdd(L"BotChassis", L"2");
+        second->ParAdd(L"BotArmor", L"1");
+        second->ParAdd(L"BotHead", L"0");
+        second->ParAdd(L"BotStrength", L"2");
+        second->ParAdd(L"BotHitpoint", L"2400");
+        auto factory = base();
+        g_Config.m_MaintenanceTime = 1000;
+        g_MatrixMap->m_Difficulty.k_time_before_maintenance = 1;
+        g_MatrixMap->SetMaintenanceTime(0);
+        MG_CHECK(!g_MatrixMap->MaintenanceDisabled());
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+            if (object->IsLiveRobot()) object->AsRobot()->GetEnv()->m_Place = -1;
+        const auto before = resources();
+        const auto draws = random::draw_count();
+        factory->Maintenance();
+        std::vector<CoreLease> cargo;
+        std::set<int> places;
+        // Measured seed and RNG negative controls: the two sixty-point robots
+        // differ from the one hundred-point choice in both identity and health.
+        const int expected = mode == random::Mode::ParkMiller && seed == 84 ? 2 : 1;
+        MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == expected);
+        MG_CHECK(random::draw_count() == draws + (expected == 2 ? 5 : 3));
+        MG_CHECK(session.rejected_icon_targets() == expected);
+        std::cout << "proposal seed=" << seed << " mode=" << int(mode)
+                  << " draws=" << random::draw_count() - draws << " hp=";
+        for (int i = 0; i < g_MatrixMap->m_AD_Obj_cnt; ++i) {
+            auto *carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[i]);
+            MG_CHECK(carrier->CarryingRobot());
+            auto *robot = static_cast<CMatrixRobotAI *>(carrier->GetCarryingRobot());
+            std::cout << robot->GetHitPoint() << ',';
+            MG_CHECK(robot->GetSide() == PLAYER_SIDE);
+            MG_CHECK(robot->GetHitPoint() == (expected == 2 ? 150 : 240));
+            MG_CHECK(robot->GetEnv()->m_Place >= 0 && robot->GetEnv()->m_Place < g_MatrixMap->m_RN.m_PlaceCnt);
+            cargo.emplace_back(robot->GetCore(DEBUG_CALL_INFO));
+            MG_CHECK(places.insert(robot->GetEnv()->m_Place).second);
+        }
+        std::cout << '\n';
+        MG_CHECK(resources() == before && g_MatrixMap->BeforeMaintenanceTime() == 1000);
+        while (g_MatrixMap->m_AD_Obj_cnt && session.frame() < 1500) session.advance();
+        MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 0 && resources() == before);
+        for (auto &core : cargo) {
+            MG_CHECK(core->m_Object && core->m_Object->IsLiveRobot());
+            MG_CHECK(core->m_Object->AsRobot()->m_CurrState == ROBOT_SUCCESSFULLY_BUILD);
+        }
+    }
+}
+
 const tests::Case cases[] = {
+    {"game.reinforcement.mixed_proposals", reinforcement_mixed_proposals},
+    {"game.reinforcement.player_request", reinforcement_player_request},
     {"game.reinforcement.unavailable_robot_icons", unavailable_robot_icons},
     {"game.reinforcement.delivery", reinforcement_delivery},
     {"game.reinforcement.reservations", reinforcement_reservations},
