@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "battle_building.hpp"
 #include "test_support.hpp"
 #include "command_world.hpp"
 #include "MatrixFormGame.hpp"
@@ -546,6 +547,213 @@ void pending_result_late_elimination() {
         MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
     }
 }
+CMatrixBuilding *register_building(int owner, EBuildingType kind, float x, float y) {
+    auto *donor = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+    auto owned = tests::make_battle_building(*donor->m_Unit[0].m_Graph->VO(), owner, kind, x, y);
+    auto *building = owned.get();
+    side().m_Color = 0x0000ff00;
+    g_MatrixMap->GetSideById(2)->m_Color = 0x00ff0000;
+    building->m_TrueColor.m_Color = owner ? 0xff000000 | g_MatrixMap->GetSideColor(owner) : 0;
+    building->m_TrueColor.m_ColoredCnt = owner ? MAX_ZAHVAT_POINTS : 0;
+    // Income presentation needs artwork; keep its first tick outside these bounded profiles.
+    g_Config.m_Timings[RESOURCE_BASE] = 100000;
+    g_Config.m_Timings[RESOURCE_TITAN] = 100000;
+    g_Config.m_Timings[RESOURCE_ELECTRONICS] = 100000;
+    g_Config.m_Timings[RESOURCE_ENERGY] = 100000;
+    g_Config.m_Timings[RESOURCE_PLASMA] = 100000;
+    g_MatrixMap->AddObject(building, true);
+    owned.release();
+    // Map loading registers buildings before the buffered starting robots.
+    // Match that initial logic-list order; TaktPL capture validation depends on it.
+    std::vector<CMatrixRobotAI *> robots;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsRobot()) robots.push_back(object->AsRobot());
+    for (auto *robot : robots) { robot->DelLT(); robot->AddLT(); }
+    return building;
+}
+void registered_capture_profile(int owner) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step, 3000, false});
+        auto *building = register_building(owner, BUILDING_TITAN, 160, 200);
+        auto *robot = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+        g_MatrixMap->m_TraceStopObj = building;
+        side().OnRButtonDown(CPoint(0, 0));
+        const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
+        MG_CHECK(group.Order() == mpo_Capture && group.m_Obj == building);
+        int assigned = 0;
+        for (int i = 0; i < 2; ++i)
+            if (side().GetCurGroup()->GetObjectByN(i)->AsRobot()->FindOrderLikeThat(ROT_CAPTURE_FACTORY)) ++assigned;
+        MG_CHECK(assigned == 1);
+        int first_paint = 0, neutralized = 0, completed = 0;
+        for (int i = 0; i < 2000 && !completed; ++i) {
+            session.advance();
+            if (!first_paint && building->m_TrueColor.m_ColoredCnt != (owner ? MAX_ZAHVAT_POINTS : 0)) first_paint = session.time();
+            if (owner && !neutralized && building->GetSide() == 0) neutralized = session.time();
+            if (building->GetSide() == PLAYER_SIDE) completed = session.time();
+        }
+        std::cout << "registered capture mode=" << int(mode) << " step=" << step
+                  << " owner=" << owner << " progress=" << first_paint << " neutralized=" << neutralized << " completed=" << completed << '\n';
+        MG_CHECK(first_paint == (step == 10 ? 630 : 640));
+        if (!owner) MG_CHECK(completed == (step == 10 ? 7530 : 7536));
+        else {
+            MG_CHECK(neutralized == (step == 10 ? 11030 : 11040));
+            MG_CHECK(completed == (step == 10 ? 18540 : 18544));
+        }
+        MG_CHECK(building->m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+        MG_CHECK(building->m_TrueColor.m_Color == 0xff00ff00);
+        MG_CHECK(!g_MatrixMap->IsPaused() && side().GetStatus() == SS_ACTIVE);
+        for (int i = 0; i < 100; ++i) session.advance();
+        MG_CHECK(building->GetSide() == PLAYER_SIDE);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    }
+}
+void registered_capture() { registered_capture_profile(0); }
+void registered_enemy_capture() { registered_capture_profile(2); }
+void registered_base_capture() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int owner : {0, 2}) {
+        Session session({mode, 79, 10, 3000, false});
+        auto *building = register_building(owner, BUILDING_BASE, 100, 100);
+        auto &enemy = *g_MatrixMap->GetSideById(2);
+        g_Config.m_Timings[UNIT_ROBOT] = 100000;
+        for (int i = 0; i < MAX_RESOURCES; ++i) {
+            g_Config.m_Price[CHASSIS2_TITAN + i] = 11 + i;
+            enemy.SetResourceAmount(static_cast<ERes>(i), 100);
+            side().SetResourceAmount(static_cast<ERes>(i), 200);
+        }
+        if (owner) for (int i = 0; i < 2; ++i) {
+            auto queued = tests::make_engine_object<CMatrixRobotAI>();
+            queued->m_Side = owner;
+            queued->UnitInsert(0, MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+            const int count = building->m_BS.GetItemsCnt();
+            building->m_BS.AddItem(queued.get());
+            const bool accepted = building->m_BS.GetItemsCnt() == count + 1;
+            if (accepted) queued.release();
+            MG_CHECK(accepted);
+        }
+        g_MatrixMap->m_TraceStopObj = building;
+        side().OnRButtonDown(CPoint(0, 0));
+        EntityId capturer = 0;
+        for (int i = 0; i < 2; ++i) {
+            auto *robot = side().GetCurGroup()->GetObjectByN(i)->AsRobot();
+            if (robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY)) {
+                MG_CHECK(capturer == 0);
+                capturer = session.matches(1, robot) ? 1 : 2;
+            }
+        }
+        MG_CHECK(capturer != 0);
+        int opened = 0, closing = 0, captured = 0;
+        for (int i = 0; i < 2000 && !captured; ++i) {
+            session.advance();
+            if (!opened && building->m_State == BASE_OPENED) opened = session.time();
+            if (!closing && opened && building->m_State == BASE_CLOSING) closing = session.time();
+            if (building->GetSide() == PLAYER_SIDE) captured = session.time();
+            else {
+                MG_CHECK(session.robot(capturer).alive);
+                MG_CHECK(building->m_BS.GetItemsCnt() == (owner ? 2 : 0));
+                for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+                    MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(resource)) == 100);
+            }
+        }
+        std::cout << "base capture mode=" << int(mode) << " owner=" << owner
+                  << " opened=" << opened << " closing=" << closing << " captured=" << captured << '\n';
+        MG_CHECK(opened == 1280 && closing == 4330 && captured == 5580);
+        MG_CHECK(building->GetSide() == PLAYER_SIDE && building->m_State == BASE_CLOSED);
+        MG_CHECK(!session.robot(capturer).alive);
+        MG_CHECK(session.robot(capturer == 1 ? 2 : 1).alive);
+        MG_CHECK(building->m_Capturer == nullptr);
+        MG_CHECK(building->m_BS.GetItemsCnt() == 0 && building->m_BS.GetTopItem() == nullptr);
+        for (int resource = 0; resource < MAX_RESOURCES; ++resource) {
+            MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(resource)) == 100 + (owner ? 2 * (11 + resource) : 0));
+            MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(resource)) == 200);
+        }
+        MG_CHECK(!g_MatrixMap->IsPaused() && side().GetStatus() == SS_ACTIVE);
+        for (int i = 0; i < 100; ++i) session.advance();
+        MG_CHECK(building->GetSide() == PLAYER_SIDE && building->m_State == BASE_CLOSED);
+    }
+}
+void capture_target_removal() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 79, 10, 1000, false});
+        auto *building = register_building(0, BUILDING_TITAN, 160, 200);
+        auto *robot = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+        g_MatrixMap->m_TraceStopObj = building;
+        side().OnRButtonDown(CPoint(0, 0));
+        advance_to(session, 200);
+        MG_CHECK(robot->GetCaptureFactory() == building);
+        MG_CHECK(building->m_Capturer == robot && building->GetSide() == 0);
+        g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+        g_MatrixMap->StaticDelete(building);
+        MG_CHECK(robot->GetCaptureFactory() == nullptr);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+        advance_to(session, 400);
+        const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
+        MG_CHECK(group.Order() == mpo_Stop && group.m_Obj == nullptr);
+        MG_CHECK(session.robot(1).alive && session.robot(2).alive);
+        MG_CHECK(!g_MatrixMap->IsPaused());
+    }
+}
+void capture_candidate_lifetime() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 79, 10, 1000, false});
+        auto *building = register_building(0, BUILDING_TITAN, 100, 200);
+        auto *robot = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+        std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(building->GetCore(DEBUG_CALL_INFO),
+            [](SObjectCore *value) { value->Release(); });
+        const int refs = core->m_Ref;
+        MG_CHECK(!robot->IsCaptureInformed());
+        session.advance();
+        MG_CHECK(robot->IsCaptureInformed());
+        MG_CHECK(core->m_Ref == refs + 3); // Both nearby player robots and one enemy receive candidates.
+        advance_to(session, 1020); // Re-publication must not duplicate candidate references.
+        MG_CHECK(core->m_Ref == refs + 3);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY)); // Manual player robots do not auto-claim candidates.
+        MG_CHECK(building->m_TrueColor.m_ColoredCnt > 0 && building->GetSide() == 0);
+        g_MatrixMap->StaticDelete(building);
+        MG_CHECK(core->m_Ref == 1 && core->m_Object == nullptr);
+        MG_CHECK(robot->GetCaptureFactory() == nullptr);
+        session.advance();
+        MG_CHECK(core->m_Ref == 1 && robot->IsLiveRobot());
+    }
+}
+void base_survival() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true}) {
+        Session session({mode, 79, 10, 1000, false});
+        DialogData dialog;
+        auto *building = register_building(player ? PLAYER_SIDE : 2, BUILDING_BASE, 100, 100);
+        MG_CHECK(session.remove(player ? 1 : 3) && session.remove(player ? 2 : 4));
+        advance_to(session, 2020);
+        MG_CHECK(g_MatrixMap->GetSideById(player ? PLAYER_SIDE : 2)->GetStatus() == SS_ACTIVE);
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        MG_CHECK(!g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeName == nullptr);
+        g_MatrixMap->StaticDelete(building);
+        // The next status scan eliminates the side; the following one opens the result.
+        advance_to(session, 4030);
+        MG_CHECK(g_MatrixMap->GetSideById(player ? PLAYER_SIDE : 2)->GetStatus() == SS_NONE);
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player);
+        MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
+        advance_to(session, 6040);
+        MG_CHECK(g_MatrixMap->IsPaused());
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
+                 (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+    }
+}
+void factory_does_not_prevent_elimination() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true}) {
+        Session session({mode, 79, 10, 1000, false});
+        DialogData dialog;
+        auto *building = register_building(player ? PLAYER_SIDE : 2, BUILDING_TITAN, 400, 100);
+        MG_CHECK(session.remove(player ? 1 : 3) && session.remove(player ? 2 : 4));
+        session.advance();
+        MG_CHECK(g_MatrixMap->GetSideById(player ? PLAYER_SIDE : 2)->GetStatus() == SS_NONE);
+        MG_CHECK(building->GetSide() == 0 && building->m_TrueColor.m_ColoredCnt == 0);
+        MG_CHECK(building->m_TrueColor.m_Color == 0);
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player);
+        advance_to(session, 2020);
+        MG_CHECK(g_MatrixMap->IsPaused());
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
+                 (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+    }
+}
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
         outcome(run % 2 == 0, true);
@@ -562,6 +770,13 @@ void repeated_sessions() {
     }
 }
 constexpr tests::Case cases[] = {
+    {"game.outcome.registered_enemy_capture", registered_enemy_capture},
+    {"game.outcome.capture_target_removal", capture_target_removal},
+    {"game.outcome.registered_base_capture", registered_base_capture},
+    {"game.outcome.capture_candidate_lifetime", capture_candidate_lifetime},
+    {"game.outcome.registered_capture", registered_capture},
+    {"game.outcome.base_survival", base_survival},
+    {"game.outcome.factory_does_not_prevent_elimination", factory_does_not_prevent_elimination},
     {"game.outcome.neutral_capture", neutral_capture},
     {"game.outcome.enemy_capture", enemy_capture},
     {"game.outcome.capture_rejection", capture_rejection},
