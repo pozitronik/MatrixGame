@@ -94,9 +94,11 @@ std::vector<std::string> scenario(Profile profile, Scenario kind, const char *na
     if (kind == Scenario::Move) {
         MG_CHECK(detour);
         MG_CHECK(session.robot(1).x > 400 && session.robot(2).x > 400);
+        MG_CHECK(session.robot(1).in_place && session.robot(2).in_place);
     } else if (kind == Scenario::Replace) {
         MG_CHECK(session.robot(1).x < 200 && session.robot(1).y > 450);
         MG_CHECK(session.robot(2).x < 200 && session.robot(2).y > 400);
+        MG_CHECK(session.robot(1).in_place && session.robot(2).in_place);
     } else {
         MG_CHECK(session.robot(1).x > 450 && session.robot(1).y > 450);
     }

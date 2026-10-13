@@ -240,7 +240,8 @@ RobotState Session::robot(EntityId id) const {
     MG_CHECK(group < MAX_LOGIC_GROUP);
     const auto *order = group >= 0 && r->m_Side == PLAYER_SIDE ? &impl_->side().m_PlayerGroup[group] : nullptr;
     return {id, r->IsLiveRobot(), r->m_PosX, r->m_PosY, group, order ? int(order->Order()) : -1,
-            order ? order->m_To.x : -1, order ? order->m_To.y : -1, order ? impl_->id_of(order->m_Obj) : 0};
+            order ? order->m_To.x : -1, order ? order->m_To.y : -1, order ? impl_->id_of(order->m_Obj) : 0,
+            r->PLIsInPlace()};
 }
 std::string Session::snapshot() const {
     const auto &s = *impl_;
@@ -257,6 +258,7 @@ std::string Session::snapshot() const {
                 << ",\"y_bits\":" << std::bit_cast<uint32_t>(r.y)
                 << ",\"side\":" << raw->m_Side << ",\"state\":" << int(raw->m_CurrState)
                 << ",\"health_bits\":" << std::bit_cast<uint32_t>(raw->GetHitPoint())
+                << ",\"in_place\":" << (r.in_place ? "true" : "false")
                 << ",\"group\":" << r.group << ",\"order\":" << r.order << ",\"target\":" << r.target
                 << ",\"destination\":[" << r.destination_x << ',' << r.destination_y << "],\"queue\":[";
             for (int i = 0; i < raw->GetOrdersInPool(); ++i) {

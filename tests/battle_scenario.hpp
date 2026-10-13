@@ -29,6 +29,7 @@ struct RobotState {
     int order;
     int destination_x, destination_y;
     EntityId target = 0;
+    bool in_place = false;
 };
 
 // Fixture writes are confined to setup. Commands use the human context-command
