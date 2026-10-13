@@ -61,7 +61,7 @@ struct Trace {
         MG_CHECK(file.good());
         std::string header = session.metadata(fixture);
         header.pop_back();
-        header += ",\"scenario\":\"" + std::string(name) + "\"}";
+        header += ",\"combat_observation\":\"status-health-v1\",\"scenario\":\"" + std::string(name) + "\"}";
         file << header << '\n';
         file.flush();
         MG_CHECK(file.good());
@@ -1630,7 +1630,7 @@ std::vector<std::string> status_lethal_run(random::Mode mode, bool electrical, b
             removed = session.time();
     }
     MG_CHECK(dying == (electrical && later ? 60 : 10));
-    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == (later ? 0 : 1));
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
     MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) == 0);
     const int expected_removed = electrical ? (later ? (mode == random::Mode::ParkMiller ? 3790 : 3200)
                                                      : (mode == random::Mode::ParkMiller ? 4300 : 4410))
@@ -1642,11 +1642,36 @@ std::vector<std::string> status_lethal_run(random::Mode mode, bool electrical, b
 }
 void status_lethal() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (bool electrical : {false, true}) {
+            const auto reference = status_lethal_run(mode, electrical, false, 0);
+            compare(reference, status_lethal_run(mode, electrical, false, 1));
+        }
+}
+
+// Correctness probe, deliberately unregistered: later status ticks must retain kill attribution.
+// Tracked defect: https://github.com/pozitronik/MatrixGame/issues/133. Its missing kill is never an accepted golden result.
+void delayed_status_attribution_probe() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (bool electrical : {false, true})
-            for (bool later : {false, true}) {
-                const auto reference = status_lethal_run(mode, electrical, later, 0);
-                compare(reference, status_lethal_run(mode, electrical, later, 1));
-            }
+            status_lethal_run(mode, electrical, true, 0);
+}
+
+void friendly_lethal() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::BattleCombatAssets assets;
+        Session session(Profile{mode, 82, 10, 1000, false, false});
+        assets.install();
+        auto *patient = robot(PLAYER_SIDE);
+        patient->InitMaxHitpoint(2);
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {8, 4, 0};
+        g_MatrixMap->m_Difficulty.k_friendly_fire = 1;
+        const int friendly_kills = g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL);
+        const int enemy_kills = g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL);
+        MG_CHECK(patient->Damage(WEAPON_GUN, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), PLAYER_SIDE, nullptr));
+        MG_CHECK(patient->m_CurrState == ROBOT_DIP);
+        MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) == friendly_kills);
+        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == enemy_kills);
+    }
 }
 
 void friendly_difficulty() {
@@ -1722,7 +1747,9 @@ const tests::Case cases[] = {
         {"game.combat.chained_bombs", chained_bombs},         {"game.combat.repair_redirect", repair_redirect},
         {"game.combat.cannon_patient", cannon_patient},       {"game.combat.cannon_acquisition", cannon_acquisition},
         {"game.combat.robot_boundaries", robot_boundaries},   {"game.combat.status_refresh", status_refresh},
-        {"game.combat.status_lethal", status_lethal},         {"game.combat.friendly_difficulty", friendly_difficulty},
+        {"game.combat.status_lethal", status_lethal},
+        {"probe.combat.delayed_status_attribution", delayed_status_attribution_probe},
+        {"game.combat.friendly_lethal", friendly_lethal},         {"game.combat.friendly_difficulty", friendly_difficulty},
         {"game.combat.cannon_difficulty", cannon_difficulty},
         {"game.combat.building_volcano", building_volcano}, {"game.combat.building_electric", building_electric},
         {"game.combat.building_flame", building_flame}, {"game.combat.building_gun", building_gun},

@@ -80,7 +80,15 @@ CMatrixCannon *create_battle_cannon(int side, float x, float y) {
 }
 void arm_battle_robot(CMatrixRobotAI &robot, ERobotUnitKind weapon) {
     MG_CHECK(robot.m_UnitCnt == 1);
-    MG_CHECK(weapon >= RUK_WEAPON_MACHINEGUN && weapon <= RUK_WEAPON_REPAIR);
+    switch (weapon) {
+    case RUK_WEAPON_MACHINEGUN: case RUK_WEAPON_CANNON: case RUK_WEAPON_MISSILE:
+    case RUK_WEAPON_FLAMETHROWER: case RUK_WEAPON_MORTAR: case RUK_WEAPON_LASER:
+    case RUK_WEAPON_BOMB: case RUK_WEAPON_PLASMA: case RUK_WEAPON_ELECTRIC:
+    case RUK_WEAPON_REPAIR:
+        break;
+    default:
+        throw std::runtime_error("Unsupported synthetic robot weapon");
+    }
     const MeshAttachment armor_links[] = {{1, L"head", 0, 0, 20}, {2, L"weapon", 0, 0, 0}};
     const MeshAttachment muzzles[] = {{1, L"muzzle", 0, 15, 0}, {2, L"repair-end", 0, 25, 0}};
     auto *armor = load_battle_mesh(armor_links);
