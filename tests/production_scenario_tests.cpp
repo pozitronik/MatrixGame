@@ -51,8 +51,8 @@ CMatrixRobotAI *enqueue(CMatrixBuilding &factory) {
     robot->RNeed(MR_Matrix);
     auto *result = robot.get();
     factory.m_BS.AddItem(result);
-    MG_CHECK(!in_logic(result));
     robot.release();
+    MG_CHECK(!in_logic(result));
     return result;
 }
 
