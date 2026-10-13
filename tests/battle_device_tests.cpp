@@ -351,7 +351,27 @@ void state_and_sessions() {
     }
 }
 
+void unavailable_icon_targets() {
+    for (int repeat = 0; repeat < 2; ++repeat) {
+        tests::BattleDevice fixture(tests::BattleDevice::IconTargets::Unavailable);
+        auto *device = fixture.get();
+        IDirect3DSurface9 *surface = reinterpret_cast<IDirect3DSurface9 *>(1);
+        MG_CHECK(device->CreateRenderTarget(256, 256, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE,
+            0, TRUE, &surface, nullptr) == D3DERR_NOTAVAILABLE);
+        MG_CHECK(!surface && fixture.stats().rejected_icon_targets == 1);
+        MG_CHECK(device->CreateRenderTarget(128, 256, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE,
+            0, TRUE, &surface, nullptr) == D3DERR_INVALIDCALL);
+        MG_CHECK(device->CreateRenderTarget(256, 256, D3DFMT_A8R8G8B8, D3DMULTISAMPLE_NONE,
+            0, TRUE, nullptr, nullptr) == D3DERR_INVALIDCALL);
+        MG_CHECK(fixture.stats().rejected_icon_targets == 1);
+        MG_CHECK(fixture.stats().live_buffers == 0 && fixture.stats().live_textures == 0);
+    }
+    tests::BattleDevice ordinary;
+    MG_CHECK(ordinary.stats().rejected_icon_targets == 0);
+}
+
 constexpr tests::Case cases[] = {
+    {"game.harness.device.unavailable_icon_targets", unavailable_icon_targets},
     {"game.harness.device.buffers", buffers},
     {"game.harness.device.invalid_buffers", invalid_buffers},
     {"game.harness.device.com_ownership", com_ownership},

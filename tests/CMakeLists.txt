@@ -290,9 +290,21 @@ foreach(kind base titan plasma electronics energy repair)
     add_matrix_test(game.harness.materials.demolish_${kind} matrixgame_material_ruin_tests gameplay memory tests)
 endforeach()
 
+add_matrix_test_executable(matrixgame_reinforcement_scenarios reinforcement_scenario_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_reinforcement_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_reinforcement_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_reinforcement_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_reinforcement_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract unavailable_robot_icons delivery reservations carrier_limit)
+    add_matrix_test(game.reinforcement.${contract} matrixgame_reinforcement_scenarios gameplay ai rendering)
+endforeach()
+
 add_matrix_test_executable(matrixgame_battle_device_tests battle_device_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_device_tests PRIVATE MatrixGameInternal)
-foreach(contract buffers invalid_buffers com_ownership state_sessions textures invalid_textures texture_ownership managed_texture_upload resource_budget)
+foreach(contract buffers invalid_buffers com_ownership state_sessions textures invalid_textures texture_ownership managed_texture_upload resource_budget unavailable_icon_targets)
     add_matrix_test(game.harness.device.${contract} matrixgame_battle_device_tests tests rendering)
 endforeach()
 
