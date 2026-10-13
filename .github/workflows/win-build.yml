@@ -174,10 +174,39 @@ jobs:
             build/**/MatrixGame/**/*.dll
             build/**/CFG/**/*.txt
 
+  coverage:
+    name: MinGW Debug coverage
+    runs-on: windows-2022
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install pinned build tools
+        shell: pwsh
+        run: ./tools/setup-toolchain.ps1
+      - name: Collect engine contract coverage without local assets
+        shell: pwsh
+        run: ./tools/test.ps1 -Configuration Debug -Coverage
+      - name: Publish the coverage summary
+        shell: pwsh
+        run: Get-Content -LiteralPath build/mingw-debug-exe-coverage/coverage/coverage-summary.md | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-MinGW-Debug-EXE
+          if-no-files-found: warn
+          retention-days: 14
+          path: |
+            build/mingw-debug-exe-coverage/coverage/coverage.json
+            build/mingw-debug-exe-coverage/coverage/coverage-summary.md
+            build/mingw-debug-exe-coverage/test-results.xml
+
   required:
     name: Required checks
     if: always()
-    needs: [policy, repository, build]
+    needs: [policy, repository, build, coverage]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -186,7 +215,9 @@ jobs:
           POLICY_RESULT: ${{ needs.policy.result }}
           REPOSITORY_RESULT: ${{ needs.repository.result }}
           BUILD_RESULT: ${{ needs.build.result }}
+          COVERAGE_RESULT: ${{ needs.coverage.result }}
         run: |
           test "$POLICY_RESULT" = success
           test "$REPOSITORY_RESULT" = success
           test "$BUILD_RESULT" = success
+          test "$COVERAGE_RESULT" = success

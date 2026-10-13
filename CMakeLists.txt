@@ -18,6 +18,16 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 option(MATRIXGAME_BUILD_DLL "Build dll instead of exe" TRUE)
 option(MATRIXGAME_CHEATS "Enable cheats" TRUE)
+option(MATRIXGAME_COVERAGE "Instrument project code for gcov coverage (MinGW only)" OFF)
+
+if(MATRIXGAME_COVERAGE)
+    if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR NOT CMAKE_C_COMPILER_ID STREQUAL "GNU")
+        message(FATAL_ERROR "MATRIXGAME_COVERAGE requires the GCC (MinGW) toolchain and its gcov.")
+    endif()
+    # Applies to the engine, libraries and tests; dependency builds keep their own flags.
+    add_compile_options(--coverage)
+    add_link_options(--coverage)
+endif()
 
 find_package(DIRECTX9 REQUIRED)
 if(MSVC)
