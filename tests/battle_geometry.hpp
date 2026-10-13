@@ -7,7 +7,7 @@ enum ERobotUnitKind : unsigned int;
 
 namespace tests {
 
-enum class NavigationLayout { CentralObstacle, Open, Corridor, DeadEnd, Disconnected };
+enum class NavigationLayout { CentralObstacle, Open, Corridor, DeadEnd, Disconnected, MultiRegion };
 
 // Initial fixture data only. Commands, navigation and ticks remain production code.
 class BattleGeometry {

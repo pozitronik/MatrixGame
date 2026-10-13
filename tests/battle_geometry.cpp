@@ -171,6 +171,7 @@ void BattleGeometry::configure(CMatrixMapLogic &map, NavigationLayout layout) {
             bool obstacle = false;
             switch (layout) {
             case NavigationLayout::CentralObstacle:
+            case NavigationLayout::MultiRegion:
                 obstacle = overlaps(obstacle_left, obstacle_top, obstacle_right, obstacle_bottom);
                 break;
             case NavigationLayout::Open: break;
@@ -254,6 +255,60 @@ void BattleGeometry::configure(CMatrixMapLogic &map, NavigationLayout layout) {
         road.m_Place[2].m_NearCnt = road.m_Place[3].m_NearCnt = 1;
         road.m_Place[2].m_Near[0] = 0;
         road.m_Place[3].m_Near[0] = 1;
+    }
+    if (layout == NavigationLayout::MultiRegion) {
+        // Four quadrants surround the central obstacle; left/right pairs form regions.
+        // Keep the physical grid identical to CentralObstacle and supply all hierarchy levels.
+        road.SetZoneCntMax(4);
+        road.m_ZoneCnt = 4;
+        HFree(road.m_Region, g_MatrixHeap);
+        road.m_Region = allocate<SMatrixRegion>(2);
+        road.m_RegionCnt = 2;
+        std::array<CMatrixCrotch *, 4> junctions{};
+        for (int i = 0; i < 4; ++i) {
+            const int side = i % 2;
+            const int row = i / 2;
+            auto &zone = road.m_Zone[i];
+            zone = {};
+            zone.m_Rect = CRect(side ? 32 : 2, row ? 32 : 2, side ? 62 : 32, row ? 62 : 32);
+            zone.m_Center = road.m_Place[i].m_Pos;
+            zone.m_Size = 30 * 30 - 4 * 12;
+            zone.m_Region = side;
+            zone.m_PlaceCnt = 1;
+            zone.m_Place[0] = i;
+            road.m_Place[i].m_Region = side;
+            auto &region = road.m_Region[side];
+            region.m_Center = CPoint(side ? 48 : 16, 32);
+            region.m_RadiusPlace = 64;
+            region.m_NearCnt = 1;
+            region.m_Near[0] = 1 - side;
+            region.m_Place[region.m_PlaceCnt++] = i;
+            region.m_PlaceAll[region.m_PlaceAllCnt++] = i;
+            junctions[i] = road.AddCrotch();
+            junctions[i]->m_Center = zone.m_Center;
+            junctions[i]->m_Region = side;
+            junctions[i]->m_Zone = i;
+            region.m_Crotch[region.m_CrotchCnt++] = junctions[i];
+        }
+        for (auto endpoints : {std::pair{0, 1}, {0, 2}, {1, 3}, {2, 3}}) {
+            const auto [a, b] = endpoints;
+            auto &first = road.m_Zone[a];
+            auto &second = road.m_Zone[b];
+            first.m_NearZone[first.m_NearZoneCnt] = b;
+            first.m_NearZoneConnectSize[first.m_NearZoneCnt++] = (a ^ b) == 1 ? 18 : 26;
+            second.m_NearZone[second.m_NearZoneCnt] = a;
+            second.m_NearZoneConnectSize[second.m_NearZoneCnt++] = (a ^ b) == 1 ? 18 : 26;
+            auto *edge = road.AddRoad();
+            edge->m_Start = junctions[a]; edge->m_End = junctions[b];
+            edge->m_Start->AddRoad(edge); edge->m_End->AddRoad(edge);
+            edge->AddPath(first.m_Center.x, first.m_Center.y);
+            edge->AddPath(second.m_Center.x, second.m_Center.y);
+            edge->AddZone(a); edge->AddZone(b);
+            edge->CalcDist();
+            MG_CHECK(edge->m_Dist == 40);
+        }
+        for (int y = 0; y < movement_size; ++y) for (int x = 0; x < movement_size; ++x)
+            map.MoveGet(x, y)->m_Zone = (x >= 32 ? 1 : 0) + (y >= 32 ? 2 : 0);
     }
     road.InitPL(movement_size, movement_size);
     map.m_TexUnionDim = 1;

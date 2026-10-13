@@ -12,6 +12,13 @@
 #include <fstream>
 #include <vector>
 
+namespace tests::navigation {
+void multiregion_movement();
+void multiregion_road_guidance();
+void group_speed_nonfinite_probe();
+void unreachable_replacement();
+}
+
 namespace {
 using namespace tests;
 using namespace tests::battle;
@@ -402,6 +409,10 @@ int main(int argc, char **argv) {
         {"game.navigation.removed_blocker", removed_blocker},
         {"game.navigation.carrier_lifetime", carrier_lifetime},
         {"game.navigation.carrier_cap", carrier_cap},
+        {"game.navigation.multiregion_movement", tests::navigation::multiregion_movement},
+        {"game.navigation.multiregion_road_guidance", tests::navigation::multiregion_road_guidance},
+        {"probe.navigation.group_speed_nonfinite", tests::navigation::group_speed_nonfinite_probe},
+        {"game.navigation.unreachable_replacement", tests::navigation::unreachable_replacement},
     };
     int result = tests::run(argc, argv, cases);
 #ifdef MEM_SPY_ENABLE

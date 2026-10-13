@@ -307,7 +307,7 @@ void Session::check_running() const {
 
 std::string Session::metadata() const {
     std::ostringstream out;
-    const char *layouts[] = {"central-obstacle-v1", "open-v1", "corridor-v1", "dead-end-v1", "disconnected-v1"};
+    const char *layouts[] = {"central-obstacle-v1", "open-v1", "corridor-v1", "dead-end-v1", "disconnected-v1", "multi-region-v1"};
     out << "{\"type\":\"header\",\"schema\":1,\"fixture\":\"unarmed-chassis-obstacle-v1\","
         << "\"navigation_layout\":\"" << layouts[static_cast<unsigned>(impl_->profile.layout)] << "\","
         << "\"revision\":\"" << MATRIXGAME_SCENARIO_REVISION << "\",\"dirty\":" << MATRIXGAME_SCENARIO_DIRTY << ','
