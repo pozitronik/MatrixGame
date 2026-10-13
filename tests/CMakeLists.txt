@@ -376,7 +376,7 @@ if(MATRIXGAME_BUILD_DLL)
         TIMEOUT 30)
 endif()
 
-add_matrix_test_executable(matrixgame_ai_decision_tests ai_decision_tests.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_ai_decision_tests ai_decision_tests.cpp ai_observation_tests.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_ai_decision_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_ai_decision_tests matrixgame_scenario_identity)
@@ -385,6 +385,9 @@ target_compile_definitions(matrixgame_ai_decision_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 foreach(contract enemy_memory memory_target_retirement ignore_expiry bad_positions regroup_thresholds
-                 regroup_teams_and_actions action_priorities action_ties interruptibility automatic_reinforcement_gate strategic_tick tactical_target_choice tactical_blocked_line)
+                 regroup_teams_and_actions action_priorities action_ties interruptibility automatic_reinforcement_gate strategic_tick tactical_target_choice tactical_blocked_line
+                 radio_group radio_team_region radio_filters threat_priorities
+                 automatic_attack_route automatic_capture_route automatic_defence_route
+                 production_wait_choice production_wait_limits production_unaffordable)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()

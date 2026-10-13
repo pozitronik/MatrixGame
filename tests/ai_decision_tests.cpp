@@ -10,6 +10,19 @@
 #include <array>
 #include <vector>
 
+namespace tests::ai {
+void radio_group();
+void radio_team_region();
+void radio_filters();
+void threat_priorities();
+void automatic_attack_route();
+void automatic_capture_route();
+void automatic_defence_route();
+void production_wait_choice();
+void production_wait_limits();
+void production_unaffordable();
+}
+
 namespace {
 using namespace tests;
 using namespace tests::battle;
@@ -369,6 +382,28 @@ int main(int argc, char **argv) {
         {"game.ai.strategic_tick", strategic_tick},
         {"game.ai.tactical_target_choice", tactical_target_choice},
         {"game.ai.tactical_blocked_line", tactical_blocked_line},
+        {"game.ai.radio_group", tests::ai::radio_group},
+        {"game.ai.radio_team_region", tests::ai::radio_team_region},
+        {"game.ai.radio_filters", tests::ai::radio_filters},
+        {"game.ai.threat_priorities", tests::ai::threat_priorities},
+        {"game.ai.automatic_attack_route", tests::ai::automatic_attack_route},
+        {"game.ai.automatic_capture_route", tests::ai::automatic_capture_route},
+        {"game.ai.automatic_defence_route", tests::ai::automatic_defence_route},
+        {"game.ai.production_wait_choice", tests::ai::production_wait_choice},
+        {"game.ai.production_wait_limits", tests::ai::production_wait_limits},
+        {"game.ai.production_unaffordable", tests::ai::production_unaffordable},
     };
-    return tests::run(argc, argv, cases);
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    Base::CMain::BaseInit();
+    SetUnhandledExceptionFilter(nullptr);
+    std::set_terminate([] { std::abort(); });
+    int result = tests::run(argc, argv, cases);
+#ifdef MEM_SPY_ENABLE
+    if (Base::SMemHeader::first_mem_block != nullptr) {
+        std::cerr << "AI decision scenario leaked tracked allocations.\n";
+        result = EXIT_FAILURE;
+    }
+#endif
+    Base::CMain::BaseDeInit();
+    return result;
 }
