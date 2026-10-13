@@ -472,6 +472,17 @@ foreach(contract visual_acquisition_range visual_enemy_range visual_filters visu
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
 
+add_matrix_test_executable(matrixgame_battle_outcome_scenarios battle_outcome_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_outcome_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_battle_outcome_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_battle_outcome_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_battle_outcome_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract registered_enemy_capture capture_target_removal registered_base_capture capture_candidate_lifetime registered_capture base_survival factory_does_not_prevent_elimination neutral_capture enemy_capture capture_rejection capture_rollback competing_capturers competing_color protected_base_command victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions special_survival_flags full_auto_escape legacy_loss_cheat statistics_formatting scheduled_capture acquisition_after_removal enemy_capture_rollback capture_queue_refund paused_orders pending_result_pause pending_result_late_elimination)
+    add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
+endforeach()
 # Performance workloads. The executable is a measurement tool, not a
 # timing test: CTest only runs a short smoke pass that checks repeatable work.
 add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp
