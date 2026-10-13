@@ -2,6 +2,10 @@
 #include "battle_scenario.hpp"
 #include "battle_building.hpp"
 #include "battle_combat_geometry.hpp"
+#include "battle_material.hpp"
+#include "battle_mesh.hpp"
+#include "MatrixObject.hpp"
+#include <array>
 #include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include "test_support.hpp"
 #include "command_world.hpp"
@@ -880,6 +884,183 @@ void turret_does_not_prevent_elimination() {
                  (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
     }
 }
+std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, 10, 1500, false});
+    assets.install();
+    crater.install();
+    const auto kind = base ? BUILDING_BASE : BUILDING_TITAN;
+    const auto texture = std::wstring(OBJECT_PATH_BUILDINGS_RUINS) + L"b" + std::to_wstring(int(kind));
+    tests::install_battle_texture(texture.c_str());
+    tests::load_battle_material_mesh({}, (texture + L".vo").c_str(), texture.c_str());
+    if (!base) {
+        const auto secondary = texture + L"?Trans";
+        tests::install_battle_texture(secondary.c_str());
+        tests::load_battle_material_mesh({}, (texture + L"p.vo").c_str(), secondary.c_str());
+    }
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 20;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    g_Config.m_BuildingDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    g_Config.m_CannonDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    auto *building = register_building(0, kind, base ? 100 : 160, base ? 100 : 200);
+    auto *capturer = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+    g_MatrixMap->m_TraceStopObj = building;
+    side().OnRButtonDown(CPoint(0, 0));
+    const int group = capturer->GetGroupLogic();
+    MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+    advance_to(session, base ? 2000 : 1000);
+    MG_CHECK(capturer->GetCaptureFactory() == building && building->m_Capturer == capturer);
+    if (base) MG_CHECK(building->m_State == BASE_OPENED && capturer->IsDisableManual());
+    else MG_CHECK(building->m_TrueColor.m_ColoredCnt == 1);
+    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(building->GetCore(DEBUG_CALL_INFO),
+        [](SObjectCore *value) { value->Release(); });
+    g_Config.m_BuildingDamages[Weap2Index(WEAPON_LASER)] = {10000, 0, 0};
+    MG_CHECK(building->Damage(WEAPON_LASER, building->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+    MG_CHECK(building->m_State == BUILDING_DIP);
+    MG_CHECK(capturer->GetBase() == nullptr && capturer->IsMustDie() == base);
+    MG_CHECK(capturer->GetCaptureFactory() == nullptr && !capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_BUILDING_KILL) == 1);
+    int removed = 0, target_cleared = 0;
+    std::vector<std::string> trace;
+    while (session.time() < 10000) {
+        session.advance();
+        if (!removed && !core->m_Object) removed = session.time();
+        if (!target_cleared && side().m_PlayerGroup[group].m_Obj == nullptr) target_cleared = session.time();
+        if (core->m_Object) MG_CHECK(building->GetSide() == 0);
+        trace.push_back(session.snapshot() + ":" + std::to_string(core->m_Object != nullptr));
+    }
+    std::cout << "capture target base=" << base << " removed=" << removed << " target=" << target_cleared
+              << " alive=" << session.robot(1).alive << '\n';
+    MG_CHECK(removed == (base ? 5010 : 2010) && target_cleared == (base ? 2010 : 1010));
+    MG_CHECK(side().m_PlayerGroup[group].m_Obj == nullptr && side().m_PlayerGroup[group].Order() == mpo_Stop);
+    MG_CHECK(session.robot(1).alive == !base);
+    MG_CHECK(core->m_Object == nullptr);
+    MG_CHECK(session.robot(2).alive && !g_MatrixMap->IsPaused());
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_BUILDING_KILL) == 1);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    return trace;
+}
+void capture_target_damage() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool base : {false, true}) {
+        const auto first = capture_target_damage_run(mode, base);
+        MG_CHECK(first == capture_target_damage_run(mode, base));
+    }
+}
+std::wstring objective_descriptor(const std::wstring &behavior) {
+    std::array<std::wstring, OTP_COUNT> fields{};
+    fields[OTP_PATH] = L"synthetic-objective/";
+    fields[OTP_VO] = L"box";
+    fields[OTP_TEXTURE] = L"surface";
+    fields[OTP_TEXTURE_SCROLL] = L"0,0";
+    fields[OTP_SHADOW] = L"Off";
+    fields[OTP_BEHAVIOUR] = behavior;
+    fields[OTP_BIAS] = L"0";
+    fields[OTP_INVLOGIC] = L"0";
+    std::wstring result;
+    for (const auto &field : fields) {
+        if (!result.empty()) result += L"*";
+        result += field;
+    }
+    return result;
+}
+void install_objective_catalog(const std::wstring &behavior) {
+    MG_CHECK(g_MatrixMap->m_IdsCnt == 1);
+    const auto map_name = g_MatrixMap->m_Ids[0];
+    g_MatrixMap->m_Ids[0].~basic_string();
+    HFree(g_MatrixMap->m_Ids, g_MatrixHeap);
+    g_MatrixMap->m_Ids = static_cast<std::wstring *>(HAlloc(3 * sizeof(std::wstring), g_MatrixHeap));
+    g_MatrixMap->m_IdsCnt = 0;
+    for (const auto &entry : {objective_descriptor(behavior), objective_descriptor(L"Static"), map_name}) {
+        new(g_MatrixMap->m_Ids + g_MatrixMap->m_IdsCnt) std::wstring(entry);
+        ++g_MatrixMap->m_IdsCnt;
+    }
+    tests::install_battle_texture(L"synthetic-objective/surface");
+    tests::load_battle_material_mesh({}, L"synthetic-objective/box.vo", L"synthetic-objective/surface");
+}
+CMatrixMapObject *create_objective(float x) {
+    auto *object = g_MatrixMap->StaticAdd<CMatrixMapObject>();
+    object->Init(0);
+    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(object->GetCore(DEBUG_CALL_INFO),
+        [](SObjectCore *value) { value->Release(); });
+    core->m_Matrix._41 = x;
+    core->m_Matrix._42 = 100;
+    core->m_Matrix._43 = g_MatrixMap->GetZ(x, 100);
+    object->RNeed(MR_Matrix | MR_Graph);
+    object->JoinToGroup();
+    MG_CHECK(object->IsSpecial() && object->m_BreakHitPoint == 10);
+    return object;
+}
+std::vector<std::string> special_object_run(random::Mode mode, int family) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, 10, 1500, false});
+    assets.install();
+    crater.install();
+    DialogData dialog;
+    install_objective_catalog(family == 2 ? L"+Anim,0:0:10:1#1:0:0:-1" :
+        family == 1 ? L"+Break,1,10,Explode" : L"+Break,1,10,None");
+    auto *first = create_objective(400);
+    auto *last = create_objective(450);
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 2);
+    const auto hit = [&](CMatrixMapObject *object, int attacker) {
+        object->Damage(WEAPON_LASER, object->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), attacker, nullptr);
+    };
+    auto &damage = g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)];
+    damage = {5, 0, 5};
+    const auto draws = random::draw_count();
+    hit(first, 2);
+    MG_CHECK(first->m_BreakHitPoint == 10 && first->m_PB == nullptr);
+    MG_CHECK(random::draw_count() == draws && g_MatrixMap->m_BeforeWinCount == 2);
+    hit(first, PLAYER_SIDE);
+    MG_CHECK(first->m_BreakHitPoint == 5 && first->m_PB != nullptr);
+    hit(first, PLAYER_SIDE);
+    MG_CHECK(first->m_BreakHitPoint == 5 && first->IsSpecial());
+    damage.mindamage = 4;
+    hit(first, PLAYER_SIDE);
+    MG_CHECK(!first->IsSpecial() && g_MatrixMap->m_BeforeWinCount == 1);
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1);
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN));
+    MG_CHECK(first->m_PB == nullptr);
+    if (family == 2) MG_CHECK(first->m_AnimState == 1 && first->m_BreakHitPoint == 2000000000);
+    else MG_CHECK(first->m_Type == 1 && first->m_BehFlag == BEHF_STATIC);
+    // Losing the enemy army is insufficient while one objective remains.
+    MG_CHECK(session.remove(3) && session.remove(4));
+    advance_to(session, 2020);
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !g_MatrixMap->IsPaused());
+    MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
+    damage = {10, 0, 0};
+    hit(last, PLAYER_SIDE);
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && !last->IsSpecial());
+    MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN));
+    MG_CHECK(side().GetStatus() == SS_JUST_WIN && side().GetStatValue(STAT_BUILDING_KILL) == 2);
+    hit(last, PLAYER_SIDE);
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && side().GetStatValue(STAT_BUILDING_KILL) == 2);
+    // The earned objective victory survives loss of every player robot.
+    MG_CHECK(session.remove(1) && session.remove(2));
+    std::vector<std::string> trace;
+    while (!g_MatrixMap->IsPaused() && session.time() < 7000) {
+        session.advance();
+        trace.push_back(session.snapshot() + ":" + std::to_string(side().GetStatus()) + ":" +
+            std::to_string(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN)));
+    }
+    std::cout << "objective family=" << family << " result=" << session.time() << '\n';
+    MG_CHECK(session.time() == 6040);
+    MG_CHECK(g_MatrixMap->IsPaused() && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
+    MG_CHECK(side().GetStatus() == SS_ACTIVE && !FLAG(g_Flags, GFLAG_EXITLOOP));
+    return trace;
+}
+template<int Family> void special_object_destruction() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        const auto first = special_object_run(mode, Family);
+        MG_CHECK(first == special_object_run(mode, Family));
+    }
+}
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
         outcome(run % 2 == 0, true);
@@ -896,6 +1077,10 @@ void repeated_sessions() {
     }
 }
 constexpr tests::Case cases[] = {
+    {"game.outcome.capture_target_damage", capture_target_damage},
+    {"game.outcome.special_break", special_object_destruction<0>},
+    {"game.outcome.special_explosion", special_object_destruction<1>},
+    {"game.outcome.special_animation", special_object_destruction<2>},
     {"game.outcome.capture_combat_death", capture_combat_death},
     {"game.outcome.base_capture_interruption", base_capture_interruption},
     {"game.outcome.turret_does_not_prevent_elimination", turret_does_not_prevent_elimination},
