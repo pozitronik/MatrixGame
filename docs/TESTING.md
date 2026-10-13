@@ -66,6 +66,8 @@ The `game.scenario.*` cases run synthetic battles through `CMatrixMapLogic::Takt
 .\tools\test.ps1 -Configuration Release -Filter '^game\.(scenario|harness)\.|^base\.random\.'
 ```
 
+For synthetic building geometry, queue deployment and exact base-exit lifecycle contracts, see [Synthetic building fixtures](testing/building-fixtures.md).
+
 The world is a 64 by 64 movement grid with flat terrain, real terrain groups, navigation zones/places and an obstacle occupying cells `[28,36) by [20,44)`. Small generated storage-format meshes supply actual animation, bounds and chassis attachment data. Temporary mesh files are eagerly loaded and removed; supplied game packages are never read. The production pathfinder chooses the route. Two friendly chassis start at `(100,200)` and `(100,260)` in world coordinates; unarmed autonomous enemy chassis start at `(500,500)` and `(540,540)`.
 
 | Contract | Evidence |
@@ -101,6 +103,8 @@ The comparator rejects incompatible profile headers by default, checks command r
 ### Shared scenario fixtures
 
 The [synthetic armed fixtures](testing/armed-fixtures.md) describe generated attachment meshes, weapon/effect dependencies, ownership and bounded firing evidence. Scenario-specific fixture guides live under `docs/testing/`; this page remains their navigation entry point and the authority for common validation rules.
+
+The [synthetic building fixtures](testing/building-fixtures.md) describe building geometry, queue deployment, exact base-exit transitions and safe teardown constraints.
 
 ### Extending the fixture
 
