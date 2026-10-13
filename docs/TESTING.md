@@ -102,6 +102,8 @@ The comparator rejects incompatible profile headers by default, checks command r
 
 ### Shared scenario fixtures
 
+The [player command guide](testing/player-orders.md) maps input and cheat contracts to the behavior catalog and distinguishes real form routes from supplied fixture preconditions.
+
 The [synthetic armed fixtures](testing/armed-fixtures.md) describe generated attachment meshes, weapon/effect dependencies, ownership and bounded firing evidence. Scenario-specific fixture guides live under `docs/testing/`; this page remains their navigation entry point and the authority for common validation rules.
 
 The [synthetic building fixtures](testing/building-fixtures.md) describe building geometry, queue deployment, exact base-exit transitions and safe teardown constraints.
