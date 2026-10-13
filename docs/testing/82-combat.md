@@ -139,9 +139,23 @@ Surviving targets retain trace identity `synthetic-armed-buildings-v2`; complete
 
 The reviewed [material fixture](material-fixtures.md) supplies real material-bearing meshes and CPU textures under production ruin names. Production skin lookup, smoke creation and object replacement execute normally. The base blast uses a finite radius and zero damage to isolate the building lifecycle; dependent robot deaths remain separate coverage. These cases use the safe (200,200) base placement and do not resolve the separately tracked arbitrary-coordinate terrain-reference defect.
 
+## Additional weapon families against buildings
+
+Six `building_*` contracts extend production attack orders to volcano, electric, flamethrower, gun, homing missile and mortar weapons against both a base and a titanium factory. Each target uses the interior-aim 40-unit box, starts with 100 internal health units and receives two units of damage per impact. Cooldown is 500 ms, range is 600, the map advances at 10 ms intervals through 4,000 ms, and resource periods remain outside that interval. Every health transition and impact time is asserted, with the target remaining live, enemy-owned and selected for attack; no building kill is awarded.
+
+| Family | Exact health-transition times in milliseconds | Final internal health |
+| --- | --- | --- |
+| Volcano and electric | 20, 520, 1020, 1520, 2020, 2520, 3020, 3520 | 84 |
+| Flamethrower | 200, 230, 260, 290, 320, 700, 730, 760, 1230, 1260, 1290, 1760, 1790, 1820, 2260, 2290, 2320, 2350, 2820, 2850, 2880, 3410, 3440, 3470 | 52 |
+| Gun | 50, 550, 1050, 1550, 2050, 2560, 3060, 3580 | 84 |
+| Homing missile | 290, 780, 1290, 1810, 2320, 2840, 3390, 3930 | 84 |
+| Mortar | 1320, 2820, 3330, 3850 | 92 |
+
+The impact schedule differs from the existing robot-patient examples because target position, bounds and production aim selection differ. In particular, a cooldown opportunity is not proof of a mortar impact: this profile records the actual four damaging arrivals. The test does not infer impacts from firing requests or implement projectile motion itself. Secondary ablaze and shorted damage tables are zero so the contract isolates each weapon's direct building damage. Both RNG modes use the same asserted impact/health sequence and repeat their complete trace independently under fixture identity `synthetic-armed-building-families-v1`. Repair and robot-bomb behavior retain their separate component and area-effect contracts; these six scenarios do not complete every building weapon/state combination.
+
 ## Remaining acceptance work
 
-COM-01 has component evidence for all seventeen damage-table entries across robot, building and cannon targets; all ten robot weapon kinds also have production weapon/effect evidence against robots. Bounded scenarios add cannon-target laser/plasma hits, armor/head arithmetic and cooldown behavior, geometric range/angle and splash boundaries, obstruction, target/shooter removal, repair redirection, status refresh/lethality and effective difficulty variants. This does not establish a complete cross-product of native target shapes and trajectories. Building-target laser/plasma firing now uses the reviewed synthetic building fixture; native attachment layouts and packaged balance/resource behavior require the corresponding resource-backed validation. No gameplay extraction or production seam is justified by these gaps.
+COM-01 has component evidence for all seventeen damage-table entries across robot, building and cannon targets; all ten robot weapon kinds also have production weapon/effect evidence against robots. Bounded scenarios add cannon-target laser/plasma hits, armor/head arithmetic and cooldown behavior, geometric range/angle and splash boundaries, obstruction, target/shooter removal, repair redirection, status refresh/lethality and effective difficulty variants. This does not establish a complete cross-product of native target shapes and trajectories. Building-target laser/plasma firing and the six additional offensive weapon families use the reviewed synthetic building fixture; native attachment layouts and packaged balance/resource behavior require the corresponding resource-backed validation. No gameplay extraction or production seam is justified by these gaps.
 
 COM-02 covers damage, repair, bomb arrival/manual activation, chained damage, dying states, actual removal, retained cores and death during repair. Spawn/base-exit, capture interruption and direct-control restoration intersect the production, command and navigation scenarios; they must be validated at the reviewed shared-fixture integration boundary. Weapon-driven building death now continues through complete explosion, ruin replacement and object removal for every building kind. Dependent robot deaths during base destruction remain uncovered. The component building test proves only the immediate lethal transition.
 
@@ -186,3 +200,5 @@ Version 1 placed the fixed production building aim height exactly on the 20-unit
 Version 2 explicitly places the roof at 40 units. Mesh vertices, bounds, center and radius are derived consistently from that height; production targeting, collision and damage logic remain unchanged. The mesh helper defaults to the original height, center and radius for every existing scenario. Both versions are distinct initial conditions and their traces must not be silently compared as the same baseline. The corrected contract keeps exact impact and health assertions; no tolerance or accepted schedule range has been added.
 
 The material integration extends the existing lethal-building contract from eight to twenty-four scenario variants per replay. All 299 registered engine tests pass in MinGW Debug and Release. The unchanged surviving-target impact schedules still pass. MSVC and host-DLL results require current-revision CI.
+
+The additional building-family extension registers six contracts and twenty-four scenario variants per replay. All 305 engine tests pass in MinGW Debug and Release. Current-revision CI remains necessary for MSVC and the x86 DLL profiles.
