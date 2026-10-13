@@ -1,6 +1,8 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "test_support.hpp"
+#include "command_world.hpp"
+#include <algorithm>
 #include "MatrixRobot.hpp"
 #include "MatrixObjectBuilding.hpp"
 #include "Logic/MatrixEnvironment.h"
@@ -76,13 +78,80 @@ void memory_cleanup() {
 void memory_clear_correctness() {
     Session session;
     CInfo env;
-    env.AddToList(units()[0]);
-    env.Clear();
-    MG_CHECK(!env.m_FirstEnemy && !env.m_LastEnemy);
-    std::cout << "cleared list count=" << env.GetEnemyCnt() << '\n';
-    MG_CHECK(env.GetEnemyCnt() == 0);
-    env.AddToList(units()[1]);
-    MG_CHECK(env.GetEnemyCnt() == 1);
+    const auto robots = units();
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        env.AddToList(robots[0]); env.AddToList(robots[1]);
+        MG_CHECK(env.GetEnemyCnt() == 2);
+        env.Clear(); env.Clear();
+        MG_CHECK(!env.m_FirstEnemy && !env.m_LastEnemy && env.GetEnemyCnt() == 0);
+        env.AddToList(robots[2]);
+        MG_CHECK(env.GetEnemyCnt() == 1 && env.SearchEnemy(robots[2]));
+        env.RemoveFromList(robots[2]);
+        MG_CHECK(!env.m_FirstEnemy && !env.m_LastEnemy && env.GetEnemyCnt() == 0);
+    }
+}
+
+void memory_position_eviction() {
+    Session session;
+    CInfo env;
+    for (int n = 0; n < 40; ++n) {
+        const CPoint point(n * 13 + 2, n * -7 - 3);
+        env.AddBadPlace(n);
+        env.AddBadCoord(point);
+        MG_CHECK(env.m_BadPlaceCnt == std::min(n + 1, 8));
+        MG_CHECK(env.m_BadCoordCnt == std::min(n + 1, 16));
+        // A duplicate must neither evict nor promote the oldest retained record.
+        env.AddBadPlace(std::max(0, n - 7));
+        const int oldest_coord = std::max(0, n - 15);
+        env.AddBadCoord(CPoint(oldest_coord * 13 + 2, oldest_coord * -7 - 3));
+        for (int i = 0; i < env.m_BadPlaceCnt; ++i)
+            MG_CHECK(env.m_BadPlace[i] == std::max(0, n - 7) + i);
+        for (int i = 0; i < env.m_BadCoordCnt; ++i) {
+            const int retained = oldest_coord + i;
+            MG_CHECK(env.m_BadCoord[i] == CPoint(retained * 13 + 2, retained * -7 - 3));
+        }
+        if (n >= 8) MG_CHECK(!env.IsBadPlace(n - 8));
+        if (n >= 16) MG_CHECK(!env.IsBadCoord(CPoint((n - 16) * 13 + 2, (n - 16) * -7 - 3)));
+    }
+}
+
+void memory_ignore_eviction() {
+    Session session;
+    // Retain real objects throughout; only pointer identity is queried. They
+    // stay outside the map scheduler and are destroyed after the environment.
+    std::array<EnginePtr<CMatrixBuilding>, 33> objects;
+    for (auto &object : objects) object = make_engine_object<CMatrixBuilding>();
+    CInfo env;
+    std::array<int, 33> inserted{};
+    for (int n = 0; n < int(objects.size()); ++n) {
+        inserted[n] = session.time();
+        env.AddIgnore(objects[n].get());
+        MG_CHECK(env.m_IgnoreCnt == std::min(n + 1, 16));
+        const int oldest = std::max(0, n - 15);
+        for (int i = 0; i < env.m_IgnoreCnt; ++i) {
+            MG_CHECK(env.m_Ignore[i] == objects[oldest + i].get());
+            MG_CHECK(env.m_IgnoreTime[i] == inserted[oldest + i]);
+            MG_CHECK(env.IsIgnore(objects[oldest + i].get()));
+        }
+        if (n >= 16) MG_CHECK(!env.IsIgnore(objects[n - 16].get()));
+        session.advance();
+    }
+    // Duplicates refresh in place even when the array is full.
+    env.AddIgnore(objects[17].get());
+    MG_CHECK(env.m_IgnoreCnt == 16 && env.m_Ignore[0] == objects[17].get());
+    MG_CHECK(env.m_IgnoreTime[0] == session.time());
+    while (session.time() < inserted[32] + 4990) session.advance();
+    MG_CHECK(session.time() == inserted[32] + 4990 && env.IsIgnore(objects[32].get()));
+    session.advance();
+    MG_CHECK(session.time() == inserted[32] + 5000 && !env.IsIgnore(objects[32].get()));
+    MG_CHECK(env.IsIgnore(objects[17].get()));
+    // Expired slots are reused before evicting the refreshed live first entry.
+    env.AddIgnore(objects[0].get());
+    MG_CHECK(env.m_IgnoreCnt == 16 && env.m_Ignore[0] == objects[17].get());
+    MG_CHECK(env.m_Ignore[1] == objects[0].get() && env.m_IgnoreTime[1] == session.time());
+    env.DelIgnore(objects[17].get());
+    env.AddIgnore(objects[1].get());
+    MG_CHECK(env.m_Ignore[0] == objects[1].get() && env.m_IgnoreTime[0] == session.time());
 }
 
 void place_bounds() {
