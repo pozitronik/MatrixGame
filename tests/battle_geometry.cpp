@@ -1,10 +1,10 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_geometry.hpp"
+#include "battle_mesh.hpp"
 #include "test_support.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
 #include "CStorage.hpp"
-
 #include <algorithm>
 #include <array>
 #include <filesystem>
@@ -13,10 +13,6 @@
 
 namespace tests {
 namespace {
-template<class T> T *allocate(size_t count) {
-    return static_cast<T *>(HAllocClear(count * sizeof(T), g_MatrixHeap));
-}
-
 void schema(CStorage &storage, const wchar_t *table,
             std::initializer_list<std::pair<const wchar_t *, EStorageType>> columns) {
     CStorageRecord record(table);
@@ -56,7 +52,7 @@ struct MeshFile {
     }
 };
 
-void write_mesh(const std::filesystem::path &path) {
+void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachment> attachments, bool combat_animations) {
     CStorage storage;
     schema(storage, L"verts", {{L"data", ST_BYTE}});
     schema(storage, L"idxs", {{L"data", ST_BYTE}});
@@ -97,8 +93,9 @@ void write_mesh(const std::filesystem::path &path) {
     bytes(storage, L"frames", L"unions", &union_index, 1);
     bytes<int>(storage, L"frames", L"edges", nullptr, 0);
 
-    const wchar_t *animations[] = {ANIMATION_NAME_IDLE, ANIMATION_NAME_STAY,
+    std::vector<const wchar_t *> animations = {ANIMATION_NAME_IDLE, ANIMATION_NAME_STAY,
         ANIMATION_NAME_MOVE, ANIMATION_NAME_MOVE_BACK, ANIMATION_NAME_ROTATE};
+    if (combat_animations) { animations.push_back(ANIMATION_NAME_FIRE); animations.push_back(ANIMATION_NAME_FIRELOOP); }
     std::vector<DWORD> ids, offsets, counts;
     std::vector<SVOFrameIndex> frames;
     for (size_t i = 0; i < std::size(animations); ++i) {
@@ -112,14 +109,42 @@ void write_mesh(const std::filesystem::path &path) {
     numbers(storage, L"anims", L"disp", offsets);
     numbers(storage, L"anims", L"cnt", counts);
     bytes(storage, L"anims", L"frames", frames.data(), frames.size());
-    storage.GetBuf(L"matrices", L"name", ST_WCHAR)->AddWStr(L"chassis-link");
-    numbers(storage, L"matrices", L"id", {1});
-    numbers(storage, L"matrices", L"disp", {0});
-    D3DXMATRIX attachment;
-    D3DXMatrixIdentity(&attachment);
-    attachment._43 = 20;
-    bytes(storage, L"matrices", L"data", &attachment, 1);
+    std::vector<DWORD> matrix_ids, matrix_offsets;
+    std::vector<D3DXMATRIX> matrices;
+    for (const auto &item : attachments) {
+        storage.GetBuf(L"matrices", L"name", ST_WCHAR)->AddWStr(item.name);
+        matrix_ids.push_back(item.id);
+        matrix_offsets.push_back(static_cast<DWORD>(matrices.size()));
+        D3DXMATRIX matrix;
+        D3DXMatrixIdentity(&matrix);
+        matrix._41 = item.x; matrix._42 = item.y; matrix._43 = item.z;
+        matrices.push_back(matrix);
+    }
+    numbers(storage, L"matrices", L"id", matrix_ids);
+    numbers(storage, L"matrices", L"disp", matrix_offsets);
+    bytes(storage, L"matrices", L"data", matrices.data(), matrices.size());
     storage.Save(path.c_str());
+}
+
+}
+CVectorObject *load_battle_mesh(std::span<const MeshAttachment> attachments, const wchar_t *cache_name, bool combat_animations) {
+    MeshFile file;
+    write_mesh(file.path, attachments, combat_animations);
+    auto *geometry = static_cast<CVectorObject *>(g_Cache->Get(CacheClass::VO, file.path.c_str()));
+    geometry->LoadSpecial(OLF_NO_TEX, nullptr, 0);
+    MG_CHECK(std::filesystem::remove(file.path));
+    if (cache_name) {
+        MG_CHECK(g_Cache->Find(CacheClass::VO, cache_name) == nullptr);
+        geometry->m_Name = cache_name;
+    }
+    return geometry;
+}
+}
+
+namespace tests {
+namespace {
+template<class T> T *allocate(size_t count) {
+    return static_cast<T *>(HAllocClear(count * sizeof(T), g_MatrixHeap));
 }
 
 template<class T> void append(std::vector<BYTE> &output, const T &value) {
@@ -224,11 +249,8 @@ void BattleGeometry::configure(CMatrixMapLogic &map) {
 }
 
 CMatrixRobotAI *BattleGeometry::create_robot(CMatrixMapLogic &map, int side, float x, float y) {
-    MeshFile file;
-    write_mesh(file.path);
-    auto *geometry = static_cast<CVectorObject *>(g_Cache->Get(CacheClass::VO, file.path.c_str()));
-    geometry->LoadSpecial(OLF_NO_TEX, nullptr, 0);
-    MG_CHECK(std::filesystem::remove(file.path));
+    const MeshAttachment attachment{1, L"chassis-link", 0, 0, 20};
+    auto *geometry = load_battle_mesh(std::span(&attachment, 1));
     auto *robot = map.StaticAdd<CMatrixRobotAI>();
     robot->m_CurrState = ROBOT_SUCCESSFULLY_BUILD;
     robot->m_Side = side;

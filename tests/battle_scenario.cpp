@@ -247,6 +247,9 @@ void Session::advance() {
 }
 int Session::frame() const { return impl_->frames; }
 int Session::time() const { return impl_->map->GetTime(); }
+bool Session::matches(EntityId id, const CMatrixRobotAI *candidate) const {
+    return candidate != nullptr && impl_->lookup(id) == candidate;
+}
 RobotState Session::robot(EntityId id) const {
     auto *r = impl_->lookup(id);
     if (!r) return {id, false, 0, 0, -1, -1, -1, -1};
@@ -312,11 +315,13 @@ void Session::check_running() const {
     if (impl_->profile.audio) MG_CHECK(!impl_->audio_state->voices.empty());
 }
 
-std::string Session::metadata() const {
+std::string Session::metadata(std::string_view fixture) const {
+    MG_CHECK(!fixture.empty() && fixture.find_first_not_of(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") == std::string_view::npos);
     std::ostringstream out;
     out << "{";
     if (impl_->profile.initial_time_ms) out << "\"initial_time_ms\":" << impl_->profile.initial_time_ms << ',';
-    out << "\"type\":\"header\",\"schema\":1,\"fixture\":\"unarmed-chassis-obstacle-v1\","
+    out << "\"type\":\"header\",\"schema\":1,\"fixture\":\"" << fixture << "\","
         << "\"revision\":\"" << MATRIXGAME_SCENARIO_REVISION << "\",\"dirty\":" << MATRIXGAME_SCENARIO_DIRTY << ','
         << "\"render\":\"storage-device-no-draw-cursor-surrogate\",\"viewport\":[1280,720],"
         << "\"audio\":\"" << (impl_->profile.audio ? "synthetic-next-frame-completion" : "unavailable") << "\","

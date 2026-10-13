@@ -66,6 +66,8 @@ The `game.scenario.*` cases run synthetic battles through `CMatrixMapLogic::Takt
 .\tools\test.ps1 -Configuration Release -Filter '^game\.(scenario|harness)\.|^base\.random\.'
 ```
 
+For synthetic building geometry, queue deployment and exact base-exit lifecycle contracts, see [Synthetic building fixtures](testing/building-fixtures.md).
+
 The world is a 64 by 64 movement grid with flat terrain, real terrain groups, navigation zones/places and an obstacle occupying cells `[28,36) by [20,44)`. Small generated storage-format meshes supply actual animation, bounds and chassis attachment data. Temporary mesh files are eagerly loaded and removed; supplied game packages are never read. The production pathfinder chooses the route. Two friendly chassis start at `(100,200)` and `(100,260)` in world coordinates; unarmed autonomous enemy chassis start at `(500,500)` and `(540,540)`.
 
 | Contract | Evidence |
@@ -97,6 +99,12 @@ python -B tools/compare-battle-traces.py <reference.jsonl> <candidate.jsonl>
 ```
 
 The comparator rejects incompatible profile headers by default, checks command records as well as snapshots, and reports the earliest differing record and the alphabetically first differing field within it. `--allow-profile-difference` waives only configuration, compiler/version, assertion mode, precision control, EXE/DLL mode and cheats. Scenario identity, including seed, RNG mode, tick interval, fixture and presentation policy, must still match; it does not introduce tolerances or establish that those profiles ought to match. Keep accepted reference traces with the validation evidence for the behavior being frozen. The initial harness asserts the bounded gameplay contracts above and reproducibility; it does not constitute the complete whole-game baseline. It does not record transient internal events or automate a comparison across three fresh processes. Direct deletion bypasses damage and the `ROBOT_DIP` dying state, so cleanup of an inactive object still present in the live logic list remains uncovered. These need additional bounded scenarios or observation seams before claiming the corresponding research contracts.
+
+### Shared scenario fixtures
+
+The [synthetic armed fixtures](testing/armed-fixtures.md) describe generated attachment meshes, weapon/effect dependencies, ownership and bounded firing evidence. Scenario-specific fixture guides live under `docs/testing/`; this page remains their navigation entry point and the authority for common validation rules.
+
+The [synthetic building fixtures](testing/building-fixtures.md) describe building geometry, queue deployment, exact base-exit transitions and safe teardown constraints.
 
 ### Extending the fixture
 
