@@ -4,6 +4,10 @@
 #include "battle_mesh.hpp"
 #include "battle_geometry.hpp"
 #include "battle_building.hpp"
+#include "battle_material.hpp"
+#include "MatrixMapGroup.hpp"
+#include "MatrixObject.hpp"
+#include <set>
 #include "test_support.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixObjectCannon.hpp"
@@ -29,6 +33,20 @@ struct StatusObservation : CMatrixMapStatic {
     static bool is_ablaze(CMatrixMapStatic &target) { return (target.* &StatusObservation::IsAblaze)(); }
     static bool is_shorted(CMatrixMapStatic &target) { return (target.* &StatusObservation::IsShorted)(); }
 };
+std::set<CMatrixMapObject *> building_ruins() {
+    std::set<CMatrixMapObject *> result;
+    for (int x = 0; x < g_MatrixMap->m_GroupSize.x; ++x)
+        for (int y = 0; y < g_MatrixMap->m_GroupSize.y; ++y) {
+            auto *group = g_MatrixMap->GetGroupByIndex(x, y);
+            if (!group) continue;
+            for (int i = 0; i < group->ObjectsCnt(); ++i) {
+                auto *object = group->GetObject(i);
+                if (object->GetObjectType() == OBJECT_TYPE_MAPOBJECT)
+                    result.insert(static_cast<CMatrixMapObject *>(object));
+            }
+        }
+    return result;
+}
 struct Trace {
     std::ofstream file;
     std::vector<std::string> states;
@@ -50,7 +68,7 @@ struct Trace {
         std::cerr << "Combat profile: " << header << "\nTrace: " << path.string() << std::endl;
     }
     void record(Session &session, CMatrixRobotAI *target, CMatrixRobotAI *shooter = nullptr,
-                CMatrixCannon *cannon = nullptr, SObjectCore *retired_owner = nullptr, CMatrixBuilding *building = nullptr) {
+                CMatrixCannon *cannon = nullptr, SObjectCore *retired_owner = nullptr, CMatrixBuilding *building = nullptr, bool demolition = false) {
         const auto draws = random::draw_count();
         std::ostringstream out;
         out << "{\"type\":\"snapshot\",\"state\":" << session.snapshot()
@@ -67,6 +85,8 @@ struct Trace {
         if (retired_owner) out << ",\"owner_present\":" << (retired_owner->m_Object ? "true" : "false");
         if (building) out << ",\"building_health_bits\":" << std::bit_cast<uint32_t>(building->GetHitPoint())
             << ",\"building_state\":" << building->m_State;
+        if (demolition) out << ",\"ruin_count\":" << building_ruins().size()
+            << ",\"smoke_count\":" << g_MatrixMap->m_EffectSpawnersCnt;
         out << "}}";
         states.push_back(out.str());
         file << states.back() << '\n';
@@ -1198,6 +1218,7 @@ void cannon_patient() {
 }
 
 std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EBuildingType kind, bool lethal, int run) {
+    tests::BattleMaterialProfile material_profile;
     tests::BattleCombatAssets assets;
     const Profile profile{mode, 82, 10, 1000, false, true};
     Session session(profile);
@@ -1213,6 +1234,23 @@ std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EB
     tests::arm_battle_robot(*shooter, plasma ? RUK_WEAPON_PLASMA : RUK_WEAPON_LASER);
     // Building aiming fixes z at terrain + 20. Put that aim point inside the
     // target, rather than on the default mesh roof where roundoff changes hits.
+    if (lethal) {
+        const auto texture = std::wstring(OBJECT_PATH_BUILDINGS_RUINS) + L"b" + std::to_wstring(int(kind));
+        tests::install_battle_texture(texture.c_str());
+        tests::load_battle_material_mesh({}, (texture + L".vo").c_str(), texture.c_str());
+        if (kind != BUILDING_BASE) {
+            const auto secondary = texture + L"?Trans";
+            tests::install_battle_texture(secondary.c_str());
+            tests::load_battle_material_mesh({}, (texture + L"p.vo").c_str(), secondary.c_str());
+        }
+        // The final base blast runs, while its damage is isolated from the
+        // weapon-driven lifetime contract; splash damage has separate checks.
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 20;
+        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+        g_Config.m_BuildingDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+        g_Config.m_CannonDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    }
     auto *building_mesh = tests::load_battle_mesh({}, nullptr, false, 40.0f);
     MG_CHECK(building_mesh->GetFrame(0)->m_Min.z < 20 && building_mesh->GetFrame(0)->m_Max.z > 20);
     auto owned = tests::make_battle_building(*building_mesh, 2, kind, 200, 200, 50);
@@ -1220,7 +1258,7 @@ std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EB
     g_MatrixMap->AddObject(patient, true);
     owned.release();
     Trace trace(session, profile, (std::string("building-patient-") + (plasma ? "plasma-" : "laser-") +
-        std::to_string(int(kind)) + (lethal ? "-lethal" : "-surviving")).c_str(), run, "synthetic-armed-buildings-v2");
+        std::to_string(int(kind)) + (lethal ? "-lethal" : "-surviving")).c_str(), run, lethal ? "synthetic-armed-demolition-v1" : "synthetic-armed-buildings-v2");
     auto *side = g_MatrixMap->GetPlayerSide();
     trace.command(session, "order-attack-building", [&] {
         side->PGOrderAttack(side->SelGroupToLogicGroup(), CPoint(20, 20), patient);
@@ -1229,16 +1267,24 @@ std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EB
     float health = patient->GetHitPoint();
     std::vector<std::pair<int, int>> impacts;
     CoreLease core(patient->GetCore(DEBUG_CALL_INFO));
-    int dying = 0, target_cleared = 0;
-    // Stop lethal runs before ruin conversion: this mesh has no material surfaces.
-    // LoadObject(tex) requires those surfaces and a separate reviewed fixture.
-    for (int i = 0; i < (lethal ? 100 : 200); ++i) {
-        trace.record(session, shooter, shooter, nullptr, core.get(), core->m_Object ? patient : nullptr);
+    int dying = 0, target_cleared = 0, exploded = 0, removed = 0;
+    MG_CHECK(building_ruins().empty());
+    for (int i = 0; i < (lethal ? 450 : 200); ++i) {
+        trace.record(session, shooter, shooter, nullptr, core.get(), core->m_Object ? patient : nullptr, lethal);
         session.advance();
-        MG_CHECK(core->m_Object == patient);
+        if (!core->m_Object) {
+            if (!removed) removed = session.time();
+            MG_CHECK(lethal && dying);
+            MG_CHECK(building_ruins().size() == (kind == BUILDING_BASE ? 1u : 2u));
+            MG_CHECK(session.robot(1).target_is_null);
+            MG_CHECK(side->GetStatValue(STAT_BUILDING_KILL) == 1);
+            continue;
+        }
+        MG_CHECK(building_ruins().empty());
         if (!target_cleared && session.robot(1).target_is_null) target_cleared = session.time();
-        if (patient->m_State == BUILDING_DIP) {
+        if (patient->m_State == BUILDING_DIP || patient->m_State == BUILDING_DIP_EXPLODED) {
             if (!dying) dying = session.time();
+            if (!exploded && patient->m_State == BUILDING_DIP_EXPLODED) exploded = session.time();
         } else if (patient->GetHitPoint() != health) {
             health = patient->GetHitPoint();
             impacts.emplace_back(session.time(), int(std::lround(health * 10)));
@@ -1249,7 +1295,17 @@ std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EB
     std::cout << '\n';
     if (lethal) {
         MG_CHECK(dying == (plasma ? 160 : 20));
-        MG_CHECK(patient->m_State == BUILDING_DIP);
+        std::cout << "exploded=" << exploded << " removed=" << removed << '\n';
+        MG_CHECK(core->m_Object == nullptr);
+        MG_CHECK(removed == dying + (plasma ? 10 : 0) + (kind == BUILDING_BASE ? 3000 : 1000));
+        MG_CHECK(exploded == (kind == BUILDING_BASE ? dying + (plasma ? 10 : 0) + 2900 : 0));
+        for (auto *ruin : building_ruins()) {
+            MG_CHECK(!ruin->InLT() && ruin->m_Graph && ruin->m_Graph->GetSkin());
+            MG_CHECK(ruin->GetMatrix()._41 == 200 && ruin->GetMatrix()._42 == 200);
+        }
+        for (int x = 0; x < g_MatrixMap->m_Size.x; ++x)
+            for (int y = 0; y < g_MatrixMap->m_Size.y; ++y)
+                MG_CHECK(g_MatrixMap->UnitGet(x, y)->m_Base != patient);
         MG_CHECK(target_cleared == (plasma ? 210 : 110));
         MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_BUILDING_KILL) == 1);
     } else {
@@ -1264,7 +1320,7 @@ std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EB
         MG_CHECK(patient->IsLiveBuilding() && !target_cleared);
         MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_BUILDING_KILL) == 0);
     }
-    trace.record(session, shooter, shooter, nullptr, core.get(), core->m_Object ? patient : nullptr);
+    trace.record(session, shooter, shooter, nullptr, core.get(), core->m_Object ? patient : nullptr, lethal);
     trace.complete(session);
     return trace.states;
 }
@@ -1279,7 +1335,7 @@ void building_patient() {
 void building_dying() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (bool plasma : {false, true})
-            for (auto kind : {BUILDING_BASE, BUILDING_TITAN}) {
+            for (auto kind : {BUILDING_BASE, BUILDING_TITAN, BUILDING_PLASMA, BUILDING_ELECTRONIC, BUILDING_ENERGY, BUILDING_REPAIR}) {
                 const auto reference = building_patient_run(mode, plasma, kind, true, 0);
                 compare(reference, building_patient_run(mode, plasma, kind, true, 1));
             }
