@@ -1211,12 +1211,16 @@ std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EB
         g_Config.m_Timings[resource] = 100000;
     auto *shooter = robot(PLAYER_SIDE);
     tests::arm_battle_robot(*shooter, plasma ? RUK_WEAPON_PLASMA : RUK_WEAPON_LASER);
-    auto owned = tests::make_battle_building(*shooter->m_Unit[0].m_Graph->VO(), 2, kind, 200, 200, 50);
+    // Building aiming fixes z at terrain + 20. Put that aim point inside the
+    // target, rather than on the default mesh roof where roundoff changes hits.
+    auto *building_mesh = tests::load_battle_mesh({}, nullptr, false, 40.0f);
+    MG_CHECK(building_mesh->GetFrame(0)->m_Min.z < 20 && building_mesh->GetFrame(0)->m_Max.z > 20);
+    auto owned = tests::make_battle_building(*building_mesh, 2, kind, 200, 200, 50);
     auto *patient = owned.get();
     g_MatrixMap->AddObject(patient, true);
     owned.release();
     Trace trace(session, profile, (std::string("building-patient-") + (plasma ? "plasma-" : "laser-") +
-        std::to_string(int(kind)) + (lethal ? "-lethal" : "-surviving")).c_str(), run, "synthetic-armed-buildings-v1");
+        std::to_string(int(kind)) + (lethal ? "-lethal" : "-surviving")).c_str(), run, "synthetic-armed-buildings-v2");
     auto *side = g_MatrixMap->GetPlayerSide();
     trace.command(session, "order-attack-building", [&] {
         side->PGOrderAttack(side->SelGroupToLogicGroup(), CPoint(20, 20), patient);
@@ -1251,9 +1255,7 @@ std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EB
     } else {
         const std::vector<int> expected_times = plasma
             ? std::vector<int>{160, 260, 350, 450, 550, 650, 750, 850, 960, 1060, 1160, 1260, 1370, 1470, 1570, 1670, 1770, 1880, 1980}
-            : kind == BUILDING_BASE
-                ? std::vector<int>{20, 120, 220, 320, 420, 620, 720, 820, 920, 1020, 1120, 1220, 1420, 1720, 1820, 1920}
-                : std::vector<int>{20, 120, 220, 320, 420, 520, 620, 820, 920, 1020, 1120, 1320, 1420, 1720, 1820};
+            : std::vector<int>{20, 120, 220, 320, 420, 520, 620, 720, 820, 920, 1020, 1120, 1220, 1320, 1420, 1520, 1620, 1720, 1820, 1920};
         std::vector<std::pair<int, int>> expected;
         for (size_t i = 0; i < expected_times.size(); ++i)
             expected.emplace_back(expected_times[i], 50 - 2 * int(i + 1));
