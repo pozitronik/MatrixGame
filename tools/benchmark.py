@@ -13,6 +13,7 @@ Only the Python standard library is used.
 
 import argparse
 import datetime
+import hashlib
 import json
 import platform
 import random
@@ -36,6 +37,9 @@ IDENTITY_FIELDS = (
     ('host', 'processor'),
     ('host', 'logical_processors'),
 )
+
+
+ALLOCATION_COUNTERS = ('allocations', 'reallocations', 'frees', 'requested_bytes')
 
 
 class BenchmarkError(Exception):
@@ -121,8 +125,12 @@ def run(arguments):
         for index in range(arguments.processes):
             output = Path(temporary) / f'process-{index}.json'
             command = [str(executable), *options, '--output', str(output)]
-            result = subprocess.run(command, cwd=str(executable.parent), capture_output=True, text=True,
-                                    check=False)
+            try:
+                result = subprocess.run(command, cwd=str(executable.parent), capture_output=True, text=True,
+                                        check=False, timeout=arguments.timeout)
+            except subprocess.TimeoutExpired as error:
+                message = f'Benchmark process {index} did not finish within {arguments.timeout} s.'
+                raise BenchmarkError(message) from error
             sys.stdout.write(result.stdout)
             if result.returncode != 0:
                 raise BenchmarkError(f'Benchmark process {index} failed with exit code {result.returncode}:\n'
@@ -131,10 +139,19 @@ def run(arguments):
     return combine(processes, {
         'revision': revision(),
         'cmake': cmake,
+        'executable': {'name': executable.name, 'sha256': file_hash(executable)},
         'os': platform.platform(),
         'command': ['matrixgame_benchmarks', *options],
         'generated_utc': datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
     })
+
+
+def file_hash(path):
+    digest = hashlib.sha256()
+    with path.open('rb') as stream:
+        for block in iter(lambda: stream.read(1 << 20), b''):
+            digest.update(block)
+    return digest.hexdigest()
 
 
 def combine(processes, context):
@@ -146,19 +163,24 @@ def combine(processes, context):
                 raise BenchmarkError(f'Process {index} reported a different {section}.')
     workloads = []
     for position, workload in enumerate(first['workloads']):
-        samples, medians, allocations = [], [], []
+        groups, medians, allocations = [], [], []
         for index, report in enumerate(processes):
             other = report['workloads'][position]
             for key in ('name', 'parameters', 'iterations_per_sample', 'work_per_sample', 'inspection'):
                 if other[key] != workload[key]:
                     raise BenchmarkError(f'Workload {workload["name"]} differs in {key} between processes 0 and '
                                          f'{index}; the work is not repeatable.')
-            samples += other['samples_ns']
+            groups.append(list(other['samples_ns']))
             medians.append(other['statistics_ns']['median'])
             if other.get('allocations_per_sample'):
                 allocations.append(other['allocations_per_sample'])
-        stable = all(item['stable'] for item in allocations) and all(
-            item['allocations'][0] == allocations[0]['allocations'][0] for item in allocations)
+        summary = None
+        if allocations:
+            summary = {name: allocations[0][name][0] for name in ALLOCATION_COUNTERS}
+            # Stable means every counter repeats in every sample of every process.
+            summary['stable'] = all(value == summary[name] for item in allocations for name in ALLOCATION_COUNTERS
+                                    for value in item[name])
+        samples = [value for group in groups for value in group]
         workloads.append({
             'name': workload['name'],
             'description': workload['description'],
@@ -167,15 +189,10 @@ def combine(processes, context):
             'work_per_sample': workload['work_per_sample'],
             'inspection': workload['inspection'],
             'samples_ns': samples,
+            'process_samples_ns': groups,
             'process_medians_ns': medians,
             'statistics_ns': describe(samples),
-            'allocations_per_sample': {
-                'stable': stable,
-                'allocations': allocations[0]['allocations'][0],
-                'reallocations': allocations[0]['reallocations'][0],
-                'frees': allocations[0]['frees'][0],
-                'requested_bytes': allocations[0]['requested_bytes'][0],
-            } if allocations else None,
+            'allocations_per_sample': summary,
         })
     return {
         'schema': SCHEMA,
@@ -187,14 +204,26 @@ def combine(processes, context):
     }
 
 
+def process_groups(workload):
+    return workload.get('process_samples_ns') or [workload['samples_ns']]
+
+
 def bootstrap_ratio(base, candidate, resamples, confidence, seed):
-    """Percentile bootstrap interval of median(candidate) / median(base)."""
+    """Hierarchical percentile bootstrap interval of median(candidate) / median(base).
+
+    Each resample draws processes with replacement and then samples within each
+    drawn process, so variation between processes widens the interval.
+    """
     generator = random.Random(seed)
-    ratios = []
-    for _ in range(resamples):
-        b = [generator.choice(base) for _ in base]
-        c = [generator.choice(candidate) for _ in candidate]
-        ratios.append(quantile(c, 0.5) / quantile(b, 0.5))
+
+    def resampled_median(groups):
+        pooled = []
+        for _ in groups:
+            group = groups[generator.randrange(len(groups))]
+            pooled += [group[generator.randrange(len(group))] for _ in group]
+        return quantile(pooled, 0.5)
+
+    ratios = [resampled_median(candidate) / resampled_median(base) for _ in range(resamples)]
     tail = (1.0 - confidence) / 2.0
     return quantile(ratios, tail), quantile(ratios, 1.0 - tail)
 
@@ -211,14 +240,16 @@ def classify(low, high, threshold, separated):
 
 def compare(base, candidate, threshold=0.05, confidence=0.95, resamples=2000, seed=78,
             allow_identity_mismatch=False, allow_parameter_change=False):
-    """Return (rows, problems). Problems make timing differences meaningless."""
-    problems = []
+    """Return (rows, problems, notes). Problems make timing differences meaningless."""
+    problems, notes = [], []
     for section, field in IDENTITY_FIELDS:
         left = base.get(section, {}).get(field)
         right = candidate.get(section, {}).get(field)
         if left != right and not allow_identity_mismatch:
             problems.append(f'{section}.{field} differs: {left!r} versus {right!r}')
     candidates = {workload['name']: workload for workload in candidate['workloads']}
+    known = {workload['name'] for workload in base['workloads']}
+    notes += [f'{name} exists only in the candidate' for name in candidates if name not in known]
     rows = []
     for workload in base['workloads']:
         other = candidates.get(workload['name'])
@@ -235,7 +266,7 @@ def compare(base, candidate, threshold=0.05, confidence=0.95, resamples=2000, se
             problems.append(f'{workload["name"]} performed different work: {workload["work_per_sample"]} versus '
                             f'{other["work_per_sample"]}')
             continue
-        low, high = bootstrap_ratio(workload['samples_ns'], other['samples_ns'], resamples, confidence, seed)
+        low, high = bootstrap_ratio(process_groups(workload), process_groups(other), resamples, confidence, seed)
         separated = ((min(other['process_medians_ns']) > max(workload['process_medians_ns'])) if low > 1.0 else
                      (max(other['process_medians_ns']) < min(workload['process_medians_ns'])))
         base_median = quantile(workload['samples_ns'], 0.5)
@@ -250,12 +281,21 @@ def compare(base, candidate, threshold=0.05, confidence=0.95, resamples=2000, se
             'candidate_noise': describe(other['samples_ns'])['mad'] / candidate_median,
             'processes_separated': separated,
             'verdict': classify(low, high, threshold, separated),
-            'allocations': (
-                (workload.get('allocations_per_sample') or {}).get('allocations'),
-                (other.get('allocations_per_sample') or {}).get('allocations'),
-            ),
+            'allocations': (workload.get('allocations_per_sample'), other.get('allocations_per_sample')),
         })
-    return rows, problems
+    return rows, problems, notes
+
+
+def allocation_text(pair):
+    base, candidate = pair
+    if not base or not candidate:
+        return ''
+    changes = [f'{name} {base[name]} -> {candidate[name]}' for name in ALLOCATION_COUNTERS
+               if base[name] != candidate[name]]
+    text = ', '.join(changes) if changes else f'allocations unchanged ({base["allocations"]})'
+    if not (base['stable'] and candidate['stable']):
+        text += ', allocation counts vary between samples'
+    return '; ' + text
 
 
 def compare_command(arguments):
@@ -264,22 +304,23 @@ def compare_command(arguments):
     for name, report in (('base', base), ('candidate', candidate)):
         if report.get('schema') != SCHEMA:
             raise BenchmarkError(f'The {name} file is not a combined benchmark result ({SCHEMA}).')
-    rows, problems = compare(base, candidate, arguments.threshold, arguments.confidence, arguments.resamples,
-                             arguments.seed, arguments.allow_identity_mismatch, arguments.allow_parameter_change)
+    rows, problems, notes = compare(base, candidate, arguments.threshold, arguments.confidence, arguments.resamples,
+                                    arguments.seed, arguments.allow_identity_mismatch,
+                                    arguments.allow_parameter_change)
     print(f'Base: {base["revision"].get("commit")} | candidate: {candidate["revision"].get("commit")}')
-    print(f'Material threshold: {arguments.threshold:.1%}; {arguments.confidence:.0%} bootstrap interval of the '
-          f'median ratio; regressions also require separated process medians.')
+    print(f'Material threshold: {arguments.threshold:.1%}; {arguments.confidence:.0%} hierarchical bootstrap '
+          f'interval of the median ratio; regressions also require separated process medians.')
     for row in rows:
         low, high = row['interval']
-        allocations = row['allocations']
-        allocation_text = '' if allocations[0] is None else f', allocations {allocations[0]} -> {allocations[1]}'
         print(f'{row["name"]}: {row["base_median_ms"]:.3f} -> {row["candidate_median_ms"]:.3f} ms '
               f'({row["change"]:+.1%}, interval {low:+.1%}..{high:+.1%}, noise {row["base_noise"]:.1%}/'
-              f'{row["candidate_noise"]:.1%} MAD){allocation_text}: {row["verdict"]}')
+              f'{row["candidate_noise"]:.1%} MAD{allocation_text(row["allocations"])}): {row["verdict"]}')
     for name, report in (('base', base), ('candidate', candidate)):
         delay = report.get('runner', {}).get('validation_delay_us')
         if delay:
             print(f'Note: the {name} includes a validation delay of {delay} us per sample.')
+    for note in notes:
+        print(f'Note: {note}')
     for problem in problems:
         print(f'Not comparable: {problem}')
     if problems:
@@ -295,7 +336,7 @@ def main(argv=None):
     runner.add_argument('--executable',
                         help='Benchmark executable (default: <build-dir>/tests/matrixgame_benchmarks.exe)')
     runner.add_argument('--output', required=True, help='Combined result file to write')
-    runner.add_argument('--processes', type=int, default=3)
+    runner.add_argument('--processes', type=int, default=5)
     runner.add_argument('--warmup', type=int, default=3)
     runner.add_argument('--repetitions', type=int, default=15)
     runner.add_argument('--iterations', type=int, default=0, help='Override iterations per sample')
@@ -303,6 +344,7 @@ def main(argv=None):
     runner.add_argument('--validation-delay-us', type=int, default=0,
                         help='Add a fixed delay to every sample to check the comparison')
     runner.add_argument('--allow-instrumented', action='store_true', help='Permit a coverage build')
+    runner.add_argument('--timeout', type=int, default=600, help='Seconds allowed per benchmark process')
     comparer = commands.add_parser('compare', help='Compare a candidate result with a base result')
     comparer.add_argument('base')
     comparer.add_argument('candidate')

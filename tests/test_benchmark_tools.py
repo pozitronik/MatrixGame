@@ -38,11 +38,12 @@ def process_report(samples, work=None, allocations=10):
     }
 
 
-def result(scale=1.0, seed=1, noise=0.02, processes=3, work=None):
+def result(scale=1.0, seed=1, noise=0.02, processes=3, work=None, offsets=None):
     generator = random.Random(seed)
     reports = []
-    for _ in range(processes):
-        samples = [1.0e7 * scale * (1.0 + generator.uniform(-noise, noise)) for _ in range(15)]
+    for index in range(processes):
+        level = scale * (offsets[index] if offsets else 1.0)
+        samples = [1.0e7 * level * (1.0 + generator.uniform(-noise, noise)) for _ in range(15)]
         reports.append(process_report(samples, work))
     context = {"revision": {"commit": "synthetic", "dirty": False},
                "cmake": {"build_type": "Release", "dll": "OFF", "cheats": "OFF"}}
@@ -68,24 +69,58 @@ class BenchmarkToolTests(unittest.TestCase):
         workload = combined["workloads"][0]
         self.assertEqual(len(workload["samples_ns"]), 45)
         self.assertEqual(len(workload["process_medians_ns"]), 3)
+        self.assertEqual([len(group) for group in workload["process_samples_ns"]], [15, 15, 15])
         self.assertTrue(workload["allocations_per_sample"]["stable"])
         self.assertEqual(combined["runner"]["processes"], 3)
 
     def test_repeated_measurement_is_not_a_regression(self):
-        rows, problems = benchmark.compare(result(seed=1), result(seed=2))
+        rows, problems, _ = benchmark.compare(result(seed=1), result(seed=2))
         self.assertEqual(problems, [])
         self.assertEqual(rows[0]["verdict"], "no material change")
 
     def test_material_slowdown_is_a_regression(self):
-        rows, problems = benchmark.compare(result(seed=1), result(scale=1.2, seed=2))
+        rows, problems, _ = benchmark.compare(result(seed=1), result(scale=1.2, seed=2))
         self.assertEqual(problems, [])
         self.assertEqual(rows[0]["verdict"], "regression")
-        rows, _ = benchmark.compare(result(seed=1), result(scale=0.8, seed=2))
+        rows, _, _ = benchmark.compare(result(seed=1), result(scale=0.8, seed=2))
         self.assertEqual(rows[0]["verdict"], "improvement")
 
     def test_small_change_inside_noise_is_not_material(self):
-        rows, _ = benchmark.compare(result(seed=1, noise=0.2), result(scale=1.06, seed=2, noise=0.2))
+        rows, _, _ = benchmark.compare(result(seed=1, noise=0.2), result(scale=1.06, seed=2, noise=0.2))
         self.assertIn(rows[0]["verdict"], ("inconclusive", "no material change"))
+
+    def test_process_variation_widens_the_interval(self):
+        # Within-process noise is tiny, but the candidate processes disagree by several percent.
+        steady = result(seed=1, noise=0.001)
+        scattered = result(seed=2, noise=0.001, offsets=[0.96, 1.0, 1.06])
+        rows, _, _ = benchmark.compare(steady, scattered)
+        low, high = rows[0]["interval"]
+        self.assertLess(low, -0.03)
+        self.assertGreater(high, 0.05)
+        self.assertEqual(rows[0]["verdict"], "inconclusive")
+
+    def test_bootstrap_is_deterministic(self):
+        base, candidate = result(seed=1), result(seed=2)
+        self.assertEqual(benchmark.compare(base, candidate)[0][0]["interval"],
+                         benchmark.compare(base, candidate)[0][0]["interval"])
+
+    def test_allocation_stability_covers_every_counter(self):
+        reports = [process_report([1.0, 2.0]), process_report([1.0, 2.0])]
+        reports[1]["workloads"][0]["allocations_per_sample"]["requested_bytes"] = [100, 120]
+        combined = benchmark.combine(reports, {})
+        self.assertFalse(combined["workloads"][0]["allocations_per_sample"]["stable"])
+        text = benchmark.allocation_text((result()["workloads"][0]["allocations_per_sample"],
+                                          combined["workloads"][0]["allocations_per_sample"]))
+        self.assertIn("vary between samples", text)
+
+    def test_candidate_only_workloads_are_reported(self):
+        candidate = result()
+        extra = copy.deepcopy(candidate["workloads"][0])
+        extra["name"] = "selection.extra"
+        candidate["workloads"].append(extra)
+        _, problems, notes = benchmark.compare(result(), candidate)
+        self.assertEqual(problems, [])
+        self.assertEqual(notes, ["selection.extra exists only in the candidate"])
 
     def test_overlapping_processes_prevent_a_regression_verdict(self):
         self.assertEqual(benchmark.classify(1.2, 1.3, 0.05, separated=False), "inconclusive")
@@ -93,13 +128,13 @@ class BenchmarkToolTests(unittest.TestCase):
         self.assertEqual(benchmark.classify(0.98, 1.08, 0.05, separated=True), "inconclusive")
 
     def test_different_work_or_identity_is_not_compared(self):
-        _, problems = benchmark.compare(result(), result(work={"local_searches": 961}))
+        _, problems, _ = benchmark.compare(result(), result(work={"local_searches": 961}))
         self.assertTrue(any("different work" in problem for problem in problems))
         other = result()
         other["build"]["configuration"] = "Debug"
-        _, problems = benchmark.compare(result(), other)
+        _, problems, _ = benchmark.compare(result(), other)
         self.assertTrue(any("build.configuration" in problem for problem in problems))
-        _, problems = benchmark.compare(result(), other, allow_identity_mismatch=True)
+        _, problems, _ = benchmark.compare(result(), other, allow_identity_mismatch=True)
         self.assertEqual(problems, [])
 
     def test_compare_command_exit_status(self):
