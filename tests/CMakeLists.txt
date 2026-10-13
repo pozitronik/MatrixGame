@@ -232,6 +232,13 @@ foreach(contract buffers invalid_buffers com_ownership state_sessions)
     add_matrix_test(game.harness.device.${contract} matrixgame_battle_device_tests tests rendering)
 endforeach()
 
+add_matrix_test_executable(matrixgame_combat_damage_tests combat_damage_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_combat_damage_tests PRIVATE MatrixGameInternal)
+foreach(contract robot_families building_families cannon_families difficulty minimum_health repair status_effects bomb_protection
+    building_death cannon_repair_state building_repair projectile_range_callback projectile_owner_retirement)
+    add_matrix_test(game.combat.${contract} matrixgame_combat_damage_tests gameplay)
+endforeach()
+
 add_matrix_test(base.random.draw_count_reset matrixgame_random_tests base random)
 add_matrix_test(base.random.draw_count_observation matrixgame_random_tests base random)
 add_matrix_test(base.random.draw_count_ranges matrixgame_random_tests base random)
