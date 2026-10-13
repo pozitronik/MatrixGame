@@ -29,11 +29,7 @@ struct Trace {
             std::to_string(p.step_ms) + "-" + std::to_string(run) + ".jsonl");
         file.open(path, std::ios::trunc);
         MG_CHECK(file.good());
-        std::string header = session.metadata();
-        const std::string base_fixture = "unarmed-chassis-obstacle-v1";
-        const auto at = header.find(base_fixture);
-        MG_CHECK(at != std::string::npos);
-        header.replace(at, base_fixture.size(), "synthetic-armed-boxes-v2");
+        std::string header = session.metadata("synthetic-armed-boxes-v2");
         header.pop_back();
         header += ",\"scenario\":\"" + std::string(name) + "\"}";
         file << header << '\n';
@@ -51,6 +47,7 @@ struct Trace {
         if (cannon) out << ",\"cannon_target_is_patient\":" <<
             (cannon->m_TargetCore && cannon->m_TargetCore->m_Object == target ? "true" : "false")
             << ",\"yaw_bits\":" << std::bit_cast<uint32_t>(cannon->m_Angle)
+            << ",\"turret_yaw_bits\":" << std::bit_cast<uint32_t>(cannon->m_Unit[1].u1.s1.m_Angle)
             << ",\"pitch_bits\":" << std::bit_cast<uint32_t>(cannon->m_AngleX);
         out << "}}";
         states.push_back(out.str());
@@ -107,6 +104,7 @@ std::vector<std::string> robot_run(Profile profile, bool plasma, int run) {
     configure_weapon(plasma ? WEAPON_PLASMA : WEAPON_LASER, plasma ? WEAPON_PLASMA_HEAT : WEAPON_LASER_HEAT);
     auto *shooter = robot(PLAYER_SIDE);
     auto *target = robot(2);
+    MG_CHECK(session.matches(1, shooter) && session.matches(3, target));
     tests::arm_battle_robot(*shooter, plasma ? RUK_WEAPON_PLASMA : RUK_WEAPON_LASER);
     target->InitMaxHitpoint(50);
     if (plasma) target->SetMaxSpeed(0);
@@ -183,15 +181,19 @@ std::vector<std::string> cannon_run(random::Mode mode, int run) {
     g_Config.m_RobotDamages[Weap2Index(WEAPON_CANNON2)] = {2, 0, 10};
     auto *target = robot(PLAYER_SIDE);
     auto *next = robot(PLAYER_SIDE, 1);
+    MG_CHECK(session.matches(1, target) && session.matches(2, next));
     target->InitMaxHitpoint(50);
     next->InitMaxHitpoint(50);
     auto *cannon = tests::create_battle_cannon(2, 80, 100);
+    const float initial_yaw = cannon->m_Unit[1].u1.s1.m_Angle;
+    bool yaw_changed = false;
     Trace trace(session, profile, "cannon-retarget", run);
     std::vector<int> impacts;
     float health = target->GetHitPoint();
     for (int i = 0; i < 100; ++i) {
         trace.record(session, target, nullptr, cannon);
         session.advance();
+        yaw_changed |= cannon->m_Unit[1].u1.s1.m_Angle != initial_yaw;
         if (target->GetHitPoint() != health) {
             health = target->GetHitPoint();
             impacts.push_back(session.time());
@@ -206,6 +208,7 @@ std::vector<std::string> cannon_run(random::Mode mode, int run) {
     for (int i = 0; i < 100; ++i) {
         trace.record(session, next, nullptr, cannon);
         session.advance();
+        yaw_changed |= cannon->m_Unit[1].u1.s1.m_Angle != initial_yaw;
         if (next->GetHitPoint() != health) {
             health = next->GetHitPoint();
             impacts.push_back(session.time());
@@ -215,6 +218,7 @@ std::vector<std::string> cannon_run(random::Mode mode, int run) {
     MG_CHECK((impacts == std::vector<int>{1120, 1220, 1320, 1420, 1520, 1620, 1720, 1820, 1920}));
     MG_CHECK(cannon->m_TargetCore && cannon->m_TargetCore->m_Object == next);
     MG_CHECK(next->GetHitPoint() < 5);
+    MG_CHECK(yaw_changed && cannon->m_Angle == 0);
     trace.record(session, next, nullptr, cannon);
     session.check_running();
     trace.complete(session);
@@ -226,21 +230,30 @@ void cannon_firing() {
         compare(a, cannon_run(mode, 1));
     }
 }
+// Unregistered correctness probe, not a behavior-preservation oracle.
+// Source/reproduction: docs/testing/armed-fixtures.md, "Axis-aligned trace defect".
 void axis_aligned_trace() {
+    bool all_hit = true;
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         Session session({mode, 82, 10, 1000, false, false});
         auto *target = robot(PLAYER_SIDE);
+        MG_CHECK(session.matches(1, target));
         const D3DXVECTOR3 end = target->GetGeoCenter();
-        const DWORD mask = TRACE_OBJECTSPHERE | TRACE_ROBOT;
-        // Current ScanLandscapeGroup initializes its upper interval to zero and
-        // only expands it for nonzero X travel. Preserve this observed asymmetry.
-        MG_CHECK(g_MatrixMap->Trace(nullptr, D3DXVECTOR3(end.x, 100, 50), end, mask, nullptr) == TRACE_STOP_NONE);
-        MG_CHECK(g_MatrixMap->Trace(nullptr, D3DXVECTOR3(80, 100, 50), end, mask, nullptr) == target);
+        const DWORD masks[]{TRACE_ROBOT | TRACE_OBJECTSPHERE, TRACE_ROBOT};
+        for (DWORD mask : masks) {
+            // Both rays intersect the same object; test sphere and real mesh Pick.
+            MG_CHECK(g_MatrixMap->Trace(nullptr, D3DXVECTOR3(80, 100, 50), end, mask, nullptr) == target);
+            const bool hit = g_MatrixMap->Trace(nullptr, D3DXVECTOR3(end.x, 100, 50), end, mask, nullptr) == target;
+            std::cerr << "Axis trace mode=" << int(mode) << " sphere=" << bool(mask & TRACE_OBJECTSPHERE)
+                << " hit=" << hit << " expected=1\n";
+            all_hit &= hit;
+        }
     }
+    MG_CHECK(all_hit);
 }
 const tests::Case cases[] = {{"game.combat.cannon_firing", cannon_firing},
     {"game.combat.robot_firing", robot_firing}, {"game.combat.plasma_flight", plasma_flight},
-    {"game.combat.axis_aligned_trace", axis_aligned_trace}};
+    {"probe.combat.axis_aligned_trace", axis_aligned_trace}};
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
