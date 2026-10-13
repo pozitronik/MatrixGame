@@ -13,6 +13,17 @@
 namespace {
 using tests::battle::Session;
 using Cost = std::array<int, MAX_RESOURCES>;
+tests::battle::Profile icon_profile(random::Mode mode) {
+    tests::battle::Profile profile;
+    profile.mode = mode;
+    profile.seed = 83;
+    profile.step_ms = 10;
+    profile.max_frames = 6000;
+    profile.audio = false;
+    profile.initially_selected = false;
+    profile.unavailable_icon_targets = true;
+    return profile;
+}
 struct ReleaseCore { void operator()(SObjectCore *core) const { core->Release(); } };
 using CoreLease = std::unique_ptr<SObjectCore, ReleaseCore>;
 CMatrixRobotAI *source_robot() {
@@ -40,7 +51,7 @@ struct MaintenanceInput : CMatrixMapLogic {
 };
 void unavailable_robot_icons() {
     for (int repeat = 0; repeat < 2; ++repeat) {
-        Session session({random::Mode::ParkMiller, 83, 10, 1000, false, false, true});
+        Session session(icon_profile(random::Mode::ParkMiller));
         auto *robot = source_robot();
         MG_CHECK(session.rejected_icon_targets() == 0);
         const auto draws = random::draw_count();
@@ -58,9 +69,9 @@ void unavailable_robot_icons() {
 }
 
 void reinforcement_delivery() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int repeat = 0; repeat < 3; ++repeat) {
         tests::BattleMaterialProfile material_profile;
-        Session session({mode, 83, 10, 6000, false, false, true});
+        Session session(icon_profile(mode));
         std::cout << session.metadata("synthetic-reinforcement-v1") << '\n';
         tests::install_battle_transport();
         auto factory = base();
@@ -96,7 +107,11 @@ void reinforcement_delivery() {
         while (g_MatrixMap->m_AD_Obj_cnt && session.frame() < 5900) {
             session.advance();
             MG_CHECK(robot_core->m_Object == robot);
-            if (released < 0 && robot->m_CurrState != ROBOT_CARRYING) released = session.time();
+            if (released < 0 && robot->m_CurrState != ROBOT_CARRYING) {
+                released = session.time();
+                MG_CHECK(robot->m_CurrState == ROBOT_FALLING);
+                MG_CHECK(carrier_core->m_Object == carrier && !carrier->CarryingRobot());
+            }
             if (landed < 0 && released >= 0 && robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) landed = session.time();
         }
         std::cout << "Reinforcement release=" << released << " landed=" << landed << " done=" << session.time() << '\n';
@@ -113,7 +128,7 @@ void reinforcement_reservations() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
       for (int score : {60, 100, 130}) {
         tests::BattleMaterialProfile material_profile;
-        Session session({mode, 83, 10, 6000, false, false, true});
+        Session session(icon_profile(mode));
         tests::install_battle_transport(score);
         auto factory = base();
         // All four places are otherwise free; one live robot reserves place zero.
@@ -155,7 +170,7 @@ void reinforcement_reservations() {
 void reinforcement_carrier_limit() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         tests::BattleMaterialProfile material_profile;
-        Session session({mode, 83, 10, 1000, false, false, true});
+        Session session(icon_profile(mode));
         tests::install_battle_transport();
         auto factory = base();
         MaintenanceInput::enable(*g_MatrixMap);
