@@ -32,7 +32,8 @@ function Save-VerifiedDownload {
         for ($attempt = 1; $attempt -le $Attempts; $attempt++) {
             if (Test-Path -LiteralPath $partial) { Remove-Item -LiteralPath $partial -Force }
             try {
-                Invoke-WebRequest -Uri $Uri -OutFile $partial -UseBasicParsing
+                # A browser-like agent receives SourceForge's HTML download page instead of the archive.
+                Invoke-WebRequest -Uri $Uri -OutFile $partial -UseBasicParsing -UserAgent 'MatrixGame-setup'
                 $actual = (Get-FileHash -LiteralPath $partial -Algorithm SHA256).Hash
                 if ($actual -eq $expected) {
                     Move-Item -LiteralPath $partial -Destination $Path -Force
@@ -64,7 +65,8 @@ function Get-DirectoryHash {
     [CmdletBinding()]
     param([Parameter(Mandatory)][string]$Root)
 
-    $base = (Resolve-Path -LiteralPath $Root).Path.TrimEnd('\', '/')
+    # Enumerated FullName values are long paths, so 8.3 short names in $Root must not shift the prefix.
+    $base = (Get-Item -LiteralPath $Root).FullName.TrimEnd('\', '/')
     [string[]]$entries = @(Get-ChildItem -LiteralPath $base -File -Recurse -Force | ForEach-Object {
         $relative = $_.FullName.Substring($base.Length + 1).Replace('\', '/')
         "$((Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash) $relative"

@@ -11,7 +11,7 @@ $sdkRoot = Join-Path $sdkParent 'DXSDK'
 $archiveUrl = 'https://download.microsoft.com/download/a/e/7/ae743f1f-632b-4809-87a9-aa1bb3458e31/DXSDK_Jun10.exe'
 $archiveHash = '705271DC83BFEE54D9B94E028426E288D5F070784B7446D164F48ECFBB2A02CB'
 # Get-DirectoryHash of the extracted DXSDK/Include and DXSDK/Lib/x86 subset.
-$subsetHash = '0D0A95D446C66D7B22CACA3BD6744D84C6983F1FA861290E382949104AA4DEC3'
+$subsetHash = '60FE9DC903122E9EDC4EE613387B6CB81DCFBDE45626B6DACED78E5B95A866BC'
 
 if (Test-Path -LiteralPath $sdkParent) {
     if ((Test-Path -LiteralPath $sdkRoot) -and (Get-DirectoryHash -Root $sdkRoot) -eq $subsetHash) {

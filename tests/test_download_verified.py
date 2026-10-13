@@ -24,6 +24,7 @@ class Responses(BaseHTTPRequestHandler):
     def do_GET(self):
         server = self.server
         server.requests += 1
+        server.agents.append(self.headers.get("User-Agent"))
         status, body = server.queue[min(server.requests, len(server.queue)) - 1]
         self.send_response(status)
         self.send_header("Content-Length", str(len(body)))
@@ -45,6 +46,7 @@ class VerifiedDownloadTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), Responses)
         self.server.requests = 0
+        self.server.agents = []
         self.server.queue = [(200, GOOD)]
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
@@ -77,6 +79,8 @@ class VerifiedDownloadTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(target.read_bytes(), GOOD)
         self.assertEqual(self.server.requests, 1)
+        # A browser-like agent receives SourceForge's HTML download page.
+        self.assertEqual(self.server.agents, ["MatrixGame-setup"])
         self.assert_no_partial(target)
 
     def test_mismatching_and_failed_responses_are_retried(self):
