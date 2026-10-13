@@ -34,6 +34,8 @@ launching it.
 
 Game builds compile the CTest executables by default. Run them with `tools/test.ps1`; use `-WithoutTests` for a game-only build or `-TestsOnly` to build the test targets without staging game resources. See [Testing](TESTING.md) for commands, results and instructions for adding a regression.
 
+`-Coverage` builds an instrumented MinGW copy in a separate directory ending in `-coverage`, for example `build/mingw-debug-exe-coverage`. See [Coverage and performance measurements](MEASUREMENTS.md).
+
 ## Game resources and configuration
 
 Place `robots.pkg` and optionally `robots.dat` at the repository root.
@@ -97,7 +99,7 @@ For integration with the Space Rangers host:
 .\tools\build.ps1 -Configuration Release -DLL -WithoutResources
 ```
 
-The DLL uses the host game's resource and configuration layout.
+The DLL uses the host game's resource and configuration layout. [Original host integration](ORIGINAL_HOST.md) describes the host contract, its automated evidence and the native smoke procedure.
 
 The callback interface keeps its existing x86 calling conventions and structure layout. `Run` contains C++ exceptions from initialization, form construction and result handling. These entry failures return `100`, matching the existing loop-error convention; successful runs retain their existing exit values. Initialization failure leaves the supplied result statistics unchanged, releases partial game state and cursor confinement, and preserves borrowed host resources. Diagnostics go to `matrixgame-dll-errors.log` in the host working directory and Windows debug output, without a standalone error dialog. The dedicated file avoids write-sharing conflicts with the normal logger's `test.log`. Native faults and invalid host pointers require separate investigation.
 
