@@ -134,6 +134,7 @@ void regroup_counts_correctness(bool split) {
 void regroup_split_correctness() { regroup_counts_correctness(true); }
 void regroup_merge_correctness() { regroup_counts_correctness(false); }
 
+// Crowded buffer capacity is tracked separately: https://github.com/pozitronik/MatrixGame/issues/136
 void bomb_escape_planning() {
     // Each variant starts a fresh world; these are planning inputs, not teleports during movement.
     enum Variant { Manual, Automatic, ChassisBlocked, InsideRadius, AtRadius, OutsideRadius };

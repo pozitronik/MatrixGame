@@ -212,6 +212,8 @@ void audio_unavailable() {
     clean_globals();
 }
 void bounds() {
+    constexpr Profile legacy{random::Mode::ParkMiller, 79, 10, 3000, false, false, true};
+    static_assert(legacy.unavailable_icon_targets && legacy.initial_time_ms == 0);
     for (int initial_time : {-1, 60001}) {
         Profile invalid; invalid.initial_time_ms = initial_time;
         bool rejected = false;
