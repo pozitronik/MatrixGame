@@ -15,6 +15,7 @@
 #include "MatrixSkinManager.hpp"
 #include <array>
 #include <cmath>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -213,18 +214,22 @@ void player_constructor_purchase() {
         MG_CHECK(history.m_FirstConfig->m_Chassis.m_nKind == RUK_CHASSIS_WHEEL);
         MG_CHECK(history.m_FirstConfig->m_Hull.m_Unit.m_nKind == RUK_ARMOR_BIREX);
         std::vector<CMatrixRobotAI *> robots;
+        struct ReleaseCore { void operator()(SObjectCore *core) const { core->Release(); } };
+        std::vector<std::unique_ptr<SObjectCore, ReleaseCore>> robot_cores;
         for (auto *item = factory->m_BS.GetTopItem(); item; item = item->m_NextStackItem) {
             auto *robot = item->AsRobot();
             MG_CHECK(robot->GetSide() == PLAYER_SIDE && robot->GetBase() == factory);
             MG_CHECK(!in_logic(robot) && robot->m_UnitCnt == 2);
             MG_CHECK(!robot->GetBigTexture() && !robot->GetMedTexture());
             robots.push_back(robot);
+            robot_cores.emplace_back(robot->GetCore(DEBUG_CALL_INFO));
         }
         MG_CHECK(robots.size() == static_cast<std::size_t>(requested));
         if (cancel) {
             for (int i = 0; i < requested; ++i) {
                 MG_CHECK(factory->m_BS.GetTopItem() == robots[i]);
                 factory->m_BS.DeleteItem(1);
+                MG_CHECK(robot_cores[i]->m_Object == nullptr);
                 for (int r = 0; r < MAX_RESOURCES; ++r)
                     MG_CHECK(resources()[r] == (i + 1) * price[r]);
             }
@@ -239,7 +244,9 @@ void player_constructor_purchase() {
             MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && !factory->IsSpawningBot());
             MG_CHECK(factory->m_State == BASE_CLOSED && resources() == Cost{});
             MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == built + requested);
-            for (auto *robot : robots) {
+            for (std::size_t i = 0; i < robots.size(); ++i) {
+                auto *robot = robots[i];
+                MG_CHECK(robot_cores[i]->m_Object == robot);
                 MG_CHECK(in_logic(robot) && robot->GetBase() == nullptr);
                 MG_CHECK(robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD && !robot->IsDisableManual());
             }
