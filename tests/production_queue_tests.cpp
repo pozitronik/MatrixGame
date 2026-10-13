@@ -52,9 +52,10 @@ struct World {
     CMatrixRobotAI *enqueue() {
         auto robot = make_robot();
         auto *result = robot.get();
+        MG_CHECK(!base->m_BS.IsMaxItems());
         base->m_BS.AddItem(result);
+        robot.release(); // The non-full queue now owns the unit, including assertion-failure cleanup.
         MG_CHECK(base->m_BS.GetRobotsCnt() == base->m_BS.GetItemsCnt());
-        robot.release();
         return result;
     }
 };
@@ -201,6 +202,89 @@ void reinforcement_gates() {
         w.base->m_Side = PLAYER_SIDE;
         w.expect({100, 200, 300, 400});
         MG_CHECK(w.base->m_BS.GetItemsCnt() == 0);
+    }
+}
+
+// Set the synthetic map's protected resource input without casting a base object
+// to a derived type or replacing any production method.
+struct MaintenanceInput : CMatrixMapLogic {
+    static void percentage(CMatrixMapLogic &map, int percentage) {
+        map.*&MaintenanceInput::m_MaintenancePRC = percentage;
+    }
+    static void clear_timer(CMatrixMapLogic &map) {
+#if defined _TRACE || defined _DEBUG
+        map.ResetMaintenanceTime();
+#else
+        // Release has no debug reset shortcut; use its ordinary timer setter.
+        map.SetMaintenanceTime(0);
+#endif
+    }
+};
+
+void reinforcement_disabled() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        World w;
+        auto &map = *w.world.map;
+        auto *queued = w.enqueue();
+        auto *logic_head = CMatrixMapStatic::GetFirstLogic();
+        MaintenanceInput::percentage(map, 0);
+        MG_CHECK(map.MaintenanceDisabled());
+        for (int remaining : {-1, 0, 1, 1000}) {
+            random::seed(83, mode);
+            map.SetMaintenanceTime(remaining);
+            w.base->Maintenance();
+            MG_CHECK(map.BeforeMaintenanceTime() == remaining);
+            MG_CHECK(map.MaintenanceDisabled());
+            MG_CHECK(random::draw_count() == 0);
+            MG_CHECK(CMatrixMapStatic::GetFirstLogic() == logic_head);
+            MG_CHECK(w.base->m_BS.GetItemsCnt() == 1 && w.base->m_BS.GetTopItem() == queued);
+            w.expect({100, 200, 300, 400});
+        }
+        map.m_Difficulty.k_time_before_maintenance = 2;
+        g_Config.m_MaintenanceTime = 1000;
+        map.InitMaintenanceTime();
+        MG_CHECK(map.BeforeMaintenanceTime() == 0 && map.MaintenanceDisabled());
+        MaintenanceInput::clear_timer(map);
+        MG_CHECK(map.BeforeMaintenanceTime() == 0 && map.MaintenanceDisabled());
+        MG_CHECK(random::draw_count() == 0);
+    }
+}
+
+void reinforcement_scaling() {
+    // Products are exact integers in float32: these cases test the input factors,
+    // not an incidental x87/SSE conversion choice at fractional milliseconds.
+    struct Example { int configured, percentage; float difficulty; int expected; };
+    constexpr Example examples[]{{1000, 100, 0, 0}, {1000, 25, .5f, 125},
+        {1000, 50, 1, 500}, {1000, 100, 1.5f, 1500}, {1000, 175, 2, 3500}, {0, 100, 2, 0}};
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        for (auto example : examples) {
+            World w;
+            auto &map = *w.world.map;
+            random::seed(83, mode);
+            MaintenanceInput::percentage(map, example.percentage);
+            g_Config.m_MaintenanceTime = example.configured;
+            map.m_Difficulty.k_time_before_maintenance = example.difficulty;
+            map.SetMaintenanceTime(9876);
+            map.InitMaintenanceTime();
+            MG_CHECK(map.BeforeMaintenanceTime() == example.expected);
+            MG_CHECK(!map.MaintenanceDisabled());
+            if (example.expected > 0) {
+                w.base->Maintenance();
+                MG_CHECK(map.BeforeMaintenanceTime() == example.expected);
+                map.SetMaintenanceTime(1);
+                w.base->Maintenance();
+                MG_CHECK(map.BeforeMaintenanceTime() == 1);
+            }
+            // A zero difficulty/configured delay means ready, not map-disabled.
+            // Do not enter the successful request path: it needs landing geometry.
+            MaintenanceInput::clear_timer(map);
+            MG_CHECK(map.BeforeMaintenanceTime() == 0 && !map.MaintenanceDisabled());
+            map.InitMaintenanceTime();
+            MG_CHECK(map.BeforeMaintenanceTime() == example.expected);
+            MG_CHECK(random::draw_count() == 0);
+            MG_CHECK(w.base->m_BS.GetItemsCnt() == 0);
+            w.expect({100, 200, 300, 400});
+        }
     }
 }
 
@@ -356,6 +440,8 @@ constexpr tests::Case cases[]{
     {"game.production.price", construction_price},
     {"game.production.income", income_ownership},
     {"game.production.reinforcement_gates", reinforcement_gates},
+    {"game.production.reinforcement_disabled", reinforcement_disabled},
+    {"game.production.reinforcement_scaling", reinforcement_scaling},
     {"game.production.turret_progress", turret_progress_and_cancel},
     {"game.production.income_ticks", income_tick_boundaries},
     {"game.production.ai_constructor_prices", ai_and_constructor_prices},
