@@ -8,6 +8,7 @@ param(
     [switch]$WithoutResources,
     [switch]$WithoutTests,
     [switch]$TestsOnly,
+    [switch]$Coverage,
     [string]$ToolchainRoot = '',
     [string]$CMakeRoot = '',
     [int]$Jobs = 4
@@ -26,9 +27,12 @@ if (-not (Test-Path -LiteralPath $cmake)) {
 }
 if ($Jobs -lt 1) { throw 'Jobs must be a positive number.' }
 if ($TestsOnly -and $WithoutTests) { throw 'TestsOnly and WithoutTests cannot be combined.' }
+if ($Coverage -and $Compiler -ne 'MinGW') { throw 'Coverage requires the pinned MinGW toolchain and its gcov.' }
 
 $kind = if ($DLL) { 'dll' } else { 'exe' }
 $buildName = "{0}-{1}-{2}" -f $Compiler.ToLowerInvariant(), $Configuration.ToLowerInvariant(), $kind
+# Instrumented objects stay in their own directory so ordinary builds are unaffected.
+if ($Coverage) { $buildName += '-coverage' }
 $buildRoot = Join-Path $repoRoot "build/$buildName"
 $dllOption = if ($DLL) { 'ON' } else { 'OFF' }
 $cheatsOption = if ($Cheats) { 'ON' } else { 'OFF' }
@@ -38,7 +42,8 @@ $configureArgs = @(
     "-DCMAKE_BUILD_TYPE=$Configuration",
     "-DMATRIXGAME_BUILD_DLL=$dllOption",
     "-DMATRIXGAME_CHEATS=$cheatsOption",
-    "-DBUILD_TESTING=$testingOption"
+    "-DBUILD_TESTING=$testingOption",
+    "-DMATRIXGAME_COVERAGE=$(if ($Coverage) { 'ON' } else { 'OFF' })"
 )
 if (-not $DLL) { $configureArgs += '-DMATRIXGAME_PKG_BRING_FROM_GAME=OFF' }
 
