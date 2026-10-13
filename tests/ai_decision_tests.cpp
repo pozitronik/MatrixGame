@@ -419,9 +419,13 @@ int main(int argc, char **argv) {
         {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
         {"game.ai.place_bounds", tests::ai::place_bounds},
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
+        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/137
         {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
+        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
         {"probe.ai.place_axis", tests::ai::place_axis_correctness},
+        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
         {"probe.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
+        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
         {"probe.ai.regroup_merge_counts", tests::ai::regroup_merge_correctness},
         {"game.ai.enemy_memory", enemy_memory},
         {"game.ai.memory_target_retirement", memory_target_retirement},
@@ -442,6 +446,7 @@ int main(int argc, char **argv) {
         {"game.ai.strategic_objective_replacement", tests::ai::strategic_objective_replacement},
         {"game.ai.strategic_objective_ties", tests::ai::strategic_objective_ties},
         {"game.ai.strategic_empty_team_split", tests::ai::strategic_empty_team_split},
+        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/135
         {"probe.ai.uneven_team_redistribution", tests::ai::uneven_team_correctness},
         {"game.ai.radio_group", tests::ai::radio_group},
         {"game.ai.radio_team_region", tests::ai::radio_team_region},
@@ -449,6 +454,7 @@ int main(int argc, char **argv) {
         {"game.ai.threat_priorities", tests::ai::threat_priorities},
         {"game.ai.automatic_attack_route", tests::ai::automatic_attack_route},
         // Opt-in correctness probe; deliberately absent from CTest until fixed.
+        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/138
         {"probe.ai.reused_route_distance", tests::ai::reused_route_distance},
         {"game.ai.automatic_capture_route", tests::ai::automatic_capture_route},
         {"game.ai.automatic_defence_route", tests::ai::automatic_defence_route},

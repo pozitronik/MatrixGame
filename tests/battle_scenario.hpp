@@ -20,8 +20,8 @@ struct Profile {
     int max_frames = 3000;
     bool audio = true;
     bool initially_selected = true;
-    int initial_time_ms = 0;
     bool unavailable_icon_targets = false;
+    int initial_time_ms = 0;
 };
 
 // IDs belong to a session, never to a pointer, group slot or process-global UID.
