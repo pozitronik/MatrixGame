@@ -57,6 +57,49 @@ Always select the matching configuration with `-C` for MSVC's multi-configuratio
 
 CI runs the engine suite after every game-build configuration. Test failures fail the build job and the aggregate Required checks gate. JUnit reports are retained as separate artifacts, including when a test fails. Contribution-policy tests remain a separate check.
 
+## Controlled battle scenarios
+
+The `game.scenario.*` cases run synthetic battles through `CMatrixMapLogic::Takt`, including production robot movement, pathfinding, side AI, effects and outcome evaluation. The fixture starts with selected unarmed wheel chassis; context commands enter `CMatrixSideUnit::OnRButtonDown` with a supplied world trace. This exercises its ordinary validation, footprint conversion, group assignment and synchronous command execution. Initial selection is fixture setup; these cases do not claim coverage of screen picking or selection acknowledgement sounds.
+
+```powershell
+.\tools\test.ps1 -Configuration Debug -Filter '^game\.(scenario|harness)\.|^base\.random\.'
+.\tools\test.ps1 -Configuration Release -Filter '^game\.(scenario|harness)\.|^base\.random\.'
+```
+
+The world is a 64 by 64 movement grid with flat terrain, real terrain groups, navigation zones/places and an obstacle occupying cells `[28,36) ? [20,44)`. Small generated storage-format meshes supply actual animation, bounds and chassis attachment data. Temporary mesh files are eagerly loaded and removed; supplied game packages are never read. The production pathfinder chooses the route. Two friendly chassis start at `(100,200)` and `(100,260)` in world coordinates; unarmed autonomous enemy chassis start at `(500,500)` and `(540,540)`.
+
+| Contract | Evidence |
+| --- | --- |
+| Movement | Both selected chassis pass around the obstacle and reach assigned places on its far side; every frame checks finite positions, map bounds and obstacle exclusion |
+| Replacement | A second context command replaces the first destination during movement and both chassis arrive in the new area |
+| Target removal | An attack command binds an existing enemy; production destruction retires it, the group retains its last ground destination, and stale scenario IDs are rejected without changing state |
+| Rejection | A ground command without a selection and an unknown target ID leave the observed state unchanged |
+| Repeatability | Same-profile runs in one process produce identical ordered snapshots; separate runs compare both RNG modes |
+| Observation | Recording every frame leaves the terminal snapshot and raw RNG draw count identical to a run without intermediate snapshots |
+| Cleanup and bounds | Failures after topology, entity and selection setup are followed by a successful session; frame limits reject further advancement; tracked Debug allocations and synthetic device references must be released |
+
+The primary profile uses seed 79 and 10 ms ticks. Movement also runs a separate 16 ms profile; its frame count represents its own schedule, not an equivalent 10 ms trajectory. Both ParkMiller and LegacyCRT are reseeded before constructing the map. The new `random::draw_count()` observer counts raw draws from the shared production stream without changing values, range mapping or consumption. Direct CRT calls outside this wrapper are outside its count.
+
+Presentation dependencies are explicit. A COM-compatible test device stores vertex/index buffers and material/state data but aborts on drawing, texture creation or other unsupported operations. Real water and movement effects still construct and tick. A cursor presentation surrogate and the existing diagnostic-overlay surrogate avoid loading artwork or displaying UI. Synthetic audio uses one fixed PCM mapping; non-looping voices finish at the next frame boundary, while loops remain active. An unavailable-audio profile is checked separately. These choices do not establish rendering, native audio timing, Win32 input, device-reset or original-host compatibility; those remain separate contracts and native checks.
+
+MinGW scenarios select x87 single precision to match the normal x86 Direct3D device profile and restore the previous setting at teardown. MSVC keeps and records its compiler/runtime profile. Exact comparisons apply within one profile. Debug/Release or compiler comparisons need explicit analysis; a successful same-build replay is not proof of equivalence across profiles. The fixture preserves process counters such as robot UID and selection time, normalizes entity identity, and checks repeatability without resetting them. It does not promise arbitrary full-game restart equivalence.
+
+### Traces and diagnosis
+
+CTest writes JSONL files under `build/<configuration>/tests/scenario-traces/`. Every file begins with a header identifying the configured source revision, tracked dirty state, compiler, configuration, relevant defines, RNG mode/seed, precision, viewport, fixture, audio/render policy and step bounds. Reconfigure/rebuild after changing revisions; `-NoBuild` preserves the identity compiled into the executable. Command records describe scheduled interventions, and snapshots record every completed boundary using stable scenario IDs, raw float bits, orders, targets, player-group membership/counts and RNG draw counts. The last boundary is flushed before advancing, so a native failure still leaves useful evidence. CI uploads these traces with the test reports.
+
+```powershell
+python -B tools/compare-battle-traces.py <reference.jsonl> <candidate.jsonl>
+```
+
+The comparator rejects incompatible profile headers by default, checks command records as well as snapshots, and reports the first differing field. `--allow-profile-difference` permits an intentional exact comparison across profiles; it does not introduce tolerances or establish that those profiles ought to match. Keep accepted reference traces with the validation evidence for the behavior being frozen. The initial harness asserts the bounded gameplay contracts above and reproducibility; it does not constitute the complete whole-game baseline.
+
+### Extending the fixture
+
+Reuse `tests/battle_scenario.hpp` and its implementation for a bounded scenario, or extend the synthetic initial data in `battle_geometry.cpp` when a new behavior requires it. Keep scenario setup distinct from actions. Add commands through the relevant production entry point; never write a resulting path, group order or AI decision to simulate acceptance. Entity lookup checks the live logic list and original UID before dereferencing stored pointers. Observers must avoid mutating helpers such as `SOrder::GetStatic()`, reference-acquiring `GetCore()` and lazy geometry preparation.
+
+Add explicit outcome and intermediate-state assertions, including rejection or retirement where relevant. Trace comparisons can diagnose changed behavior but cannot replace an assertion about what the scenario establishes. Bound execution by frame count, game time and CTest timeout; the between-frame deadline cannot interrupt a stuck engine tick. New event requirements may need separately reviewed, behavior-preserving access seams. This harness does not authorize structural changes before the complete behavior-baseline gate is accepted.
+
 ## Initial coverage
 
 | Area | Contracts exercised |
@@ -69,6 +112,7 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 | Random numbers | Original generator sequence, seed normalization, range endpoints, reversed/equal bounds, fractional scales, index bounds and shared-stream consumption |
 | AI robot definitions | Head aliases and resource valuation, headless definitions, weapon strength ordering and missing armor-capacity diagnostics |
 | Audio | PCM8/16 mono/stereo parsing, rejected chunk/frame metadata, shared clip caching, unique handles, loop flags, gain/balance, failure diagnostics, shutdown order, frontend layers and preserved host callback routing |
+| Battle scenarios | Production map stepping, obstacle movement, replacement, target removal, rejection, repeatability, read-only observation, partial setup and bounded execution |
 | Player orders | Real keyboard auto-order replacement, slot reassignment and stale counts, toggle-to-stop, preorder suppression, partial fixture setup and repeated synthetic sessions |
 | Bomb commands | A moving bomber retains its ground order when the object target is absent, inactive or destroyed; target validation and fixture cleanup use production implementations |
 | Lifecycle | Repeated cursor cleanup and reload, empty configuration, form transitions and constructor unwinding, partial game/standalone teardown, cleanup before cache creation, continued cleanup after C++ failures, owned/borrowed graphics references and rejected graphics configuration before window creation |

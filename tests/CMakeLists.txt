@@ -202,6 +202,39 @@ add_matrix_test(game.orders.partial_setup matrixgame_player_command_probe gamepl
 add_matrix_test(game.orders.preorder matrixgame_player_command_probe gameplay input)
 add_matrix_test(game.orders.repeated_sessions matrixgame_player_command_probe gameplay input startup memory)
 
+add_matrix_test_executable(matrixgame_battle_scenarios battle_scenario_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_scenarios PRIVATE MatrixGameInternal)
+execute_process(COMMAND git rev-parse HEAD WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    OUTPUT_VARIABLE scenario_revision OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+if(NOT scenario_revision)
+    set(scenario_revision "unknown")
+endif()
+execute_process(COMMAND git diff --quiet HEAD -- WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}"
+    RESULT_VARIABLE scenario_dirty ERROR_QUIET)
+if(NOT scenario_dirty MATCHES "^[01]$")
+    set(scenario_dirty -1)
+endif()
+target_compile_definitions(matrixgame_battle_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_REVISION="${scenario_revision}" MATRIXGAME_SCENARIO_DIRTY=${scenario_dirty}
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.scenario.movement matrixgame_battle_scenarios gameplay ai input)
+add_matrix_test(game.scenario.partial_setup matrixgame_battle_scenarios gameplay startup memory)
+foreach(contract replacement target_removal repeatability observation rejected_command audio_unavailable bounds)
+    add_matrix_test(game.scenario.${contract} matrixgame_battle_scenarios gameplay ai input)
+endforeach()
+
+add_matrix_test_executable(matrixgame_battle_device_tests battle_device_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_device_tests PRIVATE MatrixGameInternal)
+foreach(contract buffers invalid_buffers com_ownership state_sessions)
+    add_matrix_test(game.harness.device.${contract} matrixgame_battle_device_tests tests rendering)
+endforeach()
+
+add_matrix_test(base.random.draw_count_reset matrixgame_random_tests base random)
+add_matrix_test(base.random.draw_count_observation matrixgame_random_tests base random)
+add_matrix_test(base.random.draw_count_ranges matrixgame_random_tests base random)
+
 add_matrix_test_executable(matrixgame_keepalive_tests keepalive_tests.cpp command_world.hpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_keepalive_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.input.keepalive_dispatch matrixgame_keepalive_tests gameplay input)

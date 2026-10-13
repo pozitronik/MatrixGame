@@ -144,7 +144,9 @@ jobs:
           name: tests-${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}-${{ matrix.cheats && 'cheats' || 'normal' }}
           if-no-files-found: warn
           retention-days: 14
-          path: build/**/test-results.xml
+          path: |
+            build/**/test-results.xml
+            build/**/scenario-traces/*.jsonl
       - name: Prepare the minimal standalone package
         if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats
         shell: pwsh
