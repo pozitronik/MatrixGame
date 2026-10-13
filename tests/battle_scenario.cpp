@@ -240,6 +240,9 @@ void Session::advance() {
 }
 int Session::frame() const { return impl_->frames; }
 int Session::time() const { return impl_->map->GetTime(); }
+bool Session::matches(EntityId id, const CMatrixRobotAI *candidate) const {
+    return candidate != nullptr && impl_->lookup(id) == candidate;
+}
 RobotState Session::robot(EntityId id) const {
     auto *r = impl_->lookup(id);
     if (!r) return {id, false, 0, 0, -1, -1, -1, -1};
@@ -305,10 +308,12 @@ void Session::check_running() const {
     if (impl_->profile.audio) MG_CHECK(!impl_->audio_state->voices.empty());
 }
 
-std::string Session::metadata() const {
+std::string Session::metadata(std::string_view fixture) const {
+    MG_CHECK(!fixture.empty() && fixture.find_first_not_of(
+        "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.") == std::string_view::npos);
     std::ostringstream out;
     const char *layouts[] = {"central-obstacle-v1", "open-v1", "corridor-v1", "dead-end-v1", "disconnected-v1", "multi-region-v1"};
-    out << "{\"type\":\"header\",\"schema\":1,\"fixture\":\"unarmed-chassis-obstacle-v1\","
+    out << "{\"type\":\"header\",\"schema\":1,\"fixture\":\"" << fixture << "\","
         << "\"navigation_layout\":\"" << layouts[static_cast<unsigned>(impl_->profile.layout)] << "\","
         << "\"revision\":\"" << MATRIXGAME_SCENARIO_REVISION << "\",\"dirty\":" << MATRIXGAME_SCENARIO_DIRTY << ','
         << "\"render\":\"storage-device-no-draw-cursor-surrogate\",\"viewport\":[1280,720],"
