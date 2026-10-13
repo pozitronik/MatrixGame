@@ -978,6 +978,7 @@ void transported_robot_removal_outcome() {
         auto robot_core = retain_core(*robot);
         MG_CHECK(session.remove(1) && session.remove(2));
         advance_to(session, remove_at);
+        MG_CHECK(robot_core->m_Object == robot && carrier_core->m_Object == carrier);
         MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->m_DialogModeName);
         MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
         MG_CHECK(carrier_core->m_Object == carrier && carrier->CarryingRobot() == (remove_at == 1000));
@@ -1013,6 +1014,7 @@ void carrier_removal_outcome() {
         auto robot_core = retain_core(*robot);
         MG_CHECK(session.remove(1) && session.remove(2));
         advance_to(session, remove_at);
+        MG_CHECK(robot_core->m_Object == robot && carrier_core->m_Object == carrier);
         MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
         g_MatrixMap->StaticDelete(carrier);
         MG_CHECK(carrier_core->m_Object == nullptr && g_MatrixMap->m_AD_Obj_cnt == 0);
