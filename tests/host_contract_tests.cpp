@@ -83,7 +83,7 @@ void result_statistics() {
     side->SetStatValue(STAT_TURRET_KILL, 5);
     side->SetStatValue(STAT_BUILDING_KILL, 6);
     // The host owns the 24-byte result; the engine writes six 32-bit fields and nothing beyond them.
-    std::array<uint8_t, 32> host{};
+    alignas(SRobotGameState) std::array<uint8_t, 32> host{};
     host.fill(0xa5);
     CGame::SaveResult(reinterpret_cast<SRobotGameState *>(host.data()));
     const Bytes expected = Bytes().u32(61000).u32(2).u32(3).u32(4).u32(5).u32(6);
@@ -120,6 +120,22 @@ void progress_callback() {
         if (i) MG_CHECK(progress[i] > progress[i - 1]);
     }
     MG_CHECK(progress.back() == 1.0f);
+
+    // Session initialization's final phase stops one step short of its 701-step size; rounding to
+    // hundredths still reports completion.
+    progress.clear();
+    g_RangersInterface = &host;
+    CLoadProgress session;
+    for (int phase = 0; phase < 3; ++phase) {
+        session.SetCurLP(phase);
+        session.InitCurLP(1);
+    }
+    session.SetCurLP(3);
+    session.InitCurLP(701);
+    for (int position : {10, 100, 200, 300, 400, 500, 600, 700}) session.SetCurLPPos(position);
+    g_RangersInterface = nullptr;
+    MG_CHECK(!progress.empty() && progress.back() == 1.0f);
+    for (size_t i = 1; i < progress.size(); ++i) MG_CHECK(progress[i] > progress[i - 1]);
 }
 
 struct SoundCall {

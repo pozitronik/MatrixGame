@@ -349,9 +349,10 @@ endforeach()
 add_matrix_test_executable(matrixgame_host_contract_tests host_contract_tests.cpp wire_bytes.hpp
     command_world.hpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_host_contract_tests PRIVATE MatrixGameInternal)
-foreach(contract settings_image result_statistics progress_callback sound_arguments)
-    add_matrix_test(game.host.${contract} matrixgame_host_contract_tests startup dll)
-endforeach()
+add_matrix_test(game.host.settings_image matrixgame_host_contract_tests startup settings dll)
+add_matrix_test(game.host.result_statistics matrixgame_host_contract_tests gameplay dll)
+add_matrix_test(game.host.progress_callback matrixgame_host_contract_tests startup dll)
+add_matrix_test(game.host.sound_arguments matrixgame_host_contract_tests gameplay audio dll)
 
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_dll_host_tests dll_host_tests.cpp)

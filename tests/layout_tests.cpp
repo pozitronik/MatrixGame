@@ -9,6 +9,7 @@
 #include "VectorObject.hpp"
 #include "stupid_logger.hpp"
 
+#include <cctype>
 #include <cstddef>
 #include <cstring>
 #include <filesystem>
@@ -86,7 +87,7 @@ Bytes scalar_fixture() {
     column(out, u"b", Base::ST_BYTE, column_body(1, {Bytes().u8(0).u8(0xff).u8(7)}));
     column(out, u"f", Base::ST_FLOAT, column_body(4, {Bytes().u32(0x3fc00000)}));            // 1.5f
     column(out, u"g", Base::ST_DOUBLE, column_body(8, {Bytes().u64(0xc002000000000000ull)}));  // -2.25
-    column(out, u"w", Base::ST_WCHAR, column_body(2, {utf16_array(u"Я!"), Bytes()}));
+    column(out, u"w", Base::ST_WCHAR, column_body(2, {utf16_array(u"\u042F!"), Bytes()}));
     out.utf16z(u"empty").u32(0);
     return out;
 }
@@ -120,7 +121,7 @@ Base::CStorage scalar_storage() {
     doubles->AddArray();
     doubles->AddToArray<double>(0, -2.25);
     auto *text = storage.GetBuf(L"t", L"w", Base::ST_WCHAR);
-    text->AddWStr(L"Я!");
+    text->AddWStr(L"\u042F!");
     text->AddWStr(L"");
     return storage;
 }
@@ -147,7 +148,7 @@ void check_scalar_values(Base::CStorage &storage) {
     MG_CHECK(element<double>(storage.GetBuf(L"t", L"g", Base::ST_DOUBLE), 0, 0) == -2.25);
     auto *text = storage.GetBuf(L"t", L"w", Base::ST_WCHAR);
     MG_CHECK(text && text->GetArraysCount() == 2);
-    MG_CHECK(text->GetAsWStr(0) == L"Я!" && text->GetAsWStr(1).empty());
+    MG_CHECK(text->GetAsWStr(0) == L"\u042F!" && text->GetAsWStr(1).empty());
     // Column lookup requires the stored element type.
     MG_CHECK(storage.GetBuf(L"t", L"i", Base::ST_DWORD) == nullptr);
     MG_CHECK(storage.IsTablePresent(L"empty"));
@@ -331,7 +332,7 @@ void storage_zl03() {
 
 void storage_column_zl03() {
     // A compressed column sets bit 31 of its type and stores a ZL03 stream of its body.
-    const Bytes text = column_body(2, {utf16_array(u"payload"), utf16_array(u"ж")});
+    const Bytes text = column_body(2, {utf16_array(u"payload"), utf16_array(u"\u0436")});
     const Bytes stream = zl03({std::span<const uint8_t>(text.data)});
     Bytes fixture;
     fixture.u32(storage_tag).u32(0).u32(1).utf16z(u"t").u32(1);
@@ -339,7 +340,7 @@ void storage_column_zl03() {
     Base::CStorage storage;
     MG_CHECK(load(storage, fixture.data) == Load::accepted);
     auto *values = storage.GetBuf(L"t", L"w", Base::ST_WCHAR);
-    MG_CHECK(values && values->GetAsWStr(0) == L"payload" && values->GetAsWStr(1) == L"ж");
+    MG_CHECK(values && values->GetAsWStr(0) == L"payload" && values->GetAsWStr(1) == L"\u0436");
 
     // The record writer emits the same framing for every column when column compression is requested.
     Base::CBuf plain;
@@ -399,13 +400,21 @@ void storage_malformed() {
     // Counts larger than the remaining input.
     check(Bytes().u32(storage_tag).u32(0).u32(4096), Load::exception);
     check(Bytes().u32(storage_tag).u32(0).u32(1).utf16z(u"t").u32(4096), Load::exception);
-    // A compressed column with a wrong inner tag is the reader's only rejected-body result.
-    Bytes column_tag;
-    column_tag.u32(storage_tag).u32(0).u32(1).utf16z(u"t").u32(1);
-    column(column_tag, u"v", Base::ST_INT32 | compressed_column, Bytes().text("ZL04").u32(1));
-    Base::CStorage storage;
-    MG_CHECK(load(storage, column_tag.data) == Load::rejected);
-    MG_CHECK(!storage.IsTablePresent(L"t"));
+    // A compressed column whose ZL03 stream cannot be decoded is rejected with false and leaves no table.
+    // Each stream lies entirely inside its declared body, so decoding never reads past the input.
+    Bytes corrupt_block = zl03({std::span<const uint8_t>(byte_storage_fixture(4).data)});
+    corrupt_block.data.back() ^= 1;
+    Bytes oversized_block;
+    for (uint32_t i = 0; i < 65001; ++i) oversized_block.u8(static_cast<uint8_t>(i));
+    for (const Bytes &stream : {Bytes().text("ZL04").u32(1), Bytes().text("ZL03"), Bytes().text("ZL03").u32(0),
+                                corrupt_block, zl03({std::span<const uint8_t>(oversized_block.data)})}) {
+        Bytes fixture;
+        fixture.u32(storage_tag).u32(0).u32(1).utf16z(u"t").u32(1);
+        column(fixture, u"v", Base::ST_INT32 | compressed_column, stream);
+        Base::CStorage storage;
+        MG_CHECK(load(storage, fixture.data) == Load::rejected);
+        MG_CHECK(!storage.IsTablePresent(L"t"));
+    }
 }
 
 // --- Packages -------------------------------------------------------------------------------------------
@@ -811,8 +820,8 @@ void package_file_fallback() {
 
 // --- Raw-read records ------------------------------------------------------------------------------------
 
-// Map payload and vector-object readers cast stored bytes to these structures, so their compiled layout is
-// the stored layout. All fields are fixed-width on Windows; SVOEdge has two trailing padding bytes.
+// Map preparation and the vector-object loader copy ST_BYTE column payloads into these structures, so their
+// compiled layout is the stored layout. All fields are fixed-width little-endian integers or binary32 values.
 static_assert(sizeof(SCompilePoint) == 12 && offsetof(SCompilePoint, z) == 4 && offsetof(SCompilePoint, b) == 8 &&
               offsetof(SCompilePoint, g) == 9 && offsetof(SCompilePoint, r) == 10 &&
               offsetof(SCompilePoint, flags) == 11);
@@ -821,16 +830,29 @@ static_assert(sizeof(SCompileMove) == 16 && offsetof(SCompileMove, m_Move) == 4 
 static_assert(sizeof(SCompileMoveCell) == 64);
 static_assert(sizeof(SCompileBottomVert) == 8 && offsetof(SCompileBottomVert, y) == 2 &&
               offsetof(SCompileBottomVert, tx) == 4 && offsetof(SCompileBottomVert, ty) == 6);
-static_assert(sizeof(SVOHeader) == 80 && offsetof(SVOHeader, m_MaterialCnt) == 16 &&
-              offsetof(SVOHeader, m_VerCnt) == 32 && offsetof(SVOHeader, m_FrameCnt) == 48 &&
-              offsetof(SVOHeader, m_MatrixCnt) == 64 && offsetof(SVOHeader, m_EdgeSme) == 76);
-static_assert(sizeof(SVOVertexNorTex) == 32 && offsetof(SVOVertexNorTex, tu) == 24);
-static_assert(sizeof(SVOMaterial) == 136 && offsetof(SVOMaterial, power) == 68 &&
-              offsetof(SVOMaterial, tex_diffuse) == 72);
-static_assert(sizeof(SVOGroup) == 32 && sizeof(SVOFrame) == 64 && offsetof(SVOFrame, m_EdgeCnt) == 52);
-static_assert(sizeof(SVOAnimHeader) == 80 && offsetof(SVOAnimHeader, m_UnitCnt) == 68);
-static_assert(sizeof(SVOMatrixHeader) == 80 && offsetof(SVOMatrixHeader, m_MatrixSme) == 68);
-static_assert(sizeof(SVOFrameEdge) == 8 && sizeof(SVOEdge) == 12 && offsetof(SVOEdge, m_Edge1) == 8);
+static_assert(sizeof(Base::CRect) == 16 && offsetof(Base::CRect, top) == 4 && offsetof(Base::CRect, right) == 8 &&
+              offsetof(Base::CRect, bottom) == 12);
+static_assert(sizeof(D3DXVECTOR3) == 12 && sizeof(D3DXMATRIX) == 64);
+static_assert(sizeof(SVOVertex) == 32 && offsetof(SVOVertex, n) == 12 && offsetof(SVOVertex, tu) == 24 &&
+              offsetof(SVOVertex, tv) == 28);
+static_assert(sizeof(SVOTriangle) == 12);
+static_assert(sizeof(SVOGeometrySimple::SVOGS_asis) == 48 &&
+              offsetof(SVOGeometrySimple::SVOGS_asis, m_VertsCnt) == 4 &&
+              offsetof(SVOGeometrySimple::SVOGS_asis, m_Mins) == 8 &&
+              offsetof(SVOGeometrySimple::SVOGS_asis, m_Maxs) == 20 &&
+              offsetof(SVOGeometrySimple::SVOGS_asis, m_Center) == 32 &&
+              offsetof(SVOGeometrySimple::SVOGS_asis, m_Radius) == 44);
+static_assert(sizeof(SVOFrameIndex) == 8 && offsetof(SVOFrameIndex, time) == 4);
+static_assert(sizeof(SVOKadr) == 64 && offsetof(SVOKadr, m_Max) == 12 && offsetof(SVOKadr, m_GeoCenter) == 24 &&
+              offsetof(SVOKadr, m_Radius) == 36 && offsetof(SVOKadr, m_UnionStart) == 40 &&
+              offsetof(SVOKadr, m_UnionCnt) == 44 && offsetof(SVOKadr, m_EdgeStart) == 48 &&
+              offsetof(SVOKadr, m_EdgeCnt) == 52 && offsetof(SVOKadr, m_VerCnt) == 56 &&
+              offsetof(SVOKadr, m_VerStart) == 60);
+static_assert(sizeof(SVOKadrEdge) == 16 && offsetof(SVOKadrEdge, v01) == 4 && offsetof(SVOKadrEdge, n0) == 8 &&
+              offsetof(SVOKadrEdge, n1) == 12);
+static_assert(sizeof(SVOUnion) == 24 && offsetof(SVOUnion, m_Base) == 4 && offsetof(SVOUnion, m_VerMinIndex) == 8 &&
+              offsetof(SVOUnion, m_VerCnt) == 12 && offsetof(SVOUnion, m_TriCnt) == 16 &&
+              offsetof(SVOUnion, m_TriStart) == 20);
 
 // Package records in their current in-memory form. SFolderRec and the 32-bit enum are fixed-width; the
 // SFileRec offsets hold only while its two uintptr_t fields are 32-bit (the supported x86 build).
@@ -860,11 +882,19 @@ void raw_records() {
     MG_CHECK(vertex.x == 1 && vertex.y == 2 && vertex.tx == 0x0304 && vertex.ty == 0xfffe);
     const auto move = from_bytes<SCompileMove>(Bytes().u32(0xffffffff).u32(2).u32(3).u32(4));
     MG_CHECK(move.m_Zone == -1 && move.m_Move == 2 && move.m_Sphere == 3 && move.m_Zubchik == 4);
-    Bytes header;
-    header.text("vo").u16(0);
-    for (uint32_t i = 1; i < 20; ++i) header.u32(i);
-    const auto vo = from_bytes<SVOHeader>(header);
-    MG_CHECK(vo.m_Id == 0x00006f76 && vo.m_Ver == 1 && vo.m_MaterialCnt == 4 && vo.m_EdgeSme == 19);
+    const auto bridge = from_bytes<Base::CRect>(Bytes().u32(1).u32(2).u32(0xfffffffd).u32(4));
+    MG_CHECK(bridge.left == 1 && bridge.top == 2 && bridge.right == -3 && bridge.bottom == 4);
+    Bytes frame;
+    for (uint32_t bits : {0x3f800000u, 0x40000000u, 0x40400000u}) frame.u32(bits);  // minimum 1, 2, 3
+    for (uint32_t i = 0; i < 6; ++i) frame.u32(0);
+    frame.u32(0x3fc00000);  // radius 1.5
+    for (uint32_t i = 1; i <= 6; ++i) frame.u32(i);
+    const auto kadr = from_bytes<SVOKadr>(frame);
+    MG_CHECK(kadr.m_Min.x == 1.0f && kadr.m_Min.y == 2.0f && kadr.m_Min.z == 3.0f && kadr.m_Radius == 1.5f);
+    MG_CHECK(kadr.m_UnionStart == 1 && kadr.m_UnionCnt == 2 && kadr.m_EdgeStart == 3 && kadr.m_EdgeCnt == 4);
+    MG_CHECK(kadr.m_VerCnt == 5 && kadr.m_VerStart == 6);
+    const auto edge = from_bytes<SVOKadrEdge>(Bytes().u32(32).u32(64).u8(1).u8(2).u8(3).u8(4).u32(0x80000000));
+    MG_CHECK(edge.v00 == 32 && edge.v01 == 64 && edge.n0.x == 1 && edge.n0.s == 4 && edge.n1.all == 0x80000000);
 }
 
 constexpr tests::Case cases[] = {

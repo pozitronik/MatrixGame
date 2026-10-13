@@ -10,6 +10,7 @@
 #include <array>
 #include <cstddef>
 #include <cstring>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
 #include <iterator>

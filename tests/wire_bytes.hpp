@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <span>
+#include <stdexcept>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -46,6 +47,7 @@ public:
     Bytes &utf16z(std::u16string_view value) { return utf16(value).u16(0); }
     // Bytes padded with zeros to a fixed field width.
     Bytes &fixed(std::string_view value, size_t width) {
+        if (value.size() > width) throw std::length_error("Fixed-width field overflow");
         data.insert(data.end(), value.begin(), value.end());
         data.insert(data.end(), width - value.size(), 0);
         return *this;
