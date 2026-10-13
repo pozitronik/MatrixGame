@@ -9,6 +9,9 @@
 #include "MatrixObjectBuilding.hpp"
 #include "Interface/CInterface.h"
 #include "Interface/CConstructor.h"
+#include "Interface/CCounter.h"
+#include "Interface/CHistory.h"
+#include "MatrixGame.h"
 #include "MatrixSkinManager.hpp"
 #include <array>
 #include <cmath>
@@ -156,6 +159,94 @@ void ai_production_purchase(PurchaseEnd end = PurchaseEnd::Queued) {
 void ai_purchase() { ai_production_purchase(); }
 void ai_purchase_neutralized() { ai_production_purchase(PurchaseEnd::Neutralized); }
 void ai_purchase_deleted() { ai_production_purchase(PurchaseEnd::Deleted); }
+
+void player_constructor_purchase() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (int requested : {1, 3}) for (bool cancel : {false, true}) {
+        tests::BattleMaterialProfile material_profile;
+        tests::battle::Profile profile;
+        profile.mode = mode;
+        profile.seed = 83;
+        profile.audio = false;
+        profile.initially_selected = false;
+        profile.unavailable_icon_targets = true;
+        Session session(profile);
+        constructor_assets();
+        std::cout << "requested=" << requested << " cancel=" << cancel << " "
+                  << session.metadata("synthetic-player-constructor-v1") << '\n';
+        MG_CHECK(g_ConfigHistory == nullptr);
+        CHistory history;
+        struct HistoryReset { ~HistoryReset() { g_ConfigHistory = nullptr; } } history_reset;
+        g_ConfigHistory = &history;
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        auto &constructor = *side.m_Constructor;
+        auto owned = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            PLAYER_SIDE, BUILDING_BASE, 100, 100);
+        auto *factory = owned.get();
+        g_MatrixMap->AddObject(factory, true);
+        owned.release();
+        constructor.SetSide(PLAYER_SIDE);
+        constructor.SetBase(factory);
+        constructor.OperateUnit(MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+        constructor.OperateUnit(MRT_ARMOR, RUK_ARMOR_BIREX);
+        auto &config = side.m_ConstructPanel->m_Configs[0];
+        config.m_Chassis.m_nKind = RUK_CHASSIS_WHEEL;
+        config.m_Hull.m_Unit.m_nKind = RUK_ARMOR_BIREX;
+        const Cost price{32, 34, 36, 38};
+        Cost actual{};
+        constructor.GetConstructionPrice(actual.data());
+        MG_CHECK(actual == price);
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            side.SetResourceAmount(static_cast<ERes>(r), requested * price[r]);
+        const auto before = resources();
+        g_IFaceList->m_RCountControl->Reset();
+        for (int i = 1; i < requested; ++i) g_IFaceList->m_RCountControl->Inc();
+        g_IFaceList->m_RCountControl->CheckUp();
+        MG_CHECK(g_IFaceList->m_RCountControl->GetCounter() == requested);
+        const auto draws = random::draw_count();
+        constructor.RemoteBuild(nullptr); // The constructor's production build-button callback.
+        MG_CHECK(factory->m_BS.GetItemsCnt() == requested && resources() == Cost{});
+        MG_CHECK(random::draw_count() == draws && session.rejected_icon_targets() == requested);
+        MG_CHECK(g_IFaceList->m_RCountControl->GetCounter() == 0);
+        MG_CHECK(!side.m_ConstructPanel->IsActive());
+        MG_CHECK(history.m_FirstConfig == history.m_LastConfig && history.m_FirstConfig);
+        MG_CHECK(history.m_FirstConfig->m_Chassis.m_nKind == RUK_CHASSIS_WHEEL);
+        MG_CHECK(history.m_FirstConfig->m_Hull.m_Unit.m_nKind == RUK_ARMOR_BIREX);
+        std::vector<CMatrixRobotAI *> robots;
+        for (auto *item = factory->m_BS.GetTopItem(); item; item = item->m_NextStackItem) {
+            auto *robot = item->AsRobot();
+            MG_CHECK(robot->GetSide() == PLAYER_SIDE && robot->GetBase() == factory);
+            MG_CHECK(!in_logic(robot) && robot->m_UnitCnt == 2);
+            MG_CHECK(!robot->GetBigTexture() && !robot->GetMedTexture());
+            robots.push_back(robot);
+        }
+        MG_CHECK(robots.size() == static_cast<std::size_t>(requested));
+        if (cancel) {
+            for (int i = 0; i < requested; ++i) {
+                MG_CHECK(factory->m_BS.GetTopItem() == robots[i]);
+                factory->m_BS.DeleteItem(1);
+                for (int r = 0; r < MAX_RESOURCES; ++r)
+                    MG_CHECK(resources()[r] == (i + 1) * price[r]);
+            }
+            MG_CHECK(resources() == before && factory->m_BS.GetItemsCnt() == 0);
+        } else {
+            g_Config.m_Timings[UNIT_ROBOT] = 100;
+            g_Config.m_Timings[RESOURCE_BASE] = 100000;
+            const int built = side.GetStatValue(STAT_ROBOT_BUILD);
+            while (session.time() < 20000 &&
+                   (factory->m_BS.GetItemsCnt() || factory->IsSpawningBot() || factory->m_State != BASE_CLOSED))
+                session.advance();
+            MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && !factory->IsSpawningBot());
+            MG_CHECK(factory->m_State == BASE_CLOSED && resources() == Cost{});
+            MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == built + requested);
+            for (auto *robot : robots) {
+                MG_CHECK(in_logic(robot) && robot->GetBase() == nullptr);
+                MG_CHECK(robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD && !robot->IsDisableManual());
+            }
+        }
+        constructor.SetBase(nullptr);
+    }
+}
 
 void constructor_assembly() {
     // Two sessions per RNG also exercise destruction/recreation of cached skins.
@@ -580,16 +671,12 @@ void cancel_waiting_during_spawn() {
     }
 }
 
-struct MaintenanceInput : CMatrixMapLogic {
-    static void enable(CMatrixMapLogic &map) { map.*&MaintenanceInput::m_MaintenancePRC = 100; }
-};
-
 enum class LandingRejection { Occupied, Incompatible, OverBudget };
 void reinforcement_landing_rejection(LandingRejection rejection) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         Session session({mode, 83, 10, 1000, false, false});
         auto factory = base();
-        MaintenanceInput::enable(*g_MatrixMap);
+        MG_CHECK(!g_MatrixMap->MaintenanceDisabled());
         g_Config.m_MaintenanceTime = 1000;
         g_MatrixMap->m_Difficulty.k_time_before_maintenance = 1;
         g_MatrixMap->SetMaintenanceTime(0);
@@ -631,6 +718,7 @@ void reinforcement_incompatible() { reinforcement_landing_rejection(LandingRejec
 void reinforcement_over_budget() { reinforcement_landing_rejection(LandingRejection::OverBudget); }
 
 const tests::Case cases[] = {{"game.production.ai_purchase", ai_purchase},
+                           {"game.production.player_purchase", player_constructor_purchase},
                            {"game.production.ai_purchase_neutralized", ai_purchase_neutralized},
                            {"game.production.ai_purchase_deleted", ai_purchase_deleted},
                            {"game.production.reinforcement_occupied", reinforcement_occupied},
