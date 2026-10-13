@@ -4,6 +4,6 @@ if(NOT DEFINED TEST_EXECUTABLE)
 endif()
 execute_process(COMMAND "${TEST_EXECUTABLE}" probe.intentional_crash
     RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error TIMEOUT 10)
-if(NOT result STREQUAL "86" OR NOT error MATCHES "Dispatching intentional CRASH command")
-    message(FATAL_ERROR "Expected the intentional SIGABRT handler; result=${result}\n${output}${error}")
+if(NOT result STREQUAL "86" OR NOT error MATCHES "Entered intentional CRASH parser probe")
+    message(FATAL_ERROR "Expected probe entry and SIGABRT exit code 86; result=${result}\n${output}${error}")
 endif()

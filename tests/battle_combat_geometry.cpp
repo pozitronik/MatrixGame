@@ -73,7 +73,8 @@ CMatrixCannon *create_battle_cannon(int side, float x, float y) {
 }
 void arm_battle_robot(CMatrixRobotAI &robot, ERobotUnitKind weapon) {
     MG_CHECK(robot.m_UnitCnt == 1);
-    MG_CHECK(weapon >= RUK_WEAPON_MACHINEGUN && weapon <= RUK_WEAPON_REPAIR);
+    MG_CHECK(weapon == RUK_WEAPON_LASER || weapon == RUK_WEAPON_PLASMA ||
+             weapon == RUK_WEAPON_BOMB || weapon == RUK_WEAPON_REPAIR);
     const MeshAttachment armor_links[] = {{1, L"head", 0, 0, 20}, {2, L"weapon", 0, 0, 0}};
     const MeshAttachment muzzles[] = {{1, L"muzzle", 0, 15, 0}, {2, L"repair-end", 0, 25, 0}};
     auto *armor = load_battle_mesh(armor_links);

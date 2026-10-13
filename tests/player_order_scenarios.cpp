@@ -428,6 +428,41 @@ void mesh_selection() {
     for (int i = 0; i < 1500; ++i) session.advance();
     MG_CHECK(session.robot(1).x > 400 && session.robot(2).x > 400);
 }
+void shift_rectangle_group_cap() {
+    Session session;
+    CFormMatrixGame form;
+    auto *first = selected(0), *second = selected(1);
+    SelectionFixture visible{first, second};
+    std::vector<CMatrixRobotAI *> overlap;
+    for (int i = 0; i < 9; ++i) {
+        auto *robot = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200);
+        overlap.push_back(robot);
+        visible.append(robot);
+    }
+    const auto a = screen_center(*first), b = screen_center(*second);
+    side().Select(NOTHING, nullptr);
+    side().ResetSystemSelection();
+    // A real form selection avoids the session's initial group alias.
+    drag(form, CPoint(b.x - 2, b.y - 2), CPoint(b.x + 2, b.y + 2));
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == second);
+    auto shift_drag = [&] {
+        form.Keyboard(true, g_Config.m_KeyActions[KA_SHIFT]);
+        drag(form, CPoint(a.x - 10, a.y - 10), CPoint(a.x + 10, a.y + 10));
+        form.Keyboard(false, g_Config.m_KeyActions[KA_SHIFT]);
+    };
+    shift_drag();
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 9);
+    MG_CHECK(selected(0) == second && selected(1) == first);
+    for (int i = 0; i < 7; ++i) MG_CHECK(selected(i + 2) == overlap[i]);
+    MG_CHECK(!side().GetCurGroup()->FindObject(overlap[7]));
+    MG_CHECK(!side().GetCurGroup()->FindObject(overlap[8]));
+    shift_drag();
+    // Previously hit members toggle off; the two excluded by the cap toggle on.
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 3);
+    MG_CHECK(selected(0) == second && selected(1) == overlap[7] && selected(2) == overlap[8]);
+    MG_CHECK(!side().GetCurGroup()->FindObject(first));
+    for (int i = 0; i < 7; ++i) MG_CHECK(!side().GetCurGroup()->FindObject(overlap[i]));
+}
 void overlapping_selection_limit() {
     Session session;
     CFormMatrixGame form;
@@ -1058,12 +1093,16 @@ void megabust_cheat() {
     MG_CHECK(first->GetMaxHitPoint() == first_hp * (MATRIXGAME_SCENARIO_CHEATS ? 2 : 1));
     MG_CHECK(second->GetMaxHitPoint() == second_hp * (MATRIXGAME_SCENARIO_CHEATS ? 2 : 1));
     MG_CHECK(enemy->AsRobot()->GetMaxHitPoint() == enemy_hp);
+    struct RestoreState {
+        CMatrixRobotAI &robot;
+        ERobotState state;
+        ~RestoreState() { robot.m_CurrState = state; }
+    } restore{*second, second->m_CurrState};
     second->m_CurrState = ROBOT_IN_SPAWN;
     type();
     MG_CHECK(first->IsMustDie() == bool(MATRIXGAME_SCENARIO_CHEATS));
     MG_CHECK(!second->IsMustDie() && !enemy->AsRobot()->IsMustDie());
     MG_CHECK(first->GetMaxHitPoint() == first_hp * (MATRIXGAME_SCENARIO_CHEATS ? 2 : 1));
-    second->m_CurrState = ROBOT_SUCCESSFULLY_BUILD;
     // Pending destruction is the cheat's immediate contract; no death-effect tick is simulated here.
 }
 void cheat_dispatch_gate() {
@@ -1224,6 +1263,7 @@ constexpr tests::Case cases[] = {
     {"game.player.control_group_camera", control_group_camera},
     {"game.player.debug_reinforcement_reset", debug_reinforcement_reset},
     {"game.player.group_add_cap", group_add_cap},
+    {"game.player.shift_rectangle_group_cap", shift_rectangle_group_cap},
     {"game.player.patrol_reversal", patrol_reversal},
     {"game.player.auto_modes", auto_modes},
     {"game.player.manual_control", manual_control},
@@ -1251,7 +1291,7 @@ int main(int argc, char **argv) {
         _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
 #endif
         std::signal(SIGABRT, [](int) { std::_Exit(86); });
-        std::cerr << "Dispatching intentional CRASH command" << std::endl;
+        std::cerr << "Entered intentional CRASH parser probe" << std::endl;
         for (char key : std::string("CRASH")) Cheats::processInput(key);
         return 87; // A removed/disabled handler must fail the wrapper test.
     }
