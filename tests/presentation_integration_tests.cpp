@@ -172,7 +172,8 @@ void battle_acknowledgements() {
         MG_CHECK(sound.loaded == std::vector<std::wstring>{L"Sound.Synthetic"});
         MG_CHECK(random::draw_count() == before + 6);
         g_MatrixMap->GetPlayerSide()->PGOrderMoveTo(sound.session.robot(1).group, CPoint(46, 28));
-        MG_CHECK(sound.loaded.back() == L"s_ord_inprogress1" || sound.loaded.back() == L"s_ord_inprogress2");
+        std::wcout << L"acknowledgement " << static_cast<int>(mode) << L' ' << sound.loaded.back() << L'\n';
+        MG_CHECK(sound.loaded.back() == (mode == random::Mode::ParkMiller ? L"s_ord_inprogress1" : L"s_ord_inprogress2"));
         MG_CHECK(random::draw_count() == before + 9);
         MG_CHECK(sound.device->voices.size() == 3 && sound.device->voices[1]->destroyed == 1);
         MG_CHECK(sound.session.target_command(3));
