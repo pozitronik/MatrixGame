@@ -256,7 +256,7 @@ add_matrix_test(game.production.cancel_waiting_during_spawn matrixgame_productio
 foreach(contract occupied incompatible over_budget)
     add_matrix_test(game.production.reinforcement_${contract} matrixgame_production_scenarios gameplay ai)
 endforeach()
-foreach(contract ai_purchase ai_purchase_neutralized ai_purchase_deleted)
+foreach(contract ai_purchase ai_purchase_neutralized ai_purchase_deleted player_purchase)
     add_matrix_test(game.production.${contract} matrixgame_production_scenarios gameplay ai memory)
 endforeach()
 add_matrix_test(game.production.constructor_assembly matrixgame_production_scenarios gameplay ai memory)
@@ -298,7 +298,7 @@ target_include_directories(matrixgame_reinforcement_scenarios PRIVATE "${CMAKE_C
 target_compile_definitions(matrixgame_reinforcement_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract unavailable_robot_icons delivery reservations carrier_limit)
+foreach(contract unavailable_robot_icons delivery reservations carrier_limit player_request mixed_proposals)
     add_matrix_test(game.reinforcement.${contract} matrixgame_reinforcement_scenarios gameplay ai rendering)
 endforeach()
 
