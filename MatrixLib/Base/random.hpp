@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdint>
+
 namespace random
 {
 
@@ -9,6 +11,10 @@ enum class Mode { ParkMiller, LegacyCRT };
 void seed(unsigned int val);
 void seed(unsigned int val, Mode selected_mode);
 Mode mode();
+// Raw Rnd() calls since the last seed(); observing does not advance the stream.
+// Direct CRT rand()/srand() calls are outside this counter. Like the generator,
+// it is intended for the simulation thread, not concurrent access.
+std::uint64_t draw_count();
 
 // Park-Miller's maximum. Legacy CRT output uses RAND_MAX instead.
 inline constexpr int maximum = 2147483645;
