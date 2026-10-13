@@ -249,6 +249,8 @@ target_compile_definitions(matrixgame_production_scenarios PRIVATE
 add_matrix_test(game.production.queue_deployment matrixgame_production_scenarios gameplay ai)
 add_matrix_test(game.production.base_exit matrixgame_production_scenarios gameplay ai)
 add_matrix_test(game.production.building_geometry matrixgame_production_scenarios gameplay)
+add_matrix_test(game.production.constructor_assembly matrixgame_production_scenarios gameplay ai memory)
+add_matrix_test(game.production.constructor_capacity matrixgame_production_scenarios gameplay ai memory)
 
 add_matrix_test_executable(matrixgame_combat_scenarios combat_scenario_tests.cpp battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
