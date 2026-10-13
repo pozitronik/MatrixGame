@@ -34,6 +34,7 @@ void place_axis_correctness();
 void regroup_split_correctness();
 void regroup_merge_correctness();
 void bomb_escape_planning();
+void bomb_escape_capacity();
 void strategic_member_loss();
 void strategic_base_loss();
 void strategic_forward();
@@ -419,6 +420,7 @@ int main(int argc, char **argv) {
         {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
         {"game.ai.place_bounds", tests::ai::place_bounds},
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
+        {"game.ai.bomb_escape_capacity", tests::ai::bomb_escape_capacity},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/137
         {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
