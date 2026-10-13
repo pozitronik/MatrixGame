@@ -5,7 +5,10 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
+
+class CMatrixRobotAI;
 
 namespace tests::battle {
 
@@ -49,10 +52,11 @@ public:
     void advance();
     std::string snapshot() const;
     RobotState robot(EntityId id) const;
+    bool matches(EntityId id, const CMatrixRobotAI *candidate) const;
     int frame() const;
     int time() const;
     void check_running() const;
-    std::string metadata() const;
+    std::string metadata(std::string_view fixture = "unarmed-chassis-obstacle-v1") const;
 
 private:
     struct Impl;

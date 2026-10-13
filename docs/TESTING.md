@@ -100,6 +100,12 @@ python -B tools/compare-battle-traces.py <reference.jsonl> <candidate.jsonl>
 
 The comparator rejects incompatible profile headers by default, checks command records as well as snapshots, and reports the earliest differing record and the alphabetically first differing field within it. `--allow-profile-difference` waives only configuration, compiler/version, assertion mode, precision control, EXE/DLL mode and cheats. Scenario identity, including seed, RNG mode, tick interval, fixture and presentation policy, must still match; it does not introduce tolerances or establish that those profiles ought to match. Keep accepted reference traces with the validation evidence for the behavior being frozen. The initial harness asserts the bounded gameplay contracts above and reproducibility; it does not constitute the complete whole-game baseline. It does not record transient internal events or automate a comparison across three fresh processes. Direct deletion bypasses damage and the `ROBOT_DIP` dying state, so cleanup of an inactive object still present in the live logic list remains uncovered. These need additional bounded scenarios or observation seams before claiming the corresponding research contracts.
 
+### Shared scenario fixtures
+
+The [synthetic armed fixtures](testing/armed-fixtures.md) describe generated attachment meshes, weapon/effect dependencies, ownership and bounded firing evidence. Scenario-specific fixture guides live under `docs/testing/`; this page remains their navigation entry point and the authority for common validation rules.
+
+The [synthetic building fixtures](testing/building-fixtures.md) describe building geometry, queue deployment, exact base-exit transitions and safe teardown constraints.
+
 ### Extending the fixture
 
 Reuse `tests/battle_scenario.hpp` and its implementation for a bounded scenario, or extend the synthetic initial data in `battle_geometry.cpp` when a new behavior requires it. Keep scenario setup distinct from actions. Add commands through the relevant production entry point; never write a resulting path, group order or AI decision to simulate acceptance. Entity lookup checks the live logic list and original UID before dereferencing stored pointers. Observers must avoid mutating helpers such as `SOrder::GetStatic()`, reference-acquiring `GetCore()` and lazy geometry preparation.
