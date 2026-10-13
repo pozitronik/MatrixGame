@@ -29,12 +29,30 @@ The click-name behavior corresponds to inventory item D5. It is an observable le
 
 | Family | Available executable evidence | Evidence still required |
 | --- | --- | --- |
-| PRES-01: input, viewport, focus and reset | Existing `game.input.*`, `game.selection.*`, `game.display.*`, `game.device.*`, `game.font.*` exercise dispatch/state/cancellation/reset callbacks. Command-route scenarios provide additional gameplay evidence when integrated | Native picking and visual selection at each resolution/mode, camera movement, cursor release, rendered reset recovery and driver failure behavior. The ClearRect vertical-start candidate D1 still needs a separate reproduction/disposition; it is not an approved golden |
+| PRES-01: input, viewport, focus and reset | Existing `game.input.*`, `game.selection.*`, `game.display.*`, `game.device.*`, `game.font.*` exercise dispatch/state/cancellation/reset callbacks. Command-route scenarios provide additional gameplay evidence when integrated | Native picking and visual selection at each resolution/mode, camera movement, cursor release, rendered reset recovery and driver failure behavior. The ClearRect vertical-start defect D1 has an opt-in synthetic reproducer below and still needs a separate correction/disposition; it is not an approved golden |
 | PRES-02: scene, text, effects and audio | New button/action/audio contracts and real command-to-audio routes, positional loop updates and missing-speech behavior; existing audio decoding, bridge, startup/default-map, lifetime and volume tests; settings shadow-pass checks | Actual terrain/robots/buildings/effects, independent shadows, text/minimap, positional/looping sounds and speech. Native no-audio/effects-only/speech-only/both profiles have different RNG inputs and must be recorded separately |
-| PRES-03: startup and resources | Existing resource/path/startup/package contracts and audio catalog checks | Fresh ZIP launch, required/optional package combinations, Unicode/space paths, invalid configuration, error dialogs and exit codes. Map-argument `CalcVis` has candidate D7; record reproduction and output provenance without blessing visibility data as a golden |
+| PRES-03: startup and resources | Existing resource/path/startup/package contracts and audio catalog checks | Fresh ZIP launch, required/optional package combinations, Unicode/space paths, invalid configuration, error dialogs and exit codes. The SPlane inconsistency D7 has opt-in synthetic reproducers below; map-argument `CalcVis` still needs native evidence; record reproduction and output provenance without blessing visibility data as a golden |
 | PRES-04: settings | Existing settings parsing, persistence, model, runtime and display checks | Actual menu/window key consumption, focus, pause, Apply/Cancel, failed save, display rollback and restart-only settings through the rendered form. `SettingsWindow::open` needs adapter enumeration, hint/font rendering and real menu lifecycle; a model-only test cannot prove that route. `CMatrixHint::Build` unconditionally allocates/locks a texture, and standalone text uses the D3DX font backend; the current battle device rejects these unsupported operations |
 
 Each outstanding entry remains part of the presentation leaf. This document and passing button tests do not satisfy its native acceptance criteria or authorize structural refactoring.
+
+## Opt-in defect reproducers
+
+`matrixgame_presentation_defect_probes` is built with the test executables but is deliberately not registered in CTest. Its three probes assert the geometrically correct results and currently return exit code 1 on the reference implementation. They document catalog candidates D1 and D7; they are not accepted baseline goldens or passing regression coverage. After a separately reviewed correction, their assertions can become regular CTest contracts.
+
+After running the test build, invoke each command separately, then repeat with `mingw-release-exe`:
+
+```powershell
+& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.clear_rectangle
+& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_normal
+& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_points
+```
+
+D1: a real interface element at (100, 200) with clear rectangle (3, 11, 20, 30) submits (103, 203, 120, 230); its top should be 211. `CIFaceElement::BeforeRender` uses the left offset for the vertical start. A minimal texture object acknowledges `PreLoad` only, and rejects other device operations; the production coordinate calculation and clear-rectangle buffer are unchanged. No rendered artifact is inferred from this component result.
+
+D7: both `SPlane` builders correctly populate `dxplane`, while distance/intersection methods read separate `norm`/`dist` fields. The probes initialize those separate fields explicitly, then build the plane z = 2 and query a ray from z = 10 directed downward. They obtain distance 0 and no intersection instead of distance magnitude 8 and intersection parameter 8. Initialization avoids treating an uninitialized read as a golden value. The test establishes the mathematical inconsistency; it does not establish the visibility output or native impact of the map-argument `CalcVis` path.
+
+Both defects still require a separate correction/disposition before accepting the affected baseline entries. The default test suite does not hide them with inverted assertions or a known-failure success status.
 
 ## Native preparation
 

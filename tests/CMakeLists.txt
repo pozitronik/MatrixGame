@@ -387,3 +387,8 @@ target_compile_definitions(matrixgame_presentation_integration_tests PRIVATE
 foreach(contract push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
 endforeach()
+
+# Manual correctness probes for catalog defect candidates, intentionally outside
+# CTest until separately reviewed fixes establish the expected invariants.
+add_matrix_test_executable(matrixgame_presentation_defect_probes presentation_defect_probes.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_presentation_defect_probes PRIVATE MatrixGameInternal)
