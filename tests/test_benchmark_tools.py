@@ -137,6 +137,29 @@ class BenchmarkToolTests(unittest.TestCase):
         _, problems, _ = benchmark.compare(result(), other, allow_identity_mismatch=True)
         self.assertEqual(problems, [])
 
+    def test_instrumentation_precision_and_counters_are_identity(self):
+        changes = [("cmake", "coverage", "OFF", "ON"),
+                   ("runner", "x87_control_word", "0x001f", "0x0000"),
+                   ("runner", "allocation_scope", "executable CRT imports", None),
+                   ("host", "timer_frequency_hz", 10000000, 3000000)]
+        for section, field, before, after in changes:
+            base, candidate = result(seed=1), result(scale=1.2, seed=2)
+            base.setdefault(section, {})[field] = before
+            candidate.setdefault(section, {})[field] = after
+            rows, problems, _ = benchmark.compare(base, candidate)
+            self.assertTrue(any(f"{section}.{field} differs" in problem for problem in problems), field)
+            _, problems, _ = benchmark.compare(base, candidate, allow_identity_mismatch=True)
+            self.assertEqual(problems, [])
+
+    def test_context_differences_are_notes(self):
+        base, candidate = result(), result()
+        base["os"], candidate["os"] = "Windows-11-10.0.26100", "Windows-11-10.0.26200"
+        candidate["runner"]["repetitions"] = 30
+        _, problems, notes = benchmark.compare(base, candidate)
+        self.assertEqual(problems, [])
+        self.assertTrue(any(note.startswith("os differs") for note in notes))
+        self.assertTrue(any(note.startswith("runner.repetitions differs") for note in notes))
+
     def test_compare_command_exit_status(self):
         base = PROJECT / "build/benchmark-tests"
         base.mkdir(parents=True, exist_ok=True)

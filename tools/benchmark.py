@@ -26,6 +26,9 @@ from pathlib import Path
 SCHEMA = 'matrixgame-benchmark-run/1'
 PROJECT = Path(__file__).resolve().parent.parent
 # Fields that must agree before timings are comparable.
+# Fields that must agree before timings are comparable: anything that changes the
+# compiled code, its instrumentation, floating-point precision, the timer or what
+# the allocation counters observe.
 IDENTITY_FIELDS = (
     ('build', 'compiler'),
     ('build', 'configuration'),
@@ -34,8 +37,23 @@ IDENTITY_FIELDS = (
     ('cmake', 'build_type'),
     ('cmake', 'dll'),
     ('cmake', 'cheats'),
+    ('cmake', 'coverage'),
     ('host', 'processor'),
     ('host', 'logical_processors'),
+    ('host', 'timer_frequency_hz'),
+    ('runner', 'x87_control_word'),
+    ('runner', 'timer'),
+    ('runner', 'sample_unit'),
+    ('runner', 'allocation_scope'),
+)
+# Recorded context that may legitimately differ; differences are reported as notes.
+# The executable hash differs whenever the measured code changes, which is the point
+# of a comparison; repetition settings change the uncertainty, not the work.
+CONTEXT_FIELDS = (
+    ('os',),
+    ('runner', 'warmup'),
+    ('runner', 'repetitions'),
+    ('runner', 'processes'),
 )
 
 
@@ -250,6 +268,13 @@ def compare(base, candidate, threshold=0.05, confidence=0.95, resamples=2000, se
     candidates = {workload['name']: workload for workload in candidate['workloads']}
     known = {workload['name'] for workload in base['workloads']}
     notes += [f'{name} exists only in the candidate' for name in candidates if name not in known]
+    for path in CONTEXT_FIELDS:
+        left, right = base, candidate
+        for key in path:
+            left = left.get(key) if isinstance(left, dict) else None
+            right = right.get(key) if isinstance(right, dict) else None
+        if left != right:
+            notes.append(f'{".".join(path)} differs: {left!r} versus {right!r}')
     rows = []
     for workload in base['workloads']:
         other = candidates.get(workload['name'])
