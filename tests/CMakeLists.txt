@@ -458,7 +458,7 @@ if(MATRIXGAME_BUILD_DLL)
     endforeach()
 endif()
 
-add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_integrated_tests.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_navigation_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_tests matrixgame_scenario_identity)
@@ -466,7 +466,7 @@ target_include_directories(matrixgame_navigation_tests PRIVATE "${CMAKE_CURRENT_
 target_compile_definitions(matrixgame_navigation_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract local_routes passage_width placement region_routes destination_weights group_movement disconnected opposing_flow corridor_movement mixed_chassis removed_blocker carrier_lifetime carrier_cap carrier_drop_landing
+foreach(contract delivery_flights delivery_carrier_damage local_routes passage_width placement region_routes destination_weights group_movement disconnected opposing_flow corridor_movement mixed_chassis removed_blocker carrier_lifetime carrier_cap carrier_drop_landing
                  multiregion_movement multiregion_road_guidance unreachable_replacement)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
