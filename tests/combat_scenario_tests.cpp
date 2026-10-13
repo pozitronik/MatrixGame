@@ -3,6 +3,7 @@
 #include "battle_combat_geometry.hpp"
 #include "battle_mesh.hpp"
 #include "battle_geometry.hpp"
+#include "battle_building.hpp"
 #include "test_support.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixObjectCannon.hpp"
@@ -31,7 +32,8 @@ struct StatusObservation : CMatrixMapStatic {
 struct Trace {
     std::ofstream file;
     std::vector<std::string> states;
-    Trace(Session &session, Profile p, const char *name, int run) {
+    Trace(Session &session, Profile p, const char *name, int run,
+          const char *fixture = "synthetic-armed-boxes-v2") {
         const auto directory = std::filesystem::current_path() / "scenario-traces";
         std::filesystem::create_directories(directory);
         const auto path = directory / (std::string(name) + "-" +
@@ -39,7 +41,7 @@ struct Trace {
             std::to_string(p.step_ms) + "-" + std::to_string(run) + ".jsonl");
         file.open(path, std::ios::trunc);
         MG_CHECK(file.good());
-        std::string header = session.metadata("synthetic-armed-boxes-v2");
+        std::string header = session.metadata(fixture);
         header.pop_back();
         header += ",\"scenario\":\"" + std::string(name) + "\"}";
         file << header << '\n';
@@ -48,7 +50,7 @@ struct Trace {
         std::cerr << "Combat profile: " << header << "\nTrace: " << path.string() << std::endl;
     }
     void record(Session &session, CMatrixRobotAI *target, CMatrixRobotAI *shooter = nullptr,
-                CMatrixCannon *cannon = nullptr, SObjectCore *retired_owner = nullptr) {
+                CMatrixCannon *cannon = nullptr, SObjectCore *retired_owner = nullptr, CMatrixBuilding *building = nullptr) {
         const auto draws = random::draw_count();
         std::ostringstream out;
         out << "{\"type\":\"snapshot\",\"state\":" << session.snapshot()
@@ -63,6 +65,8 @@ struct Trace {
             << ",\"turret_yaw_bits\":" << std::bit_cast<uint32_t>(cannon->m_Unit[1].u1.s1.m_Angle)
             << ",\"cannon_health_bits\":" << std::bit_cast<uint32_t>(cannon->GetHitPoint());
         if (retired_owner) out << ",\"owner_present\":" << (retired_owner->m_Object ? "true" : "false");
+        if (building) out << ",\"building_health_bits\":" << std::bit_cast<uint32_t>(building->GetHitPoint())
+            << ",\"building_state\":" << building->m_State;
         out << "}}";
         states.push_back(out.str());
         file << states.back() << '\n';
@@ -1193,6 +1197,92 @@ void cannon_patient() {
         }
 }
 
+std::vector<std::string> building_patient_run(random::Mode mode, bool plasma, EBuildingType kind, bool lethal, int run) {
+    tests::BattleCombatAssets assets;
+    const Profile profile{mode, 82, 10, 1000, false, true};
+    Session session(profile);
+    assets.install();
+    MG_CHECK(session.remove(3));
+    position_fixture_robot(*robot(2), 620, 620);
+    const EWeapon weapon = plasma ? WEAPON_PLASMA : WEAPON_LASER;
+    configure_weapon(weapon, plasma ? WEAPON_PLASMA_HEAT : WEAPON_LASER_HEAT);
+    g_Config.m_BuildingDamages[Weap2Index(weapon)] = {lethal ? 100 : 2, 0, 0};
+    for (int resource : {RESOURCE_BASE, RESOURCE_TITAN, RESOURCE_PLASMA, RESOURCE_ELECTRONICS, RESOURCE_ENERGY})
+        g_Config.m_Timings[resource] = 100000;
+    auto *shooter = robot(PLAYER_SIDE);
+    tests::arm_battle_robot(*shooter, plasma ? RUK_WEAPON_PLASMA : RUK_WEAPON_LASER);
+    auto owned = tests::make_battle_building(*shooter->m_Unit[0].m_Graph->VO(), 2, kind, 200, 200, 50);
+    auto *patient = owned.get();
+    g_MatrixMap->AddObject(patient, true);
+    owned.release();
+    Trace trace(session, profile, (std::string("building-patient-") + (plasma ? "plasma-" : "laser-") +
+        std::to_string(int(kind)) + (lethal ? "-lethal" : "-surviving")).c_str(), run, "synthetic-armed-buildings-v1");
+    auto *side = g_MatrixMap->GetPlayerSide();
+    trace.command(session, "order-attack-building", [&] {
+        side->PGOrderAttack(side->SelGroupToLogicGroup(), CPoint(20, 20), patient);
+        return session.robot(1).order == mpo_Attack;
+    });
+    float health = patient->GetHitPoint();
+    std::vector<std::pair<int, int>> impacts;
+    CoreLease core(patient->GetCore(DEBUG_CALL_INFO));
+    int dying = 0, target_cleared = 0;
+    // Stop lethal runs before ruin conversion: this mesh has no material surfaces.
+    // LoadObject(tex) requires those surfaces and a separate reviewed fixture.
+    for (int i = 0; i < (lethal ? 100 : 200); ++i) {
+        trace.record(session, shooter, shooter, nullptr, core.get(), core->m_Object ? patient : nullptr);
+        session.advance();
+        MG_CHECK(core->m_Object == patient);
+        if (!target_cleared && session.robot(1).target_is_null) target_cleared = session.time();
+        if (patient->m_State == BUILDING_DIP) {
+            if (!dying) dying = session.time();
+        } else if (patient->GetHitPoint() != health) {
+            health = patient->GetHitPoint();
+            impacts.emplace_back(session.time(), int(std::lround(health * 10)));
+        }
+    }
+    std::cout << "building " << int(kind) << " plasma=" << plasma << " lethal=" << lethal << " dying=" << dying << " impacts:";
+    for (const auto &[time, hp] : impacts) std::cout << ' ' << time << ':' << hp;
+    std::cout << '\n';
+    if (lethal) {
+        MG_CHECK(dying == (plasma ? 160 : 20));
+        MG_CHECK(patient->m_State == BUILDING_DIP);
+        MG_CHECK(target_cleared == (plasma ? 210 : 110));
+        MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_BUILDING_KILL) == 1);
+    } else {
+        const std::vector<int> expected_times = plasma
+            ? std::vector<int>{160, 260, 350, 450, 550, 650, 750, 850, 960, 1060, 1160, 1260, 1370, 1470, 1570, 1670, 1770, 1880, 1980}
+            : kind == BUILDING_BASE
+                ? std::vector<int>{20, 120, 220, 320, 420, 620, 720, 820, 920, 1020, 1120, 1220, 1420, 1720, 1820, 1920}
+                : std::vector<int>{20, 120, 220, 320, 420, 520, 620, 820, 920, 1020, 1120, 1320, 1420, 1720, 1820};
+        std::vector<std::pair<int, int>> expected;
+        for (size_t i = 0; i < expected_times.size(); ++i)
+            expected.emplace_back(expected_times[i], 50 - 2 * int(i + 1));
+        MG_CHECK(impacts == expected);
+        MG_CHECK(health == float(expected.back().second) / 10.0f);
+        MG_CHECK(patient->IsLiveBuilding() && !target_cleared);
+        MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_BUILDING_KILL) == 0);
+    }
+    trace.record(session, shooter, shooter, nullptr, core.get(), core->m_Object ? patient : nullptr);
+    trace.complete(session);
+    return trace.states;
+}
+void building_patient() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (bool plasma : {false, true})
+            for (auto kind : {BUILDING_BASE, BUILDING_TITAN, BUILDING_PLASMA, BUILDING_ELECTRONIC, BUILDING_ENERGY, BUILDING_REPAIR}) {
+                const auto reference = building_patient_run(mode, plasma, kind, false, 0);
+                compare(reference, building_patient_run(mode, plasma, kind, false, 1));
+            }
+}
+void building_dying() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (bool plasma : {false, true})
+            for (auto kind : {BUILDING_BASE, BUILDING_TITAN}) {
+                const auto reference = building_patient_run(mode, plasma, kind, true, 0);
+                compare(reference, building_patient_run(mode, plasma, kind, true, 1));
+            }
+}
+
 std::vector<std::string> cannon_acquisition_run(random::Mode mode, int variant, int run) {
     tests::BattleCombatAssets assets;
     const Profile profile{mode, 82, 10, 1000, false, false};
@@ -1497,7 +1587,8 @@ const tests::Case cases[] = {
         {"game.combat.cannon_patient", cannon_patient},       {"game.combat.cannon_acquisition", cannon_acquisition},
         {"game.combat.robot_boundaries", robot_boundaries},   {"game.combat.status_refresh", status_refresh},
         {"game.combat.status_lethal", status_lethal},         {"game.combat.friendly_difficulty", friendly_difficulty},
-        {"game.combat.cannon_difficulty", cannon_difficulty}};
+        {"game.combat.cannon_difficulty", cannon_difficulty},
+        {"game.combat.building_patient", building_patient}, {"game.combat.building_dying", building_dying}};
 }  // namespace
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
