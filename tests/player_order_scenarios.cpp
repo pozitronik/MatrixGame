@@ -1,6 +1,8 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_geometry.hpp"
+#include "battle_building.hpp"
+#include "battle_combat_geometry.hpp"
 #include "test_support.hpp"
 #include "command_world.hpp"
 #include "MatrixFormGame.hpp"
@@ -453,6 +455,67 @@ void overlapping_selection_limit() {
     MG_CHECK(!side().GetCurGroup()->FindObject(extras[28]));
     MG_CHECK(!side().GetCurGroup()->FindObject(extras[29]));
 }
+void mixed_building_selection() {
+    for (bool building_first : {false, true}) {
+        Session session;
+        CFormMatrixGame form;
+        auto *robot = selected(0);
+        auto building = tests::make_battle_building(*robot->m_Unit[0].m_Graph->VO(),
+            PLAYER_SIDE, BUILDING_TITAN, 100, 200);
+        SelectionFixture visible{};
+        visible.append(building_first ? static_cast<CMatrixMapStatic *>(building.get()) : robot);
+        visible.append(building_first ? static_cast<CMatrixMapStatic *>(robot) : building.get());
+        const auto point = screen_center(*robot);
+        const CRect area(point.x - 30, point.y - 30, point.x + 30, point.y + 30);
+        MG_CHECK(robot->InRect(area) && building->InRect(area));
+        side().Select(NOTHING, nullptr);
+        side().ResetSystemSelection();
+        drag(form, CPoint(area.left, area.top), CPoint(area.right, area.bottom));
+        MG_CHECK(side().m_CurrSel == ROBOT_SELECTED);
+        MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == robot);
+        MG_CHECK(!side().GetCurGroup()->FindObject(building.get()));
+    }
+}
+
+void inactive_selection() {
+    for (auto state : {ROBOT_DIP, ROBOT_IN_SPAWN, ROBOT_BASE_MOVEOUT, ROBOT_CARRYING}) {
+        Session session;
+        CFormMatrixGame form;
+        auto *robot = selected(0);
+        auto *candidate = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200);
+        const auto original = candidate->m_CurrState;
+        struct RestoreState {
+            CMatrixRobotAI &robot;
+            ERobotState state;
+            ~RestoreState() { robot.m_CurrState = state; }
+        } restore{*candidate, original};
+        candidate->m_CurrState = state;
+        SelectionFixture visible{candidate, robot};
+        const auto point = screen_center(*robot);
+        side().Select(NOTHING, nullptr);
+        side().ResetSystemSelection();
+        drag(form, CPoint(point.x - 4, point.y - 4), CPoint(point.x + 4, point.y + 4));
+        // Isolate eligibility without ticking an incomplete death/carrier state.
+        const bool candidate_selected = side().GetCurGroup()->FindObject(candidate);
+        candidate->m_CurrState = original;
+        const bool expected = state != ROBOT_DIP;
+        MG_CHECK(candidate_selected == expected);
+        MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == (expected ? 2 : 1));
+        MG_CHECK(selected(expected ? 1 : 0) == robot);
+    }
+    Session session;
+    CFormMatrixGame form;
+    auto *robot = selected(0);
+    auto *crazy = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200);
+    crazy->MarkCrazy();
+    SelectionFixture visible{crazy, robot};
+    const auto point = screen_center(*robot);
+    side().Select(NOTHING, nullptr);
+    side().ResetSystemSelection();
+    drag(form, CPoint(point.x - 4, point.y - 4), CPoint(point.x + 4, point.y + 4));
+    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == robot);
+}
+
 void independent_group_commands() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         Session session({mode});
@@ -714,6 +777,56 @@ void manual_aim_and_fire_input() {
     press(form, VK_RETURN);
     MG_CHECK(!side().IsArcadeMode());
 }
+void manual_armed_fire() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::BattleCombatAssets assets;
+        Session session({mode, 80, 10, 1000, false, true});
+        assets.install();
+        CFormMatrixGame form;
+        auto *robot = selected(0);
+        MG_CHECK(session.remove(2) && session.remove(4));
+        CMatrixRobotAI *target = nullptr;
+        for (auto *o = CMatrixMapStatic::GetFirstLogic(); o; o = o->GetNextLogic())
+            if (o->IsLiveRobot() && o->GetSide() == 2) target = o->AsRobot();
+        MG_CHECK(target && session.matches(3, target));
+        target->SetMaxSpeed(0);
+        target->InitMaxHitpoint(1000);
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 600;
+        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {2, 0, 10};
+        g_Config.m_Overheat[WEAPON_LASER_HEAT] = 10;
+        g_Config.m_Overheat[WEAPON_LASER_COOL] = 10;
+        g_Config.m_Overheat[WCP_LASER] = 100;
+        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+        tests::arm_battle_robot(*robot, RUK_WEAPON_LASER);
+        press(form, VK_RETURN);
+        MG_CHECK(side().GetArcadedObject() == robot);
+        g_IFaceList->m_InFocus = UNKNOWN;
+        g_MatrixMap->m_TraceStopObj = target;
+        g_MatrixMap->m_TraceStopPos = target->GetGeoCenter();
+        const auto before = target->GetHitPoint();
+        form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+        for (int i = 0; i < 100; ++i) session.advance();
+        MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE));
+        const auto after = target->GetHitPoint();
+        std::cout << "Manual fire mode=" << int(mode) << " health=" << before << "->" << after << '\n';
+        MG_CHECK(after < before);
+        form.MouseKey(B_UP, VK_LBUTTON, 640, 360);
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(target->GetHitPoint() == after);
+        form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(target->GetHitPoint() < after);
+        form.SystemEvent(SYSEV_INPUT_RESET);
+        const auto at_reset = target->GetHitPoint();
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() == at_reset);
+        press(form, VK_RETURN);
+        MG_CHECK(!side().IsArcadeMode());
+    }
+}
+
 void registered_cheat_effects() {
     Profile profile;
     profile.initially_selected = false;
@@ -925,6 +1038,7 @@ constexpr tests::Case cases[] = {
     {"game.player.megabust_cheat", megabust_cheat},
     {"game.player.registered_cheat_effects", registered_cheat_effects},
     {"game.player.manual_aim_and_fire_input", manual_aim_and_fire_input},
+    {"game.player.manual_armed_fire", manual_armed_fire},
     {"game.player.cannon_and_invalid_targets", cannon_and_invalid_targets},
     {"game.player.capture_target_validation", capture_target_validation},
     {"game.player.mixed_auto_selection", mixed_auto_selection},
@@ -951,6 +1065,8 @@ constexpr tests::Case cases[] = {
     {"game.player.cheat_dispatch_gate", cheat_dispatch_gate},
     {"game.player.mesh_selection", mesh_selection},
     {"game.player.overlapping_selection_limit", overlapping_selection_limit},
+    {"game.player.mixed_building_selection", mixed_building_selection},
+    {"game.player.inactive_selection", inactive_selection},
     {"game.player.independent_group_commands", independent_group_commands},
 };
 }
