@@ -28,7 +28,9 @@ struct RobotState {
     int group;
     int order;
     int destination_x, destination_y;
-    EntityId target = 0;
+    // 0 is null; -1 is a non-null reference outside the registered live entities.
+    int target = 0;
+    bool target_is_null = true;
     bool in_place = false;
 };
 

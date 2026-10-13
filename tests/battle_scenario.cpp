@@ -180,10 +180,10 @@ struct Session::Impl {
         }
         return nullptr;
     }
-    EntityId id_of(const CMatrixMapStatic *object) const {
+    int id_of(const CMatrixMapStatic *object) const {
         if (!object) return 0;
-        for (EntityId id = 1; id <= entities.size(); ++id) if (lookup(id) == object) return id;
-        return 0;
+        for (EntityId id = 1; id <= entities.size(); ++id) if (lookup(id) == object) return static_cast<int>(id);
+        return -1;
     }
     void select(const std::vector<EntityId> &ids) {
         for (const auto id : ids) MG_CHECK(lookup(id) && lookup(id)->m_Side == PLAYER_SIDE);
@@ -225,11 +225,17 @@ void Session::advance() {
     auto &s = *impl_;
     MG_CHECK(s.frames < s.profile.max_frames);
     MG_CHECK(std::chrono::steady_clock::now() - s.started < std::chrono::seconds(20));
+#if defined(__MINGW32__)
+    MG_CHECK((_controlfp(0, 0) & _MCW_PC) == _PC_24);
+#endif
     // A single synthetic clip finishes at the next frame boundary. Loops persist.
     for (auto &voice : s.audio_state->voices) if (!voice->loop) voice->playing = false;
     s.map->Takt(s.profile.step_ms);
     s.map->m_Camera.BeforeDraw(); // Refresh CPU view/frustum state as a rendered frame would.
     ++s.frames;
+#if defined(__MINGW32__)
+    MG_CHECK((_controlfp(0, 0) & _MCW_PC) == _PC_24);
+#endif
 }
 int Session::frame() const { return impl_->frames; }
 int Session::time() const { return impl_->map->GetTime(); }
@@ -241,7 +247,7 @@ RobotState Session::robot(EntityId id) const {
     const auto *order = group >= 0 && r->m_Side == PLAYER_SIDE ? &impl_->side().m_PlayerGroup[group] : nullptr;
     return {id, r->IsLiveRobot(), r->m_PosX, r->m_PosY, group, order ? int(order->Order()) : -1,
             order ? order->m_To.x : -1, order ? order->m_To.y : -1, order ? impl_->id_of(order->m_Obj) : 0,
-            r->PLIsInPlace()};
+            !order || order->m_Obj == nullptr, r->PLIsInPlace()};
 }
 std::string Session::snapshot() const {
     const auto &s = *impl_;
@@ -260,6 +266,7 @@ std::string Session::snapshot() const {
                 << ",\"health_bits\":" << std::bit_cast<uint32_t>(raw->GetHitPoint())
                 << ",\"in_place\":" << (r.in_place ? "true" : "false")
                 << ",\"group\":" << r.group << ",\"order\":" << r.order << ",\"target\":" << r.target
+                << ",\"target_is_null\":" << (r.target_is_null ? "true" : "false")
                 << ",\"destination\":[" << r.destination_x << ',' << r.destination_y << "],\"queue\":[";
             for (int i = 0; i < raw->GetOrdersInPool(); ++i) {
                 if (i) out << ',';
