@@ -7,6 +7,7 @@
 #include "CStorage.hpp"
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <filesystem>
 #include <initializer_list>
 #include <vector>
@@ -53,7 +54,7 @@ struct MeshFile {
 };
 
 void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachment> attachments,
-                bool combat_animations, const wchar_t *texture_name = nullptr) {
+                bool combat_animations, float height, const wchar_t *texture_name = nullptr) {
     CStorage storage;
     if (texture_name) {
         schema(storage, L"surfs", {{L"texs", ST_WCHAR}});
@@ -72,7 +73,7 @@ void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachmen
     std::array<SVOVertex, 8> vertices{};
     for (size_t i = 0; i < vertices.size(); ++i) {
         vertices[i].v = D3DXVECTOR3((i & 1) ? 12.0f : -12.0f,
-                                   (i & 2) ? 12.0f : -12.0f, (i & 4) ? 20.0f : 0.0f);
+                                   (i & 2) ? 12.0f : -12.0f, (i & 4) ? height : 0.0f);
         vertices[i].n = D3DXVECTOR3(0, 0, 1);
     }
     const WORD indices[] = {0, 2, 1, 1, 2, 3, 4, 5, 6, 5, 7, 6,
@@ -86,9 +87,9 @@ void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachmen
     bytes(storage, L"unions", L"data", &surface, 1);
     SVOKadr frame{};
     frame.m_Min = D3DXVECTOR3(-12, -12, 0);
-    frame.m_Max = D3DXVECTOR3(12, 12, 20);
-    frame.m_GeoCenter = D3DXVECTOR3(0, 0, 10);
-    frame.m_Radius = 20;
+    frame.m_Max = D3DXVECTOR3(12, 12, height);
+    frame.m_GeoCenter = D3DXVECTOR3(0, 0, height / 2);
+    frame.m_Radius = height == 20.0f ? 20.0f : std::sqrt(288.0f + height * height / 4.0f);
     frame.m_VerCnt = 8;
     frame.m_UnionCnt = 1;
     bytes(storage, L"frames", L"data", &frame, 1);
@@ -132,9 +133,10 @@ void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachmen
 }
 
 }
-CVectorObject *load_battle_mesh(std::span<const MeshAttachment> attachments, const wchar_t *cache_name, bool combat_animations) {
+CVectorObject *load_battle_mesh(std::span<const MeshAttachment> attachments, const wchar_t *cache_name, bool combat_animations, float height) {
     MeshFile file;
-    write_mesh(file.path, attachments, combat_animations);
+    MG_CHECK(std::isfinite(height) && height > 0 && height <= 1000);
+    write_mesh(file.path, attachments, combat_animations, height);
     auto *geometry = static_cast<CVectorObject *>(g_Cache->Get(CacheClass::VO, file.path.c_str()));
     geometry->LoadSpecial(OLF_NO_TEX, nullptr, 0);
     MG_CHECK(std::filesystem::remove(file.path));
@@ -151,7 +153,7 @@ CVectorObject *load_battle_material_mesh(std::span<const MeshAttachment> attachm
     MG_CHECK(g_Cache->Find(CacheClass::VO, cache_name) == nullptr);
     MG_CHECK(g_Cache->Find(CacheClass::TextureManaged, texture_name) != nullptr);
     MeshFile file;
-    write_mesh(file.path, attachments, combat_animations, texture_name);
+    write_mesh(file.path, attachments, combat_animations, 20.0f, texture_name);
     auto *geometry = static_cast<CVectorObject *>(g_Cache->Get(CacheClass::VO, file.path.c_str()));
     geometry->LoadSpecial(OLF_NO_TEX, nullptr, 0);
     MG_CHECK(std::filesystem::remove(file.path));

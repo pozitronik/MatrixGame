@@ -21,10 +21,12 @@ struct EffectAccess : CMatrixEffect {
 struct BattleCombatAssets::Impl {
     std::array<SBillboardTextureArrayElement, BBT_LAST> previous;
     SSpotProperties previous_spot = EffectAccess::m_SpotProperties[SPOT_PLASMA_HIT];
+    SSpotProperties previous_crater = EffectAccess::m_SpotProperties[SPOT_VORONKA];
     Impl() { std::copy_n(EffectAccess::m_BBTextures, BBT_LAST, previous.begin()); }
     ~Impl() {
         std::copy(previous.begin(), previous.end(), EffectAccess::m_BBTextures);
         EffectAccess::m_SpotProperties[SPOT_PLASMA_HIT] = previous_spot;
+        EffectAccess::m_SpotProperties[SPOT_VORONKA] = previous_crater;
     }
 };
 BattleCombatAssets::BattleCombatAssets() : impl(std::make_unique<Impl>()) {}
@@ -47,6 +49,11 @@ void BattleCombatAssets::install() {
     spot.func = SpotTaktPlasmaHit;
     spot.texture = texture;
     spot.ttl = 1000;
+    auto &crater = EffectAccess::m_SpotProperties[SPOT_VORONKA];
+    crater = spot;
+    crater.func = SpotTaktVoronka;
+    for (const auto *path : {OBJECT_PATH_ROCKET, OBJECT_PATH_GUN, OBJECT_PATH_MINA})
+        load_battle_mesh({}, path, true);
     for (int id = 0; id < BBT_LAST; ++id) {
         EffectAccess::m_BBTextures[id].flags = BBT_FLAG_INTENSE;
         EffectAccess::m_BBTextures[id].tex = texture;
@@ -73,11 +80,19 @@ CMatrixCannon *create_battle_cannon(int side, float x, float y) {
 }
 void arm_battle_robot(CMatrixRobotAI &robot, ERobotUnitKind weapon) {
     MG_CHECK(robot.m_UnitCnt == 1);
-    MG_CHECK(weapon == RUK_WEAPON_LASER || weapon == RUK_WEAPON_PLASMA);
+    switch (weapon) {
+    case RUK_WEAPON_MACHINEGUN: case RUK_WEAPON_CANNON: case RUK_WEAPON_MISSILE:
+    case RUK_WEAPON_FLAMETHROWER: case RUK_WEAPON_MORTAR: case RUK_WEAPON_LASER:
+    case RUK_WEAPON_BOMB: case RUK_WEAPON_PLASMA: case RUK_WEAPON_ELECTRIC:
+    case RUK_WEAPON_REPAIR:
+        break;
+    default:
+        throw std::runtime_error("Unsupported synthetic robot weapon");
+    }
     const MeshAttachment armor_links[] = {{1, L"head", 0, 0, 20}, {2, L"weapon", 0, 0, 0}};
-    const MeshAttachment muzzle{1, L"muzzle", 0, 15, 0};
+    const MeshAttachment muzzles[] = {{1, L"muzzle", 0, 15, 0}, {2, L"repair-end", 0, 25, 0}};
     auto *armor = load_battle_mesh(armor_links);
-    auto *barrel = load_battle_mesh(std::span(&muzzle, 1), nullptr, true);
+    auto *barrel = load_battle_mesh(std::span(muzzles, weapon == RUK_WEAPON_REPAIR ? 2 : 1), nullptr, true);
     robot.UnitInsert(1, MRT_ARMOR, RUK_ARMOR_BIREX);
     robot.UnitInsert(2, MRT_WEAPON, weapon);
     robot.m_Unit[2].u1.s1.m_LinkMatrix = 2;
