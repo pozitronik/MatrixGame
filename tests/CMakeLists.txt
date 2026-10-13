@@ -524,6 +524,22 @@ add_test(NAME game.player.intentional_crash
     COMMAND "${CMAKE_COMMAND}" "-DTEST_EXECUTABLE=$<TARGET_FILE:matrixgame_player_order_scenarios>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/check_intentional_cheat_abort.cmake")
 set_tests_properties(game.player.intentional_crash PROPERTIES LABELS "engine;asset-free;gameplay;input" TIMEOUT 15)
+add_matrix_test_executable(matrixgame_presentation_integration_tests presentation_integration_tests.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_presentation_integration_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_presentation_integration_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_presentation_integration_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_presentation_integration_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech)
+    add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
+endforeach()
+
+# Manual correctness probes for catalog defect candidates, intentionally outside
+# CTest until separately reviewed fixes establish the expected invariants.
+add_matrix_test_executable(matrixgame_presentation_defect_probes presentation_defect_probes.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_presentation_defect_probes PRIVATE MatrixGameInternal)
 # Performance workloads. The executable is a measurement tool, not a
 # timing test: CTest only runs a short smoke pass that checks repeatable work.
 add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp
