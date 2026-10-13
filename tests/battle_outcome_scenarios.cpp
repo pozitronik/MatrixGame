@@ -27,7 +27,10 @@ CMatrixSideUnit &side() { return *g_MatrixMap->GetPlayerSide(); }
 void press(CFormMatrixGame &form, uint8_t key) { form.Keyboard(true, key); form.Keyboard(false, key); }
 void advance_to(Session &session, int time) {
     MG_CHECK(time >= session.time());
-    while (session.time() < time) session.advance();
+    while (session.time() < time) {
+        MG_CHECK(!g_MatrixMap->IsPaused());
+        session.advance();
+    }
     MG_CHECK(session.time() == time);
 }
 struct DialogData {
@@ -279,6 +282,7 @@ void outcome(bool player_loses, bool full_auto, bool simultaneous = false, int s
             // Statistics use the native clock, not the fixed battle schedule.
             // Bound the negated elapsed value by the clock readings around Takt.
             const DWORD start = g_MatrixMap->GetStartTime();
+            // Match the production legacy wrap arithmetic, including its off-by-one.
             const auto elapsed = [start](DWORD now) {
                 return start <= now ? now - start : 0xffffffffu - start + now;
             };
@@ -905,7 +909,7 @@ CMatrixFlyer *order_outcome_transport(int owner) {
     MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 1);
     auto *carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[0]);
     MG_CHECK(carrier->GetSide() == owner && carrier->CarryingRobot());
-    // FO_GIVE_BOT creates player cargo even when invoked on another side.
+    // Non-player requests are a Debug-F-only legacy quirk: ApplyOrder still creates player cargo.
     MG_CHECK(carrier->GetCarryingRobot()->GetSide() == PLAYER_SIDE);
     return carrier;
 }
@@ -1176,7 +1180,10 @@ std::vector<std::string> special_object_run(random::Mode mode, int family) {
     hit(first, PLAYER_SIDE);
     MG_CHECK(first->m_BreakHitPoint == 5 && first->IsSpecial());
     damage.mindamage = 4;
+    const int effects_before_break = g_MatrixMap->GetEffectCount();
     hit(first, PLAYER_SIDE);
+    if (family == 1) MG_CHECK(g_MatrixMap->GetEffectCount() > effects_before_break);
+    else MG_CHECK(g_MatrixMap->GetEffectCount() == effects_before_break);
     MG_CHECK(!first->IsSpecial() && g_MatrixMap->m_BeforeWinCount == 1);
     MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1);
     MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN));
