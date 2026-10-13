@@ -36,6 +36,8 @@ NO_FUNCTIONS = re.compile(r"^(.*[.]gcno):no functions found$", re.IGNORECASE)
 NEWER_SOURCE = re.compile(r"source file is newer than notes file", re.IGNORECASE)
 STALE_DATA = re.compile(r"stamp mismatch with notes file", re.IGNORECASE)
 TEST_TARGET = 'matrixgame_tests'
+# Compiled project sources; resource scripts and dependency archives are not instrumented.
+INSTRUMENTED_OBJECT = re.compile(r'(^|/)CMakeFiles/[^/]+[.]dir/.+[.](c|cc|cpp|cxx)[.](obj|o)$', re.IGNORECASE)
 
 
 class CoverageError(Exception):
@@ -104,9 +106,14 @@ class FileCoverage:
             if counts:
                 self.branches[number] = merge_branches(self.branches.get(number, []), counts)
         for function in record.get('functions', []):
-            key = (function.get('start_line', 0), function.get('start_column', 0))
-            name = function.get('demangled_name') or function.get('name', '')
-            entry = self.functions.setdefault(key, {'name': name, 'line': key[0], 'count': 0})
+            # Template instantiations share a location, so the demangled symbol is part
+            # of the identity. The same symbol from several translation units merges, and
+            # so do the ABI variants of one constructor or destructor (C1/C2, D0/D1/D2),
+            # which demangle identically but have distinct mangled names.
+            symbol = function.get('demangled_name') or function.get('name', '')
+            key = (symbol, function.get('start_line', 0), function.get('start_column', 0))
+            name = symbol
+            entry = self.functions.setdefault(key, {'name': name, 'line': key[1], 'count': 0})
             entry['count'] += function.get('execution_count', 0)
 
     def totals(self):
@@ -186,7 +193,8 @@ def summarize(files):
                 'uncovered_lines': ranges(uncovered),
                 'functions_detail': [
                     {'name': entry['name'], 'line': entry['line'], 'count': entry['count']}
-                    for _, entry in sorted(coverage.functions.items())
+                    for _, entry in sorted(coverage.functions.items(),
+                                           key=lambda item: (item[0][1], item[0][2], item[0][0]))
                 ],
             })
     for group in groups.values():
@@ -308,7 +316,9 @@ def measured_notes(build_dir, cache, ninja=None):
     """Split notes into those of objects the test target builds and all others.
 
     Other notes come from targets the coverage run does not rebuild, such as the
-    game executable after a full build, or from objects of deleted sources.
+    game executable after a full build, or from objects of deleted sources. Every
+    compiled C/C++ object of the test target must have a note; dependency archives
+    and resource objects are not instrumented and need none.
     """
     notes = sorted(build_dir.rglob('*.gcno'))
     if cache.get('CMAKE_GENERATOR') not in (None, 'Ninja'):
@@ -320,12 +330,23 @@ def measured_notes(build_dir, cache, ninja=None):
                             capture_output=True, text=True, check=False)
     if result.returncode != 0:
         raise CoverageError(f'Cannot list the inputs of {TEST_TARGET}: {result.stderr.strip() or result.stdout.strip()}')
-    objects = {object_key(build_dir / line.strip()) for line in result.stdout.splitlines()
-               if line.strip().endswith(('.obj', '.o'))}
-    measured, ignored = [], []
+    objects = {}
+    for line in result.stdout.splitlines():
+        name = line.strip().replace('\\', '/')
+        if INSTRUMENTED_OBJECT.search(name):
+            objects[object_key(build_dir / name)] = name
+    measured, ignored, found = [], [], set()
     for note in notes:
-        (measured if object_key(note.with_suffix('.obj')) in objects
-         or object_key(note.with_suffix('.o')) in objects else ignored).append(note)
+        keys = {object_key(note.with_suffix('.obj')), object_key(note.with_suffix('.o'))}
+        matched = keys & objects.keys()
+        (measured if matched else ignored).append(note)
+        found |= matched
+    missing = sorted(objects[key] for key in objects.keys() - found)
+    if missing:
+        listed = ', '.join(missing[:5]) + (f' and {len(missing) - 5} more' if len(missing) > 5 else '')
+        raise CoverageError(f'Coverage notes are missing for {len(missing)} instrumented object(s) of {TEST_TARGET}: '
+                            f'{listed}. Delete those objects, or the coverage build directory, and rerun '
+                            f'tools/test.ps1 -Coverage so they are compiled again.')
     return measured, ignored
 
 

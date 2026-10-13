@@ -16,14 +16,21 @@ SPEC.loader.exec_module(coverage)
 
 
 def document(path, lines, functions=(), branches=None, working_directory=""):
-    """A synthetic gcov JSON document for one source file."""
+    """A synthetic gcov JSON document for one source file.
+
+    Functions are (demangled name, line, count) or (symbol, demangled name, line, count).
+    """
+    def function(entry):
+        symbol, name, line, count = entry if len(entry) == 4 else (entry[0], *entry)
+        return {"name": symbol, "demangled_name": name, "start_line": line, "start_column": 1,
+                "execution_count": count}
+
     return {
         "format_version": "1",
         "current_working_directory": working_directory,
         "files": [{
             "file": path,
-            "functions": [{"demangled_name": name, "start_line": line, "start_column": 1, "execution_count": count}
-                          for name, line, count in functions],
+            "functions": [function(entry) for entry in functions],
             "lines": [{"line_number": number, "count": count,
                        "branches": (branches or {}).get(number, [])} for number, count in lines],
         }],
@@ -119,6 +126,65 @@ class CoverageReportTests(unittest.TestCase):
         self.assertEqual(coverage.object_source(note, build), "MatrixGame/src/Logic/MatrixRule.cpp")
         note = build / "tests/CMakeFiles/matrixgame_path_tests.dir/__/MatrixGame/src/ExecutablePath.cpp.gcno"
         self.assertEqual(coverage.object_source(note, build), "MatrixGame/src/ExecutablePath.cpp")
+
+    def test_template_instantiations_are_distinct_functions(self):
+        # Shape of GCC 13.2 output for twice<T> called with int only, plus main.
+        source = "MatrixLib/Base/Twice.cpp"
+        functions = [("_Z5twiceIiET_S0_", "int twice<int>(int)", 2, 1),
+                     ("_Z5twiceIdET_S0_", "double twice<double>(double)", 2, 0),
+                     ("main", "main", 6, 1)]
+        lines = [(2, 1), (3, 1), (2, 0), (3, 0), (6, 1), (7, 1), (8, 1)]
+        files = coverage.merge([(document(source, lines, functions), True)], self.root)
+        totals = files[source].totals()
+        self.assertEqual(totals["functions"], 3)
+        self.assertEqual(totals["functions_covered"], 2)
+        # Lines are per source line: a line runs if any instantiation ran it.
+        self.assertEqual(totals["lines"], 5)
+        self.assertEqual(totals["lines_covered"], 5)
+        _, _, entries = coverage.summarize(files)
+        self.assertEqual([(item["name"], item["count"]) for item in entries[0]["functions_detail"]],
+                         [("double twice<double>(double)", 0), ("int twice<int>(int)", 1), ("main", 1)])
+
+    def test_constructor_and_destructor_variants_are_one_function(self):
+        # GCC 13.2 output for a virtual destructor chain: deleting, complete and base variants.
+        source = "MatrixLib/Base/Abi.cpp"
+        functions = [("_ZN4BaseD0Ev", "Base::~Base()", 2, 0), ("_ZN4BaseD1Ev", "Base::~Base()", 2, 0),
+                     ("_ZN4BaseD2Ev", "Base::~Base()", 2, 1), ("_ZN7DerivedD0Ev", "Derived::~Derived()", 5, 0),
+                     ("_ZN7DerivedD1Ev", "Derived::~Derived()", 5, 1), ("main", "main", 8, 1)]
+        totals = coverage.merge([(document(source, [(2, 1), (5, 1), (8, 1)], functions), True)],
+                                self.root)[source].totals()
+        self.assertEqual((totals["functions"], totals["functions_covered"]), (3, 3))
+
+    def test_same_symbol_merges_across_translation_units(self):
+        header = "MatrixLib/Base/CBuf.hpp"
+        inline = ("_ZN4Base4CBuf3LenEv", "Base::CBuf::Len()", 10, 0)
+        documents = [(document(header, [(10, 0)], [inline]), True),
+                     (document(header, [(10, 2)], [inline[:3] + (2,)]), True)]
+        totals = coverage.merge(documents, self.root)[header].totals()
+        self.assertEqual((totals["functions"], totals["functions_covered"]), (1, 1))
+
+    def test_missing_notes_of_instrumented_objects_fail(self):
+        build = self.root / "build"
+        objects = build / "MatrixLib/CMakeFiles/MatrixLib.dir/Base"
+        objects.mkdir(parents=True)
+        (objects / "Kept.cpp.gcno").write_bytes(b"")
+        ninja = self.root / "ninja.exe"
+        ninja.write_bytes(b"")
+        listing = "\n".join([
+            "MatrixLib/CMakeFiles/MatrixLib.dir/Base/Kept.cpp.obj",
+            "MatrixLib/CMakeFiles/MatrixLib.dir/Base/Missing.cpp.obj",
+            "MatrixGame/CMakeFiles/MatrixGame.dir/MatrixGame.manifest.rc.obj",
+            "zlib/lib/libzsd.a",
+        ]) + "\n"
+        reply = subprocess.CompletedProcess([], 0, stdout=listing, stderr="")
+        with patch.object(coverage.subprocess, "run", return_value=reply):
+            with self.assertRaisesRegex(coverage.CoverageError, "missing for 1 instrumented object.*Missing[.]cpp[.]obj"
+                                        ".*Delete those objects"):
+                coverage.measured_notes(build, {"CMAKE_GENERATOR": "Ninja"}, str(ninja))
+        (objects / "Missing.cpp.gcno").write_bytes(b"")
+        with patch.object(coverage.subprocess, "run", return_value=reply):
+            measured, _ = coverage.measured_notes(build, {"CMAKE_GENERATOR": "Ninja"}, str(ninja))
+        self.assertEqual(sorted(note.name for note in measured), ["Kept.cpp.gcno", "Missing.cpp.gcno"])
 
     def test_branch_merge_never_loses_executed_counts(self):
         self.assertEqual(coverage.merge_branches([1, 0], [0, 0, 2]), [1, 0, 2])
