@@ -384,6 +384,10 @@ void disconnected() {
 }
 }
 int main(int argc, char **argv) {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    Base::CMain::BaseInit();
+    SetUnhandledExceptionFilter(nullptr);
+    std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
         {"game.navigation.local_routes", local_routes},
         {"game.navigation.passage_width", passage_width},
@@ -399,5 +403,10 @@ int main(int argc, char **argv) {
         {"game.navigation.carrier_lifetime", carrier_lifetime},
         {"game.navigation.carrier_cap", carrier_cap},
     };
-    return tests::run(argc, argv, cases);
+    int result = tests::run(argc, argv, cases);
+#ifdef MEM_SPY_ENABLE
+    if (Base::SMemHeader::first_mem_block != nullptr) result = EXIT_FAILURE;
+#endif
+    Base::CMain::BaseDeInit();
+    return result;
 }
