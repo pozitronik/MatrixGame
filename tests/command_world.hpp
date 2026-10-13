@@ -27,7 +27,7 @@ EnginePtr<T> make_engine_object() {
 struct CommandWorld {
     CHeap heap;
     CBlockPar data;
-    std::unique_ptr<CMatrixMapLogic> map;
+    EnginePtr<CMatrixMapLogic> map;
     const DWORD previousFlags = g_Flags;
 
     CommandWorld() {
@@ -36,7 +36,7 @@ struct CommandWorld {
         g_MatrixData = &data;
         try {
             CacheInit();
-            map = std::make_unique<CMatrixMapLogic>();
+            map = make_engine_object<CMatrixMapLogic>();
             g_MatrixMap = map.get();
             map->m_SizeMove = CPoint(20, 20);
             map->m_PlayerSide = nullptr;
