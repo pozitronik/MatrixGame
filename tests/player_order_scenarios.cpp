@@ -10,6 +10,7 @@
 #include "input.hpp"
 #include "cheats.hpp"
 #include <csignal>
+#include <cstdlib>
 #include <vector>
 #include <iostream>
 
@@ -226,14 +227,21 @@ void control_groups() {
     press(form, '1');
     form.Keyboard(false, VK_CONTROL);
     MG_CHECK(first->GetCtrlGroup() == '1' && second->GetCtrlGroup() == '1');
+    side().CreateGroupFromCurrent(first);
+    side().Select(ROBOT, nullptr);
+    MG_CHECK(side().GetCurGroup()->GetRobotsCnt() == 1);
+    MG_CHECK(side().GetCurGroup()->GetObjectByN(0) == first);
     press(form, 'M');
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE));
     press(form, '1');
     MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE));
     MG_CHECK(side().GetCurGroup()->GetRobotsCnt() == 2);
     MG_CHECK(side().GetCurGroup()->GetObjectByN(0) == first);
     MG_CHECK(side().GetCurGroup()->GetObjectByN(1) == second);
     MG_CHECK(session.remove(2));
-    press(form, '2'); // Avoid the double-press camera shortcut on the next recall.
+    side().Select(NOTHING, nullptr);
+    MG_CHECK(side().GetCurGroup() == nullptr);
+    MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
     press(form, '1');
     MG_CHECK(side().GetCurGroup()->GetRobotsCnt() == 1);
     MG_CHECK(side().GetCurGroup()->GetObjectByN(0) == first);
@@ -269,7 +277,7 @@ void cheat_dispatch_gate() {
     CFormMatrixGame form;
     const DWORD flags = g_Flags;
     for (char key : std::string("KEEPALIVE")) press(form, key);
-#ifdef CHEATS_ON
+#if MATRIXGAME_SCENARIO_CHEATS
     MG_CHECK(g_Flags == (flags ^ GFLAG_KEEPALIVE));
 #else
     MG_CHECK(g_Flags == flags);
@@ -278,7 +286,7 @@ void cheat_dispatch_gate() {
     MG_CHECK(g_Flags == flags);
     const int resources = side().GetResourcesAmount(TITAN);
     for (char key : std::string("RICHIERICH")) press(form, key);
-#ifdef CHEATS_ON
+#if MATRIXGAME_SCENARIO_CHEATS
     MG_CHECK(side().GetResourcesAmount(TITAN) == 9000);
 #else
     MG_CHECK(side().GetResourcesAmount(TITAN) == resources);
@@ -422,6 +430,10 @@ int main(int argc, char **argv) {
     if (argc == 2 && std::string_view(argv[1]) == "probe.intentional_crash") {
         // Convert the intentional abort signal to a unique child-process result.
         // No battle or asset setup can accidentally satisfy this contract.
+#ifdef _MSC_VER
+        // The CRT abort message can open a modal Debug dialog before SIGABRT.
+        _set_abort_behavior(0, _WRITE_ABORT_MSG | _CALL_REPORTFAULT);
+#endif
         std::signal(SIGABRT, [](int) { std::_Exit(86); });
         std::cerr << "Dispatching intentional CRASH command" << std::endl;
         for (char key : std::string("CRASH")) Cheats::processInput(key);
