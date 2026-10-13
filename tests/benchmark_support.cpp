@@ -75,7 +75,10 @@ void *__cdecl countingCalloc(size_t count, size_t size) {
 }
 
 void *__cdecl countingRealloc(void *block, size_t size) {
-    (block ? reallocationCalls : allocationCalls).fetch_add(1, std::memory_order_relaxed);
+    // realloc(nullptr, n) allocates and realloc(p, 0) releases, as in the CRT.
+    if (!block) allocationCalls.fetch_add(1, std::memory_order_relaxed);
+    else if (!size) releaseCalls.fetch_add(1, std::memory_order_relaxed);
+    else reallocationCalls.fetch_add(1, std::memory_order_relaxed);
     requestedBytes.fetch_add(static_cast<std::int64_t>(size), std::memory_order_relaxed);
     return originalRealloc(block, size);
 }
@@ -93,6 +96,10 @@ struct AllocationSnapshot {
 
     static AllocationSnapshot now() {
         return {allocationCalls.load(), reallocationCalls.load(), releaseCalls.load(), requestedBytes.load()};
+    }
+    AllocationSnapshot operator+(const AllocationSnapshot &other) const {
+        return {allocations + other.allocations, reallocations + other.reallocations, frees + other.frees,
+                bytes + other.bytes};
     }
     AllocationSnapshot operator-(const AllocationSnapshot &start) const {
         return {allocations - start.allocations, reallocations - start.reallocations, frees - start.frees,
@@ -128,6 +135,7 @@ std::string installAllocationCounters() {
     struct Slot {
         void **address;
         void *replacement;
+        void *original;
     };
     std::vector<Slot> slots;
     bool consistent = true;
@@ -143,22 +151,26 @@ std::string installAllocationCounters() {
             auto *address = reinterpret_cast<void **>(&addresses->u1.Function);
             if (name == "malloc") {
                 consistent = consistent && remember(originalMalloc, *address);
-                slots.push_back({address, reinterpret_cast<void *>(&countingMalloc)});
+                slots.push_back({address, reinterpret_cast<void *>(&countingMalloc), *address});
             } else if (name == "calloc") {
                 consistent = consistent && remember(originalCalloc, *address);
-                slots.push_back({address, reinterpret_cast<void *>(&countingCalloc)});
+                slots.push_back({address, reinterpret_cast<void *>(&countingCalloc), *address});
             } else if (name == "realloc") {
                 consistent = consistent && remember(originalRealloc, *address);
-                slots.push_back({address, reinterpret_cast<void *>(&countingRealloc)});
+                slots.push_back({address, reinterpret_cast<void *>(&countingRealloc), *address});
             } else if (name == "free") {
                 consistent = consistent && remember(originalFree, *address);
-                slots.push_back({address, reinterpret_cast<void *>(&countingFree)});
+                slots.push_back({address, reinterpret_cast<void *>(&countingFree), *address});
             }
         }
     }
     if (!consistent || !originalMalloc || !originalCalloc || !originalRealloc || !originalFree) return {};
-    for (const auto &slot : slots) {
-        if (!replaceImport(slot.address, slot.replacement)) return {};
+    for (size_t i = 0; i < slots.size(); ++i) {
+        if (!replaceImport(slots[i].address, slots[i].replacement)) {
+            // Leave the process with its original imports rather than partial counting.
+            while (i-- > 0) replaceImport(slots[i].address, slots[i].original);
+            return {};
+        }
     }
     return "executable CRT imports: malloc, calloc, realloc, free";
 }
@@ -337,10 +349,22 @@ void spin(std::chrono::microseconds duration) {
 Result measure(const Workload &workload, const Options &options) {
     Result result{&workload, options.iterations ? options.iterations : workload.defaultIterations, {}, {}, {}, {}};
 
-    // Untimed reference pass: establishes the work counters every sample must repeat.
+    // Untimed reference pass: every iteration must repeat the work of the first one,
+    // and every later sample must repeat the total.
     {
         auto session = workload.create();
-        for (int i = 0; i < result.iterations; ++i) session->run(result.work);
+        Counters first;
+        for (int i = 0; i < result.iterations; ++i) {
+            Counters iteration;
+            session->prepare();
+            session->run(iteration);
+            if (i == 0) first = iteration;
+            else if (!(iteration == first)) {
+                throw std::runtime_error("Workload " + workload.name + " performed different work in iteration " +
+                                         std::to_string(i));
+            }
+            for (const auto &[name, value] : iteration.values) result.work.add(name, value);
+        }
         session->inspect(result.inspection);
     }
 
@@ -349,21 +373,26 @@ Result measure(const Workload &workload, const Options &options) {
         // Pre-create every counter so the timed region does not allocate names.
         Counters work = result.work;
         for (auto &entry : work.values) entry.second = 0;
-        const auto allocationStart = AllocationSnapshot::now();
-        const auto start = std::chrono::steady_clock::now();
-        for (int i = 0; i < result.iterations; ++i) session->run(work);
-        if (options.validationDelayMicroseconds) {
-            spin(std::chrono::microseconds(options.validationDelayMicroseconds));
+        std::chrono::steady_clock::duration elapsed{};
+        AllocationSnapshot allocations;
+        for (int i = 0; i < result.iterations; ++i) {
+            session->prepare();
+            const auto allocationStart = AllocationSnapshot::now();
+            const auto start = std::chrono::steady_clock::now();
+            session->run(work);
+            if (i == 0 && options.validationDelayMicroseconds) {
+                spin(std::chrono::microseconds(options.validationDelayMicroseconds));
+            }
+            elapsed += std::chrono::steady_clock::now() - start;
+            allocations = allocations + (AllocationSnapshot::now() - allocationStart);
         }
-        const auto end = std::chrono::steady_clock::now();
-        const auto allocations = AllocationSnapshot::now() - allocationStart;
         session.reset();
         if (!(work == result.work)) {
             throw std::runtime_error("Workload " + workload.name + " performed different work in sample " +
                                      std::to_string(sample));
         }
         if (sample < options.warmup) continue;
-        result.samples.push_back(std::chrono::duration<double, std::nano>(end - start).count());
+        result.samples.push_back(std::chrono::duration<double, std::nano>(elapsed).count());
         result.allocations.push_back(allocations);
     }
     return result;

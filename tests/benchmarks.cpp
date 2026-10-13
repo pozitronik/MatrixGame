@@ -41,12 +41,29 @@ struct SelectionFixture {
     }
 };
 
-// Places a mesh-free robot on a movement cell without running movement.
+// Robot state access for mesh-free fixtures. Movement itself never runs.
 struct RobotCommandFixture {
     static void place(CMatrixRobotAI &robot, CPoint cell) {
         robot.m_MapX = cell.x;
         robot.m_MapY = cell.y;
     }
+
+    // The route step of the ROT_MOVE_TO branch in CMatrixRobotAI::LogicTakt for a
+    // robot that has a fresh move order and no move path. LogicTakt as a whole needs
+    // robot geometry, so these lines are repeated here; every call is production code.
+    static void route(CMatrixRobotAI &robot) {
+        robot.ZoneCurFind();
+        if (robot.m_ZoneCur < 0) return;
+        if (robot.m_ZoneDes < 0) {
+            robot.m_ZoneDes = g_MatrixMap->ZoneFindNear(robot.m_Unit[0].u1.s1.m_Kind - 1, robot.m_DesX, robot.m_DesY);
+            robot.m_ZonePathCnt = 0;
+        }
+        if (robot.m_ZonePathCnt <= 0) robot.ZonePathCalc();
+        robot.ZoneMoveCalc();
+    }
+
+    static int zonePathLength(const CMatrixRobotAI &robot) { return robot.m_ZonePathCnt; }
+    static int movePathLength(const CMatrixRobotAI &robot) { return robot.m_MovePathCnt; }
 };
 
 namespace {
@@ -248,9 +265,10 @@ struct IdleRobot : CMatrixRobotAI {
 };
 
 // ---------------------------------------------------------------------------
-// navigation.crowd_move: one group move order for a crowd, following the
-// production place assignment (PGAssignPlacePlayer) and route calculation
-// (ZonePathCalc/ZoneMoveCalc) call sequence with the same arguments.
+// navigation.crowd_move: one player move order for a crowded group. The side
+// assigns places and issues robot move orders through production code; each
+// robot then calculates its zone route and local path through its production
+// route functions, in logic-list order as the object pass would.
 
 constexpr int crowdRobots = 48;
 const CPoint crowdTarget(112, 60);
@@ -262,88 +280,69 @@ public:
     CrowdMoveSession() : grid(*world.map) {
         for (int i = 0; i < crowdRobots; ++i) {
             const CPoint start = crowdStart(i);
-            require(map().IsAbsenceWall(wheelChassis, robotSize, start.x, start.y), "crowd start is blocked");
+            require(world.map->IsAbsenceWall(wheelChassis, robotSize, start.x, start.y), "crowd start is blocked");
+            robots.emplace_back(HNew(g_MatrixHeap) IdleRobot(0, start));
         }
+        // Places may change only after the start-up delay of a robot's place search.
+        world.map->advance(3000);
+    }
+
+    ~CrowdMoveSession() override { robots.clear(); }
+
+    // A new order starts from stopped robots; the side evaluates groups every 100 ms.
+    void prepare() override {
+        for (auto &robot : robots) robot->StopMoving();
+        world.map->advance(100);
     }
 
     void run(bench::Counters &work) override { order(work, nullptr); }
 
     void inspect(bench::Counters &details) override {
+        prepare();
         bench::Counters ignored;
         order(ignored, &details);
         details.add("grid_cells", NavigationGrid::cells * NavigationGrid::cells);
         details.add("wall_cells", grid.walls);
-        details.add("zones", map().m_RN.m_ZoneCnt);
+        details.add("zones", world.map->m_RN.m_ZoneCnt);
         details.add("rng_draws", drawsSinceSeed(benchmarkSeed));
     }
 
 private:
-    CMatrixMapLogic &map() { return *world.map; }
-
     void order(bench::Counters &work, bench::Counters *details) {
-        std::array<CPoint, crowdRobots> place{};
-        std::array<int, crowdRobots> sizes{};
-        int assigned = 0;
-        for (int i = 0; i < crowdRobots; ++i) {
-            int mx = crowdTarget.x, my = crowdTarget.y;
-            const bool found =
-                    map().PlaceFindNear(wheelChassis, robotSize, mx, my, assigned, sizes.data(), place.data());
-            work.add(found ? "places_assigned" : "place_failures", 1);
-            place[assigned] = CPoint(mx, my);
-            sizes[assigned] = robotSize;
-            ++assigned;
-        }
+        auto &side = world.side();
+        auto &group = side.m_PlayerGroup[0];
+        // CMatrixSideUnit::PGOrderMoveTo without its acknowledgement sound and place
+        // markers, which need audio data and a device.
+        group.Order(mpo_MoveTo);
+        group.m_To = crowdTarget;
+        group.m_Obj = nullptr;
+        group.m_RoadPath->Clear();
+        side.PGRemoveAllPassive(0, group.m_Obj);
+        side.PGAssignPlacePlayer(0, crowdTarget);
+        side.TaktPL();
+        work.add("orders", 1);
 
-        std::array<int, NavigationGrid::zonesPerRow * NavigationGrid::zonesPerRow> zonePath{};
-        for (int i = 0; i < crowdRobots; ++i) {
-            const CPoint from = crowdStart(i);
-            const int zoneFrom = NavigationGrid::zoneOf(from.x, from.y);
-            const int zoneTo = NavigationGrid::zoneOf(place[i].x, place[i].y);
-            int zoneCount = map().FindPathInZone(wheelChassis, zoneFrom, zoneTo, nullptr, 0, zonePath.data(), false);
-            work.add("zone_searches", 1);
-            work.add("zone_path_zones", zoneCount);
-            if (zoneCount <= 0 && zoneFrom != zoneTo) work.add("zone_failures", 1);
-
-            // Every other robot contributes its current position and destination.
-            int otherCount = 0;
-            for (int k = 0; k < crowdRobots; ++k) {
-                if (k == i) continue;
-                otherSize[otherCount] = robotSize;
-                otherDestination[otherCount] = place[k];
-                if (pathCount[k] > 0) {
-                    otherPath[otherCount] = paths[k].data();
-                    otherPathCount[otherCount] = pathCount[k];
-                } else {
-                    otherPath[otherCount] = nullptr;
-                    otherPathCount[otherCount] = 0;
-                }
-                ++otherCount;
-            }
-
-            // Without a zone route the search stays in the current zone, as in ZoneMoveCalc.
-            int currentZone = zoneFrom;
-            int *zones = zoneCount > 0 ? zonePath.data() : &currentZone;
-            const int zonesUsed = zoneCount > 0 ? zoneCount : 1;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+            if (!object->IsLiveRobot()) continue;
+            auto &robot = *object->AsRobot();
+            CPoint destination;
+            if (!robot.GetMoveToCoords(destination)) continue;
+            work.add("robots_ordered", 1);
             if (details) clearSearchMarks();
-            int count = map().FindLocalPath(wheelChassis, robotSize, from.x, from.y, zones, zonesUsed, place[i].x,
-                                            place[i].y, paths[i].data(), otherCount, otherSize.data(),
-                                            otherPath.data(), otherPathCount.data(), otherDestination.data(), false);
-            work.add("local_searches", 1);
-            work.add("local_path_cells", count);
-            if (count <= 0) work.add("local_failures", 1);
+            RobotCommandFixture::route(robot);
             if (details) details->add("local_cells_visited", visitedCells());
-            count = map().OptimizeMovePath(wheelChassis, robotSize, count, paths[i].data());
-            work.add("optimized_path_points", count);
-            pathCount[i] = count;
+            work.add("zone_path_zones", RobotCommandFixture::zonePathLength(robot));
+            const int points = RobotCommandFixture::movePathLength(robot);
+            work.add("move_path_points", points);
+            if (points <= 0) work.add("route_failures", 1);
         }
-        pathCount.fill(0);
     }
 
     // The search initializes the marks inside its own bounds; clearing the rest
-    // only makes the count below specific to one call.
+    // only makes the count below specific to one robot.
     void clearSearchMarks() {
         for (int y = 0; y < NavigationGrid::cells; ++y) {
-            for (int x = 0; x < NavigationGrid::cells; ++x) map().MoveGet(x, y)->m_Find = -1;
+            for (int x = 0; x < NavigationGrid::cells; ++x) world.map->MoveGet(x, y)->m_Find = -1;
         }
     }
 
@@ -351,19 +350,14 @@ private:
     std::int64_t visitedCells() {
         std::int64_t visited = 0;
         for (int y = 0; y < NavigationGrid::cells; ++y) {
-            for (int x = 0; x < NavigationGrid::cells; ++x) visited += map().MoveGet(x, y)->m_Find >= 0 ? 1 : 0;
+            for (int x = 0; x < NavigationGrid::cells; ++x) visited += world.map->MoveGet(x, y)->m_Find >= 0 ? 1 : 0;
         }
         return visited;
     }
 
     World world;
     NavigationGrid grid;
-    std::array<std::array<CPoint, MatrixPathMoveMax>, crowdRobots> paths{};
-    std::array<int, crowdRobots> pathCount{};
-    std::array<int, crowdRobots> otherSize{};
-    std::array<CPoint *, crowdRobots> otherPath{};
-    std::array<int, crowdRobots> otherPathCount{};
-    std::array<CPoint, crowdRobots> otherDestination{};
+    std::vector<EnginePtr<IdleRobot>> robots;
 };
 
 // ---------------------------------------------------------------------------
@@ -499,8 +493,8 @@ private:
 
 const bench::Workload workloads[] = {
         {"navigation.crowd_move",
-         "Place assignment, zone route, local path and path optimization for one 48-robot group move across a "
-         "walled 128x128 movement grid",
+         "One player move order for a 48-robot group across a walled 128x128 movement grid: place assignment, "
+         "group evaluation and each robot's zone route and local path",
          {{"robots", std::to_string(crowdRobots)},
           {"grid_cells", "128x128"},
           {"zone_cells", "8x8"},

@@ -26,6 +26,8 @@ struct Counters {
 class Session {
 public:
     virtual ~Session() = default;
+    // Untimed reset before every iteration, for state that one iteration consumes.
+    virtual void prepare() {}
     // Perform the timed work once. Counters must depend only on the work done.
     virtual void run(Counters &work) = 0;
     // Untimed diagnostic counters gathered once after a verification run.
@@ -42,7 +44,7 @@ struct Workload {
     std::string description;
     std::vector<Parameter> parameters;
     int defaultIterations = 1;
-    // Seed, build and return a fresh session; called for every sample.
+    // Seed, build and return a fresh session; called for every sample and the reference pass.
     std::function<std::unique_ptr<Session>()> create;
 };
 
