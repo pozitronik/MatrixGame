@@ -37,12 +37,17 @@ struct EffectSetup : CMatrixEffect {
     static void restore(SSpotProperties previous) { m_SpotProperties[SPOT_SOLE_WHEEL] = previous; }
 };
 
+// Initial clock input only; all subsequent time advances use the production map tick.
+struct ScenarioMap : CMatrixMapLogic {
+    void initial_time(int value) { m_Time = value; }
+};
+
 struct Session::Impl {
     Profile profile;
     CHeap heap;
     CBlockPar data;
     BattleDevice device;
-    EnginePtr<CMatrixMapLogic> map;
+    EnginePtr<ScenarioMap> map;
     EnginePtr<CIFaceList> ui;
     std::vector<CMatrixRobotAI *> entities;
     std::vector<size_t> entity_uids;
@@ -67,6 +72,7 @@ struct Session::Impl {
         MG_CHECK(CMatrixMapStatic::GetFirstLogic() == nullptr);
         MG_CHECK(p.step_ms == 10 || p.step_ms == 16);
         MG_CHECK(p.max_frames > 0 && p.max_frames <= 6000);
+        MG_CHECK(p.initial_time_ms >= 0 && p.initial_time_ms <= 60000);
     }
 
     void setup(SetupFailure failure) {
@@ -101,7 +107,8 @@ struct Session::Impl {
                 [](const std::wstring &) { return audio_fixture::wave(); },
                 [](const std::wstring &, const std::string &error) { throw std::runtime_error(error); }));
         }
-        map.reset(HNew(g_MatrixHeap) CMatrixMapLogic);
+        map.reset(HNew(g_MatrixHeap) ScenarioMap);
+        map->initial_time(profile.initial_time_ms);
         g_MatrixMap = map.get();
         ui.reset(HNew(g_MatrixHeap) CIFaceList);
         g_IFaceList = ui.get();
@@ -299,7 +306,7 @@ std::string Session::snapshot() const {
     return out.str();
 }
 void Session::check_running() const {
-    MG_CHECK(impl_->map->GetTime() == frame() * impl_->profile.step_ms);
+    MG_CHECK(impl_->map->GetTime() == impl_->profile.initial_time_ms + frame() * impl_->profile.step_ms);
     MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP));
     MG_CHECK(impl_->device.stats().material_updates > 0 && impl_->device.stats().locks > 0);
     if (impl_->profile.audio) MG_CHECK(!impl_->audio_state->voices.empty());
@@ -307,7 +314,9 @@ void Session::check_running() const {
 
 std::string Session::metadata() const {
     std::ostringstream out;
-    out << "{\"type\":\"header\",\"schema\":1,\"fixture\":\"unarmed-chassis-obstacle-v1\","
+    out << "{";
+    if (impl_->profile.initial_time_ms) out << "\"initial_time_ms\":" << impl_->profile.initial_time_ms << ',';
+    out << "\"type\":\"header\",\"schema\":1,\"fixture\":\"unarmed-chassis-obstacle-v1\","
         << "\"revision\":\"" << MATRIXGAME_SCENARIO_REVISION << "\",\"dirty\":" << MATRIXGAME_SCENARIO_DIRTY << ','
         << "\"render\":\"storage-device-no-draw-cursor-surrogate\",\"viewport\":[1280,720],"
         << "\"audio\":\"" << (impl_->profile.audio ? "synthetic-next-frame-completion" : "unavailable") << "\","

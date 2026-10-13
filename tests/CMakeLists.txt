@@ -386,6 +386,8 @@ target_compile_definitions(matrixgame_ai_decision_tests PRIVATE
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 foreach(contract enemy_memory memory_target_retirement ignore_expiry bad_positions regroup_thresholds
                  regroup_teams_and_actions action_priorities action_ties interruptibility automatic_reinforcement_gate strategic_tick tactical_target_choice tactical_blocked_line
+                 strategic_member_loss strategic_base_loss strategic_forward
+                 strategic_objective_replacement strategic_objective_ties strategic_empty_team_split
                  radio_group radio_team_region radio_filters threat_priorities
                  automatic_attack_route automatic_capture_route automatic_defence_route
                  production_wait_choice production_wait_limits production_unaffordable)

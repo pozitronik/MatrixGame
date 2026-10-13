@@ -11,6 +11,13 @@
 #include <vector>
 
 namespace tests::ai {
+void strategic_member_loss();
+void strategic_base_loss();
+void strategic_forward();
+void strategic_objective_replacement();
+void strategic_objective_ties();
+void strategic_empty_team_split();
+void uneven_team_correctness();
 void radio_group();
 void radio_team_region();
 void radio_filters();
@@ -383,6 +390,13 @@ int main(int argc, char **argv) {
         {"game.ai.strategic_tick", strategic_tick},
         {"game.ai.tactical_target_choice", tactical_target_choice},
         {"game.ai.tactical_blocked_line", tactical_blocked_line},
+        {"game.ai.strategic_member_loss", tests::ai::strategic_member_loss},
+        {"game.ai.strategic_base_loss", tests::ai::strategic_base_loss},
+        {"game.ai.strategic_forward", tests::ai::strategic_forward},
+        {"game.ai.strategic_objective_replacement", tests::ai::strategic_objective_replacement},
+        {"game.ai.strategic_objective_ties", tests::ai::strategic_objective_ties},
+        {"game.ai.strategic_empty_team_split", tests::ai::strategic_empty_team_split},
+        {"probe.ai.uneven_team_redistribution", tests::ai::uneven_team_correctness},
         {"game.ai.radio_group", tests::ai::radio_group},
         {"game.ai.radio_team_region", tests::ai::radio_team_region},
         {"game.ai.radio_filters", tests::ai::radio_filters},

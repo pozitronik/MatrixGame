@@ -212,6 +212,13 @@ void audio_unavailable() {
     clean_globals();
 }
 void bounds() {
+    for (int initial_time : {-1, 60001}) {
+        Profile invalid; invalid.initial_time_ms = initial_time;
+        bool rejected = false;
+        try { Session session(invalid); } catch (const std::runtime_error &) { rejected = true; }
+        MG_CHECK(rejected);
+        clean_globals();
+    }
     Profile profile;
     profile.max_frames = 1;
     Session session(profile);
@@ -231,13 +238,25 @@ void bounds() {
 }
 
 void partial_setup() {
-    for (auto failure : {SetupFailure::Topology, SetupFailure::Entities, SetupFailure::Selection}) {
+    for (int initial_time : {0, 3001, 60000})
+        for (auto failure : {SetupFailure::Topology, SetupFailure::Entities, SetupFailure::Selection}) {
+        Profile profile; profile.initial_time_ms = initial_time;
         bool caught = false;
-        try { Session session({}, failure); }
+        try { Session session(profile, failure); }
         catch (const std::runtime_error &) { caught = true; }
         MG_CHECK(caught);
         clean_globals();
-        { Session session; session.advance(); }
+        {
+            Session session(profile);
+            MG_CHECK(session.time() == initial_time && session.frame() == 0);
+            const auto header = session.metadata();
+            MG_CHECK((header.find("\"initial_time_ms\":") != std::string::npos) == (initial_time != 0));
+            if (initial_time) MG_CHECK(header.find("\"initial_time_ms\":" + std::to_string(initial_time) + ',') != std::string::npos);
+            session.ground_command(500, 300);
+            for (int i = 0; i < 20; ++i) session.advance();
+            MG_CHECK(session.time() == initial_time + 20 * profile.step_ms && session.frame() == 20);
+            session.check_running();
+        }
         clean_globals();
     }
 }

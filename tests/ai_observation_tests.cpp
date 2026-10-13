@@ -406,4 +406,247 @@ void production_unaffordable() {
         no_purchase(side, *base, amount);
     }
 }
+
+void strategic_member_loss() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        std::cout << session.metadata() << '\n';
+        auto &side = *g_MatrixMap->GetSideById(2);
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(side.m_Team[0].m_RobotCnt == 2);
+        MG_CHECK(session.remove(3));
+        for (int i = 0; i < 20; ++i) session.advance();
+        MG_CHECK(!session.robot(3).alive && session.robot(4).alive);
+        MG_CHECK(session.robot(1).alive && session.robot(2).alive);
+        CMatrixRobotAI *survivor = nullptr;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+            if (object->IsLiveRobot() && object->GetSide() == 2) {
+                MG_CHECK(!survivor);
+                survivor = object->AsRobot();
+            }
+        MG_CHECK(survivor && survivor->GetTeam() == 0);
+        const int group_index = survivor->GetGroupLogic();
+        MG_CHECK(group_index >= 0 && group_index < MAX_LOGIC_GROUP);
+        const auto &group = side.m_LogicGroup[group_index];
+        MG_CHECK(group.RobotsCnt() == 1 && group.m_Team == 0);
+        MG_CHECK(side.m_Team[0].m_RobotCnt == 1);
+        MG_CHECK(group.m_Action.m_Type == mlat_Defence && group.m_Action.m_Region == 0);
+        MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_Defence);
+        CPoint destination;
+        MG_CHECK(survivor->GetMoveToCoords(destination));
+        MG_CHECK(destination == CPoint(48, 8));
+        std::cout << "member-retired remaining=1 team=0 action=Defence destination=48,8\n";
+    }
+}
+
+void strategic_base_loss() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        std::cout << session.metadata() << '\n';
+        two_regions(); region_roads();
+        ProductionDefinitions definitions;
+        auto &side = *g_MatrixMap->GetSideById(2);
+        budget(side, 0);
+        auto *near_base = building(2, 500, 300, BUILDING_BASE);
+        auto *far_base = building(2, 100, 300, BUILDING_BASE);
+        MG_CHECK(near_base->HaveMaxTurrets() && far_base->HaveMaxTurrets());
+        for (int expected : {1, 0, -1}) {
+            // Time stays zero: TaktHL's first-call convention allows immediate re-observation.
+            // Mesh-free buildings must never enter a complete map tick.
+            MG_CHECK(session.time() == 0);
+            side.TaktHL();
+            MG_CHECK(side.m_Team[0].m_RegionMass == 1);
+            MG_CHECK(side.m_Team[0].m_RegionNerestBase == expected);
+            MG_CHECK(side.m_Team[0].m_RobotCnt == 2);
+            for (int r = 0; r < MAX_RESOURCES; ++r)
+                MG_CHECK(side.GetResourcesAmount(static_cast<ERes>(r)) == 0);
+            if (expected == 1) {
+                MG_CHECK(near_base->m_BS.GetItemsCnt() == 0 && far_base->m_BS.GetItemsCnt() == 0);
+                g_MatrixMap->StaticDelete(near_base);
+            } else if (expected == 0) {
+                MG_CHECK(far_base->m_BS.GetItemsCnt() == 0);
+                g_MatrixMap->StaticDelete(far_base);
+            }
+            std::cout << "base-observation nearest_region=" << expected << " time=0\n";
+        }
+    }
+}
+
+void strategic_forward() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool blocked : {false, true}) {
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        std::cout << session.metadata() << '\n';
+        two_regions(); region_roads();
+        building(0, 100, 300);
+        auto &network = g_MatrixMap->m_RN;
+        const byte restriction = blocked ? (1 << (RUK_CHASSIS_WHEEL - 1)) : 0;
+        network.m_Region[0].m_NearMove[0] = network.m_Region[1].m_NearMove[0] = restriction;
+        auto &side = *g_MatrixMap->GetSideById(2);
+        side.TaktHL();
+        const auto &team = side.m_Team[0];
+        MG_CHECK(team.m_RobotCnt == 2 && team.m_RegionMass == 1);
+        std::cout << "forward blocked=" << blocked << " action=" << int(team.m_Action.m_Type)
+                  << " region=" << team.m_Action.m_Region << " path_count=" << team.m_Action.m_RegionPathCnt << '\n';
+        MG_CHECK(team.m_Action.m_Type == (blocked ? mlat_Defence : mlat_Forward));
+        MG_CHECK(team.m_Action.m_Region == (blocked ? 1 : 0));
+        if (!blocked) {
+            MG_CHECK(team.m_Action.m_RegionPathCnt == 2);
+            MG_CHECK(team.m_Action.m_RegionPath[0] == 1 && team.m_Action.m_RegionPath[1] == 0);
+            MG_CHECK(team.m_RoadPath->m_ListCnt == 1 && team.m_RoadPath->m_Header[0].m_Cnt == 3);
+        }
+    }
+}
+
+void strategic_objective_replacement() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        std::cout << session.metadata() << '\n';
+        two_regions(); region_roads();
+        auto *remote_objective = building(0, 100, 300);
+        auto &side = *g_MatrixMap->GetSideById(2);
+        side.TaktHL();
+        MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_Forward);
+        MG_CHECK(side.m_Team[0].m_Action.m_Region == 0);
+        g_MatrixMap->StaticDelete(remote_objective);
+        side.TaktHL();
+        // Forward remains valid until arrival, danger or a nearer capture opportunity.
+        MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_Forward);
+        MG_CHECK(side.m_Team[0].m_Action.m_Region == 0);
+        auto *local_objective = building(0, 500, 300);
+        side.TaktHL();
+        MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_Capture);
+        MG_CHECK(side.m_Team[0].m_Action.m_Region == 1);
+        g_MatrixMap->StaticDelete(local_objective);
+        side.TaktHL();
+        MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_Defence);
+        MG_CHECK(side.m_Team[0].m_Action.m_Region == 1);
+        MG_CHECK(session.time() == 0);
+    }
+}
+
+void strategic_objective_ties() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool reverse : {false, true}) {
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        std::cout << session.metadata() << '\n';
+        two_regions();
+        auto &network = g_MatrixMap->m_RN;
+        MG_CHECK(network.AddRegion() == 2);
+        network.m_Region[2] = {};
+        network.SetZoneCntMax(3); network.m_ZoneCnt = 3;
+        network.m_Zone[2] = {};
+        for (int i = 1; i < 3; ++i) {
+            auto &zone = network.m_Zone[i];
+            zone.m_Region = i;
+            zone.m_Rect = CRect(32, i == 1 ? 2 : 32, 62, i == 1 ? 32 : 62);
+            zone.m_Center = CPoint(48, i == 1 ? 16 : 48);
+            zone.m_PlaceCnt = 1; zone.m_Place[0] = i == 1 ? 1 : 3;
+            auto &region = network.m_Region[i];
+            region.m_Center = zone.m_Center;
+            region.m_PlaceCnt = region.m_PlaceAllCnt = 1;
+            region.m_Place[0] = region.m_PlaceAll[0] = zone.m_Place[0];
+            region.m_NearCnt = 1; region.m_Near[0] = 0;
+        }
+        network.m_Place[3].m_Region = 2;
+        network.m_Region[0].m_NearCnt = 2;
+        network.m_Region[0].m_Near[0] = reverse ? 2 : 1;
+        network.m_Region[0].m_Near[1] = reverse ? 1 : 2;
+        for (int y = 2; y < 62; ++y) for (int x = 32; x < 62; ++x)
+            g_MatrixMap->MoveGet(x, y)->m_Zone = y < 32 ? 1 : 2;
+        CMatrixCrotch *nodes[3];
+        for (int i = 0; i < 3; ++i) {
+            nodes[i] = network.AddCrotch();
+            nodes[i]->m_Region = nodes[i]->m_Zone = i;
+            nodes[i]->m_Center = network.m_Region[i].m_Center;
+            network.m_Region[i].m_CrotchCnt = 1;
+            network.m_Region[i].m_Crotch[0] = nodes[i];
+        }
+        for (int i = 1; i < 3; ++i) {
+            auto *road = network.AddRoad();
+            road->m_Start = nodes[0]; road->m_End = nodes[i]; road->m_Dist = 40;
+            nodes[0]->AddRoad(road); nodes[i]->AddRoad(road);
+        }
+        initial_position(*robot(500, 500), 100, 400);
+        initial_position(*robot(540, 540), 100, 460);
+        building(0, 500, 100); building(0, 500, 500);
+        auto &side = *g_MatrixMap->GetSideById(2);
+        side.TaktHL();
+        const auto &team = side.m_Team[0];
+        const int expected = reverse ? 2 : 1;
+        std::cout << "objective tie first_neighbor=" << expected << " chosen=" << team.m_Action.m_Region << '\n';
+        MG_CHECK(team.m_Action.m_Type == mlat_Forward && team.m_Action.m_Region == expected);
+        MG_CHECK(team.m_RegionMass == 0 && team.m_Action.m_RegionPathCnt == 2);
+        MG_CHECK(team.m_Action.m_RegionPath[0] == 0 && team.m_Action.m_RegionPath[1] == expected);
+        MG_CHECK(team.m_RoadPath->m_ListCnt == 1 && team.m_RoadPath->m_Header[0].m_Cnt == 2);
+        MG_CHECK(team.m_RoadPath->m_Units[1].m_Crotch->m_Region == expected);
+    }
+}
+
+void strategic_empty_team_split() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (int elapsed : {3000, 3001}) for (bool by_group : {false, true}) {
+        Profile profile; profile.mode = mode; profile.initial_time_ms = elapsed;
+        Session session(profile);
+        std::cout << session.metadata() << '\n';
+        building(0, 500, 300);
+        auto &side = *g_MatrixMap->GetSideById(2);
+        auto *first = robot(500, 500), *second = robot(540, 540);
+        first->SetGroupLogic(0); second->SetGroupLogic(0);
+        CMatrixRobotAI *third = nullptr, *fourth = nullptr;
+        if (by_group) {
+            third = BattleGeometry::create_robot(*g_MatrixMap, 2, 100, 400);
+            fourth = BattleGeometry::create_robot(*g_MatrixMap, 2, 100, 460);
+            third->SetTeam(0); fourth->SetTeam(0);
+            third->SetGroupLogic(1); fourth->SetGroupLogic(1);
+        }
+        MG_CHECK(session.time() == elapsed && session.frame() == 0);
+        side.TaktHL();
+        MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_Capture);
+        MG_CHECK(side.m_Team[0].m_GroupCnt == (by_group ? 2 : 1));
+        const bool split = elapsed > 3000;
+        MG_CHECK(first->GetTeam() == (split ? 1 : 0));
+        MG_CHECK(second->GetTeam() == (split && by_group ? 1 : 0));
+        if (by_group) MG_CHECK(third->GetTeam() == 0 && fourth->GetTeam() == 0);
+        if (split) {
+            MG_CHECK(first->GetGroupLogic() == -1);
+            if (by_group) MG_CHECK(second->GetGroupLogic() == -1);
+        }
+        std::cout << "empty-team split elapsed=" << elapsed << " by_group=" << by_group
+                  << " first_team=" << first->GetTeam() << " second_team=" << second->GetTeam() << '\n';
+    }
+}
+
+void uneven_team_correctness() {
+    Profile profile; profile.initial_time_ms = 3001;
+    Session session(profile);
+    std::cout << session.metadata() << '\n';
+    building(0, 500, 300);
+    auto &side = *g_MatrixMap->GetSideById(2);
+    side.m_TeamCnt = 2; // The erroneous donor read stays inside the allocated third team record.
+    MG_CHECK(side.m_Team[2].m_RobotCnt == 0);
+    auto *first = robot(500, 500), *second = robot(540, 540);
+    auto *third = BattleGeometry::create_robot(*g_MatrixMap, 2, 480, 540);
+    auto *fourth = BattleGeometry::create_robot(*g_MatrixMap, 2, 520, 460);
+    first->SetTeam(0); first->SetGroupLogic(0);
+    for (auto *member : {second, third, fourth}) { member->SetTeam(1); member->SetGroupLogic(1); }
+    side.TaktHL();
+    MG_CHECK(side.m_Team[0].m_RobotCnt == 1 && side.m_Team[1].m_RobotCnt == 3);
+    MG_CHECK(side.m_Team[1].m_Action.m_Type == mlat_Capture);
+    // Successful redistribution invalidates the recipient action for the next pass.
+    MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_Capture || side.m_Team[0].m_Action.m_Type == mlat_None);
+    MG_CHECK(side.m_Team[0].m_RegionMass == 0 && side.m_Team[1].m_RegionMass == 0);
+    MG_CHECK(!side.m_Team[0].IsRegroupOnlyAfterWar() && !side.m_Team[1].IsRegroupOnlyAfterWar());
+    MG_CHECK(side.m_Team[0].m_RegionFarDanger < 0 && side.m_Team[1].m_RegionFarDanger < 0);
+    int counts[2]{};
+    for (auto *member : {first, second, third, fourth}) {
+        MG_CHECK(member->GetTeam() >= 0 && member->GetTeam() < 2);
+        ++counts[member->GetTeam()];
+    }
+    std::cout << "uneven-team membership=" << counts[0] << ',' << counts[1] << " expected=2,2\n";
+    MG_CHECK(counts[0] == 2 && counts[1] == 2);
+}
 }
