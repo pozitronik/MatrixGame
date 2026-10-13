@@ -11,6 +11,10 @@
 #include <vector>
 
 namespace tests::ai {
+void automatic_reinforcement_designs();
+void automatic_reinforcement_buildings();
+void automatic_reinforcement_choices();
+void automatic_reinforcement_delivery();
 void capture_guard_interruption();
 void capture_guard_filters();
 void visual_acquisition_range();
@@ -396,6 +400,10 @@ void interruptibility() {
 }
 int main(int argc, char **argv) {
     const tests::Case cases[] = {
+        {"game.ai.automatic_reinforcement_designs", tests::ai::automatic_reinforcement_designs},
+        {"game.ai.automatic_reinforcement_buildings", tests::ai::automatic_reinforcement_buildings},
+        {"game.ai.automatic_reinforcement_choices", tests::ai::automatic_reinforcement_choices},
+        {"game.ai.automatic_reinforcement_delivery", tests::ai::automatic_reinforcement_delivery},
         {"game.ai.capture_guard_interruption", tests::ai::capture_guard_interruption},
         {"game.ai.capture_guard_filters", tests::ai::capture_guard_filters},
         {"game.ai.visual_acquisition_range", tests::ai::visual_acquisition_range},
