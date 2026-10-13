@@ -499,7 +499,7 @@ target_compile_definitions(matrixgame_ai_decision_tests PRIVATE
 foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildings automatic_reinforcement_choices automatic_reinforcement_delivery capture_guard_interruption capture_guard_filters visual_acquisition_range visual_enemy_range visual_filters visual_obstruction visual_retirement_range armed_friendly_line armed_target_retention repair_acquisition_range repair_target_retention repair_explicit_priority memory_cleanup place_bounds bomb_escape_planning enemy_memory memory_target_retirement ignore_expiry bad_positions regroup_thresholds
                  regroup_teams_and_actions action_priorities action_ties interruptibility automatic_reinforcement_gate strategic_tick tactical_target_choice tactical_blocked_line
                  strategic_member_loss strategic_base_loss strategic_forward
-                 strategic_objective_replacement strategic_objective_ties strategic_empty_team_split
+                 strategic_objective_replacement strategic_objective_ties strategic_empty_team_split uneven_team_redistribution
                  radio_group radio_team_region radio_filters threat_priorities
                  automatic_attack_route automatic_capture_route automatic_defence_route
                  production_wait_choice production_wait_limits production_unaffordable)
