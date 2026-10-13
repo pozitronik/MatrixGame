@@ -20,20 +20,29 @@ Profile profile(random::Mode mode, int step, NavigationLayout layout = Navigatio
 
 struct Movement {
     std::array<CMatrixRobotAI *, 2> robots;
+    std::array<size_t, 2> identities;
     std::array<unsigned, 2> zones{};
     std::array<unsigned, 2> regions{};
     unsigned collision_weight_samples = 0;
     unsigned conservative_footprint_samples = 0;
 
     Movement() {
-        for (int i = 0; i < 2; ++i)
+        for (int i = 0; i < 2; ++i) {
             robots[i] = g_MatrixMap->GetPlayerSide()->GetCurGroup()->GetObjectByN(i)->AsRobot();
+            identities[i] = robots[i]->UID;
+        }
         observe();
     }
     void observe() {
+        std::array<bool, 2> live_selected{};
         for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
             if (!object->IsLiveRobot()) continue;
             const auto *robot = object->AsRobot();
+            for (int i = 0; i < 2; ++i) {
+                if (robot != robots[i]) continue;
+                MG_CHECK(robot->UID == identities[i]); // Reject reuse of a retired unit's address.
+                live_selected[i] = true;
+            }
             if (!std::isfinite(robot->m_GroupSpeed))
                 std::cout << "nonfinite group speed side=" << robot->GetSide() << " time=" << g_MatrixMap->GetTime()
                           << " pos=" << robot->m_PosX << ',' << robot->m_PosY << '\n';
@@ -41,6 +50,7 @@ struct Movement {
             MG_CHECK(std::isfinite(robot->m_PosX) && std::isfinite(robot->m_PosY));
         }
         for (int i = 0; i < 2; ++i) {
+            MG_CHECK(live_selected[i]); // Prove membership and identity before dereferencing retained pointers.
             auto &robot = *robots[i];
             MG_CHECK(robot.IsLiveRobot() && !robot.IsMustDie());
             MG_CHECK(std::isfinite(robot.m_PosX) && std::isfinite(robot.m_PosY));
