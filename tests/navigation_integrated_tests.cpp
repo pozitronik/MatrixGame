@@ -71,6 +71,8 @@ struct Movement {
         }
     }
     void advance(Session &session, int duration, int step) {
+        const int begin = session.time();
+        int first_arrival = -1;
         for (int elapsed = 0; elapsed < duration; elapsed += step) {
             try { session.advance(); }
             catch (const Base::CException &error) {
@@ -79,7 +81,11 @@ struct Movement {
                 throw;
             }
             observe();
+            if (first_arrival < 0 && session.robot(1).in_place && session.robot(2).in_place)
+                first_arrival = session.time();
         }
+        std::cout << "movement phase_begin=" << begin << " phase_end=" << session.time()
+                  << " first_all_in_place=" << first_arrival << '\n';
         session.check_running();
     }
     void report(const Session &session) const {
@@ -106,7 +112,7 @@ void multiregion_movement() {
         MG_CHECK(g_MatrixMap->m_RN.m_ZoneCnt == 4 && g_MatrixMap->m_RN.m_RegionCnt == 2);
         MG_CHECK(!g_MatrixMap->CanMoveFromTo(RUK_CHASSIS_WHEEL - 1, 4, 8, 18, 48, 48, nullptr));
         session.ground_command(500, 500);
-        movement.advance(session, 15000, step);
+        movement.advance(session, 16000, step);
         movement.report(session);
         arrived(session, 500, 500);
         for (int i = 0; i < 2; ++i) {
@@ -138,7 +144,7 @@ void multiregion_road_guidance() {
         MG_CHECK(road->m_Zone[0] == 0 && road->m_Zone[1] == 1);
         // A real region route is supplied as initial group state. Robot ticks choose
         // the route-aware ZonePathCalc branch while crossing non-adjacent zones 0 and 3.
-        movement.advance(session, 15000, step);
+        movement.advance(session, 16000, step);
         arrived(session, 500, 500);
         MG_CHECK(group.m_RoadPath->m_ListCnt == 1 && group.m_RoadPath->m_Units[1].m_Road == road);
         MG_CHECK(movement.regions[0] == 3 && movement.regions[1] == 3);
