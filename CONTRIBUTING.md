@@ -99,9 +99,31 @@ Only maintainers merge after the acceptance criteria and current checks are sati
 
 ### Epics
 
-Create an integration-only `epic/<number>-<slug>` umbrella from the current `dev` tip. Each leaf branches from that umbrella and its PR targets it. Do not implement directly on the umbrella or open one oversized PR for the epic. Native relationships express leaf ownership and prerequisites.
+The default is an integration-only `epic/<number>-<slug>` umbrella created from the current `dev` tip. Each leaf branches from that umbrella and its PR targets it. Do not implement directly on the umbrella or open one oversized PR for the epic. Native relationships express leaf ownership and hard prerequisites; a shared parent does not make otherwise independent leaves block each other.
 
-After independent review and required checks, merge a finished leaf into the umbrella and close that leaf only when its own acceptance criteria are met. The epic stays open. Resolve integration defects and required follow-ups, then validate the combined umbrella and propose its final PR into `dev`. Only that reviewed merge, together with the epic's integration criteria, completes the epic.
+After independent review and required checks, merge a finished leaf into the umbrella and close that leaf only when its own acceptance criteria are met. The epic stays open. Resolve integration defects and required follow-ups, then validate the combined umbrella and propose its final PR into `dev`. Only that reviewed merge, together with the epic's integration criteria, completes the epic under the default model.
+
+#### Maintainer-approved phased integration
+
+A maintainer may explicitly approve independently reviewed increments into `dev` for a particular epic. Record the decision in the epic's integration policy before using this variant: identify the covered work packages, phase outcomes, acceptance gates and any short-lived integration boundaries. This authorization applies only to that scope; it does not change the default for other epics or authorize an individual merge.
+
+Within the approved scope, a leaf branches from the current `dev` tip and targets `dev`, using its normal issue number and `Issue:` marker. A work package may use a short-lived `epic/` umbrella when its combined changes need validation before reaching `dev`; define that boundary before starting and follow the default leaf and umbrella rules within it. Required current-revision CI, independent external review, acceptance criteria and explicit maintainer merge authorization remain unchanged for both paths.
+
+Phased delivery does not require one final umbrella PR. Each phase closes only after its required deliverables are integrated into `dev` and validated together. The completion comment links the implementing PRs or reviewed research conclusions, identifies the tested integration revision, records checks and relevant coverage gaps, and gives an explicit disposition for any unresolved findings. Cite evidence instead of recreating the native child list as a progress checklist. A merged leaf proves only its own accepted scope; the parent epic closes after all required phase outcomes and the combined integration criteria are satisfied.
+
+#### Behavior baseline and structural changes
+
+For behavior-preservation programmes, record a maintainer-approved behavior catalog, reference revision and complete-baseline acceptance gate before structural implementation. Research and test development may proceed while that gate is closed. Minimal, separately reviewed, behavior-preserving test seams are the only pre-gate exception for changes that expose production behavior to tests: explain the necessary access, affected production path, unchanged semantics and validation in the PR. Moving subsystem responsibilities, replacing ownership or introducing new simulation rules is structural work even when proposed as test tooling.
+
+Complete-baseline acceptance requires executable checks through production logic for every core behavior in the agreed catalog, recorded evidence for explicitly scoped native checks, reproducibility and comparison rules, coverage and representative performance evidence, and the required Debug/Release, compiler and x86 DLL validation on the same integration revision. A maintainer must record acceptance and the exact revision before structural implementation starts. A passing subsystem suite, a coverage percentage, an approved design or a merged test harness is insufficient. Structural refactoring, production automation and the production x64 port remain blocked until this complete gate and their own prerequisites are satisfied.
+
+Preserve the original x86 standalone and host DLL contracts, resource formats and observable gameplay. Record build/configuration/resource identities, time and command schedules, and both supported RNG modes when establishing expectations. Changing a reference revision requires a recorded justification and comparison; do not silently adjust timestep, RNG consumption, tolerances or expected results to make a test pass. Crashes, corruption and undefined behavior need separate fixes with regression evidence; if a correction demonstrably changes gameplay, obtain a maintainer decision on that contract. Such fixes do not authorize unrelated restructuring or a weaker baseline.
+
+#### Parallel ownership and handoff
+
+One primary contributor owns each leaf and its branch or PR. Check native blocked-by relationships and the reviewed conclusions of research prerequisites before claiming dependent implementation. Parallel implementation uses separate owned worktrees; serial tasks reuse a settled checkout. Agree ownership and handoff for shared fixtures, build files, contracts and other overlapping files before editing them. Keep a shared prerequisite in its owner's reviewed change, then refresh dependent branches from the chosen integration point instead of independently rewriting it in several leaves.
+
+A handoff identifies the revision, available interfaces, validation and remaining gaps. Subagent checks help the owner assess the work but do not satisfy independent external review. An epic assignment does not authorize changes to another contributor's PR, and phased integration does not bypass native dependencies or the complete-baseline gate.
 
 ## Validation
 
@@ -136,6 +158,6 @@ The following audit reads GitHub metadata through authenticated `gh` and never c
 python -B .github/scripts/check-contribution-policy.py issues --repo OWNER/REPOSITORY
 ```
 
-It paginates open issues, excludes PRs and closed history, and checks label cardinality, title/area agreement, stable contract sections, ownership and blocker evidence. Some facts, such as reviewer independence, whether acceptance criteria are sufficient, and whether a PR is genuinely ready, require maintainer judgment. If relationship data cannot be read, the audit reports the gap instead of claiming verification. Canonical metadata can also be audited from a private JSON snapshot using `issues --input <snapshot.json>`.
+It paginates open issues, excludes PRs and closed history, and checks label cardinality, title/area agreement, stable contract sections, ownership and blocker evidence. Some facts, such as reviewer independence, whether acceptance criteria are sufficient, and whether a PR is genuinely ready, require maintainer judgment. The validator accepts both leaf-to-`dev` and umbrella targets; it does not establish authorization for phased integration or acceptance of a behavior baseline. If relationship data cannot be read, the audit reports the gap instead of claiming verification. Canonical metadata can also be audited from a private JSON snapshot using `issues --input <snapshot.json>`.
 
 Exceptions must be narrow and maintainer-authorized. Do not weaken a global rule to accommodate an old issue, branch or tool, and do not automatically migrate remote metadata without approval.
