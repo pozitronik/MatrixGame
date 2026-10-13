@@ -1,6 +1,6 @@
 # Presentation integration evidence
 
-Presentation coverage has two parts: executable state/event contracts and observations from the native game. The former can verify command routing and resource ownership; only the latter can establish what a player sees and hears. Neither part establishes the other. This document maps PRES-01 through PRES-04 in the [behavior catalog](../research/75-behavior-baseline/README.md). The reference source for the new button tests is `a64e9db4595bf06cc456772cb02c70f6a34b6804`; complete-baseline acceptance still requires evidence at the agreed integration revision.
+Presentation coverage has two parts: executable state/event contracts and observations from the native game. The former can verify command routing and resource ownership; only the latter can establish what a player sees and hears. Neither part establishes the other. This document maps PRES-01 through PRES-04 in the [behavior catalog](../research/75-behavior-baseline/README.md). Complete-baseline acceptance requires evidence at the agreed integration revision.
 
 ## Automated checks
 
@@ -22,7 +22,7 @@ The new `game.presentation.*` cases link real `CIFaceButton`, `CSound` and stand
 | `missing_speech` | With an active backend and effects mapping but no speech mapping, moves still execute, missing speech reports once, effects remain playable, and audio-path RNG draws remain present |
 | `positional_loop` | Camera-relative playback pans left/right; reusing a live handle updates the same voice, distance attenuates it to zero, and stopping retires it once. Positional updates consume no RNG draws |
 | `interface_layer` | The next interface click interrupts the previous interface voice, and clearing sound retires the remaining voice exactly once |
-| `textured_button_hit_testing` | A translated interface panel and an atlas-offset button use production geometry and pixel reads. Transparent RGB rejects hover/click; alpha 1 and 255 accept hover. Interface mouse dispatch produces focus/press/release, leaving the right/bottom edges resets focus, disabled clicks invoke no action, and hidden controls reject input |
+| `textured_button_hit_testing` | A translated interface panel and an atlas-offset button use production geometry and pixel reads. Transparent RGB rejects hover and a focused press; a transparent release dispatches no action and leaves the button pressed (an observation); alpha 1 and 255 accept hover. Interface mouse dispatch produces focus/press/release, leaving the right/bottom edges resets focus, disabled clicks invoke no action, and hidden controls reject input |
 
 The textured-button case uses a 4 by 4 ARGB texture uploaded through `CTextureManaged` to the shared CPU texture fixture. It contains no artwork from the game. `CInterface::OnMouseMove`, `OnMouseLBDown` and `OnMouseLBUp` perform picking and dispatch; no focus or pressed state is supplied for the successful click. The only directly supplied interaction state is the disabled flag for that rejection check. Tooltip construction and rendered overlap/layer ordering remain outside this case.
 
@@ -51,9 +51,9 @@ After running the test build, invoke each command separately, then repeat with `
 & .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_points
 ```
 
-D1: a real interface element at (100, 200) with clear rectangle (3, 11, 20, 30) submits (103, 203, 120, 230); its top should be 211. `CIFaceElement::BeforeRender` uses the left offset for the vertical start. A minimal texture object acknowledges `PreLoad` only, and rejects other device operations; the production coordinate calculation and clear-rectangle buffer are unchanged. No rendered artifact is inferred from this component result.
+D1 is assigned to #89 for reproduction and #87 for correction/disposition by the [legacy inventory](../research/88-legacy-code-inventory/README.md); #63 also identifies this coordinate error. A real interface element at (100, 200) with clear rectangle (3, 11, 20, 30) submits (103, 203, 120, 230); its top should be 211. `CIFaceElement::BeforeRender` uses the left offset for the vertical start. A minimal texture object acknowledges `PreLoad` only, and rejects other device operations; the production coordinate calculation and clear-rectangle buffer are unchanged. No rendered artifact is inferred from this component result.
 
-D7: both `SPlane` builders correctly populate `dxplane`, while distance/intersection methods read separate `norm`/`dist` fields. The probes initialize those separate fields explicitly, then build the plane z = 2 and query a ray from z = 10 directed downward. They obtain distance 0 and no intersection instead of distance magnitude 8 and intersection parameter 8. Initialization avoids treating an uninitialized read as a golden value. The test establishes the mathematical inconsistency; it does not establish the visibility output or native impact of the map-argument `CalcVis` path.
+D7 is assigned to #89 for reproduction and #97 for correction/disposition by the legacy inventory. Both `SPlane` builders correctly populate `dxplane`, while distance/intersection methods read separate `norm`/`dist` fields. The probes initialize those separate fields explicitly, then build the plane z = 2 and query a ray from z = 10 directed downward. They obtain distance 0 and no intersection instead of distance magnitude 8 and intersection parameter 8. Initialization avoids treating an uninitialized read as a golden value. The test establishes the mathematical inconsistency; it does not establish the visibility output or native impact of the map-argument `CalcVis` path.
 
 Both defects still require a separate correction/disposition before accepting the affected baseline entries. The default test suite does not hide them with inverted assertions or a known-failure success status.
 
@@ -92,11 +92,6 @@ For package coverage, repeat the [optional-audio matrix](../PLAYTESTING.md#prepa
 
 For every native case record: source revision and binary SHA-256; toolchain and build/options including cheats/assertions; map/configuration identity, effective difficulty and RNG mode; package presence and private hashes; packed/text mode; resolution, display mode, adapter and Windows scaling; steps completed, observations, exit code and relevant diagnostics. Screenshots may support visual claims but cannot replace command/state observations. Keep copyrighted packages, extracted assets and private configuration out of public evidence.
 
-| Required native profile | Status for this contribution |
-| --- | --- |
-| Debug / Packed | Not run |
-| Debug / Text | Not run |
-| Release / Packed | Not run |
-| Release / Text | Not run |
+Required native profiles: Debug / Packed, Debug / Text, Release / Packed and Release / Text. Record execution status in the contribution evidence.
 
 Earlier playtests from other changes do not automatically establish these cases at the final integration revision. Before accepting the presentation baseline, attach the current records and explicitly dispose of every missing or failing case above.

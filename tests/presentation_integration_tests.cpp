@@ -174,7 +174,6 @@ void battle_acknowledgements() {
         MG_CHECK(sound.loaded == std::vector<std::wstring>{L"Sound.Synthetic"});
         MG_CHECK(random::draw_count() == before + 6);
         g_MatrixMap->GetPlayerSide()->PGOrderMoveTo(sound.session.robot(1).group, CPoint(46, 28));
-        std::wcout << L"acknowledgement " << static_cast<int>(mode) << L' ' << sound.loaded.back() << L'\n';
         MG_CHECK(sound.loaded.back() == (mode == random::Mode::ParkMiller ? L"s_ord_inprogress1" : L"s_ord_inprogress2"));
         MG_CHECK(random::draw_count() == before + 9);
         MG_CHECK(sound.device->voices.size() == 3 && sound.device->voices[1]->destroyed == 1);
@@ -287,8 +286,19 @@ void textured_button_hit_testing() {
     MG_CHECK(!panel.OnMouseLBDown() && events.empty());
     MG_CHECK(panel.OnMouseMove(CPoint(101, 200)));
     MG_CHECK(g_IFaceList->m_FocusedElement == button && button->GetState() == IFACE_FOCUSED);
+    // Keep the production focus state, but click a transparent atlas texel.
+    g_MatrixMap->m_Cursor.SetPos(100, 200);
+    MG_CHECK(!panel.OnMouseLBDown());
+    MG_CHECK((events == std::vector<std::string>{"focus"}));
+    MG_CHECK(button->GetState() == IFACE_FOCUSED);
     g_MatrixMap->m_Cursor.SetPos(101, 200);
     MG_CHECK(panel.OnMouseLBDown());
+    g_MatrixMap->m_Cursor.SetPos(100, 200);
+    panel.OnMouseLBUp();
+    MG_CHECK((events == std::vector<std::string>{"focus", "press"}));
+    MG_CHECK(button->GetState() == IFACE_PRESSED);
+    // Observed behavior: a transparent release does not dispatch or unpress.
+    g_MatrixMap->m_Cursor.SetPos(101, 200);
     panel.OnMouseLBUp();
     MG_CHECK((events == std::vector<std::string>{"focus", "press", "release"}));
     MG_CHECK(!panel.OnMouseMove(CPoint(102, 200)));
