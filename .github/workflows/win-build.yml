@@ -100,21 +100,45 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Restore verified downloads
+        id: downloads
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .tools/downloads
+          key: verified-downloads-v1-${{ runner.os }}-${{ hashFiles('ThirdParty/dependencies.json', 'tools/package-runtime-source.json', 'tools/download-verified.ps1', 'tools/fetch-dependencies.ps1', 'tools/setup-cmake.ps1', 'tools/setup-toolchain.ps1', 'tools/setup-directx-runtime.ps1') }}
       - name: Install pinned build tools
         shell: pwsh
         run: ./tools/setup-toolchain.ps1
+      - name: Verify the pinned runtime and dependency archives
+        shell: pwsh
+        run: |
+          ./tools/setup-directx-runtime.ps1
+          ./tools/fetch-dependencies.ps1
+      - name: Save verified downloads
+        if: steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .tools/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
+      - name: Restore the verified DirectX SDK subset
+        if: matrix.compiler == 'MSVC'
+        id: directx-sdk
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .tools/directx-sdk
+          key: directx-sdk-v1-${{ runner.os }}-${{ hashFiles('tools/download-verified.ps1', 'tools/setup-directx-sdk.ps1') }}
       - name: Get DirectX SDK headers and x86 libraries
         if: matrix.compiler == 'MSVC'
         shell: pwsh
         run: |
-          $archive = Join-Path $env:RUNNER_TEMP 'DXSDK_Jun10.exe'
-          $destination = Join-Path $env:RUNNER_TEMP 'directx-sdk'
-          Invoke-WebRequest -Uri 'https://download.microsoft.com/download/a/e/7/ae743f1f-632b-4809-87a9-aa1bb3458e31/DXSDK_Jun10.exe' -OutFile $archive
-          & 7z x $archive 'DXSDK/Include' 'DXSDK/Lib/x86' "-o$destination" -y -bso0 -bsp0
-          if ($LASTEXITCODE -ne 0) { throw 'DirectX SDK extraction failed.' }
-          $sdkRoot = Join-Path $destination 'DXSDK'
-          if (-not (Test-Path "$sdkRoot/Include/d3dx9.h")) { throw 'DirectX headers missing.' }
-          "DXSDK_DIR=$sdkRoot" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          ./tools/setup-directx-sdk.ps1
+          "DXSDK_DIR=$(Join-Path $PWD '.tools/directx-sdk/DXSDK')" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Save the verified DirectX SDK subset
+        if: matrix.compiler == 'MSVC' && steps.directx-sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .tools/directx-sdk
+          key: ${{ steps.directx-sdk.outputs.cache-primary-key }}
       - name: Build the selected configuration without local assets
         shell: pwsh
         run: |
@@ -182,9 +206,26 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Restore verified downloads
+        id: downloads
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .tools/downloads
+          key: verified-downloads-v1-${{ runner.os }}-${{ hashFiles('ThirdParty/dependencies.json', 'tools/package-runtime-source.json', 'tools/download-verified.ps1', 'tools/fetch-dependencies.ps1', 'tools/setup-cmake.ps1', 'tools/setup-toolchain.ps1', 'tools/setup-directx-runtime.ps1') }}
       - name: Install pinned build tools
         shell: pwsh
         run: ./tools/setup-toolchain.ps1
+      - name: Verify the pinned runtime and dependency archives
+        shell: pwsh
+        run: |
+          ./tools/setup-directx-runtime.ps1
+          ./tools/fetch-dependencies.ps1
+      - name: Save verified downloads
+        if: steps.downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: .tools/downloads
+          key: ${{ steps.downloads.outputs.cache-primary-key }}
       - name: Collect engine contract coverage without local assets
         shell: pwsh
         run: ./tools/test.ps1 -Configuration Debug -Coverage

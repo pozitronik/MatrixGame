@@ -115,6 +115,83 @@ void road_routes() {
     MG_CHECK(route.m_ListCnt == 0 && route.m_Header == nullptr);
 }
 
+// Player and AI groups reuse route storage through ClearFast. Each rebuilt route must match a fresh one.
+void road_route_reuse() {
+    CHeap heap;
+    CMatrixRoadNetwork road(&heap);
+    std::array<CMatrixCrotch *, 5> nodes;
+    const int regions[] = {0, -1, 2, 1, 3};
+    for (int i = 0; i < 4; ++i) {
+        const int region = road.AddRegion();
+        road.m_Region[region] = {};
+    }
+    for (int i = 0; i < 5; ++i) {
+        nodes[i] = road.AddCrotch();
+        nodes[i]->m_Region = regions[i];
+        if (regions[i] >= 0) {
+            auto &region = road.m_Region[regions[i]];
+            region.m_Crotch[region.m_CrotchCnt++] = nodes[i];
+        }
+    }
+    auto link = [&](int a, int b, int length) {
+        auto *edge = road.AddRoad();
+        edge->m_Start = nodes[a]; edge->m_End = nodes[b]; edge->m_Dist = length;
+        nodes[a]->AddRoad(edge); nodes[b]->AddRoad(edge);
+        return edge;
+    };
+    auto *first = link(0, 1, 10);
+    link(1, 3, 20);
+    auto *alternative = link(0, 2, 1);
+    link(2, 3, 1);
+    CMatrixRoadRoute fresh(&road), reused(&road);
+    int region_path[] = {0, 1};
+    auto search = [&](int count, int distance) {
+        fresh.Clear();
+        road.FindPathFromRegionPath(1 << 1, count, region_path, &fresh);
+        reused.ClearFast();
+        road.FindPathFromRegionPath(1 << 1, count, region_path, &reused);
+        MG_CHECK(reused.m_ListCnt == fresh.m_ListCnt);
+        for (int list = 0; list < fresh.m_ListCnt; ++list) {
+            MG_CHECK(reused.m_Header[list].m_Cnt == fresh.m_Header[list].m_Cnt);
+            MG_CHECK(reused.m_Header[list].m_Dist == fresh.m_Header[list].m_Dist);
+            for (int i = 0; i < fresh.m_Header[list].m_Cnt; ++i) {
+                const auto &expected = fresh.m_Units[list * road.m_CrotchCnt + i];
+                const auto &actual = reused.m_Units[list * road.m_CrotchCnt + i];
+                MG_CHECK(actual.m_Road == expected.m_Road && actual.m_Crotch == expected.m_Crotch);
+            }
+        }
+        if (distance < 0) {
+            MG_CHECK(fresh.m_ListCnt == 0);
+        }
+        else {
+            MG_CHECK(fresh.m_ListCnt == 1 && fresh.m_Header[0].m_Dist == distance);
+        }
+    };
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        first->m_Move = 0;
+        alternative->m_Move = 0;
+        search(2, 30);
+        first->m_Move = 1 << 1;
+        search(2, 2);
+        alternative->m_Move = 1 << 1;
+        search(2, 30);
+    }
+    first->m_Move = 0;
+    alternative->m_Move = 0;
+    search(2, 30);
+    search(1, -1); // A single-region path leaves cleared storage empty.
+    region_path[1] = 3;
+    search(2, -1); // A disconnected destination releases the reused storage.
+    region_path[1] = 1;
+    search(2, 30);
+    search(2, 30);
+    // A three-region route into reused storage accumulates distance across both of its legs.
+    int three[] = {0, 2, 1};
+    reused.ClearFast();
+    road.FindPathFromRegionPath(1 << 1, 3, three, &reused);
+    MG_CHECK(reused.m_ListCnt == 1 && reused.m_Header[0].m_Cnt == 3 && reused.m_Header[0].m_Dist == 2);
+}
+
 // CalcMaxSpeed slows formation leaders that are more than 180 units (COLLIDE_BOT_R * 10) ahead.
 void formation_speed_boundaries() {
     for (float spread : {0.0f, 100.0f, 179.0f, 180.0f, 181.0f, 360.0f}) for (bool mixed : {false, true}) {
@@ -328,6 +405,7 @@ const Case cases[] = {
     {"game.navigation.zone_routes", zone_routes},
     {"game.navigation.chassis_traversal", chassis_traversal},
     {"game.navigation.road_routes", road_routes},
+    {"game.navigation.road_route_reuse", road_route_reuse},
     {"game.navigation.formation_speed_boundaries", formation_speed_boundaries},
     {"game.navigation.collision_boundaries", collision_boundaries},
     {"game.navigation.collision_wait_threshold", collision_wait_threshold},

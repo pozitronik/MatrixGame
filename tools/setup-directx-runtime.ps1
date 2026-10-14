@@ -3,6 +3,7 @@
 param([string]$ArchivePath = '')
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'download-verified.ps1')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $runtimeRoot = Join-Path $repoRoot '.tools/directx-x86'
 $runtimeDll = Join-Path $runtimeRoot 'd3dx9_43.dll'
@@ -21,12 +22,8 @@ if (Test-Path -LiteralPath $runtimeDll) {
 $extractor = Get-Command 7z -ErrorAction SilentlyContinue
 if (-not $extractor) { throw '7-Zip is required to prepare the DirectX runtime.' }
 if (-not $ArchivePath) {
-    $downloadRoot = Join-Path $repoRoot '.tools/downloads'
-    New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-    $ArchivePath = Join-Path $downloadRoot 'directx_Jun2010_redist.exe'
-    if (-not (Test-Path -LiteralPath $ArchivePath)) {
-        Invoke-WebRequest -Uri $archiveUrl -OutFile $ArchivePath -UseBasicParsing
-    }
+    $ArchivePath = Join-Path $repoRoot '.tools/downloads/directx_Jun2010_redist.exe'
+    Save-VerifiedDownload -Uri $archiveUrl -Path $ArchivePath -Sha256 $archiveHash
 }
 $ArchivePath = (Resolve-Path -LiteralPath $ArchivePath).Path
 if ((Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -ne $archiveHash) {

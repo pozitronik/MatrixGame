@@ -43,7 +43,7 @@ int footprint_cells(const CMatrixBuilding *building) {
     return count;
 }
 
-std::vector<std::string> demolish(EBuildingType kind, random::Mode mode) {
+std::vector<std::string> demolish(EBuildingType kind, random::Mode mode, bool asymmetric = false) {
     tests::BattleMaterialProfile material_profile;
     tests::BattleCombatAssets effects;
     tests::battle::Session session({mode, 83, 10, 500, false, false});
@@ -72,7 +72,8 @@ std::vector<std::string> demolish(EBuildingType kind, random::Mode mode) {
     g_Config.m_BuildingDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
     g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
     g_Config.m_CannonDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
-    auto building = tests::make_battle_building(*mesh, 2, kind, 200, 200, 50);
+    const float x = 200, y = asymmetric ? 400 : 200;
+    auto building = tests::make_battle_building(*mesh, 2, kind, x, y, 50);
     auto *patient = building.get();
     CoreLease core(patient->GetCore(DEBUG_CALL_INFO));
     g_MatrixMap->AddObject(patient, true);
@@ -117,8 +118,8 @@ std::vector<std::string> demolish(EBuildingType kind, random::Mode mode) {
     for (auto *ruin : replacements) {
         MG_CHECK(!ruin->InLT());
         MG_CHECK(ruin->m_Graph && ruin->m_Graph->GetSkin());
-        MG_CHECK(ruin->GetMatrix()._41 == 200 && ruin->GetMatrix()._42 == 200);
-        MG_CHECK(ruin->GetMatrix()._43 == g_MatrixMap->GetZ(200, 200));
+        MG_CHECK(ruin->GetMatrix()._41 == x && ruin->GetMatrix()._42 == y);
+        MG_CHECK(ruin->GetMatrix()._43 == g_MatrixMap->GetZ(x, y));
         MG_CHECK(ruin->m_AngleX == 0 && ruin->m_AngleY == 0 && ruin->m_AngleZ == 0 && ruin->m_Scale == 1);
         MG_CHECK(ruin->m_ShadowProj == nullptr && ruin->m_ShadowStencil == nullptr);
         const auto *skin = static_cast<const SMatrixSkin *>(ruin->m_Graph->GetSkin());
@@ -165,16 +166,17 @@ std::vector<std::string> demolish(EBuildingType kind, random::Mode mode) {
     return observations;
 }
 
-template<EBuildingType Kind>
+template<EBuildingType Kind, bool Asymmetric = false>
 void demolition() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        const auto first = demolish(Kind, mode);
-        MG_CHECK(first == demolish(Kind, mode));
+        const auto first = demolish(Kind, mode, Asymmetric);
+        MG_CHECK(first == demolish(Kind, mode, Asymmetric));
     }
 }
 
 constexpr tests::Case cases[] = {
     {"game.harness.materials.demolish_base", demolition<BUILDING_BASE>},
+    {"game.harness.materials.demolish_base_asymmetric", demolition<BUILDING_BASE, true>},
     {"game.harness.materials.demolish_titan", demolition<BUILDING_TITAN>},
     {"game.harness.materials.demolish_plasma", demolition<BUILDING_PLASMA>},
     {"game.harness.materials.demolish_electronics", demolition<BUILDING_ELECTRONIC>},

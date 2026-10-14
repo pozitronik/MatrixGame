@@ -20,6 +20,7 @@ class CMakeSetupTests(unittest.TestCase):
             (root / "tools").mkdir()
             script = root / "tools/setup-cmake.ps1"
             shutil.copyfile(PROJECT / "tools/setup-cmake.ps1", script)
+            shutil.copyfile(PROJECT / "tools/download-verified.ps1", root / "tools/download-verified.ps1")
             archive = root / "invalid.zip"
             archive.write_bytes(b"synthetic invalid archive")
             result = subprocess.run([shell, "-NoProfile", "-File", str(script),

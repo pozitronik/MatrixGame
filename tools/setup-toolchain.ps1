@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'download-verified.ps1')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $toolsRoot = Join-Path $repoRoot '.tools'
 $installRoot = Join-Path $toolsRoot 'winlibs-13.2.0'
@@ -31,13 +32,9 @@ if (-not $extractor) {
 }
 
 if (-not $ArchivePath) {
-    $downloadRoot = Join-Path $toolsRoot 'downloads'
-    New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-    $ArchivePath = Join-Path $downloadRoot $archiveName
-    if (-not (Test-Path -LiteralPath $ArchivePath)) {
-        Write-Output 'Downloading the pinned Windows x86 toolchain...'
-        Invoke-WebRequest -Uri $archiveUrl -OutFile $ArchivePath -UseBasicParsing
-    }
+    $ArchivePath = Join-Path $toolsRoot "downloads/$archiveName"
+    Write-Output 'Preparing the pinned Windows x86 toolchain archive...'
+    Save-VerifiedDownload -Uri $archiveUrl -Path $ArchivePath -Sha256 $archiveHash
 }
 
 $ArchivePath = (Resolve-Path -LiteralPath $ArchivePath).Path
