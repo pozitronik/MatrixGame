@@ -4,8 +4,14 @@
 
 namespace DelayedDamage {
 namespace {
-bool original_attribution = false;
-}
+// BUILD_EXE is defined for this file only in the standalone configuration.
+#ifdef BUILD_EXE
+constexpr bool build_default = false;
+#else
+constexpr bool build_default = true;
+#endif
+bool original_attribution = build_default;
+}  // namespace
 
 void set_original(bool original) {
     original_attribution = original;
@@ -13,6 +19,10 @@ void set_original(bool original) {
 
 bool original() {
     return original_attribution;
+}
+
+bool original_by_default() {
+    return build_default;
 }
 
 int kept_side(EWeapon weapon, int stored_side) {

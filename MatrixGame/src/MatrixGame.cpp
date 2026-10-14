@@ -11,7 +11,6 @@
 #include "MatrixGame.h"
 #include "SoundBridge.hpp"
 #include "StandaloneRuntime.hpp"
-#include "DelayedDamage.hpp"
 #include "SettingsWindow.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
@@ -371,8 +370,6 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 #ifdef BUILD_EXE
     SoundBridge::initialize_standalone(sound_package || voices_package);
     StandaloneSettings::initialize_runtime(standalone.values);
-#else
-    DelayedDamage::set_original(true);  // The host game keeps its original behaviour.
 #endif
     g_Sampler.ApplySettings(&settings);
     SetMaxCameraDistance(settings.m_MaxDistance);

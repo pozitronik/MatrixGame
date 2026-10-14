@@ -135,7 +135,13 @@ void delayed_damage_attribution() {
         for (EWeapon other : {WEAPON_GUN, WEAPON_LASER, WEAPON_BOMB, WEAPON_REPAIR})
             MG_CHECK(DelayedDamage::kept_side(other, 2) == 0);
     }
-    DelayedDamage::set_original(false);
+    DelayedDamage::set_original(DelayedDamage::original_by_default());
+}
+
+// A process starts corrected in the standalone EXE and original in the DLL, whose host owns its settings.
+void delayed_damage_build_default() {
+    MG_CHECK(DelayedDamage::original_by_default() == bool(MATRIXGAME_TESTS_BUILD_DLL));
+    MG_CHECK(DelayedDamage::original() == DelayedDamage::original_by_default());
 }
 
 void window_availability() {
@@ -158,6 +164,7 @@ constexpr tests::Case cases[] = {
     {"game.settings.restart_detection", restart_detection},
     {"game.settings.independent_shadows", independent_shadows},
     {"game.settings.window_availability", window_availability},
+    {"game.settings.delayed_damage_build_default", delayed_damage_build_default},
     {"game.settings.delayed_damage_attribution", delayed_damage_attribution},
 };
 

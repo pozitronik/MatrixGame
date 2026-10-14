@@ -186,6 +186,8 @@ add_matrix_test(game.settings.restart_detection matrixgame_settings_runtime_test
 add_matrix_test(game.settings.independent_shadows matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.window_availability matrixgame_settings_runtime_tests settings)
 add_matrix_test(game.settings.delayed_damage_attribution matrixgame_settings_runtime_tests gameplay settings)
+add_matrix_test(game.settings.delayed_damage_build_default matrixgame_settings_runtime_tests gameplay settings)
+target_compile_definitions(matrixgame_settings_runtime_tests PRIVATE MATRIXGAME_TESTS_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>)
 
 add_matrix_test_executable(matrixgame_random_map_tests random_map_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_random_map_tests PRIVATE MatrixGameInternal)
@@ -284,6 +286,7 @@ foreach(contract delayed_status_attribution delayed_status_scaling delayed_statu
 endforeach()
 add_matrix_test(game.combat.delayed_status_mixed_owners matrixgame_combat_scenarios gameplay ai memory)
 add_matrix_test(game.combat.delayed_status_direct_hit matrixgame_combat_scenarios gameplay ai memory)
+add_matrix_test(game.combat.turret_mixed_owners matrixgame_combat_scenarios gameplay ai memory)
 
 add_matrix_test_executable(matrixgame_material_ruin_tests material_ruin_tests.cpp battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)

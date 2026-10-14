@@ -39,7 +39,13 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 **Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators.
 
-Status damage selects who is responsible for ablaze and shorted damage pulses on robots and turrets. A flamethrower or electric hit records the attacking side. With `Corrected`, every later pulse is dealt on behalf of that side: it receives the kill credit, and a player's unit hit by friendly fire takes friendly damage with the friendly-fire multiplier. `Original` reproduces the original game, where the first pulse forgets the attacking side, so later pulses award no kill and friendly status damage on a player's unit switches to the enemy damage and multiplier. In both modes a direct hit by another weapon forgets the side, as in the original game. The DLL build always uses the original behavior, because the host game owns its settings.
+Status damage selects who is responsible for ablaze and shorted damage pulses on robots and turrets. A flamethrower or electric hit records the attacking side. Fire and electricity share this record, so the most recent flame or electric hit replaces it for both statuses.
+- With `Corrected`, every later pulse of either status is dealt on behalf of the recorded side. That side receives the kill credit. A player's unit hit by friendly fire takes friendly damage with the friendly-fire multiplier. A unit set on fire by one side and then shocked by another therefore burns on behalf of the second side.
+- `Original` reproduces the original game, where the first pulse after a hit forgets the side. Later pulses then award no kill, and friendly status damage on a player's unit switches to the enemy damage and multiplier.
+
+On a player's turret, those hostile pulses also flash the minimap and play the under-attack voice. That voice uses a random draw, so later battle randomness differs between the modes.
+
+In both modes a direct hit by another weapon forgets the side, as in the original game. Switching modes during a battle affects units that are already burning or shorted from their next pulse. Switching to `Original` forgets the side at that pulse, and switching back does not restore a side that was already forgotten. The DLL build always uses the original behavior, because the host game owns its settings.
 
 Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed` or `DelayedDamage` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
 
