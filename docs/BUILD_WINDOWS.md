@@ -86,7 +86,7 @@ $env:DXSDK_DIR = '<DirectX SDK directory>'
 .\tools\build.ps1 -Compiler MSVC -Configuration Release
 ```
 
-Instead of installing the SDK, `tools/setup-directx-sdk.ps1` can prepare the files the build uses. It downloads the pinned `DXSDK_Jun10.exe` (about 570 MB), verifies its SHA256 and extracts only `DXSDK/Include` and `DXSDK/Lib/x86` into `.tools/directx-sdk/DXSDK`. The extracted files are checked against a pinned digest, the downloaded installer is removed, and later runs reuse the verified files. `-ArchivePath` uses an existing copy of the installer. Point `DXSDK_DIR` at `.tools/directx-sdk/DXSDK` to use it.
+Instead of installing the SDK, `tools/setup-directx-sdk.ps1` can prepare the files the build uses. It downloads the pinned `DXSDK_Jun10.exe` (about 570 MB), verifies its SHA256 and extracts only `DXSDK/Include` and `DXSDK/Lib/x86` into `.tools/directx-sdk/DXSDK`. The extracted files are checked against a pinned digest, the downloaded installer is removed, and later runs reuse the verified files. `-ArchivePath` uses an existing copy of the installer, which is never modified or deleted; a copy inside `.tools/directx-sdk` or its `.tools/directx-sdk.partial` staging directory is refused before anything is removed. Point `DXSDK_DIR` at `.tools/directx-sdk/DXSDK` to use it.
 
 Output is under `build/msvc-release-exe/MatrixGame/Release`.
 The corresponding Visual C++ x86 runtime is required to run the game.
