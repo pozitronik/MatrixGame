@@ -217,6 +217,13 @@ The lifecycle executable links production game cleanup, configuration, map, cach
 
 Recovery tests compile the production decision path and font cache. Synthetic HRESULTs and COM fonts keep them independent of physical graphics hardware and game packages. An explicit native font-reset check is available outside CTest; [DirectX device recovery](DEVICE_RECOVERY.md) describes the procedure, covered transitions and limits. Visible restored graphics and complete renderer resource lifetimes still need playtests.
 
+The lifecycle suite also checks visibility requests before cursor images are loaded and after they are cleared, covering cleanup after interrupted battlefield initialization. The optional native startup-reset check renders synthetic menu geometry and text on a hidden DirectX 9 window, invokes the production battle video setup, and draws again after each of three resets. It needs the native DirectX runtime and a graphics device, but no game packages; it is deliberately not registered with CTest. Its narrow friend accessor reaches the existing private video setup without changing startup behavior. It does not load a battlefield or replace the interactive map-selection playtest.
+
+```powershell
+.\build\mingw-debug-exe\tests\matrixgame_lifecycle_tests.exe manual.lifecycle.startup_reset
+.\build\mingw-release-exe\tests\matrixgame_lifecycle_tests.exe manual.lifecycle.startup_reset
+```
+
 Construction, rendering, lifecycle, audible/device audio behavior and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
 
 Selection cases link production multi-selection and game-form input. Synthetic visible buildings count rectangle hit tests without meshes, packages or a device. They verify queued movement and final release through the real form, plus pending refresh, membership, masks, limits and cancellation in the selection implementation. They do not invoke the rendered frame/device path; native queue-load measurements and [Selection dragging](PLAYTESTING.md#selection-dragging) cover that integration separately. Debug rejects tracked allocation leaks and test crashes do not open native dialogs.

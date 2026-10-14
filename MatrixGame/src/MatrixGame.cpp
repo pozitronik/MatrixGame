@@ -34,6 +34,7 @@
 #include "RandomConfiguration.hpp"
 #include "ResourceFiles.hpp"
 #include "WindowDisplay.hpp"
+#include "Text/Font.hpp"
 
 #include <new>
 #include <fstream>
@@ -696,6 +697,12 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
 
     SETFLAG(g_Flags, GFLAG_STENCILAVAILABLE);
 
+#ifdef BUILD_EXE
+    // The standalone menu has already drawn on this device. Its default-pool
+    // buffers and font state must be released before the battlefield reset.
+    CInstDraw::MarkAllBuffersNoNeed();
+    Text::OnLostDevice();
+#endif
     if (D3D_OK != Display::reset_device(g_D3Dpp)) {
         if (bpp == 16)
             g_D3Dpp.AutoDepthStencilFormat = D3DFMT_D16;
@@ -708,6 +715,9 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
         }
         RESETFLAG(g_Flags, GFLAG_STENCILAVAILABLE);
     }
+#ifdef BUILD_EXE
+    Text::OnResetDevice();
+#endif
 
     D3DVIEWPORT9 ViewPort;
     ZeroMemory(&ViewPort, sizeof(D3DVIEWPORT9));

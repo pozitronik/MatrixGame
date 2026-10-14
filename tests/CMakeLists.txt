@@ -369,7 +369,7 @@ add_matrix_test(game.input.keepalive_keys matrixgame_keepalive_tests gameplay in
 add_matrix_test(game.input.keepalive_fresh matrixgame_keepalive_tests gameplay input)
 add_matrix_test(game.input.ordinary_deactivation matrixgame_keepalive_tests gameplay input)
 
-add_matrix_test_executable(matrixgame_lifecycle_tests lifecycle_tests.cpp diagnostic_overlay_stub.cpp)
+add_matrix_test_executable(matrixgame_lifecycle_tests lifecycle_tests.cpp native_startup_reset.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_lifecycle_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.lifecycle.configuration_cleanup matrixgame_lifecycle_tests startup memory)
 add_matrix_test(game.lifecycle.empty_configuration matrixgame_lifecycle_tests startup memory)
@@ -378,6 +378,7 @@ add_matrix_test(game.lifecycle.form_construction_failure matrixgame_lifecycle_te
 add_matrix_test(game.lifecycle.repeated_forms matrixgame_lifecycle_tests startup)
 add_matrix_test(game.lifecycle.partial_startup matrixgame_lifecycle_tests startup memory)
 add_matrix_test(game.lifecycle.safe_free_without_cache matrixgame_lifecycle_tests startup memory)
+add_matrix_test(game.lifecycle.cursor_before_initialization matrixgame_lifecycle_tests startup input)
 add_matrix_test(game.lifecycle.graphics_references matrixgame_lifecycle_tests startup rendering)
 add_matrix_test(game.lifecycle.cleanup_failure matrixgame_lifecycle_tests startup)
 add_matrix_test(game.lifecycle.standalone_partial_cleanup matrixgame_lifecycle_tests startup memory)

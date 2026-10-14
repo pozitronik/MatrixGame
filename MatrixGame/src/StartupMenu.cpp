@@ -97,7 +97,8 @@ public:
     void Draw() override {
         if (!ready_to_draw) return;
         CInstDraw::DrawFrameBegin();
-        ASSERT_DX(g_D3DD->Clear(0, nullptr, D3DCLEAR_TARGET | D3DCLEAR_ZBUFFER, 0xff14232c, 1.0f, 0));
+        // The initial menu device has no depth buffer until battle video setup.
+        ASSERT_DX(g_D3DD->Clear(0, nullptr, D3DCLEAR_TARGET, 0xff14232c, 1.0f, 0));
         ASSERT_DX(g_D3DD->BeginScene());
         CMatrixHint::DrawAll();
         ASSERT_DX(g_D3DD->EndScene());

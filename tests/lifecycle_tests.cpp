@@ -13,6 +13,8 @@
 #include <type_traits>
 #include <vector>
 
+namespace tests { void native_startup_reset(); }
+
 namespace {
 struct Services {
     Services() {
@@ -209,6 +211,24 @@ void safe_free_without_cache() {
     check_empty_game();
 }
 
+void cursor_visibility_before_initialization() {
+    Services services;
+    MG_CHECK(g_D3DD == nullptr);
+    const auto previous = GetCursor();
+    {
+        CMatrixCursor cursor;
+        const auto uninitialized = GetCursor();
+        cursor.SetVisible(true);
+        cursor.SetVisible(false);
+        MG_CHECK(GetCursor() == uninitialized);
+        cursor.Clear();
+        cursor.SetVisible(true);
+        cursor.SetVisible(false);
+        MG_CHECK(GetCursor() == previous);
+    }
+    MG_CHECK(GetCursor() == previous);
+}
+
 struct FakeReference {
     std::vector<int> &events;
     int id;
@@ -386,11 +406,13 @@ constexpr tests::Case cases[] = {
     {"game.lifecycle.repeated_forms", repeated_form_sessions},
     {"game.lifecycle.partial_startup", partial_startup_cleanup},
     {"game.lifecycle.safe_free_without_cache", safe_free_without_cache},
+    {"game.lifecycle.cursor_before_initialization", cursor_visibility_before_initialization},
     {"game.lifecycle.graphics_references", graphics_reference_ownership},
     {"game.lifecycle.cleanup_failure", cleanup_continues_after_failure},
     {"game.lifecycle.standalone_partial_cleanup", standalone_partial_cleanup},
     {"game.lifecycle.graphics_partial_init", graphics_partial_initialization},
     {"manual.lifecycle.native_graphics", native_graphics_lifetimes},
+    {"manual.lifecycle.startup_reset", tests::native_startup_reset},
 };
 }
 

@@ -88,5 +88,6 @@ public:
     static void SaveResult(SRobotGameState *state);
 
 private:
+    friend struct GameStartupTestAccess;
     static void ApplyVideoParams(SRobotsSettings &settings);
 };
