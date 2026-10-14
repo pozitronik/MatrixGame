@@ -9,6 +9,7 @@ param(
     [switch]$WithoutTests,
     [switch]$TestsOnly,
     [switch]$Coverage,
+    [switch]$WithoutMusic,
     [string]$ToolchainRoot = '',
     [string]$CMakeRoot = '',
     [int]$Jobs = 4
@@ -37,11 +38,14 @@ $buildRoot = Join-Path $repoRoot "build/$buildName"
 $dllOption = if ($DLL) { 'ON' } else { 'OFF' }
 $cheatsOption = if ($Cheats) { 'ON' } else { 'OFF' }
 $testingOption = if ($WithoutTests) { 'OFF' } else { 'ON' }
+# The DLL's host owns music; a standalone build can also leave out libogg and libvorbis.
+$musicOption = if ($DLL -or $WithoutMusic) { 'OFF' } else { 'ON' }
 $configureArgs = @(
     '-S', $repoRoot, '-B', $buildRoot,
     "-DCMAKE_BUILD_TYPE=$Configuration",
     "-DMATRIXGAME_BUILD_DLL=$dllOption",
     "-DMATRIXGAME_CHEATS=$cheatsOption",
+    "-DMATRIXGAME_MUSIC=$musicOption",
     "-DBUILD_TESTING=$testingOption",
     "-DMATRIXGAME_COVERAGE=$(if ($Coverage) { 'ON' } else { 'OFF' })"
 )

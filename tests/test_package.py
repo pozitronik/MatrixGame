@@ -59,7 +59,7 @@ class PackageTests(unittest.TestCase):
         self.command("commit", "-qm", "Synthetic fixture")
         self.revision = self.command("rev-parse", "HEAD").decode().strip()
         self.binary = executable()
-        self.cache = b"CMAKE_BUILD_TYPE:STRING=Release\nMATRIXGAME_BUILD_DLL:BOOL=OFF\nMATRIXGAME_CHEATS:BOOL=OFF\nCMAKE_CXX_COMPILER:FILEPATH=C:/fixture/.tools/winlibs-13.2.0/mingw32/bin/g++.exe\n"
+        self.cache = b"CMAKE_BUILD_TYPE:STRING=Release\nMATRIXGAME_BUILD_DLL:BOOL=OFF\nMATRIXGAME_CHEATS:BOOL=OFF\nMATRIXGAME_MUSIC:BOOL=ON\nCMAKE_CXX_COMPILER:FILEPATH=C:/fixture/.tools/winlibs-13.2.0/mingw32/bin/g++.exe\n"
         self.write("build/mingw-release-exe/CMakeCache.txt", self.cache)
         self.write("build/mingw-release-exe/MatrixGame/MatrixGame.exe", self.binary)
         self.write("build/mingw-release-exe/libpng/src/libpng-external/LICENSE", b"synthetic png license")
@@ -153,7 +153,8 @@ class PackageTests(unittest.TestCase):
 
     def test_wrong_configuration_and_architecture_rejected(self):
         for needle, replacement in [(b"=Release", b"=Debug"), (b"BUILD_DLL:BOOL=OFF", b"BUILD_DLL:BOOL=ON"),
-                                    (b"CHEATS:BOOL=OFF", b"CHEATS:BOOL=ON"), (b"winlibs-13.2.0", b"unknown-tools")]:
+                                    (b"CHEATS:BOOL=OFF", b"CHEATS:BOOL=ON"), (b"MUSIC:BOOL=ON", b"MUSIC:BOOL=OFF"),
+                                    (b"winlibs-13.2.0", b"unknown-tools")]:
             with self.assertRaises(ValueError):
                 package.validate_build(self.cache.replace(needle, replacement), self.binary)
         wrong = bytearray(self.binary)

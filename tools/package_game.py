@@ -54,9 +54,9 @@ def cache_values(data):
 def validate_build(cache, binary):
     values = cache_values(cache)
     expected = {"CMAKE_BUILD_TYPE": "Release", "MATRIXGAME_BUILD_DLL": "OFF",
-                "MATRIXGAME_CHEATS": "OFF"}
+                "MATRIXGAME_CHEATS": "OFF", "MATRIXGAME_MUSIC": "ON"}
     if any(values.get(key) != value for key, value in expected.items()):
-        raise ValueError("Packaging requires a Release standalone EXE with cheats disabled")
+        raise ValueError("Packaging requires a Release standalone EXE with cheats disabled and music enabled")
     if "winlibs-13.2.0" not in values.get("CMAKE_CXX_COMPILER", "").replace("\\", "/"):
         raise ValueError("Packaging requires the pinned MinGW compiler")
     if len(binary) < 64 or binary[:2] != b"MZ":

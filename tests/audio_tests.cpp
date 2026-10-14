@@ -3,7 +3,9 @@
 #include "Audio.hpp"
 #include "audio_fixture.hpp"
 
+#ifdef MATRIXGAME_MUSIC
 #include <vorbis/vorbisenc.h>
+#endif
 
 #include <array>
 #include <cmath>
@@ -127,6 +129,7 @@ void shutdown_order() {
 }
 
 
+#ifdef MATRIXGAME_MUSIC
 // Encodes a 440 Hz tone at half amplitude with the pinned libvorbisenc.
 std::vector<uint8_t> vorbis_tone(int channels, long rate, size_t frames) {
     vorbis_info info;
@@ -239,6 +242,7 @@ void vorbis_rejects() {
         MG_CHECK(decode_all(*decoder, 4096).first < 22050);
     } catch (const std::runtime_error &) {}
 }
+#endif
 
 struct MusicFixture {
     std::shared_ptr<DeviceState> device = std::make_shared<DeviceState>();
@@ -411,7 +415,9 @@ constexpr tests::Case cases[] = {
     {"game.audio.music_queue", music_queue}, {"game.audio.music_order", music_order},
     {"game.audio.music_failures", music_failures}, {"game.audio.music_format_change", music_format_change},
     {"game.audio.music_volume", music_volume}, {"game.audio.music_device_failure", music_device_failure},
+#ifdef MATRIXGAME_MUSIC
     {"game.audio.vorbis_decode", vorbis_decode}, {"game.audio.vorbis_rejects", vorbis_rejects},
+#endif
 };
 } // namespace
 

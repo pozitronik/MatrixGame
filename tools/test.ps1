@@ -7,6 +7,7 @@ param(
     [switch]$Cheats,
     [switch]$NoBuild,
     [switch]$Coverage,
+    [switch]$WithoutMusic,
     [string]$Filter = '',
     [string]$ToolchainRoot = '',
     [string]$CMakeRoot = '',
@@ -35,6 +36,7 @@ if (-not $NoBuild) {
         WithoutResources = $true
         TestsOnly = $true
         Coverage = $Coverage
+        WithoutMusic = $WithoutMusic
         ToolchainRoot = $ToolchainRoot
         CMakeRoot = $CMakeRoot
         Jobs = $Jobs

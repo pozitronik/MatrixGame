@@ -79,8 +79,10 @@ std::vector<uint8_t> load(const std::wstring &path, uint32_t limit) {
 }
 
 std::vector<uint8_t> load_clip(const std::wstring &path) { return load(path, 16 * 1024 * 1024); }
+#ifdef MATRIXGAME_MUSIC
 // Compressed tracks stay in memory while they play; the largest original track is about 10.5 MB.
 std::vector<uint8_t> load_track(const std::wstring &path) { return load(path, 64 * 1024 * 1024); }
+#endif
 } // namespace
 
 std::vector<std::wstring> battle_tracks() {
@@ -123,6 +125,7 @@ void initialize_standalone(bool resources_available) {
         install(std::make_unique<Audio::Service>(Audio::create_xaudio_device(), std::move(mapping), load_clip,
                                                  report));
         lgr.notice("Standalone sound initialized");
+#ifdef MATRIXGAME_MUSIC
         auto tracks = battle_tracks();
         if (tracks.empty()) {
             lgr.notice("Battle music disabled: no tracks in DATA/music.pkg");
@@ -130,6 +133,10 @@ void initialize_standalone(bool resources_available) {
         }
         lgr.notice("Battle music: {} tracks")(tracks.size());
         install_music(std::move(tracks), load_track, Audio::open_vorbis);
+#else
+        // Built with MATRIXGAME_MUSIC=OFF: no decoder, so tracks are not even listed.
+        lgr.notice("Battle music disabled: this build has no music decoder");
+#endif
     } catch (const Base::CException &) {
         lgr.error("Standalone sound disabled: cannot initialize audio resources");
     } catch (const std::exception &error) {

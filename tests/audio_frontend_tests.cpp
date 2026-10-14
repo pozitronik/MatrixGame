@@ -309,6 +309,7 @@ void host_layer_lifetime() {
 }
 
 
+#ifdef MATRIXGAME_MUSIC
 void music_sessions() {
     StartupFixture fixture;
     fixture.track("music/BATTLE/b.dat", 2000);
@@ -365,6 +366,19 @@ void music_unavailable() {
     fixture.play(L"Sound.ButtonClick");
     MG_CHECK(startup_device->voices.size() == 1);
 }
+#else
+// A build without the decoder leaves music off and lists no tracks; effects still play.
+void music_not_built() {
+    StartupFixture fixture;
+    fixture.track("music/BATTLE/a.dat", 1000);
+    fixture.wave("sound/ButtonClick.wav");
+    SoundBridge::initialize_standalone(true);
+    SoundBridge::update_music();
+    MG_CHECK(SoundBridge::available() && !SoundBridge::music_available() && startup_device->streams.empty());
+    fixture.play(L"Sound.ButtonClick");
+    MG_CHECK(startup_device->voices.size() == 1);
+}
+#endif
 
 float host_music = 0.75f;
 float __stdcall host_music_get() { return host_music; }
@@ -395,7 +409,11 @@ constexpr tests::Case cases[] = {
     {"game.audio.stale_layer_slot", stale_layer_slot}, {"game.audio.host_layer_lifetime", host_layer_lifetime},
     {"game.audio.frontend_missing", missing_mapping}, {"game.audio.host_routing", host_routing},
     {"game.audio.no_optional_packages", no_optional_packages},
+#ifdef MATRIXGAME_MUSIC
     {"game.audio.music_sessions", music_sessions}, {"game.audio.music_unavailable", music_unavailable},
+#else
+    {"game.audio.music_not_built", music_not_built},
+#endif
     {"game.audio.host_music_routing", host_music_routing},
 };
 } // namespace
