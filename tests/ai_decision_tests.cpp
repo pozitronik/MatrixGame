@@ -35,6 +35,7 @@ void place_bounds();
 void place_axis_correctness();
 void regroup_split_correctness();
 void regroup_merge_correctness();
+void regroup_count_sequences();
 void bomb_escape_planning();
 void bomb_escape_capacity();
 void strategic_member_loss();
@@ -43,6 +44,7 @@ void strategic_forward();
 void strategic_objective_replacement();
 void strategic_objective_ties();
 void strategic_empty_team_split();
+void strategic_merged_team_split();
 void uneven_team_correctness();
 void radio_group();
 void radio_team_region();
@@ -426,10 +428,9 @@ int main(int argc, char **argv) {
         {"game.ai.memory_position_eviction", tests::ai::memory_position_eviction},
         {"game.ai.memory_ignore_eviction", tests::ai::memory_ignore_eviction},
         {"game.ai.place_axis", tests::ai::place_axis_correctness},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
-        {"probe.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
-        {"probe.ai.regroup_merge_counts", tests::ai::regroup_merge_correctness},
+        {"game.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
+        {"game.ai.regroup_merge_counts", tests::ai::regroup_merge_correctness},
+        {"game.ai.regroup_count_sequences", tests::ai::regroup_count_sequences},
         {"game.ai.enemy_memory", enemy_memory},
         {"game.ai.memory_target_retirement", memory_target_retirement},
         {"game.ai.ignore_expiry", ignore_expiry},
@@ -449,6 +450,7 @@ int main(int argc, char **argv) {
         {"game.ai.strategic_objective_replacement", tests::ai::strategic_objective_replacement},
         {"game.ai.strategic_objective_ties", tests::ai::strategic_objective_ties},
         {"game.ai.strategic_empty_team_split", tests::ai::strategic_empty_team_split},
+        {"game.ai.strategic_merged_team_split", tests::ai::strategic_merged_team_split},
         {"game.ai.uneven_team_redistribution", tests::ai::uneven_team_correctness},
         {"game.ai.radio_group", tests::ai::radio_group},
         {"game.ai.radio_team_region", tests::ai::radio_team_region},

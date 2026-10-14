@@ -18,8 +18,8 @@ def trace():
         {"type": "header", "schema": 1, "fixture": "obstacle-v1", "rng": "ParkMiller", "seed": 79,
          "step_ms": 10, "configuration": "Debug", "compiler": "MinGW", "precision_control": 0,
          "compiler_version": "13.2.0", "render": "no-draw", "audio": "synthetic", "revision": "abc", "dirty": False,
-         "assert_off": False, "build_exe": True, "cheats": False, "viewport": [1280, 720],
-         "max_frames": 3000, "initially_selected": True},
+         "assert_off": False, "build_exe": True, "cheats": False, "group_counts": "Corrected",
+         "viewport": [1280, 720], "max_frames": 3000, "initially_selected": True},
         {"type": "command", "frame": 0, "name": "move(500,300)"},
         {"type": "snapshot", "state": {"frame": 0, "time_ms": 0, "rng_draws": 2,
          "robots": [{"id": 1, "alive": True, "x_bits": 1065353216}]}},
@@ -73,7 +73,8 @@ class TraceContracts(unittest.TestCase):
 
     def test_override_allows_only_build_profile_fields(self):
         changes = {"configuration": "Release", "compiler": "MSVC", "compiler_version": "19.44",
-                   "assert_off": True, "precision_control": 65536, "build_exe": False, "cheats": True}
+                   "assert_off": True, "precision_control": 65536, "build_exe": False, "cheats": True,
+                   "group_counts": "Original"}
         for key, value in changes.items():
             with self.subTest(key=key):
                 right = trace()

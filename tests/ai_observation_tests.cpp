@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <array>
 #include "Logic/MatrixEnvironment.h"
+#include "GroupCounts.hpp"
 
 namespace tests::ai {
 namespace {
@@ -617,6 +618,34 @@ void strategic_empty_team_split() {
         std::cout << "empty-team split elapsed=" << elapsed << " by_group=" << by_group
                   << " first_team=" << first->GetTeam() << " second_team=" << second->GetTeam() << '\n';
     }
+}
+
+// Two nearby members of one team start in separate groups, so Regroup merges them before the empty-team
+// split. In the corrected mode the emptied donor group no longer counts as a live group: the team has one
+// group and gives half its robots to the empty team. The original mode counts the donor, so the team has
+// two groups and moves the whole merged group, emptying itself (#140).
+void strategic_merged_team_split() {
+    for (bool original : {false, true}) for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        GroupCounts::set_original(original);
+        Profile profile; profile.mode = mode; profile.initial_time_ms = 3001;
+        Session session(profile);
+        // The trace header records the active mode.
+        const auto header = session.metadata();
+        MG_CHECK(header.find(original ? R"("group_counts":"Original")" : R"("group_counts":"Corrected")") !=
+                 std::string::npos);
+        building(0, 500, 300);
+        auto &side = *g_MatrixMap->GetSideById(2);
+        auto *first = robot(500, 500), *second = robot(540, 540);
+        first->SetGroupLogic(0); second->SetGroupLogic(1);
+        side.TaktHL();
+        const int moved = (first->GetTeam() == 1) + (second->GetTeam() == 1);
+        MG_CHECK(side.m_Team[0].m_GroupCnt == (original ? 2 : 1));
+        MG_CHECK(moved == (original ? 2 : 1));
+        MG_CHECK((first->GetTeam() == 0) + (second->GetTeam() == 0) == 2 - moved);
+        std::cout << "merged-team split original=" << original << " first_team=" << first->GetTeam()
+                  << " second_team=" << second->GetTeam() << '\n';
+    }
+    GroupCounts::set_original(GroupCounts::original_by_default());
 }
 
 void uneven_team_correctness() {

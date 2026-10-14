@@ -6,6 +6,7 @@
 #include "SoundBridge.hpp"
 #include "WindowDisplay.hpp"
 #include "DelayedDamage.hpp"
+#include "GroupCounts.hpp"
 
 namespace StandaloneSettings {
 namespace {
@@ -19,6 +20,7 @@ void apply_immediate(const Values &values) {
     g_Config.m_CamMoveSpeed = camera_speed * static_cast<float>(values.camera_speed) / 100.0f;
     SoundBridge::master_volume(static_cast<float>(values.sound_volume) / 100.0f);
     DelayedDamage::set_original(values.delayed_damage == DamageAttribution::Original);
+    GroupCounts::set_original(values.group_counts == GroupCountMode::Original);
 }
 }  // namespace
 

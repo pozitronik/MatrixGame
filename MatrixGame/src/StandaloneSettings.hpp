@@ -17,6 +17,8 @@ namespace StandaloneSettings {
 enum class Skybox { Off, Low, High };
 // Attribution of ablaze and shorted pulses; Original restores the original game's behaviour.
 enum class DamageAttribution { Corrected, Original };
+// Cached AI group counts after regrouping; Original restores the original game's behaviour.
+enum class GroupCountMode { Corrected, Original };
 
 struct Values {
     Display::Settings display;
@@ -29,6 +31,7 @@ struct Values {
     bool robot_shadows = true;
     DamageAttribution delayed_damage = DamageAttribution::Corrected;
     std::wstring map;  // Remembered battle map, Matrix\Map\<name>.cmap; empty selects Config/Map.
+    GroupCountMode group_counts = GroupCountMode::Corrected;
     bool operator==(const Values &) const = default;
 };
 
@@ -52,5 +55,6 @@ bool save(const Values &values, std::string &error, const wchar_t *path = L"CFG\
 
 const char *name(Skybox skybox);
 const char *name(DamageAttribution attribution);
+const char *name(GroupCountMode mode);
 
 }  // namespace StandaloneSettings

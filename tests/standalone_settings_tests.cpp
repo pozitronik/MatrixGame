@@ -36,6 +36,7 @@ Values custom() {
     values.robot_shadows = false;
     values.delayed_damage = StandaloneSettings::DamageAttribution::Original;
     values.map = L"Matrix\\Map\\Desert (2).cmap";
+    values.group_counts = StandaloneSettings::GroupCountMode::Original;
     return values;
 }
 
@@ -81,7 +82,8 @@ void explicit_values() {
             L"WindowMode=Borderless\r\nSoundVolume= 40 // quieter\r\nCameraSpeed=150\r\n"
             L"StencilShadows=off\r\nProjectedShadows=FALSE\r\nSkybox=low\r\nRobotShadows=0\r\n"
             L"DelayedDamage=ORIGINAL\r\n"
-            L"Map= Matrix\\Map\\Desert (2).cmap // chosen in the Map window\r\n");
+            L"Map= Matrix\\Map\\Desert (2).cmap // chosen in the Map window\r\n"
+            L"GroupCounts=ORIGINAL\r\n");
     MG_CHECK(selection.invalid.empty());
     MG_CHECK(selection.values == custom());
     MG_CHECK(parse(L"StencilShadows=TRUE\nProjectedShadows=1\nRobotShadows=On\nSkybox=OFF\n").values.skybox ==
@@ -95,19 +97,25 @@ void explicit_values() {
 void invalid_values() {
     const auto selection = parse(
             L"SoundVolume=101\nCameraSpeed=24\nStencilShadows=maybe\nProjectedShadows=\nSkybox=Ultra\n"
-            L"RobotShadows=Off\nRobotShadows=On\nResolutionWidth=12\nDelayedDamage=Broken\nMap=..\\escape.cmap\n");
+            L"RobotShadows=Off\nRobotShadows=On\nResolutionWidth=12\nDelayedDamage=Broken\nMap=..\\escape.cmap\n"
+            L"GroupCounts=Fixed\n");
     MG_CHECK(selection.values.sound_volume == 100 && selection.values.camera_speed == 100);
     MG_CHECK(selection.values.stencil_shadows && selection.values.projected_shadows);
     MG_CHECK(selection.values.skybox == Skybox::High && selection.values.robot_shadows);
     MG_CHECK(selection.values.delayed_damage == StandaloneSettings::DamageAttribution::Corrected);
+    MG_CHECK(selection.values.group_counts == StandaloneSettings::GroupCountMode::Corrected);
     MG_CHECK(selection.invalid == std::vector<std::string>({"SoundVolume", "CameraSpeed", "StencilShadows",
                                                             "ProjectedShadows", "Skybox", "RobotShadows",
-                                                            "DelayedDamage", "Map"}));
+                                                            "DelayedDamage", "Map", "GroupCounts"}));
     MG_CHECK(selection.values.map.empty());
     for (const wchar_t *text : {L"Map=x.txt\n", L"Map=C:\\x.cmap\n", L"Map=a.cmap\nMap=b.cmap\n", L"Map=a|b.cmap\n"}) {
         const auto rejected = parse(text);
         MG_CHECK(rejected.values.map.empty() && rejected.invalid == std::vector<std::string>({"Map"}));
     }
+    // A repeated key is invalid and keeps the default.
+    const auto repeated = parse(L"GroupCounts=Original\nGroupCounts=Original\n");
+    MG_CHECK(repeated.values.group_counts == StandaloneSettings::GroupCountMode::Corrected);
+    MG_CHECK(repeated.invalid == std::vector<std::string>({"GroupCounts"}));
     // Display keys keep their established all-or-default contract and diagnostics.
     MG_CHECK(selection.values.display == Display::Settings{});
     const auto valid = parse(L"SoundVolume=0\nCameraSpeed=300\n");
@@ -149,7 +157,8 @@ void preserves_text() {
             L"RobotShadows=Off\r\n"
             L"CameraSpeed=150\r\n"
             L"DelayedDamage=Original\r\n"
-            L"Map=Matrix\\Map\\Desert (2).cmap\r\n";
+            L"Map=Matrix\\Map\\Desert (2).cmap\r\n"
+            L"GroupCounts=Original\r\n";
     MG_CHECK(updated == expected);
     MG_CHECK(StandaloneSettings::update_text(updated, custom()) == expected);
     const auto unix = StandaloneSettings::update_text(L"UnknownKey=1\n", Values{});
@@ -183,7 +192,7 @@ void round_trip_inline_blocks() {
              L"SoundVolume=40\nExtension {} // note\nRandomGenerator=", L""},
             // A top-level closing brace ends the reader's input, so new keys must precede it.
             {L"UnknownKey=1\n}\nSoundVolume=20\n", 100, L"UnknownKey=1\nRandomGenerator=", L"}\nSoundVolume=20\n"},
-            {L"Extension {} }\n", 100, L"Extension {} \nRandomGenerator=", L"Map=Matrix\\Map\\Desert (2).cmap\n}\n"},
+            {L"Extension {} }\n", 100, L"Extension {} \nRandomGenerator=", L"GroupCounts=Original\n}\n"},
     };
     for (const auto &item : cases) {
         MG_CHECK(parse(item.original).values.sound_volume == item.sound_volume);

@@ -80,6 +80,7 @@ else()
             src/MatrixFormGame.cpp
             src/MatrixGame.cpp
             src/DelayedDamage.cpp
+            src/GroupCounts.cpp
             APPEND
             PROPERTY COMPILE_DEFINITIONS BUILD_EXE
     )
