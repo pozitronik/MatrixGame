@@ -15,7 +15,7 @@
 namespace tests::navigation {
 void multiregion_movement();
 void multiregion_road_guidance();
-void group_speed_nonfinite_probe();
+void group_speed_finite();
 void unreachable_replacement();
 }
 
@@ -457,7 +457,7 @@ int main(int argc, char **argv) {
         {"game.navigation.carrier_drop_landing", carrier_drop_landing},
         {"game.navigation.multiregion_movement", tests::navigation::multiregion_movement},
         {"game.navigation.multiregion_road_guidance", tests::navigation::multiregion_road_guidance},
-        {"game.navigation.group_speed_finite", tests::navigation::group_speed_nonfinite_probe},
+        {"game.navigation.group_speed_finite", tests::navigation::group_speed_finite},
         {"game.navigation.unreachable_replacement", tests::navigation::unreachable_replacement},
     };
     int result = tests::run(argc, argv, cases);

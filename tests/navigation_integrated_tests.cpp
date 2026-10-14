@@ -155,7 +155,7 @@ void multiregion_road_guidance() {
 
 // Formerly reached a 180-unit formation spread and a nonfinite group speed in MinGW builds.
 // Every frame requires finite state. Regression for https://github.com/pozitronik/MatrixGame/issues/134.
-void group_speed_nonfinite_probe() {
+void group_speed_finite() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         Session session(profile(mode, step));
         std::cout << session.metadata() << '\n';

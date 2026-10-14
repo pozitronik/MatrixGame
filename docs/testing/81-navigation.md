@@ -9,7 +9,7 @@ These tests extend the synthetic battle runner with production navigation, group
 .\tools\test.ps1 -Configuration Release -Filter '^game\.(navigation|scenario)\.'
 ```
 
-The `game.navigation.*` family uses production-backed cases. Assertions use `MG_CHECK` in both configurations. Both navigation executables check tracked allocation balance where instrumentation is enabled. The existing `game.scenario.*` cases verify that adding map variants leaves the original runner operational. All fixtures are generated from code; no game packages, display window or native audio device are needed. A separate, manually invoked correctness probe below reproduces an unresolved nonfinite-speed defect and is not part of the passing CTest baseline.
+The `game.navigation.*` family uses production-backed cases. Assertions use `MG_CHECK` in both configurations. Both navigation executables check tracked allocation balance where instrumentation is enabled. The existing `game.scenario.*` cases verify that adding map variants leaves the original runner operational. All fixtures are generated from code; no game packages, display window or native audio device are needed. `group_speed_finite` is the registered regression for the nonfinite formation speed corrected in [#134](https://github.com/pozitronik/MatrixGame/issues/134).
 
 ## Geometry and execution
 
@@ -93,4 +93,4 @@ All flight resources are generated public fixtures: material wheel/Birex cargo a
 
 ## Completion assessment
 
-Additional chassis and terrain combinations, broader delivery geometry and persisted reference traces remain implementation work; they are not waiting for a maintainer decision. The demonstrated nonfinite group-speed sequence requires a separate defect correction before it can become a passing baseline. Representative measurement and exact-revision acceptance remain integration-level obligations. Existing search-footprint observations do not replace internal per-frame work counters.
+Additional chassis and terrain combinations, broader delivery geometry and persisted reference traces remain implementation work; they are not waiting for a maintainer decision. Representative measurement and exact-revision acceptance remain integration-level obligations. Existing search-footprint observations do not replace internal per-frame work counters.
