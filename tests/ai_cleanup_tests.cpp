@@ -222,6 +222,11 @@ void regroup_counts_correctness(bool split) {
     position(*a, 100, 200); position(*b, split ? 501 : 200, 200);
     a->SetTeam(0); b->SetTeam(0);
     a->SetGroupLogic(0); b->SetGroupLogic(split ? 0 : 1);
+    if (!split) {
+        // A second member gives the merged donor slot a count above one.
+        auto *partner = BattleGeometry::create_robot(*g_MatrixMap, a->GetSide(), 60, 200);
+        partner->SetTeam(0); partner->SetGroupLogic(0);
+    }
     auto &side = *g_MatrixMap->GetSideById(a->GetSide());
     side.Regroup();
     MG_CHECK((a->GetGroupLogic() != b->GetGroupLogic()) == split);
