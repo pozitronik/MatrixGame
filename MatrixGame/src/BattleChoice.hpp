@@ -8,8 +8,8 @@ enum class Bonus { None, AirSupport, ReinforcedArmor };
 // Apply only the two supported bonus fields. Friendly fire belongs to the existing battle contract.
 template<class Difficulty>
 void apply(Bonus bonus, Difficulty &difficulty) {
-    difficulty.k_damage_enemy_to_player = bonus == Bonus::ReinforcedArmor ? 0.5f : 1.0f;
-    difficulty.k_time_before_maintenance = bonus == Bonus::AirSupport ? 0.33f : 1.0f;
+    if (bonus == Bonus::ReinforcedArmor) difficulty.k_damage_enemy_to_player *= 0.5f;
+    if (bonus == Bonus::AirSupport) difficulty.k_time_before_maintenance *= 0.33f;
 }
 
 }  // namespace BattleChoice

@@ -6,8 +6,6 @@
 
 namespace StartupMenu {
 
-// Reserved standalone relaunch argument. Other arguments retain their visibility-tool meaning.
-inline constexpr std::wstring_view selected_battle_argument = L"--start-selected-battle";
 void set_direct_start(bool enabled);
 bool direct_start();
 

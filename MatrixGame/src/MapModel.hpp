@@ -9,7 +9,7 @@
 #include <functional>
 #include <vector>
 
-// Device-independent state, text and geometry of the in-game Map window: a paged list of the installed
+// Device-independent state, text and geometry of the in-game map selector: a paged list of the installed
 // maps beside a preview of the selected one.
 namespace MapModel {
 
@@ -128,7 +128,7 @@ std::vector<std::wstring> wrap_description(const std::wstring &text, size_t colu
 std::vector<std::wstring> wrap_description(const std::wstring &text, size_t width,
                                           const std::function<size_t(std::wstring_view)> &measure);
 
-// CMatrixHint template: the frame and button holes of the settings window, the visible page of names,
+// CMatrixHint template: the settings frame, text actions, the visible page of names,
 // the pager, and the preview bitmap centred in its box, or a placeholder when preview has no size.
 std::wstring hint_template(const Window &window, SettingsModel::Resolution preview);
 

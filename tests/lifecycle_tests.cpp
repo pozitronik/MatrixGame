@@ -227,6 +227,18 @@ void cursor_visibility_before_initialization() {
         MG_CHECK(GetCursor() == previous);
     }
     MG_CHECK(GetCursor() == previous);
+    // Partial startup still owns a device but has not loaded cursor images.
+    // Any attempt to call the sentinel detects a missing image guard.
+    {
+        CMatrixCursor cursor;
+        const auto uninitialized = GetCursor();
+        struct RestoreDevice { ~RestoreDevice() { g_D3DD = nullptr; } } restore;
+        g_D3DD = reinterpret_cast<IDirect3DDevice9 *>(uintptr_t{1});
+        cursor.SetVisible(true);
+        cursor.SetVisible(false);
+        MG_CHECK(GetCursor() == uninitialized);
+    }
+    MG_CHECK(GetCursor() == previous);
 }
 
 struct FakeReference {

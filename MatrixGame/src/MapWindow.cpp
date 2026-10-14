@@ -5,6 +5,8 @@
 #include "MapSelection.hpp"
 #include "MapMetadata.hpp"
 #include "BattleLoading.hpp"
+#include "MenuKeyLatch.hpp"
+#include "input.hpp"
 #include "Text/Font.hpp"
 #include "StandaloneRuntime.hpp"
 
@@ -36,6 +38,7 @@ struct State {
     Origin origin;
     StandaloneSettings::Values values;
     MapModel::Window model;
+    MenuKeyLatch actions{};
 };
 
 std::optional<State> state;
@@ -163,9 +166,12 @@ void open(Origin origin, const StandaloneSettings::Values &values) {
     if (!diagnostic.empty()) lgr.warning("Map metadata: {}")(diagnostic);
     const auto current = g_MatrixMap ? g_MatrixMap->MapName() : values.map;
     state.emplace(State{origin, values, MapModel::Window(MapCatalog::scan(), current, language(), metadata, values.battle_bonus)});
+    state->actions = {Input::isVKeyPressed(VK_RETURN) || (GetAsyncKeyState(VK_RETURN) & 0x8000) != 0,
+                      Input::isVKeyPressed(VK_ESCAPE) || (GetAsyncKeyState(VK_ESCAPE) & 0x8000) != 0};
     state->model.set_text_measure([](std::wstring_view line) { return Text::GetFont(g_D3DD, L"Font.2Small").CalcTextWidth(line); });
-    lgr.notice("Map window lists {} maps")(state->model.maps().size());
+    lgr.notice("Map selector lists {} maps")(state->model.maps().size());
     if (g_MatrixMap) {
+        g_MatrixMap->MouseCam(false);
         g_MatrixMap->LeaveDialogMode();
         g_MatrixMap->Pause(true);
         SETFLAG(g_MatrixMap->m_Flags, MMFLAG_DIALOG_MODE);
@@ -193,14 +199,9 @@ void close(bool play) {
             return;
         }
         std::string error;
-        auto values = state->values;
+        auto values = StandaloneSettings::load().values;
         values.map = map->path;
         values.battle_bonus = state->model.bonus();
-        values.display.mode = Display::current_mode();
-        values.display.fullscreen = Display::fullscreen_mode();
-        const auto size = Display::current_size();
-        values.display.width = size.width;
-        values.display.height = size.height;
         const bool startup = state->origin == Origin::Startup;
         if (!(startup ? StandaloneSettings::save(values, error) : MapSelection::choose(values, map->path, error))) {
             lgr.error("Cannot save CFG/standalone.txt: {}")(error);
@@ -208,7 +209,8 @@ void close(bool play) {
             rebuild();
             return;
         }
-        BattleLoading::show(g_Wnd, language() == MapModel::Language::Russian);
+        if (!BattleLoading::show(g_Wnd, language() == MapModel::Language::Russian))
+            lgr.warning("Cannot create the loading screen; continuing battle initialization");
         if (startup) {
             startup_choice = values;
             shutdown();
@@ -231,9 +233,13 @@ void close(bool play) {
     SETFLAG(g_Flags, GFLAG_EXITLOOP);
 }
 
+void reset_input() {
+    if (state) state->actions = {};
+}
+
 bool keyboard(uint8_t vk, bool down) {
     if (!active()) return false;
-    if (!down) return true;
+    if (!state->actions.accept(vk, down)) return true;
     auto &model = state->model;
     const int count = static_cast<int>(model.maps().size());
     switch (vk) {
@@ -244,6 +250,7 @@ bool keyboard(uint8_t vk, bool down) {
         case VK_LEFT: update(model.page(-1)); break;
         case VK_RIGHT: update(model.page(1)); break;
         case '1': case '2': case '3': update(model.select_bonus(vk - '1')); break;
+        case VK_NUMPAD1: case VK_NUMPAD2: case VK_NUMPAD3: update(model.select_bonus(vk - VK_NUMPAD1)); break;
         case VK_HOME: update(model.move(-count)); break;
         case VK_END: update(model.move(count)); break;
         case VK_RETURN:
@@ -278,9 +285,14 @@ bool mouse_down(int x, int y, bool double_click) {
 void mouse_wheel(int steps, int x, int y) {
     if (!active()) return;
     const auto *hint = current_hint();
-    if (x >= hint->m_PosX + MapModel::Layout::preview_x && y >= hint->m_PosY + MapModel::Layout::description_y)
+    x -= hint->m_PosX; y -= hint->m_PosY;
+    if (x < 0 || x >= MapModel::Layout::width || y < 0 || y >= MapModel::Layout::content_height) return;
+    if (x >= MapModel::Layout::preview_x && x < MapModel::Layout::preview_x + MapModel::Layout::detail_width &&
+        y >= MapModel::Layout::description_y && y < MapModel::Layout::description_scroll_y + 20)
         update(state->model.scroll_description(-steps * 3));
-    else update(state->model.move(-steps));
+    else if (x >= MapModel::Layout::list_x && x < MapModel::Layout::list_x + MapModel::Layout::list_width &&
+             y >= MapModel::Layout::first_row_y && y < MapModel::Layout::pager_y)
+        update(state->model.move(-steps));
 }
 
 void relayout() {

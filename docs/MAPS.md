@@ -33,11 +33,11 @@ Extracted JSON catalogs are archival exports, not a supported runtime sidecar fo
 
 | Choice | Effect on the next battle |
 | --- | --- |
-| None | Normal enemy damage and normal air-support wait |
+| None | Preserve the configured difficulty unchanged |
 | Air support | Air-support maintenance interval is 33% of its configured duration |
-| Armor | Enemy damage to the player's robots, buildings and turrets is multiplied by 0.5 |
+| Armor | Damage from other sides and sideless sources to the player's robots, buildings and turrets is multiplied by 0.5 |
 
-All choices preserve the current friendly-fire multiplier. Armor does not increase maximum hit points. The selector does not apply the original host's complete difficulty presets or their 40% friendly-fire setting. Browsing bonuses never changes the current battle. The selected bonus applies when the new battlefield is constructed.
+Bonuses scale the existing configuration's difficulty multipliers; None leaves them unchanged. All choices preserve the current friendly-fire multiplier. Armor also affects sideless sources such as falling debris and, with `DelayedDamage=Original`, later burn/shock pulses. It does not increase maximum hit points. The selector does not apply the original host's complete difficulty presets or their 40% friendly-fire setting. Browsing bonuses never changes the current battle. The selected bonus applies once when the new battlefield is constructed.
 
 ## Installed maps
 
@@ -64,6 +64,8 @@ At startup, successful selection proceeds to the first battlefield in the same p
 
 Just before loading a remembered map, its path is cleared from the settings file and restored after successful initialization. A failed load therefore leaves the configured fallback for the next startup selector. This does not clear the saved bonus. If the file cannot be updated, the diagnostic does not claim the failed map was forgotten. Failures before loading retain the selection.
 
+The loading screen has a taskbar entry and a Hide loading screen button. Close it or press Escape while it has focus to dismiss it; initialization continues. During a process transition, the old process pumps messages and waits for at most 120 seconds. Timeout or dismissal removes the loader and exits the old process normally without terminating the child. The new game can still show its window when loading finishes. Starting a map saves only the map and bonus, preserving stored display preferences: temporary Alt+Enter toggles are not saved, and a new process uses the stored mode.
+
 A normal command-line map argument retains its visibility-calculation meaning and bypasses the startup menu and standalone battle bonus. `--start-selected-battle` is reserved for interactive relaunch; its optional second argument is a private loading-screen event name supplied by the game. It is not a visibility-tool map name. The x86 DLL continues to receive its map and difficulty from the host.
 
 ## Verification
@@ -78,5 +80,7 @@ The complete rendered startup-to-battle transition still needs a native playtest
 4. Start a map with Enter. Confirm the normal introduction and gameplay. Open the battle menu and use New battle by its label, icon and N. Cancel must return to that menu; Settings must have no Map row.
 5. Start another map with a different bonus. Check Enter after clicking a map name, then double-click a map name during a second transition. The loading window must remain visible until the new battle appears without another startup menu. Also check double-click activation from the startup selector. Exit normally, relaunch, and confirm the map and bonus are remembered. Confirm no setting changed merely by browsing/canceling.
 6. Repeat the selector checks at 640x480. Use Alt+Enter and lose/regain focus in both the startup menu and selector. Text, preview, input and exit must still work. Report any exception, incorrect map, clipped control or nonzero exit code.
+7. Hold Enter on startup New battle: repeats must leave the selector open until release and a fresh press. Hold Escape in that selector: it must return to the menu without exiting on repeats. After battle statistics, held Enter must not immediately start the next map. Navigation arrows should still repeat.
+8. During a transition, choose Hide loading screen or close its window; the new battle must still be able to start. Check Escape after activating the loader. Repeat an ordinary transition with exclusive fullscreen and focus loss/recovery when that mode is available. A synthetic test checks the timeout; deliberately hanging a real game is not required. Confirm that using Alt+Enter before choosing another map does not rewrite saved display settings, and that the new process uses those saved settings.
 
 A malformed-map failure, optional metadata, original-language catalogs and the relaunch window are distinct checks; a passing model test does not establish native rendering or gameplay acceptance.

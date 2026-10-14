@@ -1758,6 +1758,7 @@ void CFormMatrixGame::SystemEvent(ESysEvent se) {
     }
     if (se == SYSEV_DEACTIVATING || se == SYSEV_INPUT_RESET) {
         Input::onFocusLost();
+        MapWindow::reset_input();
         g_MatrixMap->m_VKeyDown = 0;
         g_MatrixMap->MouseCam(false);
         g_MatrixMap->m_Console.Keyboard(VK_SHIFT, false);

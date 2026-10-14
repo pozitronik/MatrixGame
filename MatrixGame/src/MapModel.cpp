@@ -226,7 +226,7 @@ SettingsModel::Resolution preview_size(int width, int height) {
 }
 
 std::wstring hint_template(const Window &window, SettingsModel::Resolution preview) {
-    // The same frame, blank sizing block and transparent button holes as the settings window.
+    // Reuse the settings frame with a blank sizing block; actions are text hit areas.
     std::wstring result = L"2|_BORDER:0:0:0:0|_FONT:Font.2Normal|_WIDTH:" + std::to_wstring(Layout::width) +
                           L"|_HEIGHT:" + std::to_wstring(Layout::content_height) +
                           L"|_TEXTP:L|_TEXT: |_TEXTP:B";
@@ -287,11 +287,11 @@ std::wstring hint_template(const Window &window, SettingsModel::Resolution previ
     result += text_element(window.start_label(), L"Font.2Normal", selected_color, 130, Layout::buttons_y, 140, 1);
     result += text_element(window.cancel_label(), L"Font.2Normal", selected_color, 310, Layout::buttons_y, 140, 1);
     if (window.error() == Error::None) result += text_element(window.legend(), L"Font.2Small", legend_color, Layout::list_x, Layout::legend_y,
-                           Layout::width - 48, 0);
+                           Layout::width - Layout::list_x - 24, 0);
     if (window.error() != Error::None) {
         result += text_element(window.error_text(), L"Font.2Small", error_color, Layout::list_x,
                                Layout::error_y,
-                               Layout::width - 48, 0);
+                               Layout::width - Layout::list_x - 24, 0);
     }
     return result;
 }

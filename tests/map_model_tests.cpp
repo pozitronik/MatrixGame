@@ -217,8 +217,8 @@ void bonus_controls() {
         Difficulty difficulty{0.1f, 0.2f, 0.4f};
         BattleChoice::apply(bonus, difficulty);
         MG_CHECK(difficulty.k_friendly_fire == 0.4f);
-        MG_CHECK(difficulty.k_damage_enemy_to_player == (bonus == BattleChoice::Bonus::ReinforcedArmor ? 0.5f : 1.0f));
-        MG_CHECK(difficulty.k_time_before_maintenance == (bonus == BattleChoice::Bonus::AirSupport ? 0.33f : 1.0f));
+        MG_CHECK(difficulty.k_damage_enemy_to_player == (bonus == BattleChoice::Bonus::ReinforcedArmor ? 0.05f : 0.1f));
+        MG_CHECK(difficulty.k_time_before_maintenance == (bonus == BattleChoice::Bonus::AirSupport ? 0.2f * 0.33f : 0.2f));
     }
 }
 

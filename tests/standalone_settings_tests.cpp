@@ -91,7 +91,7 @@ void battle_bonus() {
     for (const auto bonus : {BattleChoice::Bonus::None, BattleChoice::Bonus::AirSupport, BattleChoice::Bonus::ReinforcedArmor}) {
         auto chosen = custom();
         chosen.battle_bonus = bonus;
-        MG_CHECK(StandaloneSettings::save(chosen, error, path.c_str()));
+        if (!StandaloneSettings::save(chosen, error, path.c_str())) throw std::runtime_error(error);
         MG_CHECK(StandaloneSettings::load(path.c_str()).values == chosen);
     }
 }

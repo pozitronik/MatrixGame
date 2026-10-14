@@ -18,6 +18,7 @@
 #include "MapWindow.hpp"
 #include "StartupMenu.hpp"
 #include "BattleLoading.hpp"
+#include "BattleLaunch.hpp"
 #include "ScreenLayout.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
@@ -43,6 +44,7 @@
 #include <iostream>
 #include <filesystem>
 #include <memory>
+#include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
 #include <stupid_logger.hpp>
@@ -74,13 +76,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         const auto app_path = Startup::ExecutablePath();
         lgr.info(utils::from_wstring(app_path.native()));
         std::filesystem::current_path(app_path.parent_path());
-        const bool selected_battle = numarg >= 2 && args.get()[1] == StartupMenu::selected_battle_argument;
-        if (selected_battle) {
-            if (numarg > 3) throw std::runtime_error("Invalid selected-battle arguments");
-            if (numarg == 3) BattleLoading::connect(args.get()[2]);
-        }
-        StartupMenu::set_direct_start(selected_battle);
-        const wchar *map = numarg > 1 && !selected_battle ? args.get()[1] : nullptr;
+        std::vector<std::wstring_view> arguments;
+        for (int i = 1; i < numarg; ++i) arguments.emplace_back(args.get()[i]);
+        const auto launch = BattleLaunch::classify(arguments);
+        if (launch.selected && numarg == 3) BattleLoading::connect(launch.event);
+        StartupMenu::set_direct_start(launch.selected);
+        const wchar *map = numarg > 1 && !launch.selected ? args.get()[1] : nullptr;
 
         if (!Startup::ResourceFileExists(L"DATA\\robots.pkg")) {
             lgr.error("Missing DATA/robots.pkg");
@@ -160,7 +161,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 
     // Settings are read with the base library, so a failed map is forgotten before cleanup.
     if (!diagnostic.empty() && !battle_initialized && MapSelection::forget_remembered_map()) {
-        diagnostic += "\n\nThe map chosen in the Map window could not be started and was forgotten. "
+        diagnostic += "\n\nThe map chosen in the map selector could not be started and was forgotten. "
                       "The next start uses the configured map.";
     }
     if (initialization_started && !Session::cleanup_standalone(formgame, timer_active)) {
@@ -437,8 +438,9 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
             if (!StartupMenu::run(standalone.values)) return;
         }
         remembered_map = MapSelection::startup_map(standalone.values);
-        BattleLoading::show(g_Wnd, SettingsModel::detect_language(
-            g_MatrixData->BlockGet(PAR_REPLACE)->ParGetNE(L"setup")) == SettingsModel::Language::Russian);
+        if (!BattleLoading::show(g_Wnd, SettingsModel::detect_language(
+            g_MatrixData->BlockGet(PAR_REPLACE)->ParGetNE(L"setup")) == SettingsModel::Language::Russian))
+            lgr.warning("Cannot create the loading screen; continuing battle initialization");
     }
     StandaloneSettings::initialize_runtime(standalone.values);
 #endif

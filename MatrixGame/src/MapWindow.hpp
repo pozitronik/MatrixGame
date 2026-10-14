@@ -21,7 +21,7 @@ enum class Origin {
 bool available();
 bool active();
 
-// Opens the selector before a battle or over the paused battlefield. Start saves values and the choice.
+// Opens the selector before a battle or over the paused battlefield. Start saves only the map and bonus.
 void open(Origin origin, const StandaloneSettings::Values &values);
 // Opens the window after a finished battle with the current settings. Returns false when unavailable.
 bool open_after_battle();
@@ -30,6 +30,7 @@ void close(bool play);
 
 // Input while the window is active. Each returns true when the event was consumed.
 bool keyboard(uint8_t vk, bool down);
+void reset_input();
 bool mouse_down(int x, int y, bool double_click = false);
 void mouse_wheel(int steps, int x, int y);
 std::optional<StandaloneSettings::Values> take_startup_choice();

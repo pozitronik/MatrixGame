@@ -124,7 +124,22 @@ void malformed_tree() {
 void plain() {
     MG_CHECK(MapMetadata::plain_text(L"<clr>Title<clrEnd>|_BITMAP:bad:[value]\r\n\ttext") ==
              L"Title/_BITMAP:bad:(value)\n text");
-    MG_CHECK(MapMetadata::plain_text(L"before<broken") == L"before");
+    MG_CHECK(MapMetadata::plain_text(L"before<broken\n\nLater paragraph") == L"before(broken\n\nLater paragraph");
+}
+
+void substitution_bounds() {
+    auto fixture = [](std::wstring_view description, std::wstring_view replacement) {
+        return encoded(tree(block(L"", {
+            block(L"RobotsMap", {block(L"one", {value(L"Map", L"safe.cmap"),
+                value(L"Name", L"Two\nlines"), value(L"Side", L"Red\nBlue"), value(L"RobotsStart", description)})}),
+            block(L"FormLoadRobot", {value(L"PPlayer", replacement)})})));
+    };
+    const auto limit = std::wstring(65536, L'x');
+    const auto result = MapMetadata::decode(fixture(L"<Player>", limit));
+    MG_CHECK(result.at(L"safe.cmap").description == limit);
+    MG_CHECK(result.at(L"safe.cmap").name == L"Two lines" && result.at(L"safe.cmap").sides == L"Red Blue");
+    rejected(fixture(L"<Player><Player>", limit));
+    rejected(fixture(L"x<Player>", limit));
 }
 
 void files() {
@@ -150,6 +165,7 @@ int main(int argc, char **argv) {
         {"game.maps.metadata_damage", damaged}, {"game.maps.metadata_tree", malformed_tree},
         {"game.maps.metadata_text", plain}, {"game.maps.metadata_files", files},
         {"game.maps.metadata_catalog", catalog_rules},
+        {"game.maps.metadata_substitution_bounds", substitution_bounds},
     };
     return tests::run(argc, argv, cases);
 }

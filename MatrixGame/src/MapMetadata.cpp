@@ -39,7 +39,7 @@ public:
     explicit Reader(std::span<const uint8_t> bytes) : bytes(bytes) {}
 
     Node node(size_t depth = 0, bool root = false) {
-        if (depth > 64 || ++nodes > maximum_nodes) invalid();
+        if (depth >= 64 || ++nodes > maximum_nodes) invalid();
         Node result;
         const uint8_t type = root ? 2 : take(1)[0];
         if (type != 1 && type != 2) invalid();
@@ -108,8 +108,26 @@ std::wstring value(const Node &node, const wchar_t *name) {
     return item ? item->value : L"";
 }
 
-void replace(std::wstring &text, const std::wstring &from, const std::wstring &to) {
-    for (size_t at = 0; (at = text.find(from, at)) != std::wstring::npos; at += to.size()) text.replace(at, from.size(), to);
+std::wstring substitute(std::wstring_view text, const std::array<std::wstring, 3> &values) {
+    constexpr std::wstring_view tokens[] = {L"<Player>", L"<Star>", L"<Planet>"};
+    std::wstring result;
+    for (size_t at = 0; at < text.size();) {
+        std::wstring_view piece = text.substr(at, 1);
+        size_t consumed = 1;
+        for (size_t i = 0; i < values.size(); ++i) {
+            if (text.substr(at).starts_with(tokens[i])) { piece = values[i]; consumed = tokens[i].size(); break; }
+        }
+        if (piece.size() > maximum_text - result.size()) invalid();
+        result.append(piece);
+        at += consumed;
+    }
+    return result;
+}
+
+std::wstring single_line(std::wstring text) {
+    text = plain_text(std::move(text));
+    std::replace(text.begin(), text.end(), L'\n', L' ');
+    return text;
 }
 
 std::wstring filename(std::wstring name) {
@@ -128,14 +146,18 @@ Catalog catalog(const Node &root) {
     if (!maps || !maps->block) invalid();
     const Node *form = child(root, L"FormLoadRobot");
     if (form && !form->block) invalid();
+    std::array<std::wstring, 3> replacements;
+    size_t token_index = 0;
+    for (const auto *token : {L"PPlayer", L"PStar", L"PPlanet"})
+        replacements[token_index++] = form ? plain_text(value(*form, token)) : L"";
     Catalog result;
     for (const auto &map : maps->children) {
         if (!map.block) invalid();
         const auto file = filename(value(map, L"Map"));
         if (file.empty()) continue;
         Entry entry;
-        entry.name = plain_text(value(map, L"Name"));
-        entry.sides = plain_text(value(map, L"Side"));
+        entry.name = single_line(value(map, L"Name"));
+        entry.sides = single_line(value(map, L"Side"));
         const auto group = value(map, L"Group"), length = value(map, L"Length");
         if (group.size() == 1 && group[0] >= L'0' && group[0] <= L'2') entry.group = group[0] - L'0';
         if (length.size() == 1 && length[0] >= L'0' && length[0] <= L'4') entry.length = length[0] - L'0';
@@ -146,11 +168,7 @@ Catalog catalog(const Node &root) {
             entry.description += paragraph.value;
             if (entry.description.size() > maximum_text) invalid();
         }
-        for (const auto *token : {L"Player", L"Star", L"Planet"}) {
-            const auto replacement = form ? value(*form, (std::wstring(L"P") + token).c_str()) : L"";
-            replace(entry.description, std::wstring(L"<") + token + L">", plain_text(replacement));
-        }
-        entry.description = plain_text(std::move(entry.description));
+        entry.description = plain_text(substitute(entry.description, replacements));
         if (!result.emplace(file, std::move(entry)).second) invalid();
     }
     return result;
@@ -160,10 +178,13 @@ Catalog catalog(const Node &root) {
 
 std::wstring plain_text(std::wstring text) {
     std::wstring result;
-    bool tag = false;
+    size_t tag_start = std::wstring::npos;
     for (auto ch : text) {
-        if (ch == L'<') { tag = true; continue; }
-        if (tag) { if (ch == L'>') tag = false; continue; }
+        if (ch == L'<') { if (tag_start == std::wstring::npos) tag_start = result.size(); ch = L'('; }
+        else if (ch == L'>' && tag_start != std::wstring::npos) {
+            result.resize(tag_start); tag_start = std::wstring::npos; continue;
+        }
+        if (ch == L'\n') tag_start = std::wstring::npos; // Do not discard later paragraphs for an unclosed tag.
         if (ch == L'|') ch = L'/';
         if (ch == L'[') ch = L'(';
         if (ch == L']') ch = L')';

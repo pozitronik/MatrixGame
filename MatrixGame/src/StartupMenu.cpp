@@ -11,6 +11,7 @@
 #include "WindowDisplay.hpp"
 #include "Form.hpp"
 #include "input.hpp"
+#include "MenuKeyLatch.hpp"
 
 #include <stupid_logger.hpp>
 
@@ -36,6 +37,7 @@ class Form final : public CForm {
     bool ready_to_draw = false;
     bool exit_selected = false;
     bool russian = false;
+    MenuKeyLatch actions;
 
     void release_menu() {
         if (menu) menu->Release();
@@ -83,7 +85,7 @@ public:
         SetCursor(LoadCursor(nullptr, IDC_ARROW));
         show_menu();
     }
-    void Leave() override { ClipCursor(nullptr); }
+    void Leave() override { ClipCursor(nullptr); Input::onFocusLost(); }
     void Takt(int) override {
         ready_to_draw = false;
         if (Display::apply_pending(resources_ready, release_resources, restore_resources)) return;
@@ -133,7 +135,9 @@ public:
     }
     void Keyboard(bool down, uint8_t key) override {
         if (!resources_ready || g_D3DD->TestCooperativeLevel() != D3D_OK) return;
-        if (MapWindow::keyboard(key, down) || !down) return;
+        if (down) Input::onKeyDown(key); else Input::onKeyUp(key);
+        const bool accepted = actions.accept(key, down);
+        if (MapWindow::keyboard(key, down) || !accepted) return;
         if (key == VK_UP || key == VK_DOWN || key == VK_TAB) select(!exit_selected);
         else if (key == VK_RETURN) activate();
         else if (key == 'N') { select(false); activate(); }
@@ -141,7 +145,11 @@ public:
     }
     void SystemEvent(ESysEvent event) override {
         if (event == SYSEV_DEACTIVATING && resources_ready) release_resources();
-        if (event == SYSEV_DEACTIVATING || event == SYSEV_INPUT_RESET) Input::onFocusLost();
+        if (event == SYSEV_DEACTIVATING || event == SYSEV_INPUT_RESET) {
+            Input::onFocusLost();
+            actions = {};
+            MapWindow::reset_input();
+        }
     }
 };
 }  // namespace
