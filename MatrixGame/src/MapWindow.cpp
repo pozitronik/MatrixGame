@@ -4,6 +4,7 @@
 #include "MapModel.hpp"
 #include "MapSelection.hpp"
 #include "MapMetadata.hpp"
+#include "BattleLoading.hpp"
 #include "Text/Font.hpp"
 #include "StandaloneRuntime.hpp"
 
@@ -207,6 +208,7 @@ void close(bool play) {
             rebuild();
             return;
         }
+        BattleLoading::show(g_Wnd, language() == MapModel::Language::Russian);
         if (startup) {
             startup_choice = values;
             shutdown();
@@ -244,14 +246,17 @@ bool keyboard(uint8_t vk, bool down) {
         case '1': case '2': case '3': update(model.select_bonus(vk - '1')); break;
         case VK_HOME: update(model.move(-count)); break;
         case VK_END: update(model.move(count)); break;
-        case VK_RETURN: close(true); break;
+        case VK_RETURN:
+            lgr.notice("Starting selected map from Enter in the {} selector")(state->origin == Origin::Startup ? "startup" : "battle");
+            close(true);
+            break;
         case VK_ESCAPE: close(false); break;
         default: break;  // The battle stays paused; other keys are ignored while the window is open.
     }
     return true;
 }
 
-bool mouse_down(int x, int y) {
+bool mouse_down(int x, int y, bool double_click) {
     if (!active()) return false;
     const CMatrixHint *hint = current_hint();
     const auto target = MapModel::hit(state->model, x - hint->m_PosX, y - hint->m_PosY);
@@ -260,6 +265,7 @@ bool mouse_down(int x, int y) {
     if (target.scroll) { update(state->model.scroll_description(target.scroll)); return true; }
     if (target.index >= 0) {
         update(state->model.select(target.index));
+        if (double_click) close(true);
         return true;
     }
     if (target.page != 0) {

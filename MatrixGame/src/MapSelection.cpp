@@ -2,12 +2,14 @@
 #include "MapSelection.hpp"
 #include "MapCatalog.hpp"
 #include "ExecutablePath.hpp"
+#include "BattleLoading.hpp"
 
 #include "utils.hpp"
 
 #include <windows.h>
 
 #include <cwctype>
+#include <memory>
 
 #include <stupid_logger.hpp>
 
@@ -95,7 +97,14 @@ bool relaunch_requested() { return relaunch_pending; }
 
 bool relaunch() {
     const auto executable = Startup::ExecutablePath();
-    std::wstring command = L"\"" + executable.native() + L"\" --start-selected-battle";
+    const auto event_name = BattleLoading::event_name();
+    std::unique_ptr<void, decltype(&CloseHandle)> ready(CreateEventW(nullptr, TRUE, FALSE, event_name.c_str()), &CloseHandle);
+    if (!ready || GetLastError() == ERROR_ALREADY_EXISTS) {
+        BattleLoading::hide();
+        lgr.error("Cannot create the battle-loading handshake");
+        return false;
+    }
+    std::wstring command = L"\"" + executable.native() + L"\" --start-selected-battle \"" + event_name + L"\"";
     const std::wstring directory = executable.parent_path().native();
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
@@ -103,10 +112,14 @@ bool relaunch() {
     if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, directory.c_str(),
                         &startup, &process)) {
         lgr.error("Cannot start the game again (Windows error {})")(GetLastError());
+        BattleLoading::hide();
         return false;
     }
     CloseHandle(process.hThread);
-    CloseHandle(process.hProcess);
+    std::unique_ptr<void, decltype(&CloseHandle)> child(process.hProcess, &CloseHandle);
+    const bool handoff_completed = BattleLoading::wait(ready.get(), child.get());
+    BattleLoading::hide();
+    if (!handoff_completed) lgr.error("The new game exited before the battle-loading handoff completed");
     return true;
 }
 

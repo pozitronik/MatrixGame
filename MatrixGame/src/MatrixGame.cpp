@@ -14,8 +14,10 @@
 #include "MapSelection.hpp"
 #include "MapCatalog.hpp"
 #include "SettingsWindow.hpp"
+#include "SettingsModel.hpp"
 #include "MapWindow.hpp"
 #include "StartupMenu.hpp"
+#include "BattleLoading.hpp"
 #include "ScreenLayout.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
@@ -72,12 +74,17 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         const auto app_path = Startup::ExecutablePath();
         lgr.info(utils::from_wstring(app_path.native()));
         std::filesystem::current_path(app_path.parent_path());
-        const bool selected_battle = numarg == 2 && args.get()[1] == StartupMenu::selected_battle_argument;
+        const bool selected_battle = numarg >= 2 && args.get()[1] == StartupMenu::selected_battle_argument;
+        if (selected_battle) {
+            if (numarg > 3) throw std::runtime_error("Invalid selected-battle arguments");
+            if (numarg == 3) BattleLoading::connect(args.get()[2]);
+        }
         StartupMenu::set_direct_start(selected_battle);
         const wchar *map = numarg > 1 && !selected_battle ? args.get()[1] : nullptr;
 
         if (!Startup::ResourceFileExists(L"DATA\\robots.pkg")) {
             lgr.error("Missing DATA/robots.pkg");
+            BattleLoading::failed();
             MessageBoxW(nullptr, L"Place robots.pkg at DATA/robots.pkg.\nThe DATA folder is beside MatrixGame.exe.",
                         L"Game resources required", MB_OK | MB_ICONINFORMATION);
             return exit_code;
@@ -92,6 +99,12 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 
             formgame = HNew(NULL) CFormMatrixGame();
             FormChange(formgame);
+            if (BattleLoading::has_parent()) {
+                const auto &display = StandaloneSettings::current().display;
+                Display::request(display.mode, display.fullscreen);
+            }
+            ShowWindow(g_Wnd, SW_SHOWNORMAL);
+            UpdateWindow(g_Wnd);
 
             timer_active = timeBeginPeriod(1) == TIMERR_NOERROR;
 
@@ -156,6 +169,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
     }
     ClipCursor(nullptr);
     if (!diagnostic.empty()) {
+        BattleLoading::failed();
         MessageBox(NULL, diagnostic.c_str(), "Exception:", MB_OK);
     }
     else if (exit_code == 0 && MapSelection::relaunch_requested() && !MapSelection::relaunch()) {
@@ -163,6 +177,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
                     L"Map", MB_OK | MB_ICONWARNING);
     }
 
+    BattleLoading::failed();
     return exit_code;
 }
 
@@ -360,7 +375,7 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     // Init the 3d engine
 #ifdef BUILD_EXE
-    L3GInitAsEXE(inst, *g_MatrixData->BlockGet(L"Config"), L"MatrixGame", L"Matrix Game");
+    L3GInitAsEXE(inst, *g_MatrixData->BlockGet(L"Config"), L"MatrixGame", L"Matrix Game", BattleLoading::has_parent());
     settings.m_ResolutionX = g_ScreenX;
     settings.m_ResolutionY = g_ScreenY;
 #else
@@ -381,8 +396,12 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     g_Render = HNew(g_MatrixHeap) CRenderPipeline;  // prepare pipelines
 
-    ShowWindow(g_Wnd, SW_SHOWNORMAL);
-    UpdateWindow(g_Wnd);
+    // The previous process owns the loading screen during a map-switch handoff.
+    // Reveal this window only once battlefield initialization has finished.
+    if (!BattleLoading::has_parent()) {
+        ShowWindow(g_Wnd, SW_SHOWNORMAL);
+        UpdateWindow(g_Wnd);
+    }
 
     DCP();
 
@@ -407,9 +426,19 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
                             MapCatalog::readable(standalone.values.map);
         if (standalone.values.map.empty()) standalone.values.map = configured;
         if (!resume) {
+            // A selection removed between processes must reveal the fallback menu,
+            // rather than leave it hidden behind the previous process's loader.
+            if (BattleLoading::has_parent()) {
+                BattleLoading::failed();
+                Display::request(standalone.values.display.mode, standalone.values.display.fullscreen);
+                ShowWindow(g_Wnd, SW_SHOWNORMAL);
+                UpdateWindow(g_Wnd);
+            }
             if (!StartupMenu::run(standalone.values)) return;
         }
         remembered_map = MapSelection::startup_map(standalone.values);
+        BattleLoading::show(g_Wnd, SettingsModel::detect_language(
+            g_MatrixData->BlockGet(PAR_REPLACE)->ParGetNE(L"setup")) == SettingsModel::Language::Russian);
     }
     StandaloneSettings::initialize_runtime(standalone.values);
 #endif

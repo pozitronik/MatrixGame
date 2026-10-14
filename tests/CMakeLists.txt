@@ -384,6 +384,12 @@ add_matrix_test(game.lifecycle.cleanup_failure matrixgame_lifecycle_tests startu
 add_matrix_test(game.lifecycle.standalone_partial_cleanup matrixgame_lifecycle_tests startup memory)
 add_matrix_test(game.lifecycle.graphics_partial_init matrixgame_lifecycle_tests startup rendering)
 
+add_matrix_test_executable(matrixgame_loading_tests battle_loading_tests.cpp ../MatrixGame/src/BattleLoading.cpp)
+target_include_directories(matrixgame_loading_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract names presentation failure child_ready child_exit)
+    add_matrix_test(game.loading.${contract} matrixgame_loading_tests startup ui)
+endforeach()
+
 add_matrix_test_executable(matrixgame_font_tests font_tests.cpp native_font_reset.cpp
     ../MatrixGame/src/Text/Font.cpp ../MatrixGame/src/Text/FontCache.cpp)
 target_include_directories(matrixgame_font_tests PRIVATE

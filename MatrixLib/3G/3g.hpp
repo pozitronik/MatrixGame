@@ -277,7 +277,8 @@ public:
 /**
  * @brief Creates a window and sets up rendering DirectX context.
  */
-void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const wchar* captionname);
+void L3GInitAsEXE(HINSTANCE hinst, CBlockPar& bpcfg, const wchar* sysname, const wchar* captionname,
+                  bool defer_exclusive = false);
 
 /**
  * @brief Sets up the given window hwnd as a rendering surface inside DirectX context.

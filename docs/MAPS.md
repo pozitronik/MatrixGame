@@ -12,7 +12,7 @@ The left pane lists installed maps, 14 per page. A blue `>` marks the selected m
 | Change map page | `<` / `>` below the list | Left/Right |
 | Read the description | Wheel over the description; `^` / `v` below it | Page Up/Page Down |
 | Select a bonus | Click its radio label | 1: None; 2: Air support; 3: Armor |
-| Start the selected battle | Start | Enter |
+| Start the selected battle | Start or double-click a map name | Enter |
 | Return without saving | Cancel | Escape |
 
 The description wraps to the actual font width and scrolls independently of the map list. Its range indicator shows the visible lines and total line count. Selecting another map returns the description to its beginning. All controls fit the minimum supported 640x480 rendering resolution. Alt+Enter remains available before and during battles.
@@ -60,23 +60,23 @@ An empty remembered path selects `Config/Map` when opening the startup selector.
 
 Start first loads the selected file as storage and checks its `properties` table's `Name` and `Value` columns, then saves the map and bonus. If validation or saving fails, the selector stays open and displays an error. The check is not a complete map-schema validator: damaged payloads or missing dependencies can still fail during battlefield preparation.
 
-At startup, successful selection proceeds to the first battlefield in the same process. From an existing battle, the old session shuts down and the executable relaunches with `--start-selected-battle`, which bypasses the startup menu only when the remembered map is readable. A missing selection returns to the startup menu. There is one initialized battlefield per process; the game window closes and reopens during an in-battle transition. If process creation fails, a dialog asks the player to launch the game manually; the saved selection remains available.
+At startup, successful selection proceeds to the first battlefield in the same process. From an existing battle, the old session shuts down and the executable relaunches with `--start-selected-battle`, which bypasses the startup menu only when the remembered map is readable. A missing selection returns to the startup menu. There is one initialized battlefield per process. An animated loading window stays visible during teardown and loading, until the new battle presents its first frame. It also closes if the new process reports an error or exits. If process creation fails, a dialog asks the player to launch the game manually; the saved selection remains available.
 
 Just before loading a remembered map, its path is cleared from the settings file and restored after successful initialization. A failed load therefore leaves the configured fallback for the next startup selector. This does not clear the saved bonus. If the file cannot be updated, the diagnostic does not claim the failed map was forgotten. Failures before loading retain the selection.
 
-A normal command-line map argument retains its visibility-calculation meaning and bypasses the startup menu and standalone battle bonus. `--start-selected-battle` is reserved for interactive relaunch; it is not a visibility-tool map name. The x86 DLL continues to receive its map and difficulty from the host.
+A normal command-line map argument retains its visibility-calculation meaning and bypasses the startup menu and standalone battle bonus. `--start-selected-battle` is reserved for interactive relaunch; its optional second argument is a private loading-screen event name supplied by the game. It is not a visibility-tool map name. The x86 DLL continues to receive its map and difficulty from the host.
 
 ## Verification
 
-The `game.maps.*` and `game.settings.*` tests cover package/loose precedence, safe filenames, optional DAT parsing, metadata matching and fallback, description wrapping/scrolling, selection and bonus controls, unchanged friendly fire, settings round trips and save failure. Device recovery and partial-session cleanup have separate synthetic contracts. These checks use synthetic fixtures, not distributed game files.
+The `game.maps.*` and `game.settings.*` tests cover package/loose precedence, safe filenames, optional DAT parsing, metadata matching and fallback, description wrapping/scrolling, selection and bonus controls, unchanged friendly fire, settings round trips and save failure. The `game.loading.*` cases check loading handoff, failed presentation, startup failure and premature child exit. Device recovery and partial-session cleanup have separate synthetic contracts. These checks use synthetic fixtures, not distributed game files.
 
 The complete rendered startup-to-battle transition still needs a native playtest. Use a Release build with cheats disabled; extra human Debug/configuration permutations are unnecessary. Build using `tools/build.ps1 -Configuration Release`, supply the game resources, and launch with no arguments. Keep a copy of `CFG/standalone.txt` if you want to restore your preferences afterwards.
 
 1. At startup, confirm the main menu appears before any battlefield or introduction. Choose Exit. The process must exit with code 0.
 2. Launch again and choose New battle. Select several maps with mouse and keys. Check previews and placeholders, map paging, description scrolling and all three bonus controls. Cancel must return to the main menu. Reopening the selector must discard unsaved choices.
 3. With `CFG/Lang.dat` present, inspect named maps and a long description through its last line. Test the other language by replacing only this optional catalog between launches. Without the file, filenames/previews must remain usable.
-4. Start a map. Confirm the normal introduction and gameplay. Open the battle menu and use New battle by its label, icon and N. Cancel must return to that menu; Settings must have no Map row.
-5. Start another map with a different bonus. The old window must close and the new battle must start without another startup menu. Exit normally, relaunch, and confirm the map and bonus are remembered. Confirm no setting changed merely by browsing/canceling.
+4. Start a map with Enter. Confirm the normal introduction and gameplay. Open the battle menu and use New battle by its label, icon and N. Cancel must return to that menu; Settings must have no Map row.
+5. Start another map with a different bonus. Check Enter after clicking a map name, then double-click a map name during a second transition. The loading window must remain visible until the new battle appears without another startup menu. Also check double-click activation from the startup selector. Exit normally, relaunch, and confirm the map and bonus are remembered. Confirm no setting changed merely by browsing/canceling.
 6. Repeat the selector checks at 640x480. Use Alt+Enter and lose/regain focus in both the startup menu and selector. Text, preview, input and exit must still work. Report any exception, incorrect map, clipped control or nonzero exit code.
 
 A malformed-map failure, optional metadata, original-language catalogs and the relaunch window are distinct checks; a passing model test does not establish native rendering or gameplay acceptance.

@@ -30,7 +30,7 @@ void close(bool play);
 
 // Input while the window is active. Each returns true when the event was consumed.
 bool keyboard(uint8_t vk, bool down);
-bool mouse_down(int x, int y);
+bool mouse_down(int x, int y, bool double_click = false);
 void mouse_wheel(int steps, int x, int y);
 std::optional<StandaloneSettings::Values> take_startup_choice();
 void customize_menu(std::wstring &menu_template);

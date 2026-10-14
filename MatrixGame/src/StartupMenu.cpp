@@ -119,7 +119,8 @@ public:
     void MouseKey(ButtonStatus status, int key, int x, int y) override {
         if (!resources_ready || g_D3DD->TestCooperativeLevel() != D3D_OK) return;
         if (MapWindow::active()) {
-            if (status == B_DOWN && key == VK_LBUTTON) MapWindow::mouse_down(x, y);
+            if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON)
+                MapWindow::mouse_down(x, y, status == B_DOUBLE);
             if (status == B_WHEEL) MapWindow::mouse_wheel(key, x, y);
             return;
         }

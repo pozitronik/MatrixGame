@@ -6,6 +6,7 @@
 #include "MatrixFormGame.hpp"
 #include "SettingsWindow.hpp"
 #include "MapWindow.hpp"
+#include "BattleLoading.hpp"
 #include "ScreenLayout.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
@@ -323,7 +324,11 @@ void CFormMatrixGame::Draw(void) {
         // Capture a complete frame before DISCARD presentation invalidates it.
         make_screenshot();
     }
-    Rendering::CheckPresentResult(g_D3DD->Present(NULL, NULL, NULL, NULL));
+    const HRESULT presented = g_D3DD->Present(NULL, NULL, NULL, NULL);
+    Rendering::CheckPresentResult(presented);
+#ifdef BUILD_EXE
+    BattleLoading::presented(presented);
+#endif
 
 #ifdef _DEBUG
     RESETFLAG(g_Flags, GFLAG_RENDERINPROGRESS);
@@ -546,7 +551,8 @@ void CFormMatrixGame::MouseKey(ButtonStatus status, int key, int x, int y) {
     }
 
     if (MapWindow::active()) {
-        if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON) MapWindow::mouse_down(x, y);
+        if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON)
+            MapWindow::mouse_down(x, y, status == B_DOUBLE);
         if (status == B_WHEEL) MapWindow::mouse_wheel(key, x, y);
         return; // No camera or battle input passes through the selector.
     }
