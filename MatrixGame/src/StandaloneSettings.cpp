@@ -22,7 +22,8 @@ namespace {
 
 constexpr std::array keys{L"RandomGenerator", L"ResolutionWidth", L"ResolutionHeight", L"WindowMode",
                           L"FullscreenMode",  L"SoundVolume",     L"StencilShadows",   L"ProjectedShadows",
-                          L"Skybox",          L"RobotShadows",    L"CameraSpeed",      L"Map"};
+                          L"Skybox",          L"RobotShadows",    L"CameraSpeed",      L"DelayedDamage",
+                          L"Map"};
 
 std::optional<std::wstring> single(const Base::CBlockPar &options, const wchar_t *key) {
     if (options.ParCount(key) != 1) return std::nullopt;
@@ -52,6 +53,12 @@ std::optional<Skybox> skybox(const std::wstring &value) {
     if (value == L"off") return Skybox::Off;
     if (value == L"low") return Skybox::Low;
     if (value == L"high") return Skybox::High;
+    return std::nullopt;
+}
+
+std::optional<DamageAttribution> delayed_damage(const std::wstring &value) {
+    if (value == L"corrected") return DamageAttribution::Corrected;
+    if (value == L"original") return DamageAttribution::Original;
     return std::nullopt;
 }
 
@@ -86,6 +93,7 @@ std::wstring value_text(const Values &values, std::wstring_view key) {
     if (key == L"Skybox") return utils::to_wstring(name(values.skybox));
     if (key == L"RobotShadows") return on_off(values.robot_shadows);
     if (key == L"CameraSpeed") return std::to_wstring(values.camera_speed);
+    if (key == L"DelayedDamage") return utils::to_wstring(name(values.delayed_damage));
     if (key == L"Map") return values.map;
     throw std::logic_error("Unknown settings key");
 }
@@ -212,6 +220,10 @@ const char *name(Skybox skybox) {
     return "High";
 }
 
+const char *name(DamageAttribution attribution) {
+    return attribution == DamageAttribution::Original ? "Original" : "Corrected";
+}
+
 Selection resolve(const Base::CBlockPar &options) {
     Selection selection;
     auto &values = selection.values;
@@ -226,6 +238,7 @@ Selection resolve(const Base::CBlockPar &options) {
     read(options, L"ProjectedShadows", values.projected_shadows, boolean, selection);
     read(options, L"Skybox", values.skybox, skybox, selection);
     read(options, L"RobotShadows", values.robot_shadows, boolean, selection);
+    read(options, L"DelayedDamage", values.delayed_damage, delayed_damage, selection);
     if (options.ParCount(L"Map")) {
         if (const auto map = map_path(options)) values.map = *map;
         else selection.invalid.push_back("Map");

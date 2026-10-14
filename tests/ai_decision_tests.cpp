@@ -29,11 +29,14 @@ void repair_target_retention();
 void repair_explicit_priority();
 void memory_cleanup();
 void memory_clear_correctness();
+void memory_position_eviction();
+void memory_ignore_eviction();
 void place_bounds();
 void place_axis_correctness();
 void regroup_split_correctness();
 void regroup_merge_correctness();
 void bomb_escape_planning();
+void bomb_escape_capacity();
 void strategic_member_loss();
 void strategic_base_loss();
 void strategic_forward();
@@ -419,10 +422,10 @@ int main(int argc, char **argv) {
         {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
         {"game.ai.place_bounds", tests::ai::place_bounds},
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/137
-        {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
-        {"probe.ai.place_axis", tests::ai::place_axis_correctness},
+        {"game.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
+        {"game.ai.memory_position_eviction", tests::ai::memory_position_eviction},
+        {"game.ai.memory_ignore_eviction", tests::ai::memory_ignore_eviction},
+        {"game.ai.place_axis", tests::ai::place_axis_correctness},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
         {"probe.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
@@ -452,14 +455,13 @@ int main(int argc, char **argv) {
         {"game.ai.radio_filters", tests::ai::radio_filters},
         {"game.ai.threat_priorities", tests::ai::threat_priorities},
         {"game.ai.automatic_attack_route", tests::ai::automatic_attack_route},
-        // Opt-in correctness probe; deliberately absent from CTest until fixed.
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/138
-        {"probe.ai.reused_route_distance", tests::ai::reused_route_distance},
+        {"game.ai.reused_route_distance", tests::ai::reused_route_distance},
         {"game.ai.automatic_capture_route", tests::ai::automatic_capture_route},
         {"game.ai.automatic_defence_route", tests::ai::automatic_defence_route},
         {"game.ai.production_wait_choice", tests::ai::production_wait_choice},
         {"game.ai.production_wait_limits", tests::ai::production_wait_limits},
         {"game.ai.production_unaffordable", tests::ai::production_unaffordable},
+        {"game.ai.bomb_escape_capacity", tests::ai::bomb_escape_capacity},
     };
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();

@@ -27,6 +27,7 @@ enum class Row {
     GameplayGroup,
     CameraSpeed,
     RandomGenerator,
+    DelayedDamage,
     Map,  // Shows the battle map; activating it opens the Map window instead of stepping a value.
     Count
 };

@@ -22,6 +22,9 @@ Skybox=High
 RobotShadows=On
 // Camera scroll speed as a percentage of the configured speed, 25-300.
 CameraSpeed=100
+// Ablaze and shorted damage pulses. Corrected keeps the attacker's kill credit and friendly-fire
+// scaling for every pulse; Original restores the original game. Applies immediately.
+DelayedDamage=Corrected
 // Battle map chosen in the Map window (Settings, Map), for example Matrix\Map\desert1_3e.cmap.
 // Empty starts the map configured in the game data.
 Map=
