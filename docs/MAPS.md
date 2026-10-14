@@ -1,100 +1,82 @@
 # Map selection
 
-The standalone EXE can start a battle on any installed map. Choose it in the in-game Map window. The choice is saved as the remembered map in `CFG/standalone.txt`, and the game starts again on that map. The DLL build has no Map window; the host chooses the map.
+The standalone game opens a main menu before loading a battlefield. Choose **New battle**, select an installed map and press **Start**. During a battle, Escape opens the battle menu; **New battle (N)** replaces Help and opens the same selector with the battle paused. Map selection is separate from Settings. The host chooses maps and difficulty in the DLL build.
 
-## Opening the window
+## The selector
 
-Open the Map window in either of two ways:
-- From the [Settings window](SETTINGS.md): select the Map row, which shows the current battle map, and click it or press Left/Right.
-- After a won, lost or surrendered battle, close the statistics dialog. Leaving through the battle menu's Exit still ends the game without the window.
-
-The battle stays paused while the window is open. Its text follows the language of the game configuration, as in the Settings window.
+The left pane lists installed maps, 14 per page. A blue `>` marks the selected map; the current battle map is grey-blue. The right pane shows its preview, name, catalog category, qualitative length rating, enemy-side colors and description. The length rating comes from the original catalog; it is not a terrain dimension or a measured completion time. Missing information has explicit placeholders.
 
 | Action | Mouse | Keyboard |
 | --- | --- | --- |
-| Select a map | Click its name, or use the wheel to move one map per notch | Up/Down, Home/End |
-| Change page | Click `<` or `>` under the list | Page Up/Page Down |
-| Play the selected map | Checkmark button | Enter |
-| Close the window | Cross button | Escape |
+| Select a map | Click a name; wheel over the list | Up/Down, Home/End |
+| Change map page | `<` / `>` below the list | Left/Right |
+| Read the description | Wheel over the description; `^` / `v` below it | Page Up/Page Down |
+| Select a bonus | Click its radio label | 1: None; 2: Air support; 3: Armor |
+| Start the selected battle | Start | Enter |
+| Return without saving | Cancel | Escape |
 
-The list shows 14 maps per page. The current battle map is drawn in blue-grey and the selected map in blue. The selected map's preview is on the right, scaled to fit a 200x200 box. Below it is the map's name, marked as a loose file when it comes from the folder beside the EXE.
+The description wraps to the actual font width and scrolls independently of the map list. Its range indicator shows the visible lines and total line count. Selecting another map returns the description to its beginning. All controls fit the minimum supported 640x480 rendering resolution. Alt+Enter remains available before and during battles.
 
-Closing the window returns to the Settings window, keeping its unsaved edits. When the window was opened after a battle, closing it exits the game.
+Cancel returns to the startup or battle menu without saving the browsed map or bonus. After a completed battle, closing the statistics also opens the selector; Cancel there exits. The startup main menu has New battle and Exit; Escape exits it successfully without loading any map. Its text follows the game configuration's language.
 
-## Playing a map
+## Map information
 
-Play first checks that the selected map loads as map storage with the `Name` and `Value` columns of a `properties` table. If it does not, the window shows an error and stays open, so another map can be chosen. Otherwise the game:
-1. saves the map path as `Map` in `CFG/standalone.txt`, together with the Settings window's current values when the window was opened from Settings;
-2. ends the battle and shuts down normally;
-3. starts `MatrixGame.exe` again without arguments.
+To show original names and descriptions, copy the desired original game's language catalog to `CFG/Lang.dat` beside the executable. For example, copy the original installation's `CFG/Eng/Lang.dat` for English or `CFG/Rus/Lang.dat` for Russian. No conversion tool or Python runtime is needed. This optional file is not included in the repository or release archive.
 
-If saving fails, the window shows an error and stays open; the cause is written to `test.log`. If the new process cannot be started, a message asks the player to start the game again manually; the choice is already saved.
+The catalog describes 74 maps in the inspected original installation; availability still comes from installed `.cmap` files. Entries match case-insensitive filenames, including loose replacements with the same name. A replacement using an original filename therefore inherits that catalog entry; use a distinct filename for an unrelated custom map. Without a matching entry, the selector shows the filename and available preview. An absent catalog is normal; invalid data is ignored with a diagnostic in `test.log`, and maps remain selectable.
 
-Every battle therefore runs in a new process, with the established startup and teardown; see [Lifecycle](LIFECYCLE.md). The restart takes as long as a normal launch, and the game window closes and reopens.
+Names, complete description paragraphs, categories and enemy-side fields come from the optional catalog. Formatting and substitution markup is converted to safe display text. The metadata reader's format and bounds are documented in [Data formats](DATA_FORMATS.md#original-language-map-catalog).
+
+Extracted JSON catalogs are archival exports, not a supported runtime sidecar format. Custom descriptions supplied separately from `Lang.dat` require a future sidecar contract; they are not needed to play custom maps.
+
+## Bonuses
+
+| Choice | Effect on the next battle |
+| --- | --- |
+| None | Normal enemy damage and normal air-support wait |
+| Air support | Air-support maintenance interval is 33% of its configured duration |
+| Armor | Enemy damage to the player's robots, buildings and turrets is multiplied by 0.5 |
+
+All choices preserve the current friendly-fire multiplier. Armor does not increase maximum hit points. The selector does not apply the original host's complete difficulty presets or their 40% friendly-fire setting. Browsing bonuses never changes the current battle. The selected bonus applies when the new battlefield is constructed.
 
 ## Installed maps
 
-The list contains `Matrix\Map\*.cmap` files from two sources:
-- the registered packages, `DATA\robots.pkg` and the optional sound packages;
-- the loose `Matrix\Map` folder beside `MatrixGame.exe`.
+Maps are `Matrix/Map/*.cmap` files from the registered packages or the loose `Matrix/Map` folder beside `MatrixGame.exe`. Subfolders are not scanned, and arbitrary additional `.pkg` files are not registered automatically. The required `DATA/robots.pkg` supplies shared game resources even when the selected map is loose.
 
-Subfolders are not searched. Names compare case-insensitively. A loose file replaces a packaged map with the same name, because the loader opens loose files first. When several packages contain the same map, the first registered package wins, as when loading.
+Names compare case-insensitively and the list is sorted by filename. A loose map takes precedence over a packaged one with the same name; for duplicate packaged maps the first registered package wins. A same-stem `.jpg` or `.png` supplies the preview, with JPEG preferred. Loose previews override packaged previews. An absent or undecodable image shows **No preview** and does not prevent starting the map.
 
-The list is sorted by name and shows each file name without the extension. Map files have no display name or description.
+Supported filenames contain ASCII letters, digits, spaces and `_-.()+!#&,'~`. Other names are skipped because the existing resource loader and settings format impose narrower filename rules than Windows. A custom map must use a compatible `.cmap` format and have its referenced resources installed. Listing and the initial readability check do not establish full payload validity.
 
-A preview is a `.jpg` or `.png` file with the same name as the map, in any capitalisation and from either source; JPEG is preferred. A loose preview replaces a packaged one. Maps without a preview show "No preview".
+Names retain their existing gameplay significance: `demo` selects automatic demonstration behavior, and `terron` enables that map's special logic. Demo maps play once and are then forgotten; the next startup menu selects the configured fallback. No maps, previews or original catalogs are bundled with releases.
 
-Only maps whose paths fit the settings file and the window's text markup are listed:
-- the file name may contain ASCII letters, digits, spaces and the punctuation `_-.()+!#&,'~`;
-- other names are skipped.
-
-Map names still change behavior as they do with `Config/Map`:
-- names containing `demo` start an automatic demonstration that ends the game when it finishes. Escape exits in that mode and no statistics appear, so the Map window cannot be reached. A remembered demo map therefore plays once: the game forgets it after it starts, and the next launch uses the configured map;
-- names containing `terron` enable that map's special logic.
-
-## The remembered map
+## Saving and starting
 
 | Key in `CFG/standalone.txt` | Values | Default |
 | --- | --- | --- |
-| `Map` | A relative path ending in `.cmap`, such as `Matrix\Map\desert1_3e.cmap`, or empty | Empty |
+| `Map` | Relative `.cmap` path, for example `Matrix\Map\desert1_3e.cmap`, or empty | Empty |
+| `BattleBonus` | `None`, `AirSupport`, `ReinforcedArmor` | `None` |
 
-An empty value starts the map named by `Config/Map` in the game configuration, as before. The `cfg.txt` override still applies when the packed configuration is used.
+An empty remembered path selects `Config/Map` when opening the startup selector. If that map is not listed, the first installed map is selected. The `cfg.txt` override still applies with packed configuration. Missing bonus keys default to None; invalid or repeated values default individually and are reported in `test.log`. Settings preserves both keys when applying unrelated options.
 
-**Invalid values.** A path the map list would not accept is ignored with a diagnostic in `test.log`. This includes an absolute path, a parent reference, a repeated key or an unsupported character. The configured map starts instead.
+Start first loads the selected file as storage and checks its `properties` table's `Name` and `Value` columns, then saves the map and bonus. If validation or saving fails, the selector stays open and displays an error. The check is not a complete map-schema validator: damaged payloads or missing dependencies can still fail during battlefield preparation.
 
-**Unreadable maps at startup.** Before the game window opens, the game checks that the remembered map can still be read. If it cannot, for example because a loose file was removed, the game:
-- shows a message;
-- clears `Map` in the file;
-- starts the configured map.
+At startup, successful selection proceeds to the first battlefield in the same process. From an existing battle, the old session shuts down and the executable relaunches with `--start-selected-battle`, which bypasses the startup menu only when the remembered map is readable. A missing selection returns to the startup menu. There is one initialized battlefield per process; the game window closes and reopens during an in-battle transition. If process creation fails, a dialog asks the player to launch the game manually; the saved selection remains available.
 
-**Failures while loading.** The readability check covers only the map's properties table, so a damaged map can still fail or crash while it loads. The game therefore clears `Map` in the file just before the remembered map loads and writes it back once battle initialization succeeds. If loading fails with an error, the error dialog says the map was forgotten; when the settings file cannot be written, the dialog does not make that claim and the map stays remembered. If the game crashes, there is no message, but the next start uses the configured map. Failures before the map loads, such as device creation, keep the choice. Clearing and restoring `Map` saves the whole settings file, so loading a remembered map also replaces invalid values with their defaults and appends missing keys, as saving from the Settings window does.
+Just before loading a remembered map, its path is cleared from the settings file and restored after successful initialization. A failed load therefore leaves the configured fallback for the next startup selector. This does not clear the saved bonus. If the file cannot be updated, the diagnostic does not claim the failed map was forgotten. Failures before loading retain the selection.
 
-The Settings window saves `Map` unchanged when it applies other options.
-
-## Command line and DLL
-
-A command-line map argument keeps its meaning: it runs the visibility calculation described in [Standalone playtesting](PLAYTESTING.md#map-arguments-and-failure-cases) and ignores the remembered map. There is no new command-line form. A restart started from the Map window passes no arguments.
-
-DLL builds ignore `CFG/standalone.txt`. The statistics dialog ends the DLL session as before.
+A normal command-line map argument retains its visibility-calculation meaning and bypasses the startup menu and standalone battle bonus. `--start-selected-battle` is reserved for interactive relaunch; it is not a visibility-tool map name. The x86 DLL continues to receive its map and difficulty from the host.
 
 ## Verification
 
-Automated contracts cover the following:
-- `base.layout.package_tree` and `base.layout.package_listing`: package folder listing.
-- `game.maps.merge`, `game.maps.unsafe_names` and `game.maps.paths`: merging, precedence, preview matching, ordering and path validation.
-- `game.maps.sources`: a synthetic package and loose folder, scanned and read through the production file fallback.
-- `game.maps.window_*`: the window model's selection, paging, hit areas, text in both languages and hint markup.
-- `game.maps.preview_markup`: the production parameter parser accepts the preview bitmap's required placement field in both languages and portrait/landscape layouts. This catches malformed markup before native rendering; it does not validate preview decoding or the rendered window.
-- `game.settings.*`: the `Map` key. `game.settings.map_choice` covers saving a choice, using and forgetting a remembered map, and a failed save.
+The `game.maps.*` and `game.settings.*` tests cover package/loose precedence, safe filenames, optional DAT parsing, metadata matching and fallback, description wrapping/scrolling, selection and bonus controls, unchanged friendly fire, settings round trips and save failure. Device recovery and partial-session cleanup have separate synthetic contracts. These checks use synthetic fixtures, not distributed game files.
 
-The rendered window, previews, restart and battle-end entry need a playtest. Run it in Debug and Release with cheats disabled, with packed and text game configuration, at 640x480 and at a large resolution:
-1. Open Settings, select Map and open the Map window. Check the list, pager, current-map colour and previews, including maps without previews, demo and training maps. Use the mouse, wheel and keys. Escape must return to Settings with its edits intact.
-2. Choose another map and play it. The game must restart on that map, and `CFG/standalone.txt` must name it. Restart the game manually; the same map must start.
-3. Copy a packaged map into `Matrix\Map` beside the EXE, and add a preview with different capitalisation. The map must be marked as a loose file and show the loose preview.
-4. Add a corrupt `.cmap` loose file and try to play it. The window must report it and stay open.
-5. Remember a loose map, remove the file and start the game. The message must appear, the configured map must start, and `Map` must be empty.
-6. Win or lose a battle and close the statistics. The Map window must open; Cancel must exit the game. Leave a battle with Exit and confirm that the game exits without the window.
-7. Run the visibility calculation with a map argument and confirm that it ignores the remembered map.
-8. Choose a demo map. It must play in full-auto mode, and the next launch must start the configured map with `Map` empty.
+The complete rendered startup-to-battle transition still needs a native playtest. Use a Release build with cheats disabled; extra human Debug/configuration permutations are unnecessary. Build using `tools/build.ps1 -Configuration Release`, supply the game resources, and launch with no arguments. Keep a copy of `CFG/standalone.txt` if you want to restore your preferences afterwards.
 
-Record the build, configuration type, resolution, maps, failures and exit codes.
+1. At startup, confirm the main menu appears before any battlefield or introduction. Choose Exit. The process must exit with code 0.
+2. Launch again and choose New battle. Select several maps with mouse and keys. Check previews and placeholders, map paging, description scrolling and all three bonus controls. Cancel must return to the main menu. Reopening the selector must discard unsaved choices.
+3. With `CFG/Lang.dat` present, inspect named maps and a long description through its last line. Test the other language by replacing only this optional catalog between launches. Without the file, filenames/previews must remain usable.
+4. Start a map. Confirm the normal introduction and gameplay. Open the battle menu and use New battle by its label, icon and N. Cancel must return to that menu; Settings must have no Map row.
+5. Start another map with a different bonus. The old window must close and the new battle must start without another startup menu. Exit normally, relaunch, and confirm the map and bonus are remembered. Confirm no setting changed merely by browsing/canceling.
+6. Repeat the selector checks at 640x480. Use Alt+Enter and lose/regain focus in both the startup menu and selector. Text, preview, input and exit must still work. Report any exception, incorrect map, clipped control or nonzero exit code.
+
+A malformed-map failure, optional metadata, original-language catalogs and the relaunch window are distinct checks; a passing model test does not establish native rendering or gameplay acceptance.

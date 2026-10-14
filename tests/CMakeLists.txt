@@ -157,6 +157,7 @@ add_matrix_test(game.random.configuration_report matrixgame_random_configuration
 add_matrix_test_executable(matrixgame_standalone_settings_tests standalone_settings_tests.cpp
     ../MatrixGame/src/StandaloneSettings.cpp ../MatrixGame/src/RandomConfiguration.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_standalone_settings_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+add_matrix_test(game.settings.battle_bonus matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.defaults matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.explicit_values matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.invalid_values matrixgame_standalone_settings_tests startup settings)
@@ -181,10 +182,10 @@ foreach(contract merge unsafe_names paths)
     add_matrix_test(game.maps.${contract} matrixgame_map_catalog_tests startup ui)
 endforeach()
 
-add_matrix_test_executable(matrixgame_map_model_tests map_model_tests.cpp ../MatrixGame/src/MapModel.cpp
+add_matrix_test_executable(matrixgame_map_model_tests map_model_tests.cpp ../MatrixGame/src/MapModel.cpp ../MatrixGame/src/MapMetadata.cpp
     ../MatrixGame/src/MapCatalog.cpp ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp)
 target_include_directories(matrixgame_map_model_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
-foreach(contract window_selection window_paging window_geometry window_text window_hint preview_markup)
+foreach(contract window_selection window_paging window_geometry window_text window_hint preview_markup metadata_display bonus_controls)
     add_matrix_test(game.maps.${contract} matrixgame_map_model_tests ui)
 endforeach()
 

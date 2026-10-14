@@ -23,7 +23,7 @@ namespace {
 constexpr std::array keys{L"RandomGenerator", L"ResolutionWidth", L"ResolutionHeight", L"WindowMode",
                           L"FullscreenMode",  L"SoundVolume",     L"StencilShadows",   L"ProjectedShadows",
                           L"Skybox",          L"RobotShadows",    L"CameraSpeed",      L"DelayedDamage",
-                          L"Map",             L"GroupCounts"};
+                          L"Map",             L"GroupCounts", L"BattleBonus"};
 
 std::optional<std::wstring> single(const Base::CBlockPar &options, const wchar_t *key) {
     if (options.ParCount(key) != 1) return std::nullopt;
@@ -68,6 +68,13 @@ std::optional<GroupCountMode> group_counts(const std::wstring &value) {
     return std::nullopt;
 }
 
+std::optional<BattleChoice::Bonus> battle_bonus(const std::wstring &value) {
+    if (value == L"none") return BattleChoice::Bonus::None;
+    if (value == L"airsupport") return BattleChoice::Bonus::AirSupport;
+    if (value == L"reinforcedarmor") return BattleChoice::Bonus::ReinforcedArmor;
+    return std::nullopt;
+}
+
 // Reads an optional key; an absent key keeps the default, a present invalid key is reported.
 template<class T, class Parse>
 void read(const Base::CBlockPar &options, const wchar_t *key, T &target, Parse parse, Selection &selection) {
@@ -100,6 +107,13 @@ std::wstring value_text(const Values &values, std::wstring_view key) {
     if (key == L"RobotShadows") return on_off(values.robot_shadows);
     if (key == L"CameraSpeed") return std::to_wstring(values.camera_speed);
     if (key == L"DelayedDamage") return utils::to_wstring(name(values.delayed_damage));
+    if (key == L"BattleBonus") {
+        switch (values.battle_bonus) {
+            case BattleChoice::Bonus::AirSupport: return L"AirSupport";
+            case BattleChoice::Bonus::ReinforcedArmor: return L"ReinforcedArmor";
+            default: return L"None";
+        }
+    }
     if (key == L"Map") return values.map;
     if (key == L"GroupCounts") return utils::to_wstring(name(values.group_counts));
     throw std::logic_error("Unknown settings key");
@@ -254,6 +268,7 @@ Selection resolve(const Base::CBlockPar &options) {
         if (const auto map = map_path(options)) values.map = *map;
         else selection.invalid.push_back("Map");
     }
+    read(options, L"BattleBonus", values.battle_bonus, battle_bonus, selection);
     read(options, L"GroupCounts", values.group_counts, group_counts, selection);
     return selection;
 }

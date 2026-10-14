@@ -459,6 +459,11 @@ void selcallback(CMatrixMapStatic *ms, uintptr_t param) {
 #endif
 
 void CFormMatrixGame::MouseMove(int x, int y) {
+    if (MapWindow::active()) {
+        g_MatrixMap->m_Cursor.SetPos(x, y);
+        return;
+    }
+
     DTRACE();
 
     CMatrixSideUnit *p_side = g_MatrixMap->GetPlayerSide();
@@ -540,16 +545,18 @@ void CFormMatrixGame::MouseKey(ButtonStatus status, int key, int x, int y) {
         Input::onKeyUp(key);
     }
 
+    if (MapWindow::active()) {
+        if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON) MapWindow::mouse_down(x, y);
+        if (status == B_WHEEL) MapWindow::mouse_wheel(key, x, y);
+        return; // No camera or battle input passes through the selector.
+    }
+
     if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON &&
-        (MapWindow::mouse_down(x, y) || SettingsWindow::mouse_down(x, y) || SettingsWindow::menu_mouse_down(x, y))) {
+        (MapWindow::menu_mouse_down(x, y) || SettingsWindow::mouse_down(x, y) || SettingsWindow::menu_mouse_down(x, y))) {
         return;
     }
 
     if (status == B_WHEEL) {
-        if (MapWindow::active()) {
-            MapWindow::mouse_wheel(key);
-            return;
-        }
         while (key > 0) {
             g_MatrixMap->m_Camera.ZoomInStep();
             --key;
@@ -788,7 +795,7 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
         return;
     }
 
-    if (MapWindow::keyboard(vk, down) || SettingsWindow::keyboard(vk, down))
+    if (MapWindow::menu_keyboard(vk, down) || MapWindow::keyboard(vk, down) || SettingsWindow::keyboard(vk, down))
     {
         return;
     }

@@ -80,21 +80,21 @@ void geometry() {
     window.page(1);  // The last page has two maps; rows below them hit nothing.
     MG_CHECK(hit(window, x, Layout::first_row_y + Layout::row_height).index == 29);
     MG_CHECK(hit(window, x, Layout::first_row_y + 2 * Layout::row_height).index == -1);
-    MG_CHECK(Layout::content_height + 21 + 28 <= 480);  // Fits the smallest supported resolution.
+    MG_CHECK(Layout::content_height + 21 <= 480);  // Fits the smallest supported resolution.
     MG_CHECK(Layout::pager_y + Layout::row_height <= Layout::legend_y);
     MG_CHECK(Layout::caption_y + Layout::row_height <= Layout::legend_y);
 
-    MG_CHECK(preview_size(400, 400) == SettingsModel::Resolution({200, 200}));
-    MG_CHECK(preview_size(512, 256) == SettingsModel::Resolution({200, 100}));
-    MG_CHECK(preview_size(100, 300) == SettingsModel::Resolution({66, 200}));
-    MG_CHECK(preview_size(50, 50) == SettingsModel::Resolution({200, 200}));
-    MG_CHECK(preview_size(1000, 1) == SettingsModel::Resolution({200, 1}));
+    MG_CHECK(preview_size(400, 400) == SettingsModel::Resolution({130, 130}));
+    MG_CHECK(preview_size(512, 256) == SettingsModel::Resolution({140, 70}));
+    MG_CHECK(preview_size(100, 300) == SettingsModel::Resolution({43, 130}));
+    MG_CHECK(preview_size(50, 50) == SettingsModel::Resolution({130, 130}));
+    MG_CHECK(preview_size(1000, 1) == SettingsModel::Resolution({140, 1}));
     MG_CHECK(preview_size(0, 10) == SettingsModel::Resolution({0, 0}));
 }
 
 void text() {
     Window english(maps(6), path(5), Language::English);
-    MG_CHECK(english.title() == L"Map" && english.caption() == L"map05 (loose file)");
+    MG_CHECK(english.title() == L"New battle" && english.caption() == L"map05 (loose file)");
     english.move(-1);
     MG_CHECK(english.caption() == L"map04" && english.missing_preview() == L"No preview");
     MG_CHECK(english.error_text().empty());
@@ -118,11 +118,11 @@ void text() {
 void hint_text() {
     Window window(maps(30), path(3), Language::English);
     const auto hint = hint_template(window, {0, 0});
-    MG_CHECK(hint.starts_with(L"2|_BORDER:0:0:0:28|"));
-    MG_CHECK(count(hint, L"_MOD:COPY") == 2);  // OK and Cancel hint buttons.
+    MG_CHECK(hint.starts_with(L"2|_BORDER:0:0:0:0|"));
+    MG_CHECK(count(hint, L"_MOD:COPY") == 0);  // Start/Cancel use the same direct input path before and during a battle.
     // Only the visible page is listed; the selected map is highlighted.
-    MG_CHECK(hint.find(L"|_TEXT:map13") != std::wstring::npos && hint.find(L"|_TEXT:map14") == std::wstring::npos);
-    MG_CHECK(hint.find(L"_COLOR:FF0B5FA5|_WIDTH:230|_HEIGHT:19|_ALIGN:0:0|_POS:40:118|_TEXT:map03") !=
+    MG_CHECK(hint.find(L"|_TEXT:  map13") != std::wstring::npos && hint.find(L"|_TEXT:  map14") == std::wstring::npos);
+    MG_CHECK(hint.find(L"_COLOR:FF0B5FA5|_WIDTH:200|_HEIGHT:19|_ALIGN:0:0|_POS:55:110|_TEXT:> map03") !=
              std::wstring::npos);
     MG_CHECK(hint.find(L"|_TEXT:1/3") != std::wstring::npos && hint.find(L"|_TEXT:No preview") != std::wstring::npos);
     MG_CHECK(hint.find(MapModel::preview_bitmap) == std::wstring::npos);
@@ -131,8 +131,8 @@ void hint_text() {
     MG_CHECK(hint.find(L"cannot be loaded") == std::wstring::npos);
 
     window.set_error(Error::Unreadable);
-    const auto preview = hint_template(window, {200, 100});
-    MG_CHECK(preview.find(L"|_POS:290:108|_BITMAP:MapPreview") != std::wstring::npos);
+    const auto preview = hint_template(window, {140, 70});
+    MG_CHECK(preview.find(L"|_POS:275:80|_BITMAP:MapPreview") != std::wstring::npos);
     MG_CHECK(preview.find(L"No preview") == std::wstring::npos && preview.find(L"cannot be loaded") != std::wstring::npos);
 
     // A single page has no pager, and an empty list shows a notice instead of names.
@@ -164,7 +164,67 @@ void preview_markup() {
     }
 }
 
+void metadata_and_scroll() {
+    MapMetadata::Catalog catalog;
+    catalog[L"map03.cmap"] = {L"Named [map]|_TEXT:Injected", L"First paragraph.\n\n" + std::wstring(1000, L'W'), L"Red,Blue", 1, 3};
+    catalog[L"absent.cmap"].name = L"Not installed";
+    Window window(maps(6), path(3), Language::English, catalog);
+    MG_CHECK(window.maps().size() == 6);  // Metadata never makes an uninstalled map playable.
+    MG_CHECK(window.display_name(3) == L"Named (map)/_TEXT:Injected");
+    MG_CHECK(window.characteristics() == L"Addon / Above average");
+    MG_CHECK(window.factions() == L"Enemies: Red,Blue");
+    MG_CHECK(window.description()[0] == L"First paragraph." && window.description()[1].empty());
+    MG_CHECK(window.scroll_description(100000) && !window.scroll_description(1));
+    MG_CHECK(window.description_offset() + Layout::description_rows == static_cast<int>(window.description().size()));
+    MG_CHECK(window.scroll_description(-100000) && window.description_offset() == 0);
+    MG_CHECK(window.scroll_description(3) && window.select(4) && window.description_offset() == 0);
+    MG_CHECK(window.display_name(4) == L"map04" && !window.scroll_description(1));
+    // The metadata key is a basename, and applies to a loose override with the same name as well.
+    catalog[L"map05.cmap"].name = L"Loose title";
+    Window loose(maps(6), path(5), Language::English, catalog);
+    MG_CHECK(loose.caption() == L"Loose title (loose file)");
+    const auto wrapped = wrap_description(L"WW WW\n\nlastword", 4);
+    MG_CHECK(wrapped == std::vector<std::wstring>({L"WW", L"WW", L"", L"last", L"word"}));
+    const auto pixels = wrap_description(L"WWW i", 20, [](std::wstring_view s) {
+        size_t width = 0;
+        for (auto ch : s) width += ch == L'W' ? 10 : 2;
+        return width;
+    });
+    MG_CHECK(pixels == std::vector<std::wstring>({L"WW", L"W i"}));
+    MG_CHECK(wrap_description(L"abc", 0) == std::vector<std::wstring>({L"a", L"b", L"c"}));
+    window.select(3);
+    window.set_text_measure([](std::wstring_view s) { return s.size() * 100; });
+    for (const auto &line : window.description()) MG_CHECK(line.size() <= 2);
+    const auto markup = hint_template(window, {});
+    MG_CHECK(markup.find(L"|_TEXT:Injected") == std::wstring::npos);
+}
+
+void bonus_controls() {
+    Window window(maps(5), path(1), Language::English, {}, BattleChoice::Bonus::AirSupport);
+    MG_CHECK(window.bonus() == BattleChoice::Bonus::AirSupport);
+    MG_CHECK(!window.select_bonus(-1) && !window.select_bonus(3) && !window.select_bonus(1));
+    MG_CHECK(window.select_bonus(2) && window.bonus() == BattleChoice::Bonus::ReinforcedArmor);
+    window.select(2);
+    MG_CHECK(window.bonus() == BattleChoice::Bonus::ReinforcedArmor);
+    for (int i = 0; i < 3; ++i)
+        MG_CHECK(hit(window, Layout::bonus_x, Layout::bonus_y + 20 * i).bonus == i);
+    MG_CHECK(hit(window, 130, Layout::buttons_y).action == 1);
+    MG_CHECK(hit(window, 310, Layout::buttons_y).action == -1);
+    MG_CHECK(hit(window, Layout::preview_x, Layout::description_scroll_y).scroll < 0);
+    MG_CHECK(hit(window, Layout::width - 25, Layout::description_scroll_y).scroll > 0);
+    struct Difficulty { float k_damage_enemy_to_player, k_time_before_maintenance, k_friendly_fire; };
+    for (const auto bonus : {BattleChoice::Bonus::None, BattleChoice::Bonus::AirSupport, BattleChoice::Bonus::ReinforcedArmor}) {
+        Difficulty difficulty{0.1f, 0.2f, 0.4f};
+        BattleChoice::apply(bonus, difficulty);
+        MG_CHECK(difficulty.k_friendly_fire == 0.4f);
+        MG_CHECK(difficulty.k_damage_enemy_to_player == (bonus == BattleChoice::Bonus::ReinforcedArmor ? 0.5f : 1.0f));
+        MG_CHECK(difficulty.k_time_before_maintenance == (bonus == BattleChoice::Bonus::AirSupport ? 0.33f : 1.0f));
+    }
+}
+
 constexpr tests::Case cases[] = {
+    {"game.maps.metadata_display", metadata_and_scroll},
+    {"game.maps.bonus_controls", bonus_controls},
         {"game.maps.window_selection", selection}, {"game.maps.window_paging", paging},
         {"game.maps.window_geometry", geometry},   {"game.maps.window_text", text},
         {"game.maps.window_hint", hint_text}, {"game.maps.preview_markup", preview_markup},

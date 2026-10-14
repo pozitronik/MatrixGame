@@ -46,7 +46,7 @@ std::wstring startup_map(StandaloneSettings::Values &values) {
     lgr.error("The remembered map {} cannot be read; starting the configured map")(utils::from_wstring(values.map));
     const std::wstring message = L"The map " + values.map +
                                  L" chosen in the Map window cannot be loaded.\nThe game starts the configured map "
-                                 L"instead. Choose another map in Settings, Map.";
+                                 L"instead. Choose another map in New battle.";
     values.map.clear();
     auto stored = StandaloneSettings::load().values;
     stored.map.clear();
@@ -95,7 +95,7 @@ bool relaunch_requested() { return relaunch_pending; }
 
 bool relaunch() {
     const auto executable = Startup::ExecutablePath();
-    std::wstring command = L"\"" + executable.native() + L"\"";
+    std::wstring command = L"\"" + executable.native() + L"\" --start-selected-battle";
     const std::wstring directory = executable.parent_path().native();
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);

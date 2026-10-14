@@ -12,8 +12,10 @@
 #include "SoundBridge.hpp"
 #include "StandaloneRuntime.hpp"
 #include "MapSelection.hpp"
+#include "MapCatalog.hpp"
 #include "SettingsWindow.hpp"
 #include "MapWindow.hpp"
+#include "StartupMenu.hpp"
 #include "ScreenLayout.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
@@ -69,7 +71,9 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         const auto app_path = Startup::ExecutablePath();
         lgr.info(utils::from_wstring(app_path.native()));
         std::filesystem::current_path(app_path.parent_path());
-        const wchar *map = numarg > 1 ? args.get()[1] : nullptr;
+        const bool selected_battle = numarg == 2 && args.get()[1] == StartupMenu::selected_battle_argument;
+        StartupMenu::set_direct_start(selected_battle);
+        const wchar *map = numarg > 1 && !selected_battle ? args.get()[1] : nullptr;
 
         if (!Startup::ResourceFileExists(L"DATA\\robots.pkg")) {
             lgr.error("Missing DATA/robots.pkg");
@@ -81,32 +85,34 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         uint32_t seed = (unsigned)time(nullptr);
         initialization_started = true;
         CGame::Init(hInstance, nullptr, map, seed);
-        battle_initialized = true;
-        MapSelection::finish_map_load();
+        if (g_MatrixMap) {
+            battle_initialized = true;
+            MapSelection::finish_map_load();
 
-        formgame = HNew(NULL) CFormMatrixGame();
-        FormChange(formgame);
+            formgame = HNew(NULL) CFormMatrixGame();
+            FormChange(formgame);
 
-        timer_active = timeBeginPeriod(1) == TIMERR_NOERROR;
+            timer_active = timeBeginPeriod(1) == TIMERR_NOERROR;
 
-        if (map)
-        {
+            if (map)
             {
-                std::ofstream out("calcvis.log", std::ios::app);
-                std::string name = utils::from_wstring(g_MatrixMap->MapName());
-                out << name << " ...";
+                {
+                    std::ofstream out("calcvis.log", std::ios::app);
+                    std::string name = utils::from_wstring(g_MatrixMap->MapName());
+                    out << name << " ...";
+                }
+
+                g_MatrixMap->CalcVis();
+
+                {
+                    std::ofstream out("calcvis.log", std::ios::app);
+                    out << "done\n";
+                }
             }
-
-            g_MatrixMap->CalcVis();
-
+            else
             {
-                std::ofstream out("calcvis.log", std::ios::app);
-                out << "done\n";
+                L3GRun();
             }
-        }
-        else
-        {
-            L3GRun();
         }
 
         exit_code = 0;
@@ -348,8 +354,7 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     auto standalone = StandaloneSettings::load();
     for (const auto &key : standalone.invalid) lgr.error("Invalid {} in CFG/standalone.txt; using its default")(key);
     StandaloneSettings::apply_startup(standalone.values, settings);
-    // Checked before the window opens, so that an unavailable map can be reported in a message box.
-    const std::wstring remembered_map = map == nullptr ? MapSelection::startup_map(standalone.values) : std::wstring{};
+    std::wstring remembered_map;
 #endif
 
     // Init the 3d engine
@@ -386,7 +391,6 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     g_Config.ApplySettings(&settings);
 #ifdef BUILD_EXE
     SoundBridge::initialize_standalone(sound_package || voices_package);
-    StandaloneSettings::initialize_runtime(standalone.values);
 #endif
     g_Sampler.ApplySettings(&settings);
     SetMaxCameraDistance(settings.m_MaxDistance);
@@ -394,7 +398,25 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     DCP();
 
+#ifdef BUILD_EXE
+    if (!map) {
+        const auto configured = g_MatrixData->BlockGet(L"Config")->ParGet(L"Map");
+        // A direct relaunch is meaningful only with a still-readable remembered selection.
+        const bool resume = StartupMenu::direct_start() && !standalone.values.map.empty() &&
+                            MapCatalog::readable(standalone.values.map);
+        if (standalone.values.map.empty()) standalone.values.map = configured;
+        if (!resume) {
+            if (!StartupMenu::run(standalone.values)) return;
+        }
+        remembered_map = MapSelection::startup_map(standalone.values);
+    }
+    StandaloneSettings::initialize_runtime(standalone.values);
+#endif
+
     g_MatrixMap = HNew(g_MatrixHeap) CMatrixMapLogic;
+#ifdef BUILD_EXE
+    if (!map) BattleChoice::apply(standalone.values.battle_bonus, g_MatrixMap->m_Difficulty);
+#endif
 
     g_MatrixMap->LoadSide(*g_MatrixData->BlockGet(L"Side"));
     // g_MatrixMap->LoadTactics(*g_MatrixData->BlockGet(L"Tactics"));
