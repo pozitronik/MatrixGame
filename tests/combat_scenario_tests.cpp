@@ -9,6 +9,7 @@
 #include "MatrixObject.hpp"
 #include <set>
 #include "DelayedDamage.hpp"
+#include "ZeroXTrace.hpp"
 #include "test_support.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixObjectCannon.hpp"
@@ -269,12 +270,25 @@ void cannon_firing() {
         compare(a, cannon_run(mode, 1));
     }
 }
+// Selects the zero-X trace mode for one case and restores the process default.
+struct ZeroXMode {
+    explicit ZeroXMode(bool original) { ZeroXTrace::set_original(original); }
+    ~ZeroXMode() { ZeroXTrace::set_original(ZeroXTrace::original_by_default()); }
+};
+
 // Object tracing along and across map axes: https://github.com/pozitronik/MatrixGame/issues/129
 // Groups are 200 world units wide; the first player robot stands on the y = 200 group boundary,
 // and both player robots share x = 100.
 void axis_aligned_trace() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+    for (bool original : {false, true}) for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        ZeroXMode zero_x(original);
         Session session({mode, 82, 10, 1000, false, false});
+        // The trace header records the active mode.
+        const auto header = session.metadata();
+        MG_CHECK(header.find(original ? R"("zero_x_trace":"Original")" : R"("zero_x_trace":"Corrected")") !=
+                 std::string::npos);
+        // The original game rejected every object hit along a ray without X travel.
+        const auto along = [original](CMatrixMapStatic *expected) { return original ? nullptr : expected; };
         auto *target = robot(PLAYER_SIDE);
         auto *second = robot(PLAYER_SIDE, 1);
         auto *enemy = robot(2);
@@ -293,20 +307,21 @@ void axis_aligned_trace() {
             };
             // Oblique control and the original descending zero-X ray.
             MG_CHECK(trace(D3DXVECTOR3(80, 100, 50), end, mask, nullptr) == target);
-            MG_CHECK(trace(D3DXVECTOR3(end.x, 100, 50), end, mask, nullptr) == target);
+            MG_CHECK(trace(D3DXVECTOR3(end.x, 100, 50), end, mask, nullptr) == along(target));
             // Zero-X and zero-Y rays in both directions, within one group and across the y = 200 boundary.
-            MG_CHECK(trace(offset(end, 0, -60), end, mask, nullptr) == target);
-            MG_CHECK(trace(offset(end, 0, 30), offset(end, 0, -10), mask, nullptr) == target);
+            MG_CHECK(trace(offset(end, 0, -60), end, mask, nullptr) == along(target));
+            MG_CHECK(trace(offset(end, 0, 30), offset(end, 0, -10), mask, nullptr) == along(target));
             MG_CHECK(trace(offset(end, -60, 0), end, mask, nullptr) == target);
             MG_CHECK(trace(offset(end, 60, 0), end, mask, nullptr) == target);
             for (float x : {-60.0f, 60.0f}) MG_CHECK(trace(offset(hostile, x, 0), hostile, mask, nullptr) == enemy);
-            for (float y : {-60.0f, 60.0f}) MG_CHECK(trace(offset(hostile, 0, y), hostile, mask, nullptr) == enemy);
+            for (float y : {-60.0f, 60.0f})
+                MG_CHECK(trace(offset(hostile, 0, y), hostile, mask, nullptr) == along(enemy));
             // Nearest hit along x = 100 from either end; skipping the nearer robot finds the farther one.
             const D3DXVECTOR3 below = offset(end, 0, -60), above = offset(beyond, 0, 60);
-            MG_CHECK(trace(below, above, mask, nullptr) == target);
-            MG_CHECK(trace(above, below, mask, nullptr) == second);
-            MG_CHECK(trace(below, above, mask, target) == second);
-            MG_CHECK(trace(above, below, mask, second) == target);
+            MG_CHECK(trace(below, above, mask, nullptr) == along(target));
+            MG_CHECK(trace(above, below, mask, nullptr) == along(second));
+            MG_CHECK(trace(below, above, mask, target) == along(second));
+            MG_CHECK(trace(above, below, mask, second) == along(target));
             // A segment that stops short, a parallel miss and a mask without robots.
             MG_CHECK(trace(offset(end, 0, -150), offset(end, 0, -100), mask, nullptr) == nullptr);
             MG_CHECK(trace(offset(end, 60, -60), offset(end, 60, 60), mask, nullptr) == nullptr);
@@ -314,14 +329,24 @@ void axis_aligned_trace() {
             // Terrain traversal: a descending zero-X ray meets the ground where a near-parallel oblique ray does.
             D3DXVECTOR3 axial(0, 0, 0), oblique(0, 0, 0);
             const D3DXVECTOR3 ground(100, 120, -20);
-            MG_CHECK(g_MatrixMap->Trace(&axial, D3DXVECTOR3(100, 40, 50), ground, TRACE_LANDSCAPE, nullptr) ==
-                     TRACE_STOP_LANDSCAPE);
+            const auto axial_stop =
+                    g_MatrixMap->Trace(&axial, D3DXVECTOR3(100, 40, 50), ground, TRACE_LANDSCAPE, nullptr);
             MG_CHECK(g_MatrixMap->Trace(&oblique, D3DXVECTOR3(101, 40, 50), ground, TRACE_LANDSCAPE, nullptr) ==
                      TRACE_STOP_LANDSCAPE);
-            // The rays differ by one unit at the start, so their ground points agree only to rounding.
-            MG_CHECK(axial.x == 100 && std::fabs(axial.y - oblique.y) < 0.01f &&
-                     std::fabs(axial.z - oblique.z) < 0.01f);
-            std::cerr << "Axis trace mode=" << int(mode) << " sphere=" << bool(sphere) << " passed\n";
+            if (original) {
+                // The original empty interval raised the culling height to the ray's start, so the descending
+                // ray skipped the terrain and stopped at its end point.
+                MG_CHECK(axial_stop == TRACE_STOP_NONE);
+                MG_CHECK(axial.x == ground.x && axial.y == ground.y && axial.z == ground.z);
+            }
+            else {
+                MG_CHECK(axial_stop == TRACE_STOP_LANDSCAPE);
+                // The rays differ by one unit at the start, so their ground points agree only to rounding.
+                MG_CHECK(axial.x == 100 && std::fabs(axial.y - oblique.y) < 0.01f &&
+                         std::fabs(axial.z - oblique.z) < 0.01f);
+            }
+            std::cerr << "Axis trace original=" << original << " mode=" << int(mode) << " sphere=" << bool(sphere)
+                      << " passed\n";
         }
     }
 }

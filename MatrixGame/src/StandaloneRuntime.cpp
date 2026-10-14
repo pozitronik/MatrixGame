@@ -7,6 +7,7 @@
 #include "WindowDisplay.hpp"
 #include "DelayedDamage.hpp"
 #include "GroupCounts.hpp"
+#include "ZeroXTrace.hpp"
 
 namespace StandaloneSettings {
 namespace {
@@ -21,6 +22,7 @@ void apply_immediate(const Values &values) {
     SoundBridge::master_volume(static_cast<float>(values.sound_volume) / 100.0f);
     DelayedDamage::set_original(values.delayed_damage == DamageAttribution::Original);
     GroupCounts::set_original(values.group_counts == GroupCountMode::Original);
+    ZeroXTrace::set_original(values.zero_x_trace == ZeroXTraceMode::Original);
 }
 }  // namespace
 

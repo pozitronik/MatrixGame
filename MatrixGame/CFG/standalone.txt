@@ -32,3 +32,7 @@ Map=
 // the original game, whose stale counts affect team redistribution. Read at startup; there is no
 // Settings window row.
 GroupCounts=Corrected
+// Hits along lines with no X travel, for sight, aiming, shots and picking. Corrected finds them;
+// Original restores the original game, which missed objects along such lines. Read at startup;
+// there is no Settings window row.
+ZeroXTrace=Corrected
