@@ -2284,6 +2284,8 @@ void CMatrixSideUnit::EscapeFromBomb() {
 
     g_MatrixMap->PrepareBuf();
     int *ind = g_MatrixMap->m_ZoneIndex;
+    int *occupied = g_MatrixMap->m_ZoneIndexAccess;
+    const int place_count = g_MatrixMap->m_RN.m_PlaceCnt;
     dword *data = g_MatrixMap->m_ZoneDataZero;
 
     ms = CMatrixMapStatic::GetFirstLogic();
@@ -2325,38 +2327,35 @@ void CMatrixSideUnit::EscapeFromBomb() {
 
         int rp = g_MatrixMap->FindNearPlace(1 << (robot->m_Unit[0].u1.s1.m_Kind - 1),
                                             CPoint(robot->GetMapPosX(), robot->GetMapPosY()));
-        if (rp < 0)
+        if (rp < 0 || rp >= place_count)
             continue;
 
         int sme = 0;
         int cnt = 0;
 
+        // Both scratch arrays hold at most place_count distinct indices: bit 2
+        // deduplicates reservations, while bit 1 deduplicates BFS visits.
+        int occupied_count = 0;
+        const auto reserve_place = [&](int place) {
+            if (place < 0 || place >= place_count || (data[place] & 2))
+                return;
+            occupied[occupied_count++] = place;
+            data[place] |= 2;
+        };
         CMatrixMapStatic *ms2 = CMatrixMapStatic::GetFirstLogic();
         for (; ms2; ms2 = ms2->GetNextLogic()) {
             if (robot != ms2 && ms2->IsLiveRobot()) {
                 if (ms2->AsRobot()->GetMoveToCoords(tp)) {
                     int np = g_MatrixMap->FindPlace(tp);
-                    if (np >= 0) {
-                        ind[cnt] = np;
-                        data[np] = 2;
-                        cnt++;
-                    }
+                    reserve_place(np);
                 }
 
-                if (ms2->AsRobot()->GetEnv()->m_Place >= 0) {
-                    ind[cnt] = ms2->AsRobot()->GetEnv()->m_Place;
-                    data[ind[cnt]] = 2;
-                    cnt++;
-                }
+                reserve_place(ms2->AsRobot()->GetEnv()->m_Place);
             }
             else if (ms2->IsCannon()) {
-                ind[cnt] = ms2->AsCannon()->m_Place;
-                data[ind[cnt]] = 2;
-                cnt++;
+                reserve_place(ms2->AsCannon()->m_Place);
             }
         }
-
-        sme = cnt;
 
         ind[cnt] = rp;
         data[rp] |= 1;
@@ -2384,7 +2383,7 @@ void CMatrixSideUnit::EscapeFromBomb() {
             }
             for (i = 0; i < g_MatrixMap->m_RN.m_Place[rp].m_NearCnt; i++) {
                 int np = g_MatrixMap->m_RN.m_Place[rp].m_Near[i];
-                if (data[np] & 1)
+                if (np < 0 || np >= place_count || (data[np] & 1))
                     continue;
                 if (g_MatrixMap->m_RN.m_Place[rp].m_NearMove[i] & (1 << (robot->m_Unit[0].u1.s1.m_Kind - 1)))
                     continue;
@@ -2398,6 +2397,8 @@ void CMatrixSideUnit::EscapeFromBomb() {
         }
         for (i = 0; i < cnt; i++)
             data[ind[i]] = 0;
+        for (i = 0; i < occupied_count; i++)
+            data[occupied[i]] = 0;
     }
 }
 
@@ -4324,7 +4325,7 @@ void CMatrixSideUnit::TaktHL() {
             if (k < 0)
                 continue;
 
-            u = m_Team[u].m_RobotCnt - m_Team[i].m_RobotCnt;
+            u = m_Team[k].m_RobotCnt - m_Team[i].m_RobotCnt;
             if (u < 2)
                 continue;
             u = u / 2;
@@ -4335,6 +4336,8 @@ void CMatrixSideUnit::TaktHL() {
                     DMSide(L"Robot=<b=16><u> Change team if nerest <b=10><i>-><i>", uintptr_t(ms), k, i);
                     ms->AsRobot()->SetTeam(i);
                     ms->AsRobot()->SetGroupLogic(-1);
+                    --m_Team[k].m_RobotCnt;
+                    ++m_Team[i].m_RobotCnt;
                     u--;
                 }
                 ms = ms->GetNextLogic();

@@ -29,12 +29,15 @@ void repair_target_retention();
 void repair_explicit_priority();
 void memory_cleanup();
 void memory_clear_correctness();
+void memory_position_eviction();
+void memory_ignore_eviction();
 void place_bounds();
 void place_axis_correctness();
 void regroup_split_correctness();
 void regroup_merge_correctness();
 void regroup_count_sequences();
 void bomb_escape_planning();
+void bomb_escape_capacity();
 void strategic_member_loss();
 void strategic_base_loss();
 void strategic_forward();
@@ -420,8 +423,9 @@ int main(int argc, char **argv) {
         {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
         {"game.ai.place_bounds", tests::ai::place_bounds},
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/137
-        {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
+        {"game.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
+        {"game.ai.memory_position_eviction", tests::ai::memory_position_eviction},
+        {"game.ai.memory_ignore_eviction", tests::ai::memory_ignore_eviction},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
         {"probe.ai.place_axis", tests::ai::place_axis_correctness},
         {"game.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
@@ -446,8 +450,7 @@ int main(int argc, char **argv) {
         {"game.ai.strategic_objective_replacement", tests::ai::strategic_objective_replacement},
         {"game.ai.strategic_objective_ties", tests::ai::strategic_objective_ties},
         {"game.ai.strategic_empty_team_split", tests::ai::strategic_empty_team_split},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/135
-        {"probe.ai.uneven_team_redistribution", tests::ai::uneven_team_correctness},
+        {"game.ai.uneven_team_redistribution", tests::ai::uneven_team_correctness},
         {"game.ai.radio_group", tests::ai::radio_group},
         {"game.ai.radio_team_region", tests::ai::radio_team_region},
         {"game.ai.radio_filters", tests::ai::radio_filters},
@@ -461,6 +464,7 @@ int main(int argc, char **argv) {
         {"game.ai.production_wait_choice", tests::ai::production_wait_choice},
         {"game.ai.production_wait_limits", tests::ai::production_wait_limits},
         {"game.ai.production_unaffordable", tests::ai::production_unaffordable},
+        {"game.ai.bomb_escape_capacity", tests::ai::bomb_escape_capacity},
     };
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();
