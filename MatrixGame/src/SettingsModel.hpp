@@ -26,6 +26,7 @@ enum class Row {
     GameplayGroup,
     CameraSpeed,
     RandomGenerator,
+    DelayedDamage,
     Count
 };
 
