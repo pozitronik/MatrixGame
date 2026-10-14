@@ -36,6 +36,7 @@ void place_axis_correctness();
 void regroup_split_correctness();
 void regroup_merge_correctness();
 void bomb_escape_planning();
+void bomb_escape_capacity();
 void strategic_member_loss();
 void strategic_base_loss();
 void strategic_forward();
@@ -463,6 +464,7 @@ int main(int argc, char **argv) {
         {"game.ai.production_wait_choice", tests::ai::production_wait_choice},
         {"game.ai.production_wait_limits", tests::ai::production_wait_limits},
         {"game.ai.production_unaffordable", tests::ai::production_unaffordable},
+        {"game.ai.bomb_escape_capacity", tests::ai::bomb_escape_capacity},
     };
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();

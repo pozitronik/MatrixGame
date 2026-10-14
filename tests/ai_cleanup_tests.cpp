@@ -5,6 +5,8 @@
 #include <algorithm>
 #include "MatrixRobot.hpp"
 #include "MatrixObjectBuilding.hpp"
+#include "MatrixObjectCannon.hpp"
+#include <algorithm>
 #include "Logic/MatrixEnvironment.h"
 #include <array>
 
@@ -203,7 +205,78 @@ void regroup_counts_correctness(bool split) {
 void regroup_split_correctness() { regroup_counts_correctness(true); }
 void regroup_merge_correctness() { regroup_counts_correctness(false); }
 
-// Crowded buffer capacity is tracked separately: https://github.com/pozitronik/MatrixGame/issues/136
+void bomb_escape_capacity() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool no_refuge : {false, true}) for (bool invalid_places : {false, true}) {
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        auto robots = units();
+        auto *cover = robots[0], *escaping = robots[1], *bomber = robots[2];
+        position(*cover, 120, 100); position(*escaping, 180, 100); position(*bomber, 100, 100);
+        IdleBomb bomb(*bomber);
+        bomber->GetEnv()->AddToList(cover);
+        cover->SetGroupLogic(0); escaping->SetGroupLogic(0);
+        auto &map = *g_MatrixMap;
+        auto &side = *map.GetPlayerSide();
+        side.m_PlayerGroup[0].Order(mpo_AutoAttack);
+        for (auto *robot : robots) if (robot != escaping) {
+            robot->MoveTo(8, 8);
+            robot->GetEnv()->m_Place = 0;
+        }
+        // Mixed occupants reserve the first candidate, or every place. Duplicate
+        // robot reservations alone already exceed the production queue capacity.
+        for (int place = 0; place < (no_refuge ? 4 : 2); ++place) {
+            auto *cannon = map.StaticAdd<CMatrixCannon>();
+            cannon->m_Place = place;
+        }
+        if (invalid_places) {
+            cover->GetEnv()->m_Place = map.m_RN.m_PlaceCnt;
+            for (int place : {-1, map.m_RN.m_PlaceCnt}) {
+                auto *cannon = map.StaticAdd<CMatrixCannon>();
+                cannon->m_Place = place;
+            }
+            auto &start = map.m_RN.m_Place[0];
+            MG_CHECK(start.m_NearCnt + 2 <= 16);
+            start.m_Near[start.m_NearCnt] = -1;
+            start.m_NearMove[start.m_NearCnt++] = 0;
+            start.m_Near[start.m_NearCnt] = map.m_RN.m_PlaceCnt;
+            start.m_NearMove[start.m_NearCnt++] = 0;
+        }
+        map.PrepareBuf();
+        constexpr int sentinel = 0x13572468;
+        constexpr int backing_count = 64;
+        const int capacity = std::max(map.m_RN.m_ZoneCnt, map.m_RN.m_PlaceCnt);
+        MG_CHECK(capacity == 4);
+        // Oversized, owned backing makes the old append error an explicit bound
+        // failure rather than a real heap overflow. Map teardown frees it.
+        for (auto **buffer : {&map.m_ZoneIndex, &map.m_ZoneIndexAccess}) {
+            HFree(*buffer, g_MatrixHeap);
+            *buffer = static_cast<int *>(HAlloc(backing_count * sizeof(int), g_MatrixHeap));
+            std::fill_n(*buffer, backing_count, sentinel);
+        }
+        escaping->MoveTo(20, 20);
+        const auto draws = random::draw_count();
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            side.EscapeFromBomb();
+            MG_CHECK(random::draw_count() == draws);
+            for (int i = capacity; i < backing_count; ++i) {
+                MG_CHECK(map.m_ZoneIndex[i] == sentinel);
+                MG_CHECK(map.m_ZoneIndexAccess[i] == sentinel);
+            }
+            for (int i = 0; i < capacity; ++i) MG_CHECK(map.m_ZoneDataZero[i] == 0);
+            CPoint destination, previous;
+            MG_CHECK(escaping->GetMoveToCoords(destination));
+            MG_CHECK(escaping->GetReturnCoords(previous) == !no_refuge);
+            MG_CHECK(destination == (no_refuge ? CPoint(20, 20) : CPoint(8, 48)));
+            if (!no_refuge) MG_CHECK(previous == CPoint(20, 20));
+            if (no_refuge) {
+                auto *begin = map.m_ZoneIndex;
+                for (int i = 0; i < capacity; ++i)
+                    MG_CHECK(std::count(begin, begin + capacity, i) == 1);
+            }
+        }
+    }
+}
+
 void bomb_escape_planning() {
     // Each variant starts a fresh world; these are planning inputs, not teleports during movement.
     enum Variant { Manual, Automatic, ChassisBlocked, InsideRadius, AtRadius, OutsideRadius };
