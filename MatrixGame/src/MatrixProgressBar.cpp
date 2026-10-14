@@ -26,7 +26,8 @@ CMatrixProgressBar::CMatrixProgressBar(void) {
     m_Coord[0].present = true;
 
     // Modify(x,y,width, height, pos);
-    m_Coord->m_X = float(g_ScreenX + 1);
+    // Off-screen until positioned, at any supported rendering size (at most 8192 pixels wide).
+    m_Coord->m_X = 8193.0f;
 
     LIST_ADD(this, m_First, m_Last, m_Prev, m_Next);
 

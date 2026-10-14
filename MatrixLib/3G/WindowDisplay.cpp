@@ -14,6 +14,7 @@ bool active = false;
 bool in_change = false;
 bool pending = false;
 std::optional<Mode> requested;  // Explicit target; otherwise a pending change toggles.
+std::optional<Size> requested_size;  // Rendering size to apply with the next change.
 Shortcut shortcut;
 RECT windowed_rectangle{};
 bool have_windowed_rectangle = false;
@@ -53,6 +54,7 @@ void shutdown() {
     active = false;
     pending = false;
     requested.reset();
+    requested_size.reset();
     in_change = false;
     shortcut = {};
     have_windowed_rectangle = false;
@@ -63,6 +65,7 @@ void shutdown() {
 bool enabled() { return active; }
 bool changing() { return in_change; }
 Mode current_mode() { return mode; }
+Size current_size() { return {options.width, options.height}; }
 Mode fullscreen_mode() { return options.fullscreen; }
 
 void request(Mode target, Mode fullscreen) {
@@ -72,16 +75,33 @@ void request(Mode target, Mode fullscreen) {
     pending = target != mode;
 }
 
-bool supports_exclusive() {
+void request_size(int width, int height) {
+    if (!active) return;
+    if (width == options.width && height == options.height)
+        requested_size.reset();
+    else
+        requested_size = Size{width, height};
+}
+
+namespace {
+bool supports_exclusive(int width, int height) {
     const UINT count = g_D3D->GetAdapterModeCount(D3DADAPTER_DEFAULT, D3DFMT_X8R8G8B8);
     for (UINT i = 0; i < count; ++i) {
         D3DDISPLAYMODE candidate{};
         if (SUCCEEDED(g_D3D->EnumAdapterModes(D3DADAPTER_DEFAULT, D3DFMT_X8R8G8B8, i, &candidate)) &&
-            candidate.Width == static_cast<UINT>(options.width) && candidate.Height == static_cast<UINT>(options.height))
+            candidate.Width == static_cast<UINT>(width) && candidate.Height == static_cast<UINT>(height))
             return true;
     }
     return false;
 }
+// The game reads the rendering size from these globals; they change only with the back buffer.
+void publish_size() {
+    g_ScreenX = options.width;
+    g_ScreenY = options.height;
+}
+}  // namespace
+
+bool supports_exclusive() { return supports_exclusive(options.width, options.height); }
 
 void apply_window(Mode target) {
     ChangeGuard guard;
@@ -133,6 +153,7 @@ HRESULT reset_device(const D3DPRESENT_PARAMETERS &parameters) {
     const HRESULT result = reset_copy(parameters, [](D3DPRESENT_PARAMETERS *attempt) { return g_D3DD->Reset(attempt); });
     // Also runs after a deferred reset succeeds through ordinary device recovery.
     if (result == D3D_OK && active) {
+        publish_size();
         apply_window(mode);
         confine_cursor();
     }
@@ -165,22 +186,28 @@ void confine_cursor() {
 }
 
 bool apply_pending(bool resources_ready, void (*release)(), void (*restore)()) {
-    if (!active || !pending) return false;
+    if (!active || (!pending && !requested_size)) return false;
     const HRESULT status = g_D3DD->TestCooperativeLevel();
     if (status != D3D_OK) return false; // Ordinary recovery runs before a queued change.
+    const auto change = plan(mode, options.fullscreen, pending, requested, {options.width, options.height},
+                             requested_size);
     pending = false;
-    const Mode target = requested.value_or(toggle_target(mode, options.fullscreen));
     requested.reset();
-    if (target == Mode::Exclusive && !supports_exclusive()) {
-        lgr.error("Exclusive display mode {}x{} is unavailable; keeping the current mode")(options.width, options.height);
+    requested_size.reset();
+    const Mode target = change.target;
+    const int width = change.size.width, height = change.size.height;
+    if (target == Mode::Exclusive && !supports_exclusive(width, height)) {
+        lgr.error("Exclusive display mode {}x{} is unavailable; keeping the current mode and size")(width, height);
         return false;
     }
-    const Mode previous_mode = mode;
+    // A windowed resize keeps the window where the player put it.
+    if (mode == Mode::Windowed && target == Mode::Windowed && GetWindowRect(g_Wnd, &windowed_rectangle))
+        have_windowed_rectangle = true;
     const auto previous_parameters = g_D3Dpp;
     ChangeGuard guard;
     g_FormCur->SystemEvent(SYSEV_INPUT_RESET);
     ClipCursor(nullptr);
-    if (previous_mode != Mode::Exclusive && target != Mode::Exclusive) {
+    if (!change.reset) {
         // Present scales the unchanged back buffer to the new client area.
         // A windowed/borderless switch needs no resource release or device reset.
         apply_window(target);
@@ -189,23 +216,44 @@ bool apply_pending(bool resources_ready, void (*release)(), void (*restore)()) {
         lgr.notice("Display mode: {}; rendering {}x{}")(name(mode), options.width, options.height);
         return true;
     }
-    const HRESULT result = transition(resources_ready, release,
-        [&] {
-            apply_window(target);
-            configure_parameters(g_D3Dpp);
-            return reset_device(g_D3Dpp);
-        },
-        [&](HRESULT failure) {
-            lgr.error("Display switch failed (HRESULT {}); restoring {}")(static_cast<unsigned long>(failure), name(previous_mode));
-            apply_window(previous_mode);
-            g_D3Dpp = previous_parameters;
-            return reset_device(g_D3Dpp);
-        }, restore);
+    const HRESULT result = reset_to(target, change.size, resources_ready, release, restore,
+        {[](Mode window) { apply_window(window); },
+         [] {
+             configure_parameters(g_D3Dpp);
+             return reset_device(g_D3Dpp);
+         },
+         [&] {
+             g_D3Dpp = previous_parameters;
+             return reset_device(g_D3Dpp);
+         }});
     if (result != D3D_OK && result != D3DERR_DEVICELOST) throw CExceptionD3D(__FILE__, __LINE__, result);
     confine_cursor();
     if (result == D3D_OK) sync_cursor();
     lgr.notice("Display mode: {}; rendering {}x{}")(name(mode), options.width, options.height);
     return true;
+}
+
+HRESULT reset_to(Mode target, Size size, bool resources_ready, void (*release)(), void (*restore)(),
+                 const ResetSteps &steps) {
+    const Mode previous_mode = mode;
+    const Size previous = current_size();
+    const HRESULT result = transition(resources_ready, release,
+        [&] {
+            options.width = size.width;
+            options.height = size.height;
+            steps.window(target);
+            return steps.reset();
+        },
+        [&](HRESULT failure) {
+            lgr.error("Display change to {} {}x{} failed (HRESULT {}); restoring {} {}x{}")(name(target), size.width,
+                size.height, static_cast<unsigned long>(failure), name(previous_mode), previous.width, previous.height);
+            options.width = previous.width;
+            options.height = previous.height;
+            steps.window(previous_mode);
+            return steps.restore_reset();
+        }, restore);
+    if (result == D3D_OK) publish_size();
+    return result;
 }
 
 void map_mouse(UINT message, int &x, int &y) {

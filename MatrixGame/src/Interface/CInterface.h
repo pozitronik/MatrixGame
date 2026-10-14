@@ -199,6 +199,8 @@ public:
     int m_nId;
     std::wstring m_strName;
     float m_xPos, m_yPos, m_zPos;
+    // Set by Load: nonzero layout positions keep their distance from the right or bottom screen edge.
+    bool m_AnchorRight, m_AnchorBottom, m_HasConstructor;
     CIFaceElement *m_FirstElement, *m_LastElement;
     CIFaceImage *m_FirstImage, *m_LastImage;
     CInterface *m_PrevInterface, *m_NextInterface;
@@ -238,6 +240,9 @@ public:
     void MoveRight();
 
     void ReCalcElementsPos();
+    // Moves an edge-anchored interface and the state derived from its position after the screen
+    // grows or shrinks by (dx, dy).
+    void Reanchor(int dx, int dy);
 
     void LogicTakt(int ms);
 

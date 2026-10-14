@@ -65,8 +65,7 @@ bool is_group(int row) {
 
 bool needs_restart(int row) {
     const auto value = static_cast<Row>(row);
-    return value == Row::Resolution || value == Row::Skybox || value == Row::RobotShadows ||
-           value == Row::RandomGenerator;
+    return value == Row::Skybox || value == Row::RobotShadows || value == Row::RandomGenerator;
 }
 
 int row_top(int row) { return Layout::first_row_y + row * Layout::row_height; }
