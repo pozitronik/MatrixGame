@@ -621,32 +621,48 @@ void strategic_empty_team_split() {
 }
 
 void uneven_team_correctness() {
-    Profile profile; profile.initial_time_ms = 3001;
-    Session session(profile);
-    std::cout << session.metadata() << '\n';
-    building(0, 500, 300);
-    auto &side = *g_MatrixMap->GetSideById(2);
-    side.m_TeamCnt = 2; // The erroneous donor read stays inside the allocated third team record.
-    MG_CHECK(side.m_Team[2].m_RobotCnt == 0);
-    auto *first = robot(500, 500), *second = robot(540, 540);
-    auto *third = BattleGeometry::create_robot(*g_MatrixMap, 2, 480, 540);
-    auto *fourth = BattleGeometry::create_robot(*g_MatrixMap, 2, 520, 460);
-    first->SetTeam(0); first->SetGroupLogic(0);
-    for (auto *member : {second, third, fourth}) { member->SetTeam(1); member->SetGroupLogic(1); }
-    side.TaktHL();
-    MG_CHECK(side.m_Team[0].m_RobotCnt == 1 && side.m_Team[1].m_RobotCnt == 3);
-    MG_CHECK(side.m_Team[1].m_Action.m_Type == mlat_Capture);
-    // Successful redistribution invalidates the recipient action for the next pass.
-    MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_Capture || side.m_Team[0].m_Action.m_Type == mlat_None);
-    MG_CHECK(side.m_Team[0].m_RegionMass == 0 && side.m_Team[1].m_RegionMass == 0);
-    MG_CHECK(!side.m_Team[0].IsRegroupOnlyAfterWar() && !side.m_Team[1].IsRegroupOnlyAfterWar());
-    MG_CHECK(side.m_Team[0].m_RegionFarDanger < 0 && side.m_Team[1].m_RegionFarDanger < 0);
-    int counts[2]{};
-    for (auto *member : {first, second, third, fourth}) {
-        MG_CHECK(member->GetTeam() >= 0 && member->GetTeam() < 2);
-        ++counts[member->GetTeam()];
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (int teams : {1, 2, 3}) for (int donor_count : {1, 2, 3, 5})
+        for (int elapsed : {3000, 3001}) for (bool eligible : {false, true}) {
+        Profile profile; profile.mode = mode; profile.initial_time_ms = elapsed;
+        Session session(profile);
+        building(0, 500, 300);
+        auto &side = *g_MatrixMap->GetSideById(2);
+        side.m_TeamCnt = teams;
+        std::vector<CMatrixRobotAI *> members{robot(500, 500), robot(540, 540)};
+        members[0]->SetTeam(0); members[0]->SetGroupLogic(0);
+        members[1]->SetTeam(teams == 1 ? 0 : 1);
+        members[1]->SetGroupLogic(teams == 1 ? 0 : 1);
+        for (int n = 1; n < donor_count; ++n) {
+            auto *member = BattleGeometry::create_robot(*g_MatrixMap, 2, 480, 540);
+            member->SetTeam(teams == 1 ? 0 : 1);
+            member->SetGroupLogic(teams == 1 ? 0 : 1);
+            members.push_back(member);
+        }
+        if (teams == 3) {
+            auto *member = BattleGeometry::create_robot(*g_MatrixMap, 2, 520, 460);
+            member->SetTeam(2); member->SetGroupLogic(2);
+            members.push_back(member);
+        }
+        for (int t = 0; t < teams; ++t) side.m_Team[t].SetRegroupOnlyAfterWar(!eligible);
+        side.TaktHL();
+        int counts[MAX_TEAM_CNT]{};
+        for (auto *member : members) {
+            MG_CHECK(member->GetTeam() >= 0 && member->GetTeam() < teams);
+            ++counts[member->GetTeam()];
+        }
+        const int moved = teams > 1 && eligible && elapsed > 3000 ? (donor_count - 1) / 2 : 0;
+        std::cout << "redistribution teams=" << teams << " donor=" << donor_count
+                  << " elapsed=" << elapsed << " eligible=" << eligible
+                  << " membership=" << counts[0] << ',' << counts[1] << ',' << counts[2] << '\n';
+        MG_CHECK(counts[0] == (teams == 1 ? donor_count + 1 : 1 + moved));
+        if (teams > 1) MG_CHECK(counts[1] == donor_count - moved);
+        if (teams == 3) MG_CHECK(counts[2] == 1);
+        for (int t = 0; t < teams; ++t) MG_CHECK(side.m_Team[t].m_RobotCnt == counts[t]);
+        if (moved) {
+            MG_CHECK(members[1]->GetTeam() == 0 && members[1]->GetGroupLogic() == -1);
+            MG_CHECK(side.m_Team[0].m_Action.m_Type == mlat_None);
+        }
     }
-    std::cout << "uneven-team membership=" << counts[0] << ',' << counts[1] << " expected=2,2\n";
-    MG_CHECK(counts[0] == 2 && counts[1] == 2);
 }
 }
