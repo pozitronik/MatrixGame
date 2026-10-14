@@ -25,7 +25,8 @@ void begin_map_load();
 // demos run in full-auto mode, where the Map window cannot be reached, so they play only once.
 void finish_map_load();
 
-// True when battle initialization failed after begin_map_load, so the remembered map stays forgotten.
+// True when battle initialization failed after begin_map_load and the settings file no longer names the
+// remembered map. False when the failure came earlier or the file could not be written.
 bool forget_remembered_map();
 
 // Whether a map path names a demo, which the game runs in full-auto mode.

@@ -67,7 +67,7 @@ An empty value starts the map named by `Config/Map` in the game configuration, a
 - clears `Map` in the file;
 - starts the configured map.
 
-**Failures while loading.** The readability check covers only the map's properties table, so a damaged map can still fail or crash while it loads. The game therefore clears `Map` in the file just before the remembered map loads and writes it back once battle initialization succeeds. If loading fails with an error, the error dialog says the map was forgotten. If the game crashes, there is no message, but the next start uses the configured map. Failures before the map loads, such as device creation, keep the choice.
+**Failures while loading.** The readability check covers only the map's properties table, so a damaged map can still fail or crash while it loads. The game therefore clears `Map` in the file just before the remembered map loads and writes it back once battle initialization succeeds. If loading fails with an error, the error dialog says the map was forgotten; when the settings file cannot be written, the dialog does not make that claim and the map stays remembered. If the game crashes, there is no message, but the next start uses the configured map. Failures before the map loads, such as device creation, keep the choice. Clearing and restoring `Map` saves the whole settings file, so loading a remembered map also replaces invalid values with their defaults and appends missing keys, as saving from the Settings window does.
 
 The Settings window saves `Map` unchanged when it applies other options.
 

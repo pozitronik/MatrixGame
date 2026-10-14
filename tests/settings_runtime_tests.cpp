@@ -189,6 +189,13 @@ void map_choice() {
     MG_CHECK(StandaloneSettings::load().values.map.empty());
     MapSelection::finish_map_load();
     MG_CHECK(StandaloneSettings::load().values == expected);
+    // An unwritable file still names the map, so a failure is not reported as forgetting it.
+    MG_CHECK(SetFileAttributesW(L"CFG\\standalone.txt", FILE_ATTRIBUTE_READONLY));
+    MapSelection::begin_map_load();
+    MG_CHECK(StandaloneSettings::load().values == expected);
+    MG_CHECK(!MapSelection::forget_remembered_map());
+    MG_CHECK(StandaloneSettings::load().values == expected);
+    MG_CHECK(SetFileAttributesW(L"CFG\\standalone.txt", FILE_ATTRIBUTE_NORMAL));
     // A failure while the map loads keeps it forgotten.
     MapSelection::begin_map_load();
     MG_CHECK(MapSelection::forget_remembered_map() && !MapSelection::forget_remembered_map());

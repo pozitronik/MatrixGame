@@ -15,6 +15,7 @@ namespace MapSelection {
 namespace {
 bool remembered_started = false;
 bool map_loading = false;
+bool map_cleared = false;
 std::wstring remembered;
 bool relaunch_pending = false;
 
@@ -60,7 +61,7 @@ bool remembered_map_started() { return remembered_started; }
 void begin_map_load() {
     if (!remembered_started) return;
     map_loading = true;
-    store_map({});
+    map_cleared = store_map({});
 }
 
 void finish_map_load() {
@@ -76,7 +77,8 @@ void finish_map_load() {
 bool forget_remembered_map() {
     if (!map_loading) return false;
     map_loading = false;
-    store_map({});  // Already cleared before loading; repeated in case that save failed.
+    // Already cleared before loading; repeated in case that save failed.
+    if (!map_cleared && !store_map({})) return false;
     lgr.notice("Forgot the remembered map after a failed start");
     return true;
 }
