@@ -268,27 +268,61 @@ void cannon_firing() {
         compare(a, cannon_run(mode, 1));
     }
 }
-// Unregistered correctness probe, not a behavior-preservation oracle.
-// Defect tracking: https://github.com/pozitronik/MatrixGame/issues/129
-// Source/reproduction: docs/testing/armed-fixtures.md, "Axis-aligned trace defect".
+// Object tracing along and across map axes: https://github.com/pozitronik/MatrixGame/issues/129
+// Groups are 200 world units wide; the first player robot stands on the y = 200 group boundary,
+// and both player robots share x = 100.
 void axis_aligned_trace() {
-    bool all_hit = true;
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         Session session({mode, 82, 10, 1000, false, false});
         auto *target = robot(PLAYER_SIDE);
-        MG_CHECK(session.matches(1, target));
+        auto *second = robot(PLAYER_SIDE, 1);
+        auto *enemy = robot(2);
+        MG_CHECK(session.matches(1, target) && session.matches(2, second));
         const D3DXVECTOR3 end = target->GetGeoCenter();
+        const D3DXVECTOR3 beyond = second->GetGeoCenter();
+        const D3DXVECTOR3 hostile = enemy->GetGeoCenter();
+        const auto offset = [](D3DXVECTOR3 point, float x, float y) {
+            return D3DXVECTOR3(point.x + x, point.y + y, point.z);
+        };
         const DWORD masks[]{TRACE_ROBOT | TRACE_OBJECTSPHERE, TRACE_ROBOT};
         for (DWORD mask : masks) {
-            // Both rays intersect the same object; test sphere and real mesh Pick.
-            MG_CHECK(g_MatrixMap->Trace(nullptr, D3DXVECTOR3(80, 100, 50), end, mask, nullptr) == target);
-            const bool hit = g_MatrixMap->Trace(nullptr, D3DXVECTOR3(end.x, 100, 50), end, mask, nullptr) == target;
-            std::cerr << "Axis trace mode=" << int(mode) << " sphere=" << bool(mask & TRACE_OBJECTSPHERE)
-                << " hit=" << hit << " expected=1\n";
-            all_hit &= hit;
+            const DWORD sphere = mask & TRACE_OBJECTSPHERE;
+            const auto trace = [&](D3DXVECTOR3 from, D3DXVECTOR3 to, DWORD trace_mask, CMatrixMapStatic *skip) {
+                return g_MatrixMap->Trace(nullptr, from, to, trace_mask, skip);
+            };
+            // Oblique control and the original descending zero-X ray.
+            MG_CHECK(trace(D3DXVECTOR3(80, 100, 50), end, mask, nullptr) == target);
+            MG_CHECK(trace(D3DXVECTOR3(end.x, 100, 50), end, mask, nullptr) == target);
+            // Zero-X and zero-Y rays in both directions, within one group and across the y = 200 boundary.
+            MG_CHECK(trace(offset(end, 0, -60), end, mask, nullptr) == target);
+            MG_CHECK(trace(offset(end, 0, 30), offset(end, 0, -10), mask, nullptr) == target);
+            MG_CHECK(trace(offset(end, -60, 0), end, mask, nullptr) == target);
+            MG_CHECK(trace(offset(end, 60, 0), end, mask, nullptr) == target);
+            for (float x : {-60.0f, 60.0f}) MG_CHECK(trace(offset(hostile, x, 0), hostile, mask, nullptr) == enemy);
+            for (float y : {-60.0f, 60.0f}) MG_CHECK(trace(offset(hostile, 0, y), hostile, mask, nullptr) == enemy);
+            // Nearest hit along x = 100 from either end; skipping the nearer robot finds the farther one.
+            const D3DXVECTOR3 below = offset(end, 0, -60), above = offset(beyond, 0, 60);
+            MG_CHECK(trace(below, above, mask, nullptr) == target);
+            MG_CHECK(trace(above, below, mask, nullptr) == second);
+            MG_CHECK(trace(below, above, mask, target) == second);
+            MG_CHECK(trace(above, below, mask, second) == target);
+            // A segment that stops short, a parallel miss and a mask without robots.
+            MG_CHECK(trace(offset(end, 0, -150), offset(end, 0, -100), mask, nullptr) == nullptr);
+            MG_CHECK(trace(offset(end, 60, -60), offset(end, 60, 60), mask, nullptr) == nullptr);
+            MG_CHECK(trace(below, end, TRACE_BUILDING | sphere, nullptr) == nullptr);
+            // Terrain traversal: a descending zero-X ray meets the ground where a near-parallel oblique ray does.
+            D3DXVECTOR3 axial(0, 0, 0), oblique(0, 0, 0);
+            const D3DXVECTOR3 ground(100, 120, -20);
+            MG_CHECK(g_MatrixMap->Trace(&axial, D3DXVECTOR3(100, 40, 50), ground, TRACE_LANDSCAPE, nullptr) ==
+                     TRACE_STOP_LANDSCAPE);
+            MG_CHECK(g_MatrixMap->Trace(&oblique, D3DXVECTOR3(101, 40, 50), ground, TRACE_LANDSCAPE, nullptr) ==
+                     TRACE_STOP_LANDSCAPE);
+            // The rays differ by one unit at the start, so their ground points agree only to rounding.
+            MG_CHECK(axial.x == 100 && std::fabs(axial.y - oblique.y) < 0.01f &&
+                     std::fabs(axial.z - oblique.z) < 0.01f);
+            std::cerr << "Axis trace mode=" << int(mode) << " sphere=" << bool(sphere) << " passed\n";
         }
     }
-    MG_CHECK(all_hit);
 }
 struct Family {
     const char *name;
@@ -1734,7 +1768,7 @@ void cannon_difficulty() {
 
 const tests::Case cases[] = {
         {"game.combat.cannon_firing", cannon_firing},         {"game.combat.robot_firing", robot_firing},
-        {"game.combat.plasma_flight", plasma_flight},         {"probe.combat.axis_aligned_trace", axis_aligned_trace},
+        {"game.combat.plasma_flight", plasma_flight},         {"game.combat.axis_aligned_trace", axis_aligned_trace},
         {"game.combat.volcano_firing", volcano_firing},       {"game.combat.electric_firing", electric_firing},
         {"game.combat.flame_firing", flame_firing},           {"game.combat.gun_firing", gun_firing},
         {"game.combat.missile_firing", missile_firing},       {"game.combat.mortar_firing", mortar_firing},

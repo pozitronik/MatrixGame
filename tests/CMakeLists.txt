@@ -277,6 +277,7 @@ target_compile_definitions(matrixgame_combat_scenarios PRIVATE
 add_matrix_test(game.combat.cannon_firing matrixgame_combat_scenarios gameplay ai)
 add_matrix_test(game.combat.robot_firing matrixgame_combat_scenarios gameplay ai)
 add_matrix_test(game.combat.plasma_flight matrixgame_combat_scenarios gameplay ai memory)
+add_matrix_test(game.combat.axis_aligned_trace matrixgame_combat_scenarios gameplay ai)
 foreach(contract volcano_firing electric_firing flame_firing gun_firing missile_firing mortar_firing repair_firing heat_boundary bomb_detonation cannon_projectiles cannon_boundaries cannon_obstruction delayed_damage bomb_order repair_death module_modifiers module_firing splash_boundary chained_bombs repair_redirect cannon_patient cannon_acquisition robot_boundaries status_refresh status_lethal friendly_lethal friendly_difficulty cannon_difficulty building_patient building_dying building_volcano building_electric building_flame building_gun building_missile building_mortar)
     add_matrix_test(game.combat.${contract} matrixgame_combat_scenarios gameplay ai memory)
 endforeach()
@@ -503,11 +504,12 @@ foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildin
                  strategic_member_loss strategic_base_loss strategic_forward
                  strategic_objective_replacement strategic_objective_ties strategic_empty_team_split uneven_team_redistribution
                  radio_group radio_team_region radio_filters threat_priorities
-                 automatic_attack_route automatic_capture_route automatic_defence_route
+                 automatic_attack_route reused_route_distance automatic_capture_route automatic_defence_route
                  production_wait_choice production_wait_limits production_unaffordable)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
 add_matrix_test(game.ai.bomb_escape_capacity matrixgame_ai_decision_tests gameplay ai)
+add_matrix_test(game.ai.place_axis matrixgame_ai_decision_tests gameplay ai)
 foreach(contract regroup_split_counts regroup_merge_counts regroup_count_sequences strategic_merged_team_split)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
@@ -551,7 +553,7 @@ target_include_directories(matrixgame_navigation_boundary_tests PRIVATE "${CMAKE
 target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract zone_routes road_routes chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
+foreach(contract zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
 add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp

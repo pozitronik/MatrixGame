@@ -172,12 +172,31 @@ void place_bounds() {
 void place_axis_correctness() {
     Session session;
     auto &map = *g_MatrixMap;
-    MG_CHECK(map.m_RN.m_Place[1].m_Pos == CPoint(48, 8));
-    MG_CHECK(map.m_RN.m_Place[2].m_Pos == CPoint(8, 48));
-    const int inside = map.FindPlace(CPoint(48, 8));
-    const int outside = map.FindPlace(CPoint(20, 48));
-    std::cout << "place inside=" << inside << " outside=" << outside << '\n';
-    MG_CHECK(inside == 1 && outside == -1);
+    const CPoint origins[]{{8, 8}, {48, 8}, {8, 48}, {48, 48}};
+    for (int place = 0; place < 4; ++place) {
+        const CPoint origin = origins[place];
+        MG_CHECK(map.m_RN.m_Place[place].m_Pos == origin);
+        // Each place owns the half-open four-cell square at its origin.
+        for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x)
+            MG_CHECK(map.FindPlace(CPoint(origin.x + x, origin.y + y)) == place);
+        for (int i = 0; i < 4; ++i) {
+            MG_CHECK(map.FindPlace(CPoint(origin.x - 1, origin.y + i)) == -1);
+            MG_CHECK(map.FindPlace(CPoint(origin.x + 4, origin.y + i)) == -1);
+            MG_CHECK(map.FindPlace(CPoint(origin.x + i, origin.y - 1)) == -1);
+            MG_CHECK(map.FindPlace(CPoint(origin.x + i, origin.y + 4)) == -1);
+        }
+    }
+    // The previous comparison bounded X by the place's Y coordinate.
+    MG_CHECK(map.FindPlace(CPoint(20, 48)) == -1);
+    MG_CHECK(map.FindPlace(CPoint(51, 8)) == 1 && map.FindPlace(CPoint(8, 51)) == 2);
+    MG_CHECK(map.FindPlace(CPoint(8, -1)) == -1 && map.FindPlace(CPoint(8, map.m_SizeMove.y)) == -1);
+    // Cells outside every zone have no place, even inside a place square.
+    auto &cell = *map.MoveGet(49, 9);
+    const int zone = cell.m_Zone;
+    cell.m_Zone = -1;
+    MG_CHECK(map.FindPlace(CPoint(49, 9)) == -1 && map.FindPlace(CPoint(48, 8)) == 1);
+    cell.m_Zone = zone;
+    MG_CHECK(map.FindPlace(CPoint(49, 9)) == 1);
 }
 
 // Every cached logic-group count must equal the side's live membership.

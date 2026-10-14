@@ -2386,7 +2386,7 @@ int CMatrixMapLogic::FindPlace(const CPoint &mappos) {
         int pl = m_RN.m_Zone[zone].m_Place[i];
         CPoint tp = m_RN.m_Place[pl].m_Pos;
 
-        if (mappos.x >= tp.x && mappos.x < (tp.y + 4) && mappos.y >= tp.y && mappos.y < (tp.y + 4))
+        if (mappos.x >= tp.x && mappos.x < (tp.x + 4) && mappos.y >= tp.y && mappos.y < (tp.y + 4))
             return pl;
     }
     return -1;

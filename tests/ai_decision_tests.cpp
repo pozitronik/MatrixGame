@@ -427,8 +427,7 @@ int main(int argc, char **argv) {
         {"game.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
         {"game.ai.memory_position_eviction", tests::ai::memory_position_eviction},
         {"game.ai.memory_ignore_eviction", tests::ai::memory_ignore_eviction},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
-        {"probe.ai.place_axis", tests::ai::place_axis_correctness},
+        {"game.ai.place_axis", tests::ai::place_axis_correctness},
         {"game.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
         {"game.ai.regroup_merge_counts", tests::ai::regroup_merge_correctness},
         {"game.ai.regroup_count_sequences", tests::ai::regroup_count_sequences},
@@ -458,9 +457,7 @@ int main(int argc, char **argv) {
         {"game.ai.radio_filters", tests::ai::radio_filters},
         {"game.ai.threat_priorities", tests::ai::threat_priorities},
         {"game.ai.automatic_attack_route", tests::ai::automatic_attack_route},
-        // Opt-in correctness probe; deliberately absent from CTest until fixed.
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/138
-        {"probe.ai.reused_route_distance", tests::ai::reused_route_distance},
+        {"game.ai.reused_route_distance", tests::ai::reused_route_distance},
         {"game.ai.automatic_capture_route", tests::ai::automatic_capture_route},
         {"game.ai.automatic_defence_route", tests::ai::automatic_defence_route},
         {"game.ai.production_wait_choice", tests::ai::production_wait_choice},

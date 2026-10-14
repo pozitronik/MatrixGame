@@ -105,8 +105,7 @@ void check_route(const SMatrixPlayerGroup &group, bool fresh = true) {
     const auto *units = group.m_RoadPath->m_Units;
     MG_CHECK(units[0].m_Crotch->m_Region == 0 && units[2].m_Crotch->m_Region == 1);
     MG_CHECK(units[1].m_Road->m_Dist + units[2].m_Road->m_Dist == 20);
-    // ClearFast/AddList currently retain the previous distance accumulator.
-    // Keep replacement topology covered; accepting that accumulator needs defect disposition.
+    // The replacement route is also checked by game.ai.reused_route_distance.
     if (fresh) MG_CHECK(group.m_RoadPath->m_Header[0].m_Dist == 20);
 }
 
