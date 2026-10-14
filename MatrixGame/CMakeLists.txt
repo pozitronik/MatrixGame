@@ -79,6 +79,7 @@ else()
             SOURCE
             src/MatrixFormGame.cpp
             src/MatrixGame.cpp
+            src/GroupCounts.cpp
             APPEND
             PROPERTY COMPILE_DEFINITIONS BUILD_EXE
     )

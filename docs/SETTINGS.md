@@ -38,7 +38,15 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 **Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators.
 
-Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows` or `CameraSpeed` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
+## Options without a window row
+
+| Key in `CFG/standalone.txt` | Values | Default | Takes effect |
+| --- | --- | --- | --- |
+| `GroupCounts` | `Corrected`, `Original` | `Corrected` | At startup |
+
+**AI group counts.** When the computer AI regroups its robots, the original game counted every robot moved out of a split group as an addition to that group, and left a merged, emptied group with its former count until the next regrouping. A team strategy pass in the same tick then counted the empty group as a live one: a team with nobody to spare moved a whole group to an empty team instead of half its robots, and a team that had just become one group did not clear its wait-for-union state as it should. `Corrected` keeps every count equal to the group's members. `Original` restores the original counting exactly. The DLL build always uses `Original`, because its host owns its settings. The key has no window row; edit the file while the game is closed. Applying the Settings window saves the value the game started with.
+
+Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed` or `GroupCounts` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
 
 ## Saving
 
@@ -54,7 +62,8 @@ Automated `game.settings.*` contracts cover:
 - Atomic saving and failed-save behavior.
 - Window selection, stepping, mode coupling, hit areas and both label languages.
 - Startup mapping of graphics options.
-- Immediate routing of shadows, camera speed and volume, and shadow pass selection for each combination of the two shadow options.
+- Immediate routing of shadows, camera speed, volume and the AI group-count mode, and shadow pass selection for each combination of the two shadow options.
+- The group-count mode a process starts with: `Corrected` in the EXE, `Original` in the DLL (`game.settings.group_counts_build_default`, registered in both build roles). The `game.ai.*` group-count cases check both modes; see [AI decisions](testing/84-ai-decisions.md).
 
 `game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions.
 

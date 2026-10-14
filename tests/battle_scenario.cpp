@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "GroupCounts.hpp"
 #include "scenario_build_identity.hpp"
 #include "battle_device.hpp"
 #include "battle_geometry.hpp"
@@ -345,6 +346,7 @@ std::string Session::metadata(std::string_view fixture) const {
         << ",\"build_exe\":true"
 #endif
         << ",\"cheats\":" << (MATRIXGAME_SCENARIO_CHEATS ? "true" : "false")
+        << ",\"group_counts\":\"" << (GroupCounts::original() ? "Original" : "Corrected") << '"'
 #ifdef ASSERT_OFF
         << ",\"assert_off\":true"
 #else

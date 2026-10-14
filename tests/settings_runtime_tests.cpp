@@ -8,6 +8,7 @@
 #include "SettingsWindow.hpp"
 #include "ShadowPasses.hpp"
 #include "WindowDisplay.hpp"
+#include "GroupCounts.hpp"
 
 #include <utility>
 
@@ -24,6 +25,7 @@ Values custom() {
     values.robot_shadows = false;
     values.sound_volume = 30;
     values.camera_speed = 200;
+    values.group_counts = StandaloneSettings::GroupCountMode::Original;
     return values;
 }
 
@@ -55,12 +57,14 @@ void immediate_settings() {
     StandaloneSettings::initialize_runtime(Values{});
     MG_CHECK(g_Config.m_CamMoveSpeed == 2.0f && device->voices[0]->volume == 1.0f);
     MG_CHECK(g_Config.m_ShowStencilShadows && g_Config.m_ShowProjShadows);
+    MG_CHECK(!GroupCounts::original());
 
     g_Config.m_SkyBox = 2;
     g_Config.m_RobotShadow = SHADOW_STENCIL;
     StandaloneSettings::apply_runtime(custom());
     MG_CHECK(g_Config.m_CamMoveSpeed == 4.0f && device->voices[0]->volume == 0.3f);
     MG_CHECK(!g_Config.m_ShowStencilShadows && !g_Config.m_ShowProjShadows);
+    MG_CHECK(GroupCounts::original());  // The group-count mode applies immediately.
     MG_CHECK(StandaloneSettings::current() == custom());
     // Restart-only options do not change the running engine.
     MG_CHECK(g_Config.m_SkyBox == 2 && g_Config.m_RobotShadow == SHADOW_STENCIL);
@@ -73,6 +77,8 @@ void immediate_settings() {
     g_Config.m_CamMoveSpeed = 3.0f;  // A new session reads the data value again.
     StandaloneSettings::initialize_runtime(slower);
     MG_CHECK(g_Config.m_CamMoveSpeed == 1.5f);
+    StandaloneSettings::initialize_runtime(Values{});
+    MG_CHECK(!GroupCounts::original());
     SoundBridge::shutdown();
     SoundBridge::master_volume(1.0f);
 }
@@ -83,7 +89,8 @@ void restart_detection() {
     for (auto change : {+[](Values &v) { v.sound_volume = 10; }, +[](Values &v) { v.camera_speed = 50; },
                         +[](Values &v) { v.stencil_shadows = false; }, +[](Values &v) { v.projected_shadows = false; },
                         +[](Values &v) { v.display.mode = Display::Mode::Borderless; },
-                        +[](Values &v) { v.display.fullscreen = Display::Mode::Exclusive; }}) {
+                        +[](Values &v) { v.display.fullscreen = Display::Mode::Exclusive; },
+                        +[](Values &v) { v.group_counts = StandaloneSettings::GroupCountMode::Original; }}) {
         change(values);
         MG_CHECK(!StandaloneSettings::restart_pending(values));
     }
@@ -117,6 +124,12 @@ void independent_shadows() {
     SoundBridge::master_volume(1.0f);
 }
 
+// A process starts corrected in the standalone EXE and original in the DLL, whose host owns its settings.
+void group_counts_build_default() {
+    MG_CHECK(GroupCounts::original_by_default() == bool(MATRIXGAME_TESTS_BUILD_DLL));
+    MG_CHECK(GroupCounts::original() == GroupCounts::original_by_default());
+}
+
 void window_availability() {
     const std::wstring disabled = L"x|_COLOR:FF6794A3|_POS:6:105|_TEXT:[setup]|y";
     auto menu = disabled;
@@ -137,6 +150,7 @@ constexpr tests::Case cases[] = {
     {"game.settings.restart_detection", restart_detection},
     {"game.settings.independent_shadows", independent_shadows},
     {"game.settings.window_availability", window_availability},
+    {"game.settings.group_counts_build_default", group_counts_build_default},
 };
 
 }  // namespace

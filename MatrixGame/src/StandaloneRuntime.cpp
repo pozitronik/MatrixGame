@@ -5,6 +5,7 @@
 #include "MatrixGameDll.hpp"
 #include "SoundBridge.hpp"
 #include "WindowDisplay.hpp"
+#include "GroupCounts.hpp"
 
 namespace StandaloneSettings {
 namespace {
@@ -17,6 +18,7 @@ void apply_immediate(const Values &values) {
     g_Config.m_ShowProjShadows = values.projected_shadows;
     g_Config.m_CamMoveSpeed = camera_speed * static_cast<float>(values.camera_speed) / 100.0f;
     SoundBridge::master_volume(static_cast<float>(values.sound_volume) / 100.0f);
+    GroupCounts::set_original(values.group_counts == GroupCountMode::Original);
 }
 }  // namespace
 

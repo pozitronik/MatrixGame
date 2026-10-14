@@ -15,6 +15,8 @@ namespace Base { class CBlockPar; }
 namespace StandaloneSettings {
 
 enum class Skybox { Off, Low, High };
+// Cached AI group counts after regrouping; Original restores the original game's behaviour.
+enum class GroupCountMode { Corrected, Original };
 
 struct Values {
     Display::Settings display;
@@ -25,6 +27,7 @@ struct Values {
     bool projected_shadows = true;
     Skybox skybox = Skybox::High;
     bool robot_shadows = true;
+    GroupCountMode group_counts = GroupCountMode::Corrected;
     bool operator==(const Values &) const = default;
 };
 
@@ -47,5 +50,6 @@ std::wstring update_text(const std::wstring &text, const Values &values);
 bool save(const Values &values, std::string &error, const wchar_t *path = L"CFG\\standalone.txt");
 
 const char *name(Skybox skybox);
+const char *name(GroupCountMode mode);
 
 }  // namespace StandaloneSettings

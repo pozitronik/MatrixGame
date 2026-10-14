@@ -9,6 +9,7 @@
 #include "MatrixObjectCannon.hpp"
 #include <algorithm>
 #include "Logic/MatrixEnvironment.h"
+#include "GroupCounts.hpp"
 #include <array>
 
 // The existing bomb-command fixture uses the same idle production effect.
@@ -199,14 +200,26 @@ void place_axis_correctness() {
     MG_CHECK(map.FindPlace(CPoint(49, 9)) == 1);
 }
 
-// Every cached logic-group count must equal the side's live membership.
-void check_group_counts(const CMatrixSideUnit &side) {
+// Selects the group-count mode for one case and restores the process default.
+struct CountMode {
+    explicit CountMode(bool original) { GroupCounts::set_original(original); }
+    ~CountMode() { GroupCounts::set_original(GroupCounts::original_by_default()); }
+};
+
+// Live membership of each logic group of a side.
+std::array<int, MAX_LOGIC_GROUP> group_members(const CMatrixSideUnit &side) {
     std::array<int, MAX_LOGIC_GROUP> actual{};
     for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
         if (!object->IsLiveRobot() || object->GetSide() != side.m_Id) continue;
         const int group = object->AsRobot()->GetGroupLogic();
         if (group >= 0 && group < MAX_LOGIC_GROUP) ++actual[group];
     }
+    return actual;
+}
+
+// Every cached logic-group count must equal the side's live membership.
+void check_group_counts(const CMatrixSideUnit &side) {
+    const auto actual = group_members(side);
     for (int i = 0; i < MAX_LOGIC_GROUP; ++i) {
         if (actual[i] != side.m_LogicGroup[i].RobotsCnt())
             std::cout << "group=" << i << " actual=" << actual[i] << " cached=" << side.m_LogicGroup[i].RobotsCnt() << '\n';
@@ -214,33 +227,55 @@ void check_group_counts(const CMatrixSideUnit &side) {
     }
 }
 
+// In the original mode the split source counts each moved robot as an addition (one member, cached 3),
+// and the merged donor keeps its former count (no members, cached 2); every other slot is exact.
+void check_original_counts(const CMatrixSideUnit &side, bool split, int source) {
+    const auto actual = group_members(side);
+    int stale = 0;
+    for (int i = 0; i < MAX_LOGIC_GROUP; ++i) {
+        const int cached = side.m_LogicGroup[i].RobotsCnt();
+        std::cout << "group=" << i << " actual=" << actual[i] << " cached=" << cached << '\n';
+        if (actual[i] == cached) continue;
+        ++stale;
+        if (split) MG_CHECK(i == source && actual[i] == 1 && cached == 3);
+        else MG_CHECK(i != source && actual[i] == 0 && cached == 2);
+    }
+    MG_CHECK(stale == 1);
+}
+
 void regroup_counts_correctness(bool split) {
-    Session session;
-    auto robots = units();
-    auto *a = robots[0], *b = robots[1];
-    MG_CHECK(a->GetSide() == b->GetSide());
-    position(*a, 100, 200); position(*b, split ? 501 : 200, 200);
-    a->SetTeam(0); b->SetTeam(0);
-    a->SetGroupLogic(0); b->SetGroupLogic(split ? 0 : 1);
-    if (!split) {
-        // A second member gives the merged donor slot a count above one.
-        auto *partner = BattleGeometry::create_robot(*g_MatrixMap, a->GetSide(), 60, 200);
-        partner->SetTeam(0); partner->SetGroupLogic(0);
+    for (bool original : {false, true}) {
+        CountMode counts(original);
+        Session session;
+        auto robots = units();
+        auto *a = robots[0], *b = robots[1];
+        MG_CHECK(a->GetSide() == b->GetSide());
+        position(*a, 100, 200); position(*b, split ? 501 : 200, 200);
+        a->SetTeam(0); b->SetTeam(0);
+        a->SetGroupLogic(0); b->SetGroupLogic(split ? 0 : 1);
+        if (!split) {
+            // A second member gives the merged donor slot a count above one.
+            auto *partner = BattleGeometry::create_robot(*g_MatrixMap, a->GetSide(), 60, 200);
+            partner->SetTeam(0); partner->SetGroupLogic(0);
+        }
+        auto &side = *g_MatrixMap->GetSideById(a->GetSide());
+        side.Regroup();
+        MG_CHECK((a->GetGroupLogic() != b->GetGroupLogic()) == split);
+        for (auto *robot : robots) {
+            if (robot->GetSide() != side.m_Id) continue;
+            MG_CHECK(robot->GetGroupLogic() >= 0 && robot->GetGroupLogic() < MAX_LOGIC_GROUP);
+        }
+        if (original) check_original_counts(side, split, a->GetGroupLogic());
+        else check_group_counts(side);
     }
-    auto &side = *g_MatrixMap->GetSideById(a->GetSide());
-    side.Regroup();
-    MG_CHECK((a->GetGroupLogic() != b->GetGroupLogic()) == split);
-    for (auto *robot : robots) {
-        if (robot->GetSide() != side.m_Id) continue;
-        MG_CHECK(robot->GetGroupLogic() >= 0 && robot->GetGroupLogic() < MAX_LOGIC_GROUP);
-    }
-    check_group_counts(side);
 }
 void regroup_split_correctness() { regroup_counts_correctness(true); }
 void regroup_merge_correctness() { regroup_counts_correctness(false); }
 
 // Splits and merges in one pass, at the distance boundaries, across several groups and two teams.
+// Corrected mode only: the original mode leaves stale counts by design.
 void regroup_count_sequences() {
+    CountMode counts(false);
     for (float distance : {299.0f, 300.0f, 400.0f, 401.0f}) for (bool initially_together : {false, true}) {
         Session session;
         auto robots = units();

@@ -22,6 +22,7 @@
 #include "MatrixFlyer.hpp"
 #include "Interface/CCounter.h"
 #include "MatrixMultiSelection.hpp"
+#include "GroupCounts.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -2012,7 +2013,8 @@ void CMatrixSideUnit::Regroup() {
                     continue;
                 if (subl[t] != tl[i])
                     continue;
-                m_LogicGroup[rl[t]->GetGroupLogic()].IncRobotsCnt(-1);
+                // The original game counted the moved robot as an addition to its source group.
+                m_LogicGroup[rl[t]->GetGroupLogic()].IncRobotsCnt(GroupCounts::original() ? 1 : -1);
                 rl[t]->SetGroupLogic(k);
                 m_LogicGroup[k].IncRobotsCnt();
             }
@@ -2080,7 +2082,9 @@ void CMatrixSideUnit::Regroup() {
                 }
 
                 m_LogicGroup[u].IncRobotsCnt(m_LogicGroup[t].RobotsCnt());
-                m_LogicGroup[t].RobotsCnt(0);
+                // The original game left the emptied group with its former count.
+                if (!GroupCounts::original())
+                    m_LogicGroup[t].RobotsCnt(0);
 
                 for (k = 0; k < rlcnt; k++) {
                     if (rl[k]->GetGroupLogic() != t)
