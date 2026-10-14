@@ -248,6 +248,8 @@ target_compile_definitions(matrixgame_production_scenarios PRIVATE
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 add_matrix_test(game.production.queue_deployment matrixgame_production_scenarios gameplay ai)
 add_matrix_test(game.production.base_exit matrixgame_production_scenarios gameplay ai)
+add_matrix_test(game.production.base_terrain_cleanup matrixgame_production_scenarios gameplay memory)
+add_matrix_test(game.production.base_terrain_teardown matrixgame_production_scenarios gameplay memory)
 add_matrix_test(game.production.building_geometry matrixgame_production_scenarios gameplay)
 add_matrix_test(game.production.maintenance_clock matrixgame_production_scenarios gameplay)
 add_matrix_test(game.production.scheduled_income matrixgame_production_scenarios gameplay)
@@ -287,7 +289,7 @@ target_include_directories(matrixgame_material_ruin_tests PRIVATE "${CMAKE_CURRE
 target_compile_definitions(matrixgame_material_ruin_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(kind base titan plasma electronics energy repair)
+foreach(kind base base_asymmetric titan plasma electronics energy repair)
     add_matrix_test(game.harness.materials.demolish_${kind} matrixgame_material_ruin_tests gameplay memory tests)
 endforeach()
 
