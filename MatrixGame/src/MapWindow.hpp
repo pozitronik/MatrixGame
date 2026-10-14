@@ -31,6 +31,9 @@ bool keyboard(uint8_t vk, bool down);
 bool mouse_down(int x, int y);
 void mouse_wheel(int steps);
 
+// Rebuilds an open window at the centre of the current screen after a resolution change.
+void relayout();
+
 // Releases the preview and window state before the session's hints and heap are destroyed.
 void shutdown();
 

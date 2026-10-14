@@ -240,6 +240,10 @@ void mouse_wheel(int steps) {
     update(state->model.move(-steps));
 }
 
+void relayout() {
+    if (active()) rebuild();
+}
+
 void shutdown() {
     release_preview();
     state.reset();
