@@ -457,7 +457,7 @@ int main(int argc, char **argv) {
         {"game.navigation.carrier_drop_landing", carrier_drop_landing},
         {"game.navigation.multiregion_movement", tests::navigation::multiregion_movement},
         {"game.navigation.multiregion_road_guidance", tests::navigation::multiregion_road_guidance},
-        {"probe.navigation.group_speed_nonfinite", tests::navigation::group_speed_nonfinite_probe},
+        {"game.navigation.group_speed_finite", tests::navigation::group_speed_nonfinite_probe},
         {"game.navigation.unreachable_replacement", tests::navigation::unreachable_replacement},
     };
     int result = tests::run(argc, argv, cases);

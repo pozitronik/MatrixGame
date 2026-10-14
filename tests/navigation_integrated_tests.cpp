@@ -153,9 +153,8 @@ void multiregion_road_guidance() {
     }
 }
 
-// Manual correctness probe, intentionally absent from CTest baseline registration.
-// It must fail at nonfinite state, never accept that state as a gameplay reference.
-// Tracked defect: https://github.com/pozitronik/MatrixGame/issues/134.
+// Formerly reached a 180-unit formation spread and a nonfinite group speed in MinGW builds.
+// Every frame requires finite state. Regression for https://github.com/pozitronik/MatrixGame/issues/134.
 void group_speed_nonfinite_probe() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         Session session(profile(mode, step));

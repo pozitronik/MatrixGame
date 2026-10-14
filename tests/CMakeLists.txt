@@ -536,6 +536,7 @@ foreach(contract delivery_flights delivery_carrier_damage local_routes passage_w
                  multiregion_movement multiregion_road_guidance unreachable_replacement)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
+add_matrix_test(game.navigation.group_speed_finite matrixgame_navigation_tests gameplay ai navigation)
 
 add_matrix_test_executable(matrixgame_navigation_boundary_tests navigation_boundary_tests.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -548,6 +549,7 @@ target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
 foreach(contract zone_routes road_routes chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
+add_matrix_test(game.navigation.formation_speed_boundaries matrixgame_navigation_boundary_tests gameplay ai navigation)
 add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_player_order_scenarios PRIVATE MatrixGameInternal)

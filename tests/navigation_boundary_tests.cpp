@@ -5,6 +5,7 @@
 #include "MatrixRobot.hpp"
 #include <array>
 #include <cmath>
+#include <iostream>
 
 namespace {
 using namespace tests;
@@ -112,6 +113,37 @@ void road_routes() {
     region_path[1] = 3;
     road.FindPathFromRegionPath(1 << 1, 2, region_path, &route);
     MG_CHECK(route.m_ListCnt == 0 && route.m_Header == nullptr);
+}
+
+// CalcMaxSpeed slows formation leaders that are more than 180 units (COLLIDE_BOT_R * 10) ahead.
+void formation_speed_boundaries() {
+    for (float spread : {0.0f, 100.0f, 179.0f, 180.0f, 181.0f, 360.0f}) for (bool mixed : {false, true}) {
+        Profile p; p.layout = NavigationLayout::Open;
+        Session session(p);
+        session.ground_command(620, 200); // Forms the player group; exact orders follow.
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        auto *trailing = side.GetCurGroup()->GetObjectByN(0)->AsRobot();
+        auto *leading = side.GetCurGroup()->GetObjectByN(1)->AsRobot();
+        const int group = trailing->GetGroupLogic();
+        MG_CHECK(group >= 0 && leading->GetGroupLogic() == group && side.m_PlayerGroup[group].m_RobotCnt > 0);
+        trailing->SetMaxSpeed(0.6f);
+        leading->SetMaxSpeed(mixed ? 0.4f : 0.6f);
+        // Initial placement only. Destination cell (60,18) is world (620,200), so the formation
+        // direction is exactly +X and the projections differ by exactly the spread.
+        trailing->m_PosX = 100; trailing->m_PosY = 200; trailing->MapPosCalc();
+        leading->m_PosX = 100 + spread; leading->m_PosY = 200; leading->MapPosCalc();
+        trailing->MoveTo(60, 18);
+        leading->MoveTo(60, 18);
+        MG_CHECK(trailing->GetEnv()->GetEnemyCnt() == 0 && leading->GetEnv()->GetEnemyCnt() == 0);
+        side.CalcMaxSpeed();
+        MG_CHECK(std::isfinite(trailing->m_GroupSpeed) && std::isfinite(leading->m_GroupSpeed));
+        MG_CHECK(trailing->m_GroupSpeed == trailing->GetMaxSpeed());
+        // Above the threshold the leader is the farthest robot, so its interpolation factor is 0.6.
+        const float factor = spread > 180 ? 0.6f : 1.0f;
+        MG_CHECK(leading->m_GroupSpeed == leading->GetMaxSpeed() * factor);
+        std::cout << "formation spread=" << spread << " mixed=" << mixed << " speeds=" << trailing->m_GroupSpeed
+                  << ',' << leading->m_GroupSpeed << '\n';
+    }
 }
 
 void collision_boundaries() {
@@ -296,6 +328,7 @@ const Case cases[] = {
     {"game.navigation.zone_routes", zone_routes},
     {"game.navigation.chassis_traversal", chassis_traversal},
     {"game.navigation.road_routes", road_routes},
+    {"game.navigation.formation_speed_boundaries", formation_speed_boundaries},
     {"game.navigation.collision_boundaries", collision_boundaries},
     {"game.navigation.collision_wait_threshold", collision_wait_threshold},
     {"game.navigation.moving_target", moving_target},
