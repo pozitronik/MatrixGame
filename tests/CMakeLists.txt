@@ -501,7 +501,7 @@ foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildin
                  strategic_member_loss strategic_base_loss strategic_forward
                  strategic_objective_replacement strategic_objective_ties strategic_empty_team_split
                  radio_group radio_team_region radio_filters threat_priorities
-                 automatic_attack_route automatic_capture_route automatic_defence_route
+                 automatic_attack_route reused_route_distance automatic_capture_route automatic_defence_route
                  production_wait_choice production_wait_limits production_unaffordable)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
@@ -545,7 +545,7 @@ target_include_directories(matrixgame_navigation_boundary_tests PRIVATE "${CMAKE
 target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract zone_routes road_routes chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
+foreach(contract zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
 add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp

@@ -454,6 +454,7 @@ void CMatrixRoadRoute::NeedEmpty(int cnt, bool strong) {
 int CMatrixRoadRoute::AddList() {
     NeedEmpty();
     m_Header[m_ListCnt].m_Cnt = 0;
+    m_Header[m_ListCnt].m_Dist = 0;
     m_ListCnt++;
     return m_ListCnt - 1;
 }
