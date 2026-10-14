@@ -1934,7 +1934,8 @@ bool CMatrixRobotAI::Damage(
 
         m_NextTimeShorted = g_MatrixMap->GetTime();
     }
-    else {
+    else if (weap != WEAPON_ABLAZE && weap != WEAPON_SHORTED) {
+        // Delayed status callbacks reuse the stored side; other hits still clear it.
         m_LastDelayDamageSide = 0;
     }
 
