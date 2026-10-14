@@ -550,6 +550,11 @@ std::string lower(std::string value) {
     return value;
 }
 
+std::string upper(std::string value) {
+    for (auto &c : value) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    return value;
+}
+
 struct TreePackage {
     Bytes bytes;
     Entry packed;
@@ -696,10 +701,14 @@ void package_tree() {
         MG_CHECK(pack.FindNext(search) == 1);
         MG_CHECK(pack.FindFirst("sub", 0, search) == 0 && search.Name == "data.bin");
         MG_CHECK(pack.FindNext(search) == 0 && search.Name == "Deeper" && pack.FindNext(search) == 1);
+        // A missing folder or a file name lists nothing instead of dereferencing a missing folder.
+        MG_CHECK(pack.FindFirst("ghost", 0, search) == 1 && search.Folder == nullptr && pack.FindNext(search) == 1);
+        MG_CHECK(pack.FindFirst("sub\\ghost", 0, search) == 1 && pack.FindFirst("readme.txt", 0, search) == 1);
         pack.FindClose(search);
 
         MG_CHECK(pack.ClosePacketFile());
         MG_CHECK(pack.GetHandle() == 0xffffffff && pack.m_RootFolder == nullptr);
+        MG_CHECK(pack.FindFirst("", 0, search) == 1 && pack.FindNext(search) == 1);
         MG_CHECK(exclusively_openable(file.path()));
     }
 }
@@ -864,6 +873,43 @@ void package_file_fallback() {
     MG_CHECK(exclusively_openable("layout.pkg"));
 }
 
+Bytes map_package(const std::vector<std::string> &names) {
+    Bytes pack;
+    pack.u32(0);
+    std::vector<Entry> maps;
+    for (const auto &name : names) maps.push_back(stored_file(pack, upper(name), name, Bytes().text(name)));
+    const Entry nested = folder_entry(pack, "NESTED", "Nested", folder({}));
+    maps.push_back(nested);
+    const Entry map = folder_entry(pack, "MAP", "Map", folder(maps));
+    const Entry matrix = folder_entry(pack, "MATRIX", "Matrix", folder({map}));
+    pack.put_u32(0, pack.size());
+    return pack.raw(folder({matrix}));
+}
+
+void package_listing() {
+    WorkingDirectory directory;
+    MG_CHECK(Base::CFile::PackedFileNames(L"Matrix\\Map").empty());  // No registered packages.
+    write_file("first.pkg", map_package({"Alpha.cmap", "alpha.JPG"}));
+    write_file("second.pkg", map_package({"ALPHA.cmap", "beta.cmap"}));
+    write_file("other.pkg", simple_package({{"readme.txt", "text"}}));
+    {
+        RegisteredPackages registered;
+        Base::CFile::AddPackFile(L"first.pkg");
+        Base::CFile::AddPackFile(L"other.pkg");
+        Base::CFile::AddPackFile(L"second.pkg");
+        Base::CFile::OpenPackFiles();
+        // Real names in registration order; folders are skipped and duplicates across packages are kept.
+        const std::vector<std::wstring> expected{L"Alpha.cmap", L"alpha.JPG", L"ALPHA.cmap", L"beta.cmap"};
+        MG_CHECK(Base::CFile::PackedFileNames(L"Matrix\\Map") == expected);
+        MG_CHECK(Base::CFile::PackedFileNames(L"matrix/MAP") == expected);
+        MG_CHECK(Base::CFile::PackedFileNames(L"Matrix\\Map\\Nested").empty());
+        MG_CHECK(Base::CFile::PackedFileNames(L"Matrix\\Missing").empty());
+        MG_CHECK(Base::CFile::PackedFileNames(L"readme.txt").empty());
+        MG_CHECK(Base::CFile::PackedFileNames(L"").size() == 1);  // Only other.pkg has a root file.
+    }
+    MG_CHECK(Base::CFile::PackedFileNames(L"Matrix\\Map").empty());
+}
+
 // --- Raw-read records ------------------------------------------------------------------------------------
 
 // Map preparation and the vector-object loader copy ST_BYTE column payloads into these structures, so their
@@ -954,6 +1000,7 @@ constexpr tests::Case cases[] = {
     {"base.layout.package_handles", package_handles},
     {"base.layout.package_malformed", package_malformed},
     {"base.layout.package_file_fallback", package_file_fallback},
+    {"base.layout.package_listing", package_listing},
     {"base.layout.raw_records", raw_records},
 };
 

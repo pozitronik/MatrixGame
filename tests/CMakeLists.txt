@@ -100,6 +100,7 @@ endforeach()
 foreach(contract package_tree package_handles package_malformed package_file_fallback)
     add_matrix_test(base.layout.${contract} matrixgame_layout_tests base storage pack)
 endforeach()
+add_matrix_test(base.layout.package_listing matrixgame_layout_tests base storage pack)
 add_matrix_test(base.layout.raw_records matrixgame_layout_tests base storage)
 
 add_matrix_test_executable(matrixgame_error_tests error_tests.cpp)

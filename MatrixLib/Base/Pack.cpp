@@ -2319,11 +2319,13 @@ int CPackFile::FindFirst(
     S.Name = "";
     S.Folder = NULL;
     if (m_RootFolder == NULL)
-        return 0;
+        return 1;
     if (path.empty())
         S.Folder = m_RootFolder;
     else
         S.Folder = m_RootFolder->GetFolderEx(S.Path);
+    if (S.Folder == NULL)
+        return 1;  // A missing path or a file name lists nothing.
 
     return S.Folder->FindNext(S);
 }
