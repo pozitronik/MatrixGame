@@ -110,7 +110,7 @@ The registered `game.ai.uneven_team_redistribution` regression covers the correc
 
 Fresh road routes have two edges of length 10 and a cached distance of 20. Rebuilding the same route after target retirement currently retains the previous cached distance accumulator: `ClearFast` resets the list count, while `AddList` resets only its item count. The replacement test checks the actual edges, junctions and their summed length and prints the cached distance for investigation. It does not accept accumulated distance as a behavior reference. Its correction and regression acceptance remain tracked in [#138](https://github.com/pozitronik/MatrixGame/issues/138).
 
-The remaining probes use retained live objects and in-bounds records. Before correction, the redistribution probe deliberately used two active teams to keep the erroneous donor read inside the allocated array. Its registered replacement now exercises three teams safely. Bomb-escape capacity has a registered correction regression described above. Full-capacity memory eviction ([#137](https://github.com/pozitronik/MatrixGame/issues/137)) remains a separate finding.
+The remaining probes use retained live objects and in-bounds records. Before correction, the redistribution probe deliberately used two active teams to keep the erroneous donor read inside the allocated array. Its registered replacement now exercises three teams safely. The sections on individual contracts distinguish registered correction regressions from outstanding findings.
 
 ## Remaining baseline work
 

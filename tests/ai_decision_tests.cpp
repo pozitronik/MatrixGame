@@ -420,7 +420,6 @@ int main(int argc, char **argv) {
         {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
         {"game.ai.place_bounds", tests::ai::place_bounds},
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
-        {"game.ai.bomb_escape_capacity", tests::ai::bomb_escape_capacity},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/137
         {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
@@ -462,6 +461,7 @@ int main(int argc, char **argv) {
         {"game.ai.production_wait_choice", tests::ai::production_wait_choice},
         {"game.ai.production_wait_limits", tests::ai::production_wait_limits},
         {"game.ai.production_unaffordable", tests::ai::production_unaffordable},
+        {"game.ai.bomb_escape_capacity", tests::ai::bomb_escape_capacity},
     };
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();
