@@ -421,8 +421,7 @@ int main(int argc, char **argv) {
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/137
         {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
-        {"probe.ai.place_axis", tests::ai::place_axis_correctness},
+        {"game.ai.place_axis", tests::ai::place_axis_correctness},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
         {"probe.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140

@@ -70,7 +70,8 @@ Three additional registered cases exercise independent production logic without 
 | Case | Contract |
 | --- | --- |
 | `memory_cleanup` | `RemoveAllSlowely` removes marked sightings and clears their current target pointers, retaining unmarked sightings. `Reset` clears current targeting state while preserving enemy memory. `RemoveAllBuilding(skip)` preserves the nominated building and robot sightings, then removes remaining building sightings when called without an exception. Building records are never ticked |
-| `place_bounds` | The diagonal place at movement cell (8,8) contains its four-cell square; right/bottom and map boundaries are excluded. Off-diagonal lookup is tested separately as a correctness failure |
+| `place_bounds` | The diagonal place at movement cell (8,8) contains its four-cell square; right/bottom and map boundaries are excluded. Off-diagonal lookup is covered by `place_axis` |
+| `place_axis` | Every cell of all four places, including off-diagonal (48,8) and (8,48), resolves to its own place; the cells just outside each of the four edges, map rows outside the grid and the former false positive (20,48) do not. A cell outside every zone has no place even inside a square. Regression for [#139](https://github.com/pozitronik/MatrixGame/issues/139), whose correction bounds the horizontal coordinate by the place's X origin |
 | `bomb_escape_planning` | Ordinary player movement does not trigger escape. Automatic attack leaves the closest defender as cover and gives the other threatened robot an escape destination plus its original destination as a return order. A repeated call preserves that order. Blocking both outgoing chassis edges prevents escape; distances 299/300/301 distinguish the strict 300-world-unit threat radius |
 
 Bomb planning equips one existing synthetic robot with the same idle production BIGBOOM effect used by the bomb-command tests. An RAII guard releases it before session teardown; no map tick, firing, animation or explosion runs while it is attached. The test supplies initial observations, invokes `EscapeFromBomb`, and checks that the decision consumes no RNG draws. This is not evidence for physical escape, weapon acquisition or blast avoidance during a battle.
@@ -101,7 +102,6 @@ These opt-in probes assert intended consistency and are absent from CTest; their
 | Probe | Observed discrepancy | Disposition |
 | --- | --- | --- |
 | `probe.ai.memory_clear_reuse` | `Clear` empties the linked list but leaves its count at 1; failure precedes reuse while referenced objects are live | [#137](https://github.com/pozitronik/MatrixGame/issues/137) |
-| `probe.ai.place_axis` | Place (48,8) rejects its origin; place (8,48) accepts (20,48) outside its footprint | [#139](https://github.com/pozitronik/MatrixGame/issues/139) |
 | `probe.ai.regroup_split_counts` | A split leaves one actual source member with cached count 3 | [#140](https://github.com/pozitronik/MatrixGame/issues/140) |
 | `probe.ai.regroup_merge_counts` | A merge leaves the empty donor with cached count 1 | [#140](https://github.com/pozitronik/MatrixGame/issues/140) |
 | `probe.ai.uneven_team_redistribution` | Eligible teams keep 1:3 membership instead of balancing to 2:2 | [#135](https://github.com/pozitronik/MatrixGame/issues/135) |

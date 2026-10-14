@@ -505,6 +505,7 @@ foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildin
                  production_wait_choice production_wait_limits production_unaffordable)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
+add_matrix_test(game.ai.place_axis matrixgame_ai_decision_tests gameplay ai)
 
 add_matrix_test_executable(matrixgame_battle_outcome_scenarios battle_outcome_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
