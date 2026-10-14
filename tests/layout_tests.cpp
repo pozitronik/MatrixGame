@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "test_support.hpp"
+#include "MapCatalog.hpp"
 #include "wire_bytes.hpp"
 
 #include "CFile.hpp"
@@ -873,11 +874,12 @@ void package_file_fallback() {
     MG_CHECK(exclusively_openable("layout.pkg"));
 }
 
-Bytes map_package(const std::vector<std::string> &names) {
+Bytes map_package(const std::vector<std::string> &names, const Bytes &map_content = {}) {
     Bytes pack;
     pack.u32(0);
     std::vector<Entry> maps;
-    for (const auto &name : names) maps.push_back(stored_file(pack, upper(name), name, Bytes().text(name)));
+    for (const auto &name : names)
+        maps.push_back(stored_file(pack, upper(name), name, map_content.data.empty() ? Bytes().text(name) : map_content));
     const Entry nested = folder_entry(pack, "NESTED", "Nested", folder({}));
     maps.push_back(nested);
     const Entry map = folder_entry(pack, "MAP", "Map", folder(maps));
@@ -908,6 +910,51 @@ void package_listing() {
         MG_CHECK(Base::CFile::PackedFileNames(L"").size() == 1);  // Only other.pkg has a root file.
     }
     MG_CHECK(Base::CFile::PackedFileNames(L"Matrix\\Map").empty());
+}
+
+// A map store with the properties table that map preparation reads first, or another table.
+Bytes map_store(bool properties) {
+    Base::CStorageRecord record(std::wstring(properties ? L"properties" : L"other"));
+    record.AddItem(Base::CStorageRecordItem(L"Name", Base::ST_WCHAR));
+    record.AddItem(Base::CStorageRecordItem(L"Value", Base::ST_WCHAR));
+    Base::CStorage storage;
+    storage.AddRecord(record);
+    Base::CBuf buf;
+    storage.Save(buf);
+    return Bytes().raw(std::span<const uint8_t>(buf.Buff<uint8_t>(), buf.Len()));
+}
+
+void map_sources() {
+    WorkingDirectory directory;
+    MG_CHECK(MapCatalog::scan().empty());  // Neither packages nor a loose folder.
+    write_file("maps.pkg", map_package({"Packed.cmap", "Shared.cmap", "shared.jpg", "Broken.cmap"}, map_store(true)));
+    std::filesystem::create_directories("Matrix/Map/Nested");
+    write_file("Matrix/Map/SHARED.cmap", map_store(false));
+    write_file("Matrix/Map/Loose.cmap", map_store(true));
+    write_file("Matrix/Map/loose.png", Bytes().text("png"));
+    write_file("Matrix/Map/Nested/Hidden.cmap", map_store(true));
+    write_file("Matrix/Map/broken.cmap", Bytes().text("not a store"));
+    {
+        RegisteredPackages registered;
+        Base::CFile::AddPackFile(L"maps.pkg");
+        Base::CFile::OpenPackFiles();
+        const std::vector<MapCatalog::Map> expected{
+                {L"broken", L"Matrix\\Map\\broken.cmap", L"", true},
+                {L"Loose", L"Matrix\\Map\\Loose.cmap", L"Matrix\\Map\\loose.png", true},
+                {L"Packed", L"Matrix\\Map\\Packed.cmap", L"", false},
+                {L"SHARED", L"Matrix\\Map\\SHARED.cmap", L"Matrix\\Map\\shared.jpg", true},
+        };
+        const auto maps = MapCatalog::scan();
+        MG_CHECK(maps == expected);
+        // The loader reads the same files: loose files first, then the packages.
+        MG_CHECK(MapCatalog::readable(L"Matrix\\Map\\Packed.cmap") && MapCatalog::readable(L"Matrix\\Map\\loose.cmap"));
+        MG_CHECK(!MapCatalog::readable(L"Matrix\\Map\\Shared.cmap"));  // The loose store lacks the properties table.
+        MG_CHECK(!MapCatalog::readable(L"Matrix\\Map\\broken.cmap"));  // The loose file is not a store.
+        MG_CHECK(!MapCatalog::readable(L"Matrix\\Map\\Missing.cmap") && !MapCatalog::readable(L"Matrix\\Map"));
+        MG_CHECK(!MapCatalog::readable(L"..\\maps.pkg"));
+    }
+    std::filesystem::remove("Matrix/Map/broken.cmap");
+    MG_CHECK(MapCatalog::readable(L"Matrix\\Map\\Loose.cmap") && !MapCatalog::readable(L"Matrix\\Map\\Packed.cmap"));
 }
 
 // --- Raw-read records ------------------------------------------------------------------------------------
@@ -1001,6 +1048,7 @@ constexpr tests::Case cases[] = {
     {"base.layout.package_malformed", package_malformed},
     {"base.layout.package_file_fallback", package_file_fallback},
     {"base.layout.package_listing", package_listing},
+    {"game.maps.sources", map_sources},
     {"base.layout.raw_records", raw_records},
 };
 

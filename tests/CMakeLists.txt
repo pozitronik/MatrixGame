@@ -91,7 +91,7 @@ add_matrix_test(bitmap.png.write_round_trip matrixgame_dependency_tests bitmap d
 add_matrix_test(bitmap.png.invalid matrixgame_dependency_tests bitmap dependencies png)
 
 # Wire-format fixtures for storage, packages and raw-read records (docs/DATA_FORMATS.md).
-add_matrix_test_executable(matrixgame_layout_tests layout_tests.cpp wire_bytes.hpp)
+add_matrix_test_executable(matrixgame_layout_tests layout_tests.cpp wire_bytes.hpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_layout_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 target_compile_definitions(matrixgame_layout_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
 foreach(contract storage_columns storage_tree storage_zl03 storage_column_zl03 storage_truncated storage_malformed)
@@ -101,6 +101,7 @@ foreach(contract package_tree package_handles package_malformed package_file_fal
     add_matrix_test(base.layout.${contract} matrixgame_layout_tests base storage pack)
 endforeach()
 add_matrix_test(base.layout.package_listing matrixgame_layout_tests base storage pack)
+add_matrix_test(game.maps.sources matrixgame_layout_tests startup storage pack)
 add_matrix_test(base.layout.raw_records matrixgame_layout_tests base storage)
 
 add_matrix_test_executable(matrixgame_error_tests error_tests.cpp)
@@ -167,6 +168,12 @@ add_matrix_test(game.settings.save_wide matrixgame_standalone_settings_tests sta
 add_matrix_test(game.settings.save_creates_file matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.save_failure matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.unreadable_file matrixgame_standalone_settings_tests startup settings)
+
+add_matrix_test_executable(matrixgame_map_catalog_tests map_catalog_tests.cpp ../MatrixGame/src/MapCatalog.cpp)
+target_include_directories(matrixgame_map_catalog_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract merge unsafe_names paths)
+    add_matrix_test(game.maps.${contract} matrixgame_map_catalog_tests startup ui)
+endforeach()
 
 add_matrix_test_executable(matrixgame_settings_model_tests settings_model_tests.cpp
     ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp)
