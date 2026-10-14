@@ -1974,7 +1974,7 @@ void turret_mixed_owners() {
             for (size_t i = 0; i < enemy.size(); ++i) {
                 MG_CHECK(enemy[i] % 16 == 0);  // Ablaze 4 with enemy-to-player 2, in half-points.
                 MG_CHECK(friendly_then_enemy[i] == enemy[i]);
-                if (!original) MG_CHECK(enemy_then_friendly[i] == friendly[i]);
+                MG_CHECK(enemy_then_friendly[i] == friendly[i]);
                 pulses += enemy[i] / 16;
             }
             MG_CHECK(pulses >= 3);
