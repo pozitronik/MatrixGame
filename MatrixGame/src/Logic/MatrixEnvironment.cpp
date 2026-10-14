@@ -8,6 +8,7 @@
 #include "../MatrixMap.hpp"
 #include "../MatrixRobot.hpp"
 #include "../MatrixObjectCannon.hpp"
+#include <algorithm>
 
 CEnemy::CEnemy() {
     m_Enemy = NULL;
@@ -66,6 +67,7 @@ void CInfo::Clear(void) {
     }
     m_FirstEnemy = NULL;
     m_LastEnemy = NULL;
+    m_EnemyCnt = 0;
 }
 
 void CInfo::RemoveAllBuilding(CMatrixMapStatic *skip) {
@@ -206,7 +208,7 @@ void CInfo::AddBadPlace(int place) {
         m_BadPlaceCnt++;
     }
     else {
-        CopyMemory(m_BadPlace, m_BadPlace + 1, (8 - 1) * sizeof(int));
+        std::move(m_BadPlace + 1, m_BadPlace + 8, m_BadPlace);
         m_BadPlace[m_BadPlaceCnt - 1] = place;
     }
 }
@@ -228,7 +230,7 @@ void CInfo::AddBadCoord(const CPoint &coord) {
         m_BadCoordCnt++;
     }
     else {
-        CopyMemory(m_BadCoord, m_BadCoord + 1, (16 - 1) * sizeof(int));
+        std::move(m_BadCoord + 1, m_BadCoord + 16, m_BadCoord);
         m_BadCoord[m_BadCoordCnt - 1] = coord;
     }
 }
@@ -263,9 +265,10 @@ void CInfo::AddIgnore(CMatrixMapStatic *ms) {
         m_IgnoreCnt++;
     }
     else {
-        CopyMemory(m_Ignore, m_Ignore + 1, (16 - 1) * sizeof(CMatrixMapStatic *));
-        CopyMemory(m_IgnoreTime, m_IgnoreTime + 1, (16 - 1) * sizeof(int));
+        std::move(m_Ignore + 1, m_Ignore + 16, m_Ignore);
+        std::move(m_IgnoreTime + 1, m_IgnoreTime + 16, m_IgnoreTime);
         m_Ignore[m_IgnoreCnt - 1] = ms;
+        m_IgnoreTime[m_IgnoreCnt - 1] = g_MatrixMap->GetTime();
     }
 }
 
