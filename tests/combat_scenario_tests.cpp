@@ -8,6 +8,7 @@
 #include "MatrixMapGroup.hpp"
 #include "MatrixObject.hpp"
 #include <set>
+#include "DelayedDamage.hpp"
 #include "test_support.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixObjectCannon.hpp"
@@ -1737,6 +1738,164 @@ void delayed_status_attacker_retirement() {
         }
 }
 
+// Sets the delayed-damage attribution for one test and restores the corrected default.
+struct AttributionMode {
+    explicit AttributionMode(bool original) { DelayedDamage::set_original(original); }
+    ~AttributionMode() { DelayedDamage::set_original(false); }
+};
+
+// The original attribution clears the side at the first pulse: later lethal pulses award no kill.
+void delayed_status_original() {
+    AttributionMode original(true);
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (bool electrical : {false, true}) {
+            tests::BattleCombatAssets assets;
+            Session session(Profile{mode, 82, 10, 1000, false, false});
+            assets.install();
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_FLAMETHROWER)] = {0, 0, 0};
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_LIGHTENING)] = {0, 0, 0};
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_ABLAZE)] = {1, 1, 0};
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_SHORTED)] = {2, 2, 0};
+            auto *patient = robot(PLAYER_SIDE);
+            patient->InitMaxHitpoint(electrical ? 4 : 2);
+            patient->SetMaxSpeed(0);
+            MG_CHECK(!patient->Damage(electrical ? WEAPON_LIGHTENING : WEAPON_FLAMETHROWER, patient->GetGeoCenter(),
+                                      D3DXVECTOR3(1, 0, 0), 2, nullptr));
+            CoreLease core(patient->GetCore(DEBUG_CALL_INFO));
+            bool dying = false;
+            for (int i = 0; i < 20 && !dying; ++i) {
+                session.advance();
+                dying = core->m_Object && patient->m_CurrState == ROBOT_DIP;
+            }
+            MG_CHECK(dying);
+            MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+        }
+    // Friendly delayed damage switches to the enemy multiplier after the first pulse.
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (bool electrical : {false, true}) {
+            const long enemy_pulse = electrical ? 24 : 16, friendly_pulse = electrical ? 5 : 3;
+            const auto enemy = delayed_status_losses(mode, electrical, false);
+            const auto friendly = delayed_status_losses(mode, electrical, true);
+            long enemy_total = 0, friendly_total = 0;
+            for (size_t i = 0; i < enemy.size(); ++i) {
+                enemy_total += enemy[i];
+                friendly_total += friendly[i];
+            }
+            MG_CHECK(enemy_total % enemy_pulse == 0 && enemy_total / enemy_pulse >= 3);
+            MG_CHECK(friendly_total == enemy_total - enemy_pulse + friendly_pulse);
+        }
+}
+
+// An idle turret far from both robot pairs, which does not acquire targets.
+CMatrixCannon *idle_turret(int side) {
+    auto &props = g_Config.m_CannonsProps[0];
+    props = {};
+    props.m_Hitpoint = 1000;
+    props.weapon = WEAPON_CANNON2;
+    props.seek_radius = 1;
+    props.max_da = .1f;
+    props.max_top_angle = 1.5f;
+    props.max_bottom_angle = -1.5f;
+    return tests::create_battle_cannon(side, 300, 600);
+}
+
+void configure_turret_status(int ablaze_damage, int ablaze_friendly, int shorted_damage, int shorted_friendly) {
+    g_Config.m_CannonDamages[Weap2Index(WEAPON_FLAMETHROWER)] = {0, 0, 0};
+    g_Config.m_CannonDamages[Weap2Index(WEAPON_LIGHTENING)] = {0, 0, 0};
+    g_Config.m_CannonDamages[Weap2Index(WEAPON_ABLAZE)] = {ablaze_damage, ablaze_friendly, 0};
+    g_Config.m_CannonDamages[Weap2Index(WEAPON_SHORTED)] = {shorted_damage, shorted_friendly, 0};
+}
+
+enum class TurretFollowUp { None, AttackerRetired, DirectHit };
+
+// A turret that survives the first pulse is destroyed by a later one. Corrected attribution credits the
+// attacking side, also after its robot is removed; the original attribution does not. A direct hit by
+// another weapon clears the stored side in both modes.
+void turret_delayed_attribution() {
+    for (bool original : {false, true}) {
+        AttributionMode attribution(original);
+        for (auto follow_up : {TurretFollowUp::None, TurretFollowUp::AttackerRetired, TurretFollowUp::DirectHit})
+            for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+                for (bool electrical : {false, true}) {
+                    tests::BattleCombatAssets assets;
+                    Session session(Profile{mode, 82, 10, 1000, false, false});
+                    assets.install();
+                    configure_turret_status(1, 1, 2, 2);
+                    g_Config.m_CannonDamages[Weap2Index(WEAPON_GUN)] = {0, 0, 0};
+                    auto *turret = idle_turret(2);
+                    turret->InitMaxHitpoint(electrical ? 4 : 2);
+                    const D3DXVECTOR3 hit(turret->m_Pos.x, turret->m_Pos.y, 10);
+                    MG_CHECK(!turret->Damage(electrical ? WEAPON_LIGHTENING : WEAPON_FLAMETHROWER, hit,
+                                             D3DXVECTOR3(1, 0, 0), PLAYER_SIDE, nullptr));
+                    if (follow_up == TurretFollowUp::AttackerRetired) {
+                        auto *attacker = robot(PLAYER_SIDE);
+                        tests::battle::EntityId attacker_id = 0;
+                        for (tests::battle::EntityId id = 1; id <= 8 && !attacker_id; ++id)
+                            if (session.matches(id, attacker)) attacker_id = id;
+                        MG_CHECK(attacker_id != 0 && session.remove(attacker_id));
+                    }
+                    if (follow_up == TurretFollowUp::DirectHit)
+                        MG_CHECK(!turret->Damage(WEAPON_GUN, hit, D3DXVECTOR3(1, 0, 0), PLAYER_SIDE, nullptr));
+                    bool destroyed = false;
+                    for (int i = 0; i < 20 && !destroyed; ++i) {
+                        session.advance();
+                        destroyed = turret->m_CurrState == CANNON_DIP;
+                    }
+                    MG_CHECK(destroyed);
+                    const bool credited = !original && follow_up != TurretFollowUp::DirectHit;
+                    MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_TURRET_KILL) == (credited ? 1 : 0));
+                    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_TURRET_KILL) == 0);
+                }
+    }
+}
+
+// Per-frame losses of a player turret after one status hit, in internal half-points.
+std::vector<long> turret_status_losses(random::Mode mode, bool electrical, bool friendly) {
+    tests::BattleCombatAssets assets;
+    Session session(Profile{mode, 82, 10, 1000, false, false});
+    assets.install();
+    configure_turret_status(4, 3, 6, 5);
+    g_MatrixMap->m_Difficulty.k_friendly_fire = 0.5f;
+    g_MatrixMap->m_Difficulty.k_damage_enemy_to_player = 2.0f;
+    auto *turret = idle_turret(PLAYER_SIDE);
+    turret->InitMaxHitpoint(100000);
+    MG_CHECK(!turret->Damage(electrical ? WEAPON_LIGHTENING : WEAPON_FLAMETHROWER,
+                             D3DXVECTOR3(turret->m_Pos.x, turret->m_Pos.y, 10), D3DXVECTOR3(1, 0, 0),
+                             friendly ? PLAYER_SIDE : 2, nullptr));
+    std::vector<long> losses;
+    float health = turret->GetHitPoint();
+    for (int i = 0; i < 60; ++i) {
+        session.advance();
+        losses.push_back(std::lround((health - turret->GetHitPoint()) * 2));
+        health = turret->GetHitPoint();
+    }
+    MG_CHECK(turret->m_CurrState != CANNON_DIP);
+    return losses;
+}
+
+// Turret pulses use the attacker's multiplier on every pulse, or switch after the first in the original mode.
+void turret_delayed_scaling() {
+    for (bool original : {false, true}) {
+        AttributionMode attribution(original);
+        for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+            for (bool electrical : {false, true}) {
+                const long enemy_pulse = electrical ? 24 : 16, friendly_pulse = electrical ? 5 : 3;
+                const auto enemy = turret_status_losses(mode, electrical, false);
+                const auto friendly = turret_status_losses(mode, electrical, true);
+                long pulses = 0, friendly_total = 0;
+                for (size_t i = 0; i < enemy.size(); ++i) {
+                    MG_CHECK(enemy[i] % enemy_pulse == 0);
+                    if (!original) MG_CHECK(friendly[i] == enemy[i] / enemy_pulse * friendly_pulse);
+                    pulses += enemy[i] / enemy_pulse;
+                    friendly_total += friendly[i];
+                }
+                MG_CHECK(pulses >= 3);
+                const long expected = original ? (pulses - 1) * enemy_pulse + friendly_pulse : pulses * friendly_pulse;
+                MG_CHECK(friendly_total == expected);
+            }
+    }
+}
+
 void friendly_lethal() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         tests::BattleCombatAssets assets;
@@ -1832,6 +1991,9 @@ const tests::Case cases[] = {
         {"game.combat.delayed_status_attribution", delayed_status_attribution},
         {"game.combat.delayed_status_scaling", delayed_status_scaling},
         {"game.combat.delayed_status_attacker_retirement", delayed_status_attacker_retirement},
+        {"game.combat.delayed_status_original", delayed_status_original},
+        {"game.combat.turret_delayed_attribution", turret_delayed_attribution},
+        {"game.combat.turret_delayed_scaling", turret_delayed_scaling},
         {"game.combat.friendly_lethal", friendly_lethal},         {"game.combat.friendly_difficulty", friendly_difficulty},
         {"game.combat.cannon_difficulty", cannon_difficulty},
         {"game.combat.building_volcano", building_volcano}, {"game.combat.building_electric", building_electric},
