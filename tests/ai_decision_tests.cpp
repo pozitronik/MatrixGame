@@ -29,6 +29,8 @@ void repair_target_retention();
 void repair_explicit_priority();
 void memory_cleanup();
 void memory_clear_correctness();
+void memory_position_eviction();
+void memory_ignore_eviction();
 void place_bounds();
 void place_axis_correctness();
 void regroup_split_correctness();
@@ -419,8 +421,9 @@ int main(int argc, char **argv) {
         {"game.ai.memory_cleanup", tests::ai::memory_cleanup},
         {"game.ai.place_bounds", tests::ai::place_bounds},
         {"game.ai.bomb_escape_planning", tests::ai::bomb_escape_planning},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/137
-        {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
+        {"game.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
+        {"game.ai.memory_position_eviction", tests::ai::memory_position_eviction},
+        {"game.ai.memory_ignore_eviction", tests::ai::memory_ignore_eviction},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
         {"probe.ai.place_axis", tests::ai::place_axis_correctness},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
