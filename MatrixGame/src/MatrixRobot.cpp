@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "MatrixRobot.hpp"
+#include "DelayedDamage.hpp"
 #include "MatrixObjectBuilding.hpp"
 #include "Logic/MatrixRule.h"
 #include "MatrixObjectCannon.hpp"
@@ -1935,7 +1936,7 @@ bool CMatrixRobotAI::Damage(
         m_NextTimeShorted = g_MatrixMap->GetTime();
     }
     else {
-        m_LastDelayDamageSide = 0;
+        m_LastDelayDamageSide = DelayedDamage::kept_side(weap, m_LastDelayDamageSide);
     }
 
     if (m_HitPoint > 50) {

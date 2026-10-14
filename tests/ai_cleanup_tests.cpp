@@ -1,8 +1,12 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "test_support.hpp"
+#include "command_world.hpp"
+#include <algorithm>
 #include "MatrixRobot.hpp"
 #include "MatrixObjectBuilding.hpp"
+#include "MatrixObjectCannon.hpp"
+#include <algorithm>
 #include "Logic/MatrixEnvironment.h"
 #include <array>
 
@@ -76,13 +80,80 @@ void memory_cleanup() {
 void memory_clear_correctness() {
     Session session;
     CInfo env;
-    env.AddToList(units()[0]);
-    env.Clear();
-    MG_CHECK(!env.m_FirstEnemy && !env.m_LastEnemy);
-    std::cout << "cleared list count=" << env.GetEnemyCnt() << '\n';
-    MG_CHECK(env.GetEnemyCnt() == 0);
-    env.AddToList(units()[1]);
-    MG_CHECK(env.GetEnemyCnt() == 1);
+    const auto robots = units();
+    for (int repeat = 0; repeat < 3; ++repeat) {
+        env.AddToList(robots[0]); env.AddToList(robots[1]);
+        MG_CHECK(env.GetEnemyCnt() == 2);
+        env.Clear(); env.Clear();
+        MG_CHECK(!env.m_FirstEnemy && !env.m_LastEnemy && env.GetEnemyCnt() == 0);
+        env.AddToList(robots[2]);
+        MG_CHECK(env.GetEnemyCnt() == 1 && env.SearchEnemy(robots[2]));
+        env.RemoveFromList(robots[2]);
+        MG_CHECK(!env.m_FirstEnemy && !env.m_LastEnemy && env.GetEnemyCnt() == 0);
+    }
+}
+
+void memory_position_eviction() {
+    Session session;
+    CInfo env;
+    for (int n = 0; n < 40; ++n) {
+        const CPoint point(n * 13 + 2, n * -7 - 3);
+        env.AddBadPlace(n);
+        env.AddBadCoord(point);
+        MG_CHECK(env.m_BadPlaceCnt == std::min(n + 1, 8));
+        MG_CHECK(env.m_BadCoordCnt == std::min(n + 1, 16));
+        // A duplicate must neither evict nor promote the oldest retained record.
+        env.AddBadPlace(std::max(0, n - 7));
+        const int oldest_coord = std::max(0, n - 15);
+        env.AddBadCoord(CPoint(oldest_coord * 13 + 2, oldest_coord * -7 - 3));
+        for (int i = 0; i < env.m_BadPlaceCnt; ++i)
+            MG_CHECK(env.m_BadPlace[i] == std::max(0, n - 7) + i);
+        for (int i = 0; i < env.m_BadCoordCnt; ++i) {
+            const int retained = oldest_coord + i;
+            MG_CHECK(env.m_BadCoord[i] == CPoint(retained * 13 + 2, retained * -7 - 3));
+        }
+        if (n >= 8) MG_CHECK(!env.IsBadPlace(n - 8));
+        if (n >= 16) MG_CHECK(!env.IsBadCoord(CPoint((n - 16) * 13 + 2, (n - 16) * -7 - 3)));
+    }
+}
+
+void memory_ignore_eviction() {
+    Session session;
+    // Retain real objects throughout; only pointer identity is queried. They
+    // stay outside the map scheduler and are destroyed after the environment.
+    std::array<EnginePtr<CMatrixBuilding>, 33> objects;
+    for (auto &object : objects) object = make_engine_object<CMatrixBuilding>();
+    CInfo env;
+    std::array<int, 33> inserted{};
+    for (int n = 0; n < int(objects.size()); ++n) {
+        inserted[n] = session.time();
+        env.AddIgnore(objects[n].get());
+        MG_CHECK(env.m_IgnoreCnt == std::min(n + 1, 16));
+        const int oldest = std::max(0, n - 15);
+        for (int i = 0; i < env.m_IgnoreCnt; ++i) {
+            MG_CHECK(env.m_Ignore[i] == objects[oldest + i].get());
+            MG_CHECK(env.m_IgnoreTime[i] == inserted[oldest + i]);
+            MG_CHECK(env.IsIgnore(objects[oldest + i].get()));
+        }
+        if (n >= 16) MG_CHECK(!env.IsIgnore(objects[n - 16].get()));
+        session.advance();
+    }
+    // Duplicates refresh in place even when the array is full.
+    env.AddIgnore(objects[17].get());
+    MG_CHECK(env.m_IgnoreCnt == 16 && env.m_Ignore[0] == objects[17].get());
+    MG_CHECK(env.m_IgnoreTime[0] == session.time());
+    while (session.time() < inserted[32] + 4990) session.advance();
+    MG_CHECK(session.time() == inserted[32] + 4990 && env.IsIgnore(objects[32].get()));
+    session.advance();
+    MG_CHECK(session.time() == inserted[32] + 5000 && !env.IsIgnore(objects[32].get()));
+    MG_CHECK(env.IsIgnore(objects[17].get()));
+    // Expired slots are reused before evicting the refreshed live first entry.
+    env.AddIgnore(objects[0].get());
+    MG_CHECK(env.m_IgnoreCnt == 16 && env.m_Ignore[0] == objects[17].get());
+    MG_CHECK(env.m_Ignore[1] == objects[0].get() && env.m_IgnoreTime[1] == session.time());
+    env.DelIgnore(objects[17].get());
+    env.AddIgnore(objects[1].get());
+    MG_CHECK(env.m_Ignore[0] == objects[1].get() && env.m_IgnoreTime[0] == session.time());
 }
 
 void place_bounds() {
@@ -100,12 +171,31 @@ void place_bounds() {
 void place_axis_correctness() {
     Session session;
     auto &map = *g_MatrixMap;
-    MG_CHECK(map.m_RN.m_Place[1].m_Pos == CPoint(48, 8));
-    MG_CHECK(map.m_RN.m_Place[2].m_Pos == CPoint(8, 48));
-    const int inside = map.FindPlace(CPoint(48, 8));
-    const int outside = map.FindPlace(CPoint(20, 48));
-    std::cout << "place inside=" << inside << " outside=" << outside << '\n';
-    MG_CHECK(inside == 1 && outside == -1);
+    const CPoint origins[]{{8, 8}, {48, 8}, {8, 48}, {48, 48}};
+    for (int place = 0; place < 4; ++place) {
+        const CPoint origin = origins[place];
+        MG_CHECK(map.m_RN.m_Place[place].m_Pos == origin);
+        // Each place owns the half-open four-cell square at its origin.
+        for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x)
+            MG_CHECK(map.FindPlace(CPoint(origin.x + x, origin.y + y)) == place);
+        for (int i = 0; i < 4; ++i) {
+            MG_CHECK(map.FindPlace(CPoint(origin.x - 1, origin.y + i)) == -1);
+            MG_CHECK(map.FindPlace(CPoint(origin.x + 4, origin.y + i)) == -1);
+            MG_CHECK(map.FindPlace(CPoint(origin.x + i, origin.y - 1)) == -1);
+            MG_CHECK(map.FindPlace(CPoint(origin.x + i, origin.y + 4)) == -1);
+        }
+    }
+    // The previous comparison bounded X by the place's Y coordinate.
+    MG_CHECK(map.FindPlace(CPoint(20, 48)) == -1);
+    MG_CHECK(map.FindPlace(CPoint(51, 8)) == 1 && map.FindPlace(CPoint(8, 51)) == 2);
+    MG_CHECK(map.FindPlace(CPoint(8, -1)) == -1 && map.FindPlace(CPoint(8, map.m_SizeMove.y)) == -1);
+    // Cells outside every zone have no place, even inside a place square.
+    auto &cell = *map.MoveGet(49, 9);
+    const int zone = cell.m_Zone;
+    cell.m_Zone = -1;
+    MG_CHECK(map.FindPlace(CPoint(49, 9)) == -1 && map.FindPlace(CPoint(48, 8)) == 1);
+    cell.m_Zone = zone;
+    MG_CHECK(map.FindPlace(CPoint(49, 9)) == 1);
 }
 
 void regroup_counts_correctness(bool split) {
@@ -134,7 +224,78 @@ void regroup_counts_correctness(bool split) {
 void regroup_split_correctness() { regroup_counts_correctness(true); }
 void regroup_merge_correctness() { regroup_counts_correctness(false); }
 
-// Crowded buffer capacity is tracked separately: https://github.com/pozitronik/MatrixGame/issues/136
+void bomb_escape_capacity() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool no_refuge : {false, true}) for (bool invalid_places : {false, true}) {
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        auto robots = units();
+        auto *cover = robots[0], *escaping = robots[1], *bomber = robots[2];
+        position(*cover, 120, 100); position(*escaping, 180, 100); position(*bomber, 100, 100);
+        IdleBomb bomb(*bomber);
+        bomber->GetEnv()->AddToList(cover);
+        cover->SetGroupLogic(0); escaping->SetGroupLogic(0);
+        auto &map = *g_MatrixMap;
+        auto &side = *map.GetPlayerSide();
+        side.m_PlayerGroup[0].Order(mpo_AutoAttack);
+        for (auto *robot : robots) if (robot != escaping) {
+            robot->MoveTo(8, 8);
+            robot->GetEnv()->m_Place = 0;
+        }
+        // Mixed occupants reserve the first candidate, or every place. Duplicate
+        // robot reservations alone already exceed the production queue capacity.
+        for (int place = 0; place < (no_refuge ? 4 : 2); ++place) {
+            auto *cannon = map.StaticAdd<CMatrixCannon>();
+            cannon->m_Place = place;
+        }
+        if (invalid_places) {
+            cover->GetEnv()->m_Place = map.m_RN.m_PlaceCnt;
+            for (int place : {-1, map.m_RN.m_PlaceCnt}) {
+                auto *cannon = map.StaticAdd<CMatrixCannon>();
+                cannon->m_Place = place;
+            }
+            auto &start = map.m_RN.m_Place[0];
+            MG_CHECK(start.m_NearCnt + 2 <= 16);
+            start.m_Near[start.m_NearCnt] = -1;
+            start.m_NearMove[start.m_NearCnt++] = 0;
+            start.m_Near[start.m_NearCnt] = map.m_RN.m_PlaceCnt;
+            start.m_NearMove[start.m_NearCnt++] = 0;
+        }
+        map.PrepareBuf();
+        constexpr int sentinel = 0x13572468;
+        constexpr int backing_count = 64;
+        const int capacity = std::max(map.m_RN.m_ZoneCnt, map.m_RN.m_PlaceCnt);
+        MG_CHECK(capacity == 4);
+        // Oversized, owned backing makes the old append error an explicit bound
+        // failure rather than a real heap overflow. Map teardown frees it.
+        for (auto **buffer : {&map.m_ZoneIndex, &map.m_ZoneIndexAccess}) {
+            HFree(*buffer, g_MatrixHeap);
+            *buffer = static_cast<int *>(HAlloc(backing_count * sizeof(int), g_MatrixHeap));
+            std::fill_n(*buffer, backing_count, sentinel);
+        }
+        escaping->MoveTo(20, 20);
+        const auto draws = random::draw_count();
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            side.EscapeFromBomb();
+            MG_CHECK(random::draw_count() == draws);
+            for (int i = capacity; i < backing_count; ++i) {
+                MG_CHECK(map.m_ZoneIndex[i] == sentinel);
+                MG_CHECK(map.m_ZoneIndexAccess[i] == sentinel);
+            }
+            for (int i = 0; i < capacity; ++i) MG_CHECK(map.m_ZoneDataZero[i] == 0);
+            CPoint destination, previous;
+            MG_CHECK(escaping->GetMoveToCoords(destination));
+            MG_CHECK(escaping->GetReturnCoords(previous) == !no_refuge);
+            MG_CHECK(destination == (no_refuge ? CPoint(20, 20) : CPoint(8, 48)));
+            if (!no_refuge) MG_CHECK(previous == CPoint(20, 20));
+            if (no_refuge) {
+                auto *begin = map.m_ZoneIndex;
+                for (int i = 0; i < capacity; ++i)
+                    MG_CHECK(std::count(begin, begin + capacity, i) == 1);
+            }
+        }
+    }
+}
+
 void bomb_escape_planning() {
     // Each variant starts a fresh world; these are planning inputs, not teleports during movement.
     enum Variant { Manual, Automatic, ChassisBlocked, InsideRadius, AtRadius, OutsideRadius };

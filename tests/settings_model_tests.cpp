@@ -33,7 +33,7 @@ void selection() {
     MG_CHECK(window.selected() == row(Row::StencilShadows));  // The graphics group row is skipped.
     window.select(row(Row::Resolution));
     window.move(-1);
-    MG_CHECK(window.selected() == row(Row::RandomGenerator));  // Wraps past the display group row.
+    MG_CHECK(window.selected() == row(Row::DelayedDamage));  // Wraps past the display group row.
     window.move(1);
     MG_CHECK(window.selected() == row(Row::Resolution));
 }
@@ -57,6 +57,10 @@ void stepping() {
     MG_CHECK(window.change(row(Row::Skybox), 1) && window.values().skybox == StandaloneSettings::Skybox::Off);
     MG_CHECK(window.change(row(Row::Skybox), -1) && window.values().skybox == StandaloneSettings::Skybox::High);
     MG_CHECK(window.change(row(Row::RandomGenerator), 1) && window.values().random == random::Mode::LegacyCRT);
+    MG_CHECK(window.value(row(Row::DelayedDamage)) == L"Corrected");
+    MG_CHECK(window.change(row(Row::DelayedDamage), 1) &&
+             window.values().delayed_damage == StandaloneSettings::DamageAttribution::Original);
+    MG_CHECK(window.value(row(Row::DelayedDamage)) == L"Original");
     MG_CHECK(!window.change(row(Row::GameplayGroup), 1) && !window.change(row(Row::Skybox), 0));
     MG_CHECK(window.changed());
 
@@ -104,7 +108,7 @@ void text() {
     for (const auto restart : {Row::Skybox, Row::RobotShadows, Row::RandomGenerator})
         MG_CHECK(needs_restart(row(restart)) && window.label(row(restart)).ends_with(L" *"));
     for (const auto live : {Row::Resolution, Row::WindowMode, Row::FullscreenMode, Row::SoundVolume,
-                            Row::StencilShadows, Row::ProjectedShadows, Row::CameraSpeed})
+                            Row::StencilShadows, Row::ProjectedShadows, Row::CameraSpeed, Row::DelayedDamage})
         MG_CHECK(!needs_restart(row(live)));
     MG_CHECK(window.value(row(Row::Resolution)) == L"1024x768" && window.value(row(Row::SoundVolume)) == L"100%");
     MG_CHECK(window.value(row(Row::WindowMode)) == L"Windowed" && window.value(row(Row::FullscreenMode)) == L"Borderless");
@@ -120,6 +124,7 @@ void text() {
     }
     MG_CHECK(detect_language(russian.title() + russian.legend() + russian.error_text()) == Language::Russian);
     MG_CHECK(russian.value(row(Row::RandomGenerator)) == L"ParkMiller");
+    MG_CHECK(detect_language(russian.value(row(Row::DelayedDamage))) == Language::Russian);
 }
 
 size_t count(const std::wstring &text, const std::wstring &part) {

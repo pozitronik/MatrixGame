@@ -3,6 +3,7 @@
 param([string]$ArchivePath = '')
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'download-verified.ps1')
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $toolsRoot = Join-Path $repoRoot '.tools'
 $archiveName = 'cmake-4.4.4-windows-i386.zip'
@@ -12,12 +13,8 @@ $archiveHash = '1A791472619AE85ABF95E3F52838B746A47542EC731A288ABAC2FEE8154D5664
 
 if (-not (Test-Path -LiteralPath (Join-Path $installRoot 'bin/cmake.exe'))) {
     if (-not $ArchivePath) {
-        $downloadRoot = Join-Path $toolsRoot 'downloads'
-        New-Item -ItemType Directory -Path $downloadRoot -Force | Out-Null
-        $ArchivePath = Join-Path $downloadRoot $archiveName
-        if (-not (Test-Path -LiteralPath $ArchivePath)) {
-            Invoke-WebRequest -Uri $archiveUrl -OutFile $ArchivePath -UseBasicParsing
-        }
+        $ArchivePath = Join-Path $toolsRoot "downloads/$archiveName"
+        Save-VerifiedDownload -Uri $archiveUrl -Path $ArchivePath -Sha256 $archiveHash
     }
     $ArchivePath = (Resolve-Path -LiteralPath $ArchivePath).Path
     if ((Get-FileHash -LiteralPath $ArchivePath -Algorithm SHA256).Hash -ne $archiveHash) {

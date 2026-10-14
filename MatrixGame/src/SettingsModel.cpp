@@ -149,6 +149,11 @@ bool Window::change(int row, int direction) {
             values.random = values.random == random::Mode::ParkMiller ? random::Mode::LegacyCRT
                                                                       : random::Mode::ParkMiller;
             break;
+        case Row::DelayedDamage:
+            values.delayed_damage = values.delayed_damage == StandaloneSettings::DamageAttribution::Corrected
+                                            ? StandaloneSettings::DamageAttribution::Original
+                                            : StandaloneSettings::DamageAttribution::Corrected;
+            break;
         default: break;
     }
     return m_Values != before;
@@ -199,6 +204,10 @@ std::wstring Window::label(int row) const {
             result = text(L"Random generator", L"\u0421\u043b\u0443\u0447\u0430\u0439\u043d\u044b\u0435 \u0447"
                                                L"\u0438\u0441\u043b\u0430");
             break;
+        case Row::DelayedDamage:
+            result = text(L"Status damage",
+                          L"\u0423\u0440\u043e\u043d \u0441\u0442\u0430\u0442\u0443\u0441\u043e\u0432");
+            break;
         default: break;
     }
     if (needs_restart(row)) result += L" *";
@@ -237,6 +246,10 @@ std::wstring Window::value(int row) const {
         case Row::RobotShadows: return on_off(values.robot_shadows);
         case Row::CameraSpeed: return std::to_wstring(values.camera_speed) + L"%";
         case Row::RandomGenerator: return utils::to_wstring(RandomConfiguration::name(values.random));
+        case Row::DelayedDamage:
+            return values.delayed_damage == StandaloneSettings::DamageAttribution::Original
+                           ? text(L"Original", L"\u041e\u0440\u0438\u0433\u0438\u043d\u0430\u043b")
+                           : text(L"Corrected", L"\u0418\u0441\u043f\u0440\u0430\u0432\u043b\u0435\u043d");
         default: return {};
     }
 }
