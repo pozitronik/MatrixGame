@@ -185,6 +185,8 @@ add_matrix_test(game.settings.immediate_settings matrixgame_settings_runtime_tes
 add_matrix_test(game.settings.restart_detection matrixgame_settings_runtime_tests settings)
 add_matrix_test(game.settings.independent_shadows matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.window_availability matrixgame_settings_runtime_tests settings)
+add_matrix_test(game.settings.delayed_damage_attribution matrixgame_settings_runtime_tests gameplay settings)
+add_matrix_test(game.settings.delayed_damage_build_default matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.group_counts_build_default matrixgame_settings_runtime_tests ai settings)
 target_compile_definitions(matrixgame_settings_runtime_tests PRIVATE MATRIXGAME_TESTS_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>)
 
@@ -283,6 +285,12 @@ add_matrix_test(game.combat.axis_aligned_trace matrixgame_combat_scenarios gamep
 foreach(contract volcano_firing electric_firing flame_firing gun_firing missile_firing mortar_firing repair_firing heat_boundary bomb_detonation cannon_projectiles cannon_boundaries cannon_obstruction delayed_damage bomb_order repair_death module_modifiers module_firing splash_boundary chained_bombs repair_redirect cannon_patient cannon_acquisition robot_boundaries status_refresh status_lethal friendly_lethal friendly_difficulty cannon_difficulty building_patient building_dying building_volcano building_electric building_flame building_gun building_missile building_mortar)
     add_matrix_test(game.combat.${contract} matrixgame_combat_scenarios gameplay ai memory)
 endforeach()
+foreach(contract delayed_status_attribution delayed_status_scaling delayed_status_attacker_retirement delayed_status_original turret_delayed_attribution turret_delayed_scaling)
+    add_matrix_test(game.combat.${contract} matrixgame_combat_scenarios gameplay ai memory)
+endforeach()
+add_matrix_test(game.combat.delayed_status_mixed_owners matrixgame_combat_scenarios gameplay ai memory)
+add_matrix_test(game.combat.delayed_status_direct_hit matrixgame_combat_scenarios gameplay ai memory)
+add_matrix_test(game.combat.turret_mixed_owners matrixgame_combat_scenarios gameplay ai memory)
 
 add_matrix_test_executable(matrixgame_material_ruin_tests material_ruin_tests.cpp battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -546,6 +554,7 @@ foreach(contract delivery_flights delivery_carrier_damage local_routes passage_w
                  multiregion_movement multiregion_road_guidance unreachable_replacement)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
+add_matrix_test(game.navigation.group_speed_finite matrixgame_navigation_tests gameplay ai navigation)
 
 add_matrix_test_executable(matrixgame_navigation_boundary_tests navigation_boundary_tests.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -558,6 +567,7 @@ target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
 foreach(contract zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
+add_matrix_test(game.navigation.formation_speed_boundaries matrixgame_navigation_boundary_tests gameplay ai navigation)
 add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_player_order_scenarios PRIVATE MatrixGameInternal)

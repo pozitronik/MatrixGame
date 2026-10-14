@@ -8,6 +8,7 @@
 #include "MatrixMap.hpp"
 #include "MatrixShadowManager.hpp"
 #include "MatrixObjectCannon.hpp"
+#include "DelayedDamage.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixObjectBuilding.hpp"
 #include "MatrixFlyer.hpp"
@@ -1361,7 +1362,7 @@ bool CMatrixCannon::Damage(EWeapon weap, const D3DXVECTOR3 &pos, const D3DXVECTO
         }
     }
     else {
-        m_LastDelayDamageSide = 0;
+        m_LastDelayDamageSide = DelayedDamage::kept_side(weap, m_LastDelayDamageSide);
     }
 
     if (m_HitPoint > 0) {

@@ -120,7 +120,7 @@ _MISSING = object()
 _PROVENANCE_FIELDS = {"revision", "dirty"}
 _BUILD_PROFILE_FIELDS = {
     "configuration", "compiler", "compiler_version", "assert_off",
-    "precision_control", "build_exe", "cheats", "group_counts",
+    "precision_control", "build_exe", "cheats", "delayed_damage", "group_counts",
 }
 
 

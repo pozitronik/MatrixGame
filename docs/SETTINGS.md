@@ -29,6 +29,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 | Robot shadows | `RobotShadows` | `On`, `Off` | `On` | After restart |
 | Camera speed | `CameraSpeed` | `25`-`300` percent of the configured scroll speed, in steps of 25 in the window | `100` | Immediately |
 | Random generator | `RandomGenerator` | `ParkMiller`, `LegacyCRT` | `ParkMiller` | After restart |
+| Status damage | `DelayedDamage` | `Corrected`, `Original` | `Corrected` | Immediately |
 
 **Display.** The display keys keep the contract in [Display settings](DISPLAY.md). The window shows the current window mode, including a mode reached with Alt+Enter, and Apply saves it. Choosing `Borderless` or `Exclusive` as the window mode also makes it the Alt+Enter mode, matching how a fullscreen start behaves. A window-mode change uses the same transition and rollback as Alt+Enter. If exclusive mode is unavailable at the current resolution, the game keeps its current mode and logs the reason.
 
@@ -38,6 +39,16 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 **Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators.
 
+Status damage selects who is responsible for ablaze and shorted damage pulses on robots and turrets. A flamethrower or electric hit records the attacking side. Fire and electricity share this record, so the most recent flame or electric hit replaces it for both statuses.
+- With `Corrected`, every later pulse of either status is dealt on behalf of the recorded side. That side receives the kill credit. A player's unit hit by friendly fire takes friendly damage with the friendly-fire multiplier. A unit set on fire by one side and then shocked by another therefore burns on behalf of the second side.
+- `Original` reproduces the original game, where the first pulse after a hit forgets the side. Later pulses then award no kill, and friendly status damage on a player's unit switches to the enemy damage and multiplier.
+
+On a player's turret, those hostile pulses also flash the minimap and play the under-attack voice. That voice uses a random draw, so later battle randomness differs between the modes.
+
+In both modes a direct hit by another weapon forgets the side, as in the original game. Switching modes during a battle affects units that are already burning or shorted from their next pulse. Switching to `Original` forgets the side at that pulse, and switching back does not restore a side that was already forgotten. The DLL build always uses the original behavior, because the host game owns its settings.
+
+Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage` or `GroupCounts` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
+
 ## Options without a window row
 
 | Key in `CFG/standalone.txt` | Values | Default | Takes effect |
@@ -45,8 +56,6 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 | `GroupCounts` | `Corrected`, `Original` | `Corrected` | At startup |
 
 **AI group counts.** When the computer AI regroups its robots, the original game counted every robot moved out of a split group as an addition to that group, and left a merged, emptied group with its former count until the next regrouping. A team strategy pass in the same tick then counted the empty group as a live one: a team with nobody to spare moved a whole group to an empty team instead of half its robots, and a team that had just become one group did not clear its wait-for-union state as it should. `Corrected` keeps every count equal to the group's members. `Original` restores the original counting exactly. The DLL build always uses `Original`, because its host owns its settings. The key has no window row; edit the file while the game is closed. Applying the Settings window saves the value the game started with.
-
-Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed` or `GroupCounts` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
 
 ## Saving
 
@@ -62,7 +71,7 @@ Automated `game.settings.*` contracts cover:
 - Atomic saving and failed-save behavior.
 - Window selection, stepping, mode coupling, hit areas and both label languages.
 - Startup mapping of graphics options.
-- Immediate routing of shadows, camera speed, volume and the AI group-count mode, and shadow pass selection for each combination of the two shadow options.
+- Immediate routing of shadows, camera speed, volume, status-damage attribution and the AI group-count mode, and shadow pass selection for each combination of the two shadow options.
 - The group-count mode a process starts with: `Corrected` in the EXE, `Original` in the DLL (`game.settings.group_counts_build_default`, registered in both build roles). The `game.ai.*` group-count cases check both modes; see [AI decisions](testing/84-ai-decisions.md).
 
 `game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions.
@@ -74,8 +83,9 @@ The rendered window, menu integration and real display transitions need a playte
 3. Press Escape. The menu must reappear and the file must be unchanged. Press `C` to reopen the window; the values must match the file.
 4. Set Volume to 30 and apply. Effects must become quieter immediately, including continuing sounds. Change camera speed, apply, and confirm the visible effect. Switch Window mode between Windowed, Borderless and Exclusive, and check the result after each Apply.
 5. Starting with both shadow options on, apply in turn: Stencil shadows off, then Projected shadows off, then Stencil shadows on, then Projected shadows on. Each kind of shadow must appear only while its option is on, and a kind turned back on must reappear on objects that were already shadowed.
-6. Change Resolution, Sky, Robot shadows and the random generator, apply, and restart. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.
-7. Make `CFG/standalone.txt` read-only and apply a change. The window must show the save error and keep the original file. Restore write access.
-8. Repeat steps 1 and 2 at 640x480 and with a Russian and an English game configuration.
+6. With Status damage set to Corrected, set an enemy turret and an enemy robot on fire with a flamethrower and stop firing so that burning finishes them. Repeat with an electric weapon. Finish the battle: the statistics must count these kills for the player. Set Status damage to Original, apply without restarting, and repeat: kills by later pulses must not be counted.
+7. Change Resolution, Sky, Robot shadows and the random generator, apply, and restart. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.
+8. Make `CFG/standalone.txt` read-only and apply a change. The window must show the save error and keep the original file. Restore write access.
+9. Repeat steps 1 and 2 at 640x480 and with a Russian and an English game configuration.
 
 Record the build, configuration type, resolution, modes, failures and exit codes.
