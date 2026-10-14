@@ -2619,6 +2619,9 @@ void CMatrixSideUnit::CalcMaxSpeed() {
 
             if (pr[u] < COLLIDE_BOT_R * 10.0f)
                 continue;  // Отстающие, скорость не уменьшают
+            // A spread that only reaches the threshold has no leaders to slow; this also avoids 0/0.
+            if (maxpr <= COLLIDE_BOT_R * 10.0f)
+                continue;
 
             rl[u]->m_GroupSpeed *= 0.6f + 0.4f * ((maxpr - pr[u])) / (maxpr - COLLIDE_BOT_R * 10.0f);
         }
