@@ -22,6 +22,7 @@
 #include <stupid_logger.hpp>
 
 #include <cstring>
+#include <memory>
 #include <optional>
 
 namespace MapWindow {
@@ -39,12 +40,14 @@ std::optional<State> state;
 
 // Preview of the selected map, registered as a runtime hint bitmap while it is shown. preview_path is
 // the last preview attempted, so a preview that fails to decode is not retried on every rebuild.
-CBitmap preview;
+std::unique_ptr<CBitmap> preview;
 SettingsModel::Resolution preview_dimensions{0, 0};
 std::wstring preview_path;
 
+// Also frees the pixels, which come from the tracked heap and must be released before its teardown.
 void release_preview() {
     CMatrixHint::SetRuntimeBitmap(MapModel::preview_bitmap, nullptr);
+    preview.reset();
     preview_dimensions = {0, 0};
     preview_path.clear();
 }
@@ -66,9 +69,10 @@ bool decode_preview(const std::wstring &path) {
                                                   nullptr, D3DX_FILTER_TRIANGLE, 0, nullptr))) {
         D3DLOCKED_RECT locked{};
         if (SUCCEEDED(surface->LockRect(&locked, nullptr, D3DLOCK_READONLY))) {
-            preview.CreateRGBA(size.width, size.height);
+            preview = std::make_unique<CBitmap>();
+            preview->CreateRGBA(size.width, size.height);
             for (int y = 0; y < size.height; ++y) {
-                auto *target = preview.Data() + y * preview.Pitch();
+                auto *target = preview->Data() + y * preview->Pitch();
                 std::memcpy(target, static_cast<const uint8_t *>(locked.pBits) + y * locked.Pitch, size.width * 4);
                 for (int x = 0; x < size.width; ++x) target[x * 4 + 3] = 0xff;
             }
@@ -90,7 +94,7 @@ void load_preview() {
     if (path.empty()) return;
     try {
         if (decode_preview(path)) {
-            CMatrixHint::SetRuntimeBitmap(MapModel::preview_bitmap, &preview);
+            CMatrixHint::SetRuntimeBitmap(MapModel::preview_bitmap, preview.get());
             return;
         }
     }

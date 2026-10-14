@@ -179,11 +179,32 @@ void map_choice() {
     expected.map = L"Matrix\\Map\\Chosen.cmap";
     MG_CHECK(stored.invalid.empty() && stored.values == expected);
 
-    // The next start uses the readable remembered map, and forgets it if battle initialization fails.
+    // The next start uses the readable remembered map. A failure before the map loads keeps the choice.
     MG_CHECK(MapSelection::startup_map(stored.values) == expected.map && stored.values == expected);
-    MG_CHECK(MapSelection::remembered_map_started() && MapSelection::forget_remembered_map());
+    MG_CHECK(MapSelection::remembered_map_started() && !MapSelection::forget_remembered_map());
+    MG_CHECK(StandaloneSettings::load().values == expected);
+    // The map is cleared in the file while it loads, so a crash leaves the configured map for the next
+    // start, and written back once initialization succeeds.
+    MapSelection::begin_map_load();
+    MG_CHECK(StandaloneSettings::load().values.map.empty());
+    MapSelection::finish_map_load();
+    MG_CHECK(StandaloneSettings::load().values == expected);
+    // A failure while the map loads keeps it forgotten.
+    MapSelection::begin_map_load();
+    MG_CHECK(MapSelection::forget_remembered_map() && !MapSelection::forget_remembered_map());
     stored = StandaloneSettings::load();
     MG_CHECK(stored.values.map.empty() && stored.values.sound_volume == custom().sound_volume);
+
+    // A demo map plays once: it is not written back after it starts.
+    MG_CHECK(MapSelection::is_demo(L"Matrix\\Map\\Demo2.cmap") && MapSelection::is_demo(L"x\\DEMO.cmap"));
+    MG_CHECK(!MapSelection::is_demo(L"Matrix\\Map\\Chosen.cmap"));
+    std::filesystem::copy_file(L"Matrix/Map/Chosen.cmap", L"Matrix/Map/Demo2.cmap");
+    MG_CHECK(MapSelection::choose(custom(), L"Matrix\\Map\\Demo2.cmap", error));
+    stored = StandaloneSettings::load();
+    MG_CHECK(MapSelection::startup_map(stored.values) == L"Matrix\\Map\\Demo2.cmap");
+    MapSelection::begin_map_load();
+    MapSelection::finish_map_load();
+    MG_CHECK(StandaloneSettings::load().values.map.empty());
 
     // A failed save is reported and leaves the file unchanged.
     MG_CHECK(SetFileAttributesW(L"CFG\\standalone.txt", FILE_ATTRIBUTE_READONLY));

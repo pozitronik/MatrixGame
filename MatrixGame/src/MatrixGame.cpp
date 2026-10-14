@@ -81,6 +81,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         initialization_started = true;
         CGame::Init(hInstance, nullptr, map, seed);
         battle_initialized = true;
+        MapSelection::finish_map_load();
 
         formgame = HNew(NULL) CFormMatrixGame();
         FormChange(formgame);
@@ -428,6 +429,9 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 #endif
     }
 
+#ifdef BUILD_EXE
+    if (!remembered_map.empty()) MapSelection::begin_map_load();
+#endif
     stor.Load(mapname.c_str());
     DCP();
 

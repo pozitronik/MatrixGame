@@ -12,8 +12,8 @@ The battle stays paused while the window is open. Its text follows the language 
 
 | Action | Mouse | Keyboard |
 | --- | --- | --- |
-| Select a map | Click its name | Up/Down, Home/End |
-| Change page | Click `<` or `>` under the list, or use the wheel | Page Up/Page Down |
+| Select a map | Click its name, or use the wheel to move one map per notch | Up/Down, Home/End |
+| Change page | Click `<` or `>` under the list | Page Up/Page Down |
 | Play the selected map | Checkmark button | Enter |
 | Close the window | Cross button | Escape |
 
@@ -49,7 +49,7 @@ Only maps whose paths fit the settings file and the window's text markup are lis
 - other names are skipped.
 
 Map names still change behavior as they do with `Config/Map`:
-- names containing `demo` start an automatic demonstration that ends the game when it finishes;
+- names containing `demo` start an automatic demonstration that ends the game when it finishes. Escape exits in that mode and no statistics appear, so the Map window cannot be reached. A remembered demo map therefore plays once: the game forgets it after it starts, and the next launch uses the configured map;
 - names containing `terron` enable that map's special logic.
 
 ## The remembered map
@@ -67,7 +67,7 @@ An empty value starts the map named by `Config/Map` in the game configuration, a
 - clears `Map` in the file;
 - starts the configured map.
 
-**Failures during initialization.** If the remembered map passes that check but battle initialization fails, the error dialog says the map was forgotten. The next start uses the configured map.
+**Failures while loading.** The readability check covers only the map's properties table, so a damaged map can still fail or crash while it loads. The game therefore clears `Map` in the file just before the remembered map loads and writes it back once battle initialization succeeds. If loading fails with an error, the error dialog says the map was forgotten. If the game crashes, there is no message, but the next start uses the configured map. Failures before the map loads, such as device creation, keep the choice.
 
 The Settings window saves `Map` unchanged when it applies other options.
 
@@ -94,5 +94,6 @@ The rendered window, previews, restart and battle-end entry need a playtest. Run
 5. Remember a loose map, remove the file and start the game. The message must appear, the configured map must start, and `Map` must be empty.
 6. Win or lose a battle and close the statistics. The Map window must open; Cancel must exit the game. Leave a battle with Exit and confirm that the game exits without the window.
 7. Run the visibility calculation with a map argument and confirm that it ignores the remembered map.
+8. Choose a demo map. It must play in full-auto mode, and the next launch must start the configured map with `Map` empty.
 
 Record the build, configuration type, resolution, maps, failures and exit codes.
