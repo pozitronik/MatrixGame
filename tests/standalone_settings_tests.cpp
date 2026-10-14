@@ -35,6 +35,7 @@ Values custom() {
     values.skybox = Skybox::Low;
     values.robot_shadows = false;
     values.delayed_damage = StandaloneSettings::DamageAttribution::Original;
+    values.map = L"Matrix\\Map\\Desert (2).cmap";
     values.group_counts = StandaloneSettings::GroupCountMode::Original;
     return values;
 }
@@ -80,17 +81,24 @@ void explicit_values() {
             L"RandomGenerator=LegacyCRT\r\nResolutionWidth=1280\r\nResolutionHeight=720\r\n"
             L"WindowMode=Borderless\r\nSoundVolume= 40 // quieter\r\nCameraSpeed=150\r\n"
             L"StencilShadows=off\r\nProjectedShadows=FALSE\r\nSkybox=low\r\nRobotShadows=0\r\n"
-            L"DelayedDamage=ORIGINAL\r\nGroupCounts=ORIGINAL\r\n");
+            L"DelayedDamage=ORIGINAL\r\n"
+            L"Map= Matrix\\Map\\Desert (2).cmap // chosen in the Map window\r\n"
+            L"GroupCounts=ORIGINAL\r\n");
     MG_CHECK(selection.invalid.empty());
     MG_CHECK(selection.values == custom());
     MG_CHECK(parse(L"StencilShadows=TRUE\nProjectedShadows=1\nRobotShadows=On\nSkybox=OFF\n").values.skybox ==
              Skybox::Off);
+    // The map path keeps its spelling; an empty value selects the configured map.
+    MG_CHECK(parse(L"Map=Matrix/Map/A.CMAP\n").values.map == L"Matrix/Map/A.CMAP");
+    const auto empty = parse(L"Map=\n");
+    MG_CHECK(empty.invalid.empty() && empty.values.map.empty());
 }
 
 void invalid_values() {
     const auto selection = parse(
             L"SoundVolume=101\nCameraSpeed=24\nStencilShadows=maybe\nProjectedShadows=\nSkybox=Ultra\n"
-            L"RobotShadows=Off\nRobotShadows=On\nResolutionWidth=12\nDelayedDamage=Broken\nGroupCounts=Fixed\n");
+            L"RobotShadows=Off\nRobotShadows=On\nResolutionWidth=12\nDelayedDamage=Broken\nMap=..\\escape.cmap\n"
+            L"GroupCounts=Fixed\n");
     MG_CHECK(selection.values.sound_volume == 100 && selection.values.camera_speed == 100);
     MG_CHECK(selection.values.stencil_shadows && selection.values.projected_shadows);
     MG_CHECK(selection.values.skybox == Skybox::High && selection.values.robot_shadows);
@@ -98,7 +106,12 @@ void invalid_values() {
     MG_CHECK(selection.values.group_counts == StandaloneSettings::GroupCountMode::Corrected);
     MG_CHECK(selection.invalid == std::vector<std::string>({"SoundVolume", "CameraSpeed", "StencilShadows",
                                                             "ProjectedShadows", "Skybox", "RobotShadows",
-                                                            "DelayedDamage", "GroupCounts"}));
+                                                            "DelayedDamage", "Map", "GroupCounts"}));
+    MG_CHECK(selection.values.map.empty());
+    for (const wchar_t *text : {L"Map=x.txt\n", L"Map=C:\\x.cmap\n", L"Map=a.cmap\nMap=b.cmap\n", L"Map=a|b.cmap\n"}) {
+        const auto rejected = parse(text);
+        MG_CHECK(rejected.values.map.empty() && rejected.invalid == std::vector<std::string>({"Map"}));
+    }
     // A repeated key is invalid and keeps the default.
     const auto repeated = parse(L"GroupCounts=Original\nGroupCounts=Original\n");
     MG_CHECK(repeated.values.group_counts == StandaloneSettings::GroupCountMode::Corrected);
@@ -144,6 +157,7 @@ void preserves_text() {
             L"RobotShadows=Off\r\n"
             L"CameraSpeed=150\r\n"
             L"DelayedDamage=Original\r\n"
+            L"Map=Matrix\\Map\\Desert (2).cmap\r\n"
             L"GroupCounts=Original\r\n";
     MG_CHECK(updated == expected);
     MG_CHECK(StandaloneSettings::update_text(updated, custom()) == expected);

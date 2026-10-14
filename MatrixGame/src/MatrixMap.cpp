@@ -9,6 +9,8 @@
 #include <windows.h>
 #include "MatrixMap.hpp"
 #include "SettingsWindow.hpp"
+#include "MapWindow.hpp"
+#include "ScreenLayout.hpp"
 #include "ShadowPasses.hpp"
 #include "MatrixMapStatic.hpp"
 #include "MatrixObject.hpp"
@@ -3173,6 +3175,10 @@ static void OkHandler(void) {
 }
 static void OkJustExitHandler(void) {
     g_MatrixMap->LeaveDialogMode();
+    // After a won, lost or surrendered battle the standalone game offers the next map; leaving through
+    // the menu's Exit still ends the game.
+    if (g_ExitState != 1 && MapWindow::open_after_battle())
+        return;
     SETFLAG(g_Flags, GFLAG_EXITLOOP);
 }
 static void OkExitWinHandler(void) {
@@ -3237,9 +3243,8 @@ static void CreateConfirmation(const wchar *hint, DialogButtonHandler handler) {
     g_IFaceList->DisableMainMenuButton(HINT_EXIT);
 
     CMatrixHint *h = CMatrixHint::Build(std::wstring(hint), hint);
-    int ww = (g_ScreenX - h->m_Width) / 2;
-    int hh = (g_ScreenY - h->m_Height) / 2 - Float2Int(float(g_ScreenY) * 0.09f);
-    h->Show(ww, hh);
+    const auto centre = ScreenLayout::centred_dialog(g_ScreenX, g_ScreenY, h->m_Width, h->m_Height);
+    h->Show(centre.x, centre.y);
 
     if (h->GetCopyPosCnt() > 0) {
         int x = h->m_PosX + h->GetCopyPos(0).x;
@@ -3335,14 +3340,16 @@ void CMatrixMap::EnterDialogMode(const wchar *hint_i) {
             CMatrixHint *h = CMatrixHint::Build(templ, g_MatrixData->BlockGet(PAR_REPLACE), hint);
 
             if (0 == wcscmp(hint, TEMPLATE_DIALOG_MENU)) {
-                h->m_PosX = (g_ScreenX - h->m_Width) / 2;
-                h->m_PosY = (g_ScreenY - h->m_Height) / 2 - Float2Int(float(g_ScreenY) * 0.09f);
+                const auto centre = ScreenLayout::centred_dialog(g_ScreenX, g_ScreenY, h->m_Width, h->m_Height);
+                h->m_PosX = centre.x;
+                h->m_PosY = centre.y;
                 h->SetVisible(false);
                 h->SoundIn();
             }
             else if (0 == wcscmp(hint, TEMPLATE_DIALOG_STATISTICS)) {
-                h->m_PosX = (g_ScreenX - h->m_Width) / 2;
-                h->m_PosY = (g_ScreenY - h->m_Height) / 2 - Float2Int(float(g_ScreenY) * 0.09f);
+                const auto centre = ScreenLayout::centred_dialog(g_ScreenX, g_ScreenY, h->m_Width, h->m_Height);
+                h->m_PosX = centre.x;
+                h->m_PosY = centre.y;
                 h->SetVisible(true);
             }
             else {

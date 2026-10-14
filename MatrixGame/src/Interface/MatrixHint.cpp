@@ -21,6 +21,7 @@
 static std::list<CMatrixHint*> m_hints;
 
 static std::vector<SHintBitmap> m_Bitmaps;
+static std::vector<std::pair<std::wstring, CBitmap *>> m_RuntimeBitmaps;
 
 CMatrixHint::CMatrixHint(CTextureManaged *tex, int w, int h, const std::wstring &si, const std::wstring &so)
   : m_Texture(tex), m_Width(w), m_Height(h), m_SoundIn{si},
@@ -431,6 +432,12 @@ CMatrixHint *CMatrixHint::Build(int border, const std::wstring &soundin, const s
     return hint;
 }
 
+void CMatrixHint::SetRuntimeBitmap(const std::wstring &name, CBitmap *bitmap) {
+    std::erase_if(m_RuntimeBitmaps, [&](const auto &entry) { return entry.first == name; });
+    if (bitmap)
+        m_RuntimeBitmaps.emplace_back(name, bitmap);
+}
+
 void CMatrixHint::PreloadBitmaps(void) {
     CBlockPar *bph = g_MatrixData->BlockGet(PAR_SOURCE_HINTS)->BlockGet(PAR_SOURCE_HINTS_BITMAPS);
     m_Bitmaps.resize(bph->ParCount());
@@ -677,7 +684,15 @@ CMatrixHint *CMatrixHint::Build(const std::wstring &str, CBlockPar *repl, const 
                 Replace(bmpn, baserepl, repl);
 
             elems[nelem].bmp = NULL;
-            if (!bmpn.empty())
+            for (const auto &[name, bitmap] : m_RuntimeBitmaps)
+            {
+                if (name == bmpn)
+                {
+                    elems[nelem].bmp = bitmap;
+                    break;
+                }
+            }
+            if (!bmpn.empty() && !elems[nelem].bmp)
             {
                 for (int i = 0; i < m_Bitmaps.size(); ++i)
                 {

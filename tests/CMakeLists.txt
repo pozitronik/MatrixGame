@@ -91,7 +91,7 @@ add_matrix_test(bitmap.png.write_round_trip matrixgame_dependency_tests bitmap d
 add_matrix_test(bitmap.png.invalid matrixgame_dependency_tests bitmap dependencies png)
 
 # Wire-format fixtures for storage, packages and raw-read records (docs/DATA_FORMATS.md).
-add_matrix_test_executable(matrixgame_layout_tests layout_tests.cpp wire_bytes.hpp)
+add_matrix_test_executable(matrixgame_layout_tests layout_tests.cpp wire_bytes.hpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_layout_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 target_compile_definitions(matrixgame_layout_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
 foreach(contract storage_columns storage_tree storage_zl03 storage_column_zl03 storage_truncated storage_malformed)
@@ -100,6 +100,8 @@ endforeach()
 foreach(contract package_tree package_handles package_malformed package_file_fallback)
     add_matrix_test(base.layout.${contract} matrixgame_layout_tests base storage pack)
 endforeach()
+add_matrix_test(base.layout.package_listing matrixgame_layout_tests base storage pack)
+add_matrix_test(game.maps.sources matrixgame_layout_tests startup storage pack)
 add_matrix_test(base.layout.raw_records matrixgame_layout_tests base storage)
 
 add_matrix_test_executable(matrixgame_error_tests error_tests.cpp)
@@ -153,7 +155,7 @@ add_matrix_test(game.random.configuration_file matrixgame_random_configuration_t
 add_matrix_test(game.random.configuration_report matrixgame_random_configuration_tests gameplay startup random)
 
 add_matrix_test_executable(matrixgame_standalone_settings_tests standalone_settings_tests.cpp
-    ../MatrixGame/src/StandaloneSettings.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+    ../MatrixGame/src/StandaloneSettings.cpp ../MatrixGame/src/RandomConfiguration.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_standalone_settings_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 add_matrix_test(game.settings.defaults matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.explicit_values matrixgame_standalone_settings_tests startup settings)
@@ -167,8 +169,21 @@ add_matrix_test(game.settings.save_creates_file matrixgame_standalone_settings_t
 add_matrix_test(game.settings.save_failure matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.unreadable_file matrixgame_standalone_settings_tests startup settings)
 
+add_matrix_test_executable(matrixgame_map_catalog_tests map_catalog_tests.cpp ../MatrixGame/src/MapCatalog.cpp)
+target_include_directories(matrixgame_map_catalog_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract merge unsafe_names paths)
+    add_matrix_test(game.maps.${contract} matrixgame_map_catalog_tests startup ui)
+endforeach()
+
+add_matrix_test_executable(matrixgame_map_model_tests map_model_tests.cpp ../MatrixGame/src/MapModel.cpp
+    ../MatrixGame/src/MapCatalog.cpp ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+target_include_directories(matrixgame_map_model_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract window_selection window_paging window_geometry window_text window_hint)
+    add_matrix_test(game.maps.${contract} matrixgame_map_model_tests ui)
+endforeach()
+
 add_matrix_test_executable(matrixgame_settings_model_tests settings_model_tests.cpp
-    ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+    ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_settings_model_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 add_matrix_test(game.settings.window_resolutions matrixgame_settings_model_tests ui settings)
 add_matrix_test(game.settings.window_selection matrixgame_settings_model_tests ui settings)
@@ -189,6 +204,13 @@ add_matrix_test(game.settings.delayed_damage_attribution matrixgame_settings_run
 add_matrix_test(game.settings.delayed_damage_build_default matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.group_counts_build_default matrixgame_settings_runtime_tests ai settings)
 target_compile_definitions(matrixgame_settings_runtime_tests PRIVATE MATRIXGAME_TESTS_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>)
+add_matrix_test(game.settings.map_choice matrixgame_settings_runtime_tests startup settings)
+
+add_matrix_test_executable(matrixgame_screen_layout_tests screen_layout_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_screen_layout_tests PRIVATE MatrixGameInternal)
+foreach(contract anchoring dialog_centring tracking)
+    add_matrix_test(game.screen.${contract} matrixgame_screen_layout_tests ui rendering)
+endforeach()
 
 add_matrix_test_executable(matrixgame_random_map_tests random_map_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_random_map_tests PRIVATE MatrixGameInternal)
@@ -375,9 +397,10 @@ add_matrix_test(game.device.transient_reset matrixgame_device_tests rendering)
 add_matrix_test(game.device.permanent_error matrixgame_device_tests rendering)
 add_matrix_test(game.device.present_loss matrixgame_device_tests rendering)
 
-add_matrix_test_executable(matrixgame_display_tests display_tests.cpp)
+add_matrix_test_executable(matrixgame_display_tests display_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_display_tests PRIVATE MatrixGameInternal)
 target_compile_definitions(matrixgame_display_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
-foreach(contract defaults options invalid_options files toggle_pairs shortcut coordinates reset_parameters transition_order transition_failure)
+foreach(contract defaults options invalid_options files toggle_pairs shortcut coordinates reset_parameters transition_order transition_failure change_plans resize_rollback)
     add_matrix_test(game.display.${contract} matrixgame_display_tests rendering input)
 endforeach()
 

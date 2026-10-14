@@ -39,15 +39,17 @@ void initialize_runtime(const Values &values) {
 
 void apply_runtime(const Values &values) {
     apply_immediate(values);
-    if (Display::enabled()) Display::request(values.display.mode, values.display.fullscreen);
+    if (Display::enabled()) {
+        Display::request(values.display.mode, values.display.fullscreen);
+        Display::request_size(values.display.width, values.display.height);
+    }
     saved = values;
 }
 
 const Values &current() { return saved; }
 
 bool restart_pending(const Values &values) {
-    return values.display.width != started.display.width || values.display.height != started.display.height ||
-           values.random != started.random || values.skybox != started.skybox ||
+    return values.random != started.random || values.skybox != started.skybox ||
            values.robot_shadows != started.robot_shadows;
 }
 

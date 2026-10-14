@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "StandaloneSettings.hpp"
 #include "RandomConfiguration.hpp"
+#include "MapCatalog.hpp"
 
 #include "CBlockPar.hpp"
 #include "CException.hpp"
@@ -22,7 +23,7 @@ namespace {
 constexpr std::array keys{L"RandomGenerator", L"ResolutionWidth", L"ResolutionHeight", L"WindowMode",
                           L"FullscreenMode",  L"SoundVolume",     L"StencilShadows",   L"ProjectedShadows",
                           L"Skybox",          L"RobotShadows",    L"CameraSpeed",      L"DelayedDamage",
-                          L"GroupCounts"};
+                          L"Map",             L"GroupCounts"};
 
 std::optional<std::wstring> single(const Base::CBlockPar &options, const wchar_t *key) {
     if (options.ParCount(key) != 1) return std::nullopt;
@@ -77,6 +78,14 @@ void read(const Base::CBlockPar &options, const wchar_t *key, T &target, Parse p
     else selection.invalid.push_back(utils::from_wstring(key));
 }
 
+// An empty value keeps the configured map; anything else must be a path the map catalogue accepts.
+std::optional<std::wstring> map_path(const Base::CBlockPar &options) {
+    if (options.ParCount(L"Map") != 1) return std::nullopt;
+    auto value = utils::trim(options.ParGet(L"Map"));
+    if (!value.empty() && !MapCatalog::valid_path(value)) return std::nullopt;
+    return value;
+}
+
 std::wstring value_text(const Values &values, std::wstring_view key) {
     const auto on_off = [](bool value) { return std::wstring(value ? L"On" : L"Off"); };
     if (key == L"RandomGenerator") return utils::to_wstring(RandomConfiguration::name(values.random));
@@ -91,6 +100,7 @@ std::wstring value_text(const Values &values, std::wstring_view key) {
     if (key == L"RobotShadows") return on_off(values.robot_shadows);
     if (key == L"CameraSpeed") return std::to_wstring(values.camera_speed);
     if (key == L"DelayedDamage") return utils::to_wstring(name(values.delayed_damage));
+    if (key == L"Map") return values.map;
     if (key == L"GroupCounts") return utils::to_wstring(name(values.group_counts));
     throw std::logic_error("Unknown settings key");
 }
@@ -240,6 +250,10 @@ Selection resolve(const Base::CBlockPar &options) {
     read(options, L"Skybox", values.skybox, skybox, selection);
     read(options, L"RobotShadows", values.robot_shadows, boolean, selection);
     read(options, L"DelayedDamage", values.delayed_damage, delayed_damage, selection);
+    if (options.ParCount(L"Map")) {
+        if (const auto map = map_path(options)) values.map = *map;
+        else selection.invalid.push_back("Map");
+    }
     read(options, L"GroupCounts", values.group_counts, group_counts, selection);
     return selection;
 }

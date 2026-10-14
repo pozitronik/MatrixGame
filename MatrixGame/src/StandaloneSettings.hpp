@@ -30,6 +30,7 @@ struct Values {
     Skybox skybox = Skybox::High;
     bool robot_shadows = true;
     DamageAttribution delayed_damage = DamageAttribution::Corrected;
+    std::wstring map;  // Remembered battle map, Matrix\Map\<name>.cmap; empty selects Config/Map.
     GroupCountMode group_counts = GroupCountMode::Corrected;
     bool operator==(const Values &) const = default;
 };
