@@ -149,7 +149,7 @@ void hint_text() {
     Window window({}, {}, Language::English);
     const auto selected = L"_COLOR:FF0B5FA5|_WIDTH:" + std::to_wstring(Layout::previous_x - Layout::label_x - 12) +
                           L"|_HEIGHT:19|_ALIGN:0:0|_POS:82:" + std::to_wstring(row_top(row(Row::Resolution))) +
-                          L"|_TEXT:Resolution";
+                          L"|_TEXT:Resolution|";  // The next element follows, so the old " *" label fails.
     MG_CHECK(hint_template(window).find(selected) != std::wstring::npos);
     window.select(row(Row::SoundVolume));
     MG_CHECK(hint_template(window).find(selected) == std::wstring::npos);

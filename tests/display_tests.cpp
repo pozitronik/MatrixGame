@@ -1,6 +1,8 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "test_support.hpp"
 #include "DisplaySettings.hpp"
+#include "WindowDisplay.hpp"
+#include "3g.hpp"
 #include "CBlockPar.hpp"
 #include "stupid_logger.hpp"
 
@@ -208,31 +210,59 @@ void change_plans() {
 }
 
 // Mirrors apply_pending: the size changes with the reset and returns to the previous size on rollback.
+int resource_releases = 0, resource_restores = 0;
+
+// The controller's size bookkeeping for a reset change: success publishes the new rendering size, a rejected
+// reset restores the previous mode and size before resetting again, and a lost device keeps the requested size
+// for ordinary recovery without publishing it.
 void resize_rollback() {
-    for (HRESULT failure : {D3D_OK, D3DERR_INVALIDCALL}) {
-        Display::Size size{1024, 768};
-        const Display::Size previous = size, target{1920, 1080};
-        std::vector<Display::Size> reset_sizes;
-        const HRESULT result = Display::transition(true, [] {},
+    using Display::Mode;
+    using Display::Size;
+    for (HRESULT failure : {D3D_OK, D3DERR_INVALIDCALL, D3DERR_DEVICELOST}) {
+        Display::initialize({1024, 768, Mode::Windowed, Mode::Borderless});
+        g_ScreenX = 1024;
+        g_ScreenY = 768;
+        resource_releases = resource_restores = 0;
+        std::vector<Mode> windows;
+        std::vector<Size> resets;
+        const Display::ResetSteps steps{
+            [&](Mode mode) { windows.push_back(mode); },
             [&] {
-                size = target;
-                reset_sizes.push_back(size);
+                resets.push_back(Display::current_size());
                 return failure;
             },
-            [&](HRESULT) {
-                size = previous;
-                reset_sizes.push_back(size);
-                return D3D_OK;
-            }, [] {});
-        MG_CHECK(result == D3D_OK);
-        MG_CHECK(size == (failure == D3D_OK ? target : previous));
-        MG_CHECK(reset_sizes.back() == size && reset_sizes.size() == (failure == D3D_OK ? 1u : 2u));
+            [&] {
+                resets.push_back(Display::current_size());
+                return HRESULT(D3D_OK);
+            }};
+        const HRESULT result = Display::reset_to(Mode::Exclusive, {1920, 1080}, true, [] { ++resource_releases; },
+                                                 [] { ++resource_restores; }, steps);
+        const bool rejected = failure == D3DERR_INVALIDCALL, lost = failure == D3DERR_DEVICELOST;
+        MG_CHECK(result == (lost ? D3DERR_DEVICELOST : D3D_OK));
+        MG_CHECK(resource_releases == 1 && resource_restores == (lost ? 0 : 1));
+        const Size kept = rejected ? Size{1024, 768} : Size{1920, 1080};
+        MG_CHECK(Display::current_size() == kept);
+        const Size published = failure == D3D_OK ? Size{1920, 1080} : Size{1024, 768};
+        MG_CHECK(g_ScreenX == published.width && g_ScreenY == published.height);
+        MG_CHECK(resets.front() == (Size{1920, 1080}));
+        if (rejected) {
+            MG_CHECK(resets.size() == 2 && resets.back() == (Size{1024, 768}));
+            MG_CHECK((windows == std::vector<Mode>{Mode::Exclusive, Mode::Windowed}));
+        }
+        else {
+            MG_CHECK(resets.size() == 1 && (windows == std::vector<Mode>{Mode::Exclusive}));
+        }
+        Display::shutdown();
     }
-    // A lost device keeps the requested size for ordinary recovery to apply.
-    Display::Size size{1024, 768};
-    MG_CHECK(Display::transition(true, [] {}, [&] { size = {640, 480}; return D3DERR_DEVICELOST; },
-                                 [&](HRESULT) { size = {1024, 768}; return D3D_OK; }, [] {}) == D3DERR_DEVICELOST);
-    MG_CHECK(size == (Display::Size{640, 480}));
+    // A failed rollback reports its own failure and publishes nothing.
+    Display::initialize({1024, 768, Mode::Windowed, Mode::Borderless});
+    g_ScreenX = 1024;
+    g_ScreenY = 768;
+    const Display::ResetSteps failing{[](Mode) {}, [] { return HRESULT(D3DERR_INVALIDCALL); },
+                                      [] { return HRESULT(D3DERR_NOTAVAILABLE); }};
+    MG_CHECK(Display::reset_to(Mode::Windowed, {800, 600}, false, [] {}, [] {}, failing) == D3DERR_NOTAVAILABLE);
+    MG_CHECK(Display::current_size() == (Size{1024, 768}) && g_ScreenX == 1024 && g_ScreenY == 768);
+    Display::shutdown();
 }
 
 constexpr tests::Case cases[] = {
