@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "battle_geometry.hpp"
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixObjectBuilding.hpp"
@@ -108,6 +109,21 @@ void place_axis_correctness() {
     MG_CHECK(inside == 1 && outside == -1);
 }
 
+// Every cached logic-group count must equal the side's live membership.
+void check_group_counts(const CMatrixSideUnit &side) {
+    std::array<int, MAX_LOGIC_GROUP> actual{};
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+        if (!object->IsLiveRobot() || object->GetSide() != side.m_Id) continue;
+        const int group = object->AsRobot()->GetGroupLogic();
+        if (group >= 0 && group < MAX_LOGIC_GROUP) ++actual[group];
+    }
+    for (int i = 0; i < MAX_LOGIC_GROUP; ++i) {
+        if (actual[i] != side.m_LogicGroup[i].RobotsCnt())
+            std::cout << "group=" << i << " actual=" << actual[i] << " cached=" << side.m_LogicGroup[i].RobotsCnt() << '\n';
+        MG_CHECK(actual[i] == side.m_LogicGroup[i].RobotsCnt());
+    }
+}
+
 void regroup_counts_correctness(bool split) {
     Session session;
     auto robots = units();
@@ -119,20 +135,49 @@ void regroup_counts_correctness(bool split) {
     auto &side = *g_MatrixMap->GetSideById(a->GetSide());
     side.Regroup();
     MG_CHECK((a->GetGroupLogic() != b->GetGroupLogic()) == split);
-    std::array<int, MAX_LOGIC_GROUP> actual{};
     for (auto *robot : robots) {
         if (robot->GetSide() != side.m_Id) continue;
         MG_CHECK(robot->GetGroupLogic() >= 0 && robot->GetGroupLogic() < MAX_LOGIC_GROUP);
-        ++actual[robot->GetGroupLogic()];
     }
-    for (int i = 0; i < MAX_LOGIC_GROUP; ++i) {
-        if (actual[i] != side.m_LogicGroup[i].RobotsCnt())
-            std::cout << "group=" << i << " actual=" << actual[i] << " cached=" << side.m_LogicGroup[i].RobotsCnt() << '\n';
-        MG_CHECK(actual[i] == side.m_LogicGroup[i].RobotsCnt());
-    }
+    check_group_counts(side);
 }
 void regroup_split_correctness() { regroup_counts_correctness(true); }
 void regroup_merge_correctness() { regroup_counts_correctness(false); }
+
+// Splits and merges in one pass, at the distance boundaries, across several groups and two teams.
+void regroup_count_sequences() {
+    for (float distance : {299.0f, 300.0f, 400.0f, 401.0f}) for (bool initially_together : {false, true}) {
+        Session session;
+        auto robots = units();
+        auto *a = robots[0], *b = robots[1];
+        auto &side = *g_MatrixMap->GetSideById(a->GetSide());
+        // Initial placement only: a distant member of the first group and a nearby robot of another team.
+        auto *distant = BattleGeometry::create_robot(*g_MatrixMap, side.m_Id, 600, 600);
+        auto *other = BattleGeometry::create_robot(*g_MatrixMap, side.m_Id, 100 + distance / 2, 260);
+        position(*a, 100, 200); position(*b, 100 + distance, 200);
+        a->SetTeam(0); b->SetTeam(0); distant->SetTeam(0); other->SetTeam(1);
+        a->SetGroupLogic(0); b->SetGroupLogic(initially_together ? 0 : 1);
+        distant->SetGroupLogic(0); other->SetGroupLogic(2);
+        side.m_LogicGroup[0].m_Action.m_Type = mlat_Attack;
+        side.m_LogicGroup[1].m_Action.m_Type = mlat_None;
+        const bool together = initially_together ? distance <= 400 : distance < 300;
+        std::array<int, 4> groups{};
+        for (int pass = 0; pass < 3; ++pass) {
+            side.Regroup();
+            check_group_counts(side);
+            const std::array<int, 4> current{a->GetGroupLogic(), b->GetGroupLogic(), distant->GetGroupLogic(),
+                                             other->GetGroupLogic()};
+            MG_CHECK((current[0] == current[1]) == together);
+            MG_CHECK(current[2] != current[0] && current[2] != current[1]);
+            MG_CHECK(current[3] != current[0] && current[3] != current[1] && current[3] != current[2]);
+            MG_CHECK(side.m_LogicGroup[current[0]].m_Action.m_Type == mlat_Attack);
+            MG_CHECK(side.m_LogicGroup[current[2]].m_Team == 0 && side.m_LogicGroup[current[3]].m_Team == 1);
+            // Repeated calls keep the regrouped membership.
+            if (pass) MG_CHECK(current == groups);
+            groups = current;
+        }
+    }
+}
 
 // Crowded buffer capacity is tracked separately: https://github.com/pozitronik/MatrixGame/issues/136
 void bomb_escape_planning() {

@@ -33,6 +33,7 @@ void place_bounds();
 void place_axis_correctness();
 void regroup_split_correctness();
 void regroup_merge_correctness();
+void regroup_count_sequences();
 void bomb_escape_planning();
 void strategic_member_loss();
 void strategic_base_loss();
@@ -423,10 +424,9 @@ int main(int argc, char **argv) {
         {"probe.ai.memory_clear_reuse", tests::ai::memory_clear_correctness},
         // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/139
         {"probe.ai.place_axis", tests::ai::place_axis_correctness},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
-        {"probe.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/140
-        {"probe.ai.regroup_merge_counts", tests::ai::regroup_merge_correctness},
+        {"game.ai.regroup_split_counts", tests::ai::regroup_split_correctness},
+        {"game.ai.regroup_merge_counts", tests::ai::regroup_merge_correctness},
+        {"game.ai.regroup_count_sequences", tests::ai::regroup_count_sequences},
         {"game.ai.enemy_memory", enemy_memory},
         {"game.ai.memory_target_retirement", memory_target_retirement},
         {"game.ai.ignore_expiry", ignore_expiry},

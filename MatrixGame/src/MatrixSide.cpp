@@ -2012,7 +2012,7 @@ void CMatrixSideUnit::Regroup() {
                     continue;
                 if (subl[t] != tl[i])
                     continue;
-                m_LogicGroup[rl[t]->GetGroupLogic()].IncRobotsCnt();
+                m_LogicGroup[rl[t]->GetGroupLogic()].IncRobotsCnt(-1);
                 rl[t]->SetGroupLogic(k);
                 m_LogicGroup[k].IncRobotsCnt();
             }
@@ -2080,6 +2080,7 @@ void CMatrixSideUnit::Regroup() {
                 }
 
                 m_LogicGroup[u].IncRobotsCnt(m_LogicGroup[t].RobotsCnt());
+                m_LogicGroup[t].RobotsCnt(0);
 
                 for (k = 0; k < rlcnt; k++) {
                     if (rl[k]->GetGroupLogic() != t)
