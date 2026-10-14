@@ -288,6 +288,8 @@ public:
     void MoveDown(void) { SETFLAG(m_Flags, CAM_ACTION_MOVE_DOWN); }
 
     void ResetAngles(void);
+    // Recomputes the projection, pick factors and viewport from g_ScreenX/g_ScreenY.
+    void ResizeScreen(void);
 
     void CalcPickVector(const CPoint &p, D3DXVECTOR3 &vdir) const;
     // void MoveCamera( const D3DXVECTOR3 & d) { m_Target += d; }

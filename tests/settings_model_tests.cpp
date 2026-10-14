@@ -106,11 +106,12 @@ void geometry() {
 void text() {
     auto window = english();
     MG_CHECK(window.title() == L"Settings" && window.label(row(Row::SoundVolume)) == L"Volume");
-    MG_CHECK(window.label(row(Row::Resolution)) == L"Resolution *");
-    for (const auto restart : {Row::Resolution, Row::Skybox, Row::RobotShadows, Row::RandomGenerator})
+    MG_CHECK(window.label(row(Row::Resolution)) == L"Resolution");
+    for (const auto restart : {Row::Skybox, Row::RobotShadows, Row::RandomGenerator})
         MG_CHECK(needs_restart(row(restart)) && window.label(row(restart)).ends_with(L" *"));
-    for (const auto live : {Row::WindowMode, Row::FullscreenMode, Row::SoundVolume, Row::StencilShadows,
-                            Row::ProjectedShadows, Row::CameraSpeed, Row::DelayedDamage, Row::Map})
+    for (const auto live : {Row::Resolution, Row::WindowMode, Row::FullscreenMode, Row::SoundVolume,
+                            Row::StencilShadows, Row::ProjectedShadows, Row::CameraSpeed, Row::DelayedDamage,
+                            Row::Map})
         MG_CHECK(!needs_restart(row(live)));
     MG_CHECK(window.value(row(Row::Resolution)) == L"1024x768" && window.value(row(Row::SoundVolume)) == L"100%");
     MG_CHECK(window.value(row(Row::WindowMode)) == L"Windowed" && window.value(row(Row::FullscreenMode)) == L"Borderless");
@@ -158,7 +159,7 @@ void hint_text() {
     Window window({}, {}, Language::English);
     const auto selected = L"_COLOR:FF0B5FA5|_WIDTH:" + std::to_wstring(Layout::previous_x - Layout::label_x - 12) +
                           L"|_HEIGHT:19|_ALIGN:0:0|_POS:82:" + std::to_wstring(row_top(row(Row::Resolution))) +
-                          L"|_TEXT:Resolution *";
+                          L"|_TEXT:Resolution|";  // The next element follows, so the old " *" label fails.
     MG_CHECK(hint_template(window).find(selected) != std::wstring::npos);
     window.select(row(Row::SoundVolume));
     MG_CHECK(hint_template(window).find(selected) == std::wstring::npos);

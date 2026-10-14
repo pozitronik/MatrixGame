@@ -14,6 +14,7 @@
 #include "MapSelection.hpp"
 #include "SettingsWindow.hpp"
 #include "MapWindow.hpp"
+#include "ScreenLayout.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
 #include "Interface/CInterface.h"
@@ -552,6 +553,7 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     g_LoadProgress->SetCurLPPos(600);
 
     iface_save |= CIFaceMenu::LoadMenuGraphics(bpi);
+    ScreenLayout::laid_out(g_ScreenX, g_ScreenY);
     // LIST_ADD(CIFaceMenu::m_MenuGraphics, g_IFaceList->m_First, g_IFaceList->m_Last, m_PrevInterface,
     // m_NextInterface);
 
@@ -749,6 +751,7 @@ void CGame::Deinit(void) {
 
     MapWindow::shutdown();
     SettingsWindow::shutdown();
+    ScreenLayout::laid_out(0, 0);
     CMatrixHint::ClearAll();
 
     if (g_MatrixMap) {

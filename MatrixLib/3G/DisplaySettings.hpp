@@ -4,6 +4,7 @@
 #include <windows.h>
 #include <d3d9.h>
 #include <cstdint>
+#include <optional>
 
 namespace Base { class CBlockPar; }
 
@@ -25,6 +26,20 @@ Selection resolve(const Base::CBlockPar &options);
 Selection load(const wchar_t *path = L"CFG\\standalone.txt");
 const char *name(Mode mode);
 Mode toggle_target(Mode current, Mode fullscreen);
+struct Size {
+    int width = 1024;
+    int height = 768;
+    bool operator==(const Size &) const = default;
+};
+// A queued change: a pending toggle or explicit mode request, and an optional new rendering size.
+struct Change {
+    Mode target;
+    Size size;
+    bool resize;
+    bool reset;  // A size change or any switch into or out of exclusive mode resets the device.
+};
+Change plan(Mode current, Mode fullscreen, bool mode_pending, std::optional<Mode> requested, Size current_size,
+            std::optional<Size> requested_size);
 int map_coordinate(int position, int client_extent, int render_extent);
 
 struct Shortcut {

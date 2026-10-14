@@ -78,6 +78,16 @@ Mode toggle_target(Mode current, Mode fullscreen) {
     return current == Mode::Windowed ? fullscreen : Mode::Windowed;
 }
 
+Change plan(Mode current, Mode fullscreen, bool mode_pending, std::optional<Mode> requested, Size current_size,
+            std::optional<Size> requested_size) {
+    Change change;
+    change.target = mode_pending ? requested.value_or(toggle_target(current, fullscreen)) : current;
+    change.size = requested_size.value_or(current_size);
+    change.resize = change.size != current_size;
+    change.reset = change.resize || current == Mode::Exclusive || change.target == Mode::Exclusive;
+    return change;
+}
+
 int map_coordinate(int position, int client_extent, int render_extent) {
     if (client_extent <= 1 || render_extent <= 1) return 0;
     const int result = static_cast<int>(static_cast<int64_t>(position) * (render_extent - 1) / (client_extent - 1));

@@ -19,7 +19,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 | Window row | Key in `CFG/standalone.txt` | Values | Default | Takes effect |
 | --- | --- | --- | --- | --- |
-| Resolution | `ResolutionWidth`, `ResolutionHeight` | Modes reported by the primary display adapter, plus the current size | `1024`, `768` | After restart |
+| Resolution | `ResolutionWidth`, `ResolutionHeight` | Modes reported by the primary display adapter, plus the current size | `1024`, `768` | Immediately |
 | Window mode | `WindowMode` | `Windowed`, `Borderless`, `Exclusive` | `Windowed` | Immediately |
 | Alt+Enter | `FullscreenMode` | `Borderless`, `Exclusive` | `Borderless` | Immediately |
 | Volume | `SoundVolume` | `0`-`100`, in steps of 10 in the window | `100` | Immediately |
@@ -32,7 +32,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 | Status damage | `DelayedDamage` | `Corrected`, `Original` | `Corrected` | Immediately |
 | Map | `Map` | A map path such as `Matrix\Map\desert1_3e.cmap`, or empty for `Config/Map` | Empty | Opens the [Map window](MAPS.md), which starts the game again on the chosen map |
 
-**Display.** The display keys keep the contract in [Display settings](DISPLAY.md). The window shows the current window mode, including a mode reached with Alt+Enter, and Apply saves it. Choosing `Borderless` or `Exclusive` as the window mode also makes it the Alt+Enter mode, matching how a fullscreen start behaves. A window-mode change uses the same transition and rollback as Alt+Enter. If exclusive mode is unavailable at the current resolution, the game keeps its current mode and logs the reason.
+**Display.** The display keys keep the contract in [Display settings](DISPLAY.md). The window shows the current window mode, including a mode reached with Alt+Enter, and Apply saves it. Choosing `Borderless` or `Exclusive` as the window mode also makes it the Alt+Enter mode, matching how a fullscreen start behaves. A window-mode change uses the same transition and rollback as Alt+Enter. A resolution change resets the device in every mode and re-lays out the interface; see [Changing the resolution during a battle](DISPLAY.md#changing-the-resolution-during-a-battle). If exclusive mode is unavailable at the requested resolution, or the change fails, the game keeps its current mode and resolution and logs the reason.
 
 **Sound.** Volume scales every standalone sound effect and speech voice, including sounds already playing. It does not affect a DLL host's audio.
 
@@ -63,7 +63,7 @@ Automated `game.settings.*` contracts cover:
 - Text-preserving rewrites in both encodings, including keys that follow a block on the same line.
 - Atomic saving and failed-save behavior.
 - Window selection, stepping, mode coupling, hit areas and both label languages.
-- Startup mapping of graphics options.
+- Startup mapping of graphics options and which options need a restart.
 - Immediate routing of shadows, camera speed, volume and status-damage attribution, and shadow pass selection for each combination of the two shadow options.
 - The remembered map; see [Map selection](MAPS.md#verification) for the Map window's own contracts and playtest.
 
@@ -74,10 +74,10 @@ The rendered window, menu integration and real display transitions need a playte
 1. Start a battle and press Escape. The settings label must use the same color as the other menu labels and highlight when the pointer is over it or its button. Click it. The Settings window must open centered, with the battle paused.
 2. Move the pointer over the rows and step every option with the mouse, including both ends of Volume and Camera speed. Use Up/Down/Left/Right on the keyboard. Check that labels and values stay inside the frame and that the checkmark and cross sit in their holes.
 3. Press Escape. The menu must reappear and the file must be unchanged. Press `C` to reopen the window; the values must match the file.
-4. Set Volume to 30 and apply. Effects must become quieter immediately, including continuing sounds. Change camera speed, apply, and confirm the visible effect. Switch Window mode between Windowed, Borderless and Exclusive, and check the result after each Apply.
+4. Change Resolution and apply; the image must change size at once with the menu re-centred. Set Volume to 30 and apply. Effects must become quieter immediately, including continuing sounds. Change camera speed, apply, and confirm the visible effect. Switch Window mode between Windowed, Borderless and Exclusive, and check the result after each Apply.
 5. Starting with both shadow options on, apply in turn: Stencil shadows off, then Projected shadows off, then Stencil shadows on, then Projected shadows on. Each kind of shadow must appear only while its option is on, and a kind turned back on must reappear on objects that were already shadowed.
 6. With Status damage set to Corrected, set an enemy turret and an enemy robot on fire with a flamethrower and stop firing so that burning finishes them. Repeat with an electric weapon. Finish the battle: the statistics must count these kills for the player. Set Status damage to Original, apply without restarting, and repeat: kills by later pulses must not be counted.
-7. Change Resolution, Sky, Robot shadows and the random generator, apply, and restart. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.
+7. Change Sky, Robot shadows and the random generator, apply, and restart. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.
 8. Make `CFG/standalone.txt` read-only and apply a change. The window must show the save error and keep the original file. Restore write access.
 9. Repeat steps 1 and 2 at 640x480 and with a Russian and an English game configuration.
 

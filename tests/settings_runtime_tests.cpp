@@ -97,12 +97,12 @@ void restart_detection() {
                         +[](Values &v) { v.stencil_shadows = false; }, +[](Values &v) { v.projected_shadows = false; },
                         +[](Values &v) { v.display.mode = Display::Mode::Borderless; },
                         +[](Values &v) { v.display.fullscreen = Display::Mode::Exclusive; },
+                        +[](Values &v) { v.display.width = 800; }, +[](Values &v) { v.display.height = 600; },
                         +[](Values &v) { v.delayed_damage = StandaloneSettings::DamageAttribution::Original; }}) {
         change(values);
         MG_CHECK(!StandaloneSettings::restart_pending(values));
     }
-    for (auto change : {+[](Values &v) { v.display.width = 800; }, +[](Values &v) { v.display.height = 600; },
-                        +[](Values &v) { v.skybox = Skybox::Off; }, +[](Values &v) { v.robot_shadows = false; },
+    for (auto change : {+[](Values &v) { v.skybox = Skybox::Off; }, +[](Values &v) { v.robot_shadows = false; },
                         +[](Values &v) { v.random = random::Mode::LegacyCRT; }}) {
         auto restart = Values{};
         change(restart);

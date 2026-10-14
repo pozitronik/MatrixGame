@@ -15,6 +15,7 @@
 #include "../MatrixObjectBuilding.hpp"
 #include "../MatrixMinimap.hpp"
 #include "../MatrixGameDll.hpp"
+#include "../ScreenLayout.hpp"
 #include "../MatrixFlyer.hpp"
 #include "../MatrixObjectCannon.hpp"
 #include "CAnimation.h"
@@ -59,6 +60,10 @@ CInterface::CInterface()
     pilon3 = -1;
     pilon4 = -1;
     pilon5 = -1;
+
+    m_AnchorRight = false;
+    m_AnchorBottom = false;
+    m_HasConstructor = false;
 
     pilon_ch = -1;
     pilon_he = -1;
@@ -173,14 +178,12 @@ bool CInterface::Load(CBlockPar &bp, const wchar *name) {
     m_yPos = (float)pbp1->ParGet(L"yPos").GetDouble();
     m_zPos = (float)pbp1->ParGet(L"zPos").GetDouble();
 
-    if (m_xPos != 0) {
-        int width = 1024 - Float2Int(m_xPos);
-        m_xPos = float(g_ScreenX - width);
-    }
-    if (m_yPos != 0) {
-        int height = 768 - Float2Int(m_yPos);
-        m_yPos = float(g_ScreenY - height);
-    }
+    m_AnchorRight = m_xPos != 0;
+    m_AnchorBottom = m_yPos != 0;
+    if (m_AnchorRight)
+        m_xPos = float(ScreenLayout::anchor(Float2Int(m_xPos), ScreenLayout::layout_width, g_ScreenX));
+    if (m_AnchorBottom)
+        m_yPos = float(ScreenLayout::anchor(Float2Int(m_yPos), ScreenLayout::layout_height, g_ScreenY));
 
     if (m_strName == IF_RADAR) {
         g_IFaceList->m_IFRadarPosX = Float2Int(m_xPos);
@@ -204,6 +207,7 @@ bool CInterface::Load(CBlockPar &bp, const wchar *name) {
 
     int Const = 0;
     Const = pbp1->ParGet(L"ConstPresent").GetInt();
+    m_HasConstructor = Const != 0;
 
     if (Const) {
         g_MatrixMap->GetPlayerSide()->m_Constructor->SetRenderProps(
@@ -3186,6 +3190,35 @@ void CInterface::ReCalcElementsPos() {
         pElement->RecalcPos(m_xPos, m_yPos);
         pElement = pElement->m_NextElement;
     }
+}
+
+void CInterface::Reanchor(int dx, int dy) {
+    const float shift_x = m_AnchorRight ? float(dx) : 0.0f;
+    const float shift_y = m_AnchorBottom ? float(dy) : 0.0f;
+    if (shift_x == 0 && shift_y == 0)
+        return;
+    m_xPos += shift_x;
+    m_yPos += shift_y;
+    if (FLAG(m_InterfaceFlags, INTERFACE_SLIDE_LEFT | INTERFACE_SLIDE_RIGHT)) {
+        m_Slider.startX += shift_x;
+        m_Slider.stopX += shift_x;
+        m_Slider.startY += shift_y;
+        m_Slider.stopY += shift_y;
+    }
+    ReCalcElementsPos();
+    if (m_strName == IF_RADAR) {
+        g_IFaceList->m_IFRadarPosX = Float2Int(m_xPos);
+        g_IFaceList->m_IFRadarPosY = Float2Int(m_yPos);
+    }
+    else if (m_strName == IF_BASE) {
+        g_IFaceList->m_BaseX = Float2Int(m_xPos);
+        g_IFaceList->m_BaseY = Float2Int(m_yPos);
+    }
+    else if (m_strName == IF_MINI_MAP) {
+        g_MatrixMap->m_Minimap.SetOutPos(Float2Int(m_xPos) + 13, Float2Int(m_yPos) + 51);
+    }
+    if (m_HasConstructor)
+        g_MatrixMap->GetPlayerSide()->m_Constructor->MoveRenderProps(shift_x, shift_y);
 }
 
 void CInterface::BeginSlide(float to_x, float to_y) {
