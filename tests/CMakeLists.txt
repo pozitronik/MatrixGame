@@ -169,6 +169,12 @@ add_matrix_test(game.settings.save_creates_file matrixgame_standalone_settings_t
 add_matrix_test(game.settings.save_failure matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.unreadable_file matrixgame_standalone_settings_tests startup settings)
 
+add_matrix_test_executable(matrixgame_map_metadata_tests map_metadata_tests.cpp ../MatrixGame/src/MapMetadata.cpp)
+target_include_directories(matrixgame_map_metadata_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract format envelope damage tree text files catalog)
+    add_matrix_test(game.maps.metadata_${contract} matrixgame_map_metadata_tests startup ui)
+endforeach()
+
 add_matrix_test_executable(matrixgame_map_catalog_tests map_catalog_tests.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_map_catalog_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 foreach(contract merge unsafe_names paths)

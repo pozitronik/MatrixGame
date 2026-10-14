@@ -8,6 +8,8 @@ bin/
 /ROBOTS.DAT
 /sounds.txt
 /SOUNDS.TXT
+# Original-game language catalogs are supplied locally, like the resource packages.
+[Ll][Aa][Nn][Gg].[Dd][Aa][Tt]
 
 # Developer tools and local settings.
 .tools/
