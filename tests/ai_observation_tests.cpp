@@ -629,6 +629,10 @@ void strategic_merged_team_split() {
         GroupCounts::set_original(original);
         Profile profile; profile.mode = mode; profile.initial_time_ms = 3001;
         Session session(profile);
+        // The trace header records the active mode.
+        const auto header = session.metadata();
+        MG_CHECK(header.find(original ? R"("group_counts":"Original")" : R"("group_counts":"Corrected")") !=
+                 std::string::npos);
         building(0, 500, 300);
         auto &side = *g_MatrixMap->GetSideById(2);
         auto *first = robot(500, 500), *second = robot(540, 540);
