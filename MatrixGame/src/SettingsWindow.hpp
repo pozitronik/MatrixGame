@@ -14,6 +14,8 @@ namespace SettingsWindow {
 bool available();
 bool active();
 void open();
+// Shows the window again with its unsaved edits, as when the Map window is canceled.
+void resume();
 // Applies or discards the edits and returns to the battle menu.
 void close(bool apply);
 

@@ -41,6 +41,22 @@ void CFile::ReleasePackFiles(void) {
         m_Packs = NULL;
     }
 }
+
+std::vector<std::wstring> CFile::PackedFileNames(const std::wstring &folder) {
+    std::vector<std::wstring> names;
+    if (m_Packs == NULL)
+        return names;
+    const std::string path = utils::from_wstring(folder);
+    for (CPackFile *pack : m_Packs->m_PackFiles) {
+        SSearchRec search(nullptr);
+        for (int end = pack->FindFirst(path, 0, search); end == 0; end = pack->FindNext(search)) {
+            if (search.T != FILEEC_FOLDER)
+                names.push_back(utils::to_wstring(search.Name));
+        }
+        pack->FindClose(search);
+    }
+    return names;
+}
 #endif
 
 CFile::CFile() : CMain(), m_FileName{} {

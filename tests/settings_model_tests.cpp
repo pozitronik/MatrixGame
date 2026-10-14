@@ -33,7 +33,7 @@ void selection() {
     MG_CHECK(window.selected() == row(Row::StencilShadows));  // The graphics group row is skipped.
     window.select(row(Row::Resolution));
     window.move(-1);
-    MG_CHECK(window.selected() == row(Row::DelayedDamage));  // Wraps past the display group row.
+    MG_CHECK(window.selected() == row(Row::Map));  // Wraps past the display group row.
     window.move(1);
     MG_CHECK(window.selected() == row(Row::Resolution));
 }
@@ -62,6 +62,8 @@ void stepping() {
              window.values().delayed_damage == StandaloneSettings::DamageAttribution::Original);
     MG_CHECK(window.value(row(Row::DelayedDamage)) == L"Original");
     MG_CHECK(!window.change(row(Row::GameplayGroup), 1) && !window.change(row(Row::Skybox), 0));
+    // The Map row opens the Map window instead of stepping a value.
+    MG_CHECK(!window.change(row(Row::Map), 1) && !window.change(row(Row::Map), -1));
     MG_CHECK(window.changed());
 
     Values custom;
@@ -108,12 +110,15 @@ void text() {
     for (const auto restart : {Row::Skybox, Row::RobotShadows, Row::RandomGenerator})
         MG_CHECK(needs_restart(row(restart)) && window.label(row(restart)).ends_with(L" *"));
     for (const auto live : {Row::Resolution, Row::WindowMode, Row::FullscreenMode, Row::SoundVolume,
-                            Row::StencilShadows, Row::ProjectedShadows, Row::CameraSpeed, Row::DelayedDamage})
+                            Row::StencilShadows, Row::ProjectedShadows, Row::CameraSpeed, Row::DelayedDamage,
+                            Row::Map})
         MG_CHECK(!needs_restart(row(live)));
     MG_CHECK(window.value(row(Row::Resolution)) == L"1024x768" && window.value(row(Row::SoundVolume)) == L"100%");
     MG_CHECK(window.value(row(Row::WindowMode)) == L"Windowed" && window.value(row(Row::FullscreenMode)) == L"Borderless");
     MG_CHECK(window.value(row(Row::RandomGenerator)) == L"ParkMiller" && window.value(row(Row::Skybox)) == L"High");
-    MG_CHECK(window.value(row(Row::DisplayGroup)).empty());
+    MG_CHECK(window.value(row(Row::DisplayGroup)).empty() && window.value(row(Row::Map)).empty());
+    window.set_map_name(L"desert1_3e");
+    MG_CHECK(window.label(row(Row::Map)) == L"Map" && window.value(row(Row::Map)) == L"desert1_3e");
 
     MG_CHECK(detect_language(L"settings (c)") == Language::English);
     MG_CHECK(detect_language(L"\u043d\u0430\u0441\u0442\u0440\u043e\u0439\u043a\u0438 (c)") == Language::Russian);

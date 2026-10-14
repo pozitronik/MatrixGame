@@ -80,6 +80,10 @@ public:
     }
 
     static void PreloadBitmaps(void);
+    // Makes a caller-owned bitmap available to _BITMAP elements of later builds under name, in
+    // preference to a preloaded bitmap; nullptr removes it. The bitmap is copied when a hint is built,
+    // so it must stay valid only until the builds that use it return.
+    static void SetRuntimeBitmap(const std::wstring &name, CBitmap *bitmap);
 
     static CMatrixHint *Build(int border, const std::wstring &soundin, const std::wstring &soundout, SHintElement *elems,
                               CRect *otstup = nullptr);

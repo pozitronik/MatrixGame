@@ -5,6 +5,7 @@
 
 #include "MatrixFormGame.hpp"
 #include "SettingsWindow.hpp"
+#include "MapWindow.hpp"
 #include "ScreenLayout.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
@@ -384,8 +385,8 @@ void CFormMatrixGame::Takt(int step) {
 
     if (g_MatrixMap->m_Console.IsActive())
         return;
-    if (SettingsWindow::active())
-        return;  // The arrow keys navigate the settings dialog instead of the camera.
+    if (SettingsWindow::active() || MapWindow::active())
+        return;  // The arrow keys navigate the settings and map dialogs instead of the camera.
 
     if (!g_MatrixMap->GetPlayerSide()->IsArcadeMode())
     {
@@ -540,11 +541,15 @@ void CFormMatrixGame::MouseKey(ButtonStatus status, int key, int x, int y) {
     }
 
     if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON &&
-        (SettingsWindow::mouse_down(x, y) || SettingsWindow::menu_mouse_down(x, y))) {
+        (MapWindow::mouse_down(x, y) || SettingsWindow::mouse_down(x, y) || SettingsWindow::menu_mouse_down(x, y))) {
         return;
     }
 
     if (status == B_WHEEL) {
+        if (MapWindow::active()) {
+            MapWindow::mouse_wheel(key);
+            return;
+        }
         while (key > 0) {
             g_MatrixMap->m_Camera.ZoomInStep();
             --key;
@@ -783,7 +788,7 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
         return;
     }
 
-    if (SettingsWindow::keyboard(vk, down))
+    if (MapWindow::keyboard(vk, down) || SettingsWindow::keyboard(vk, down))
     {
         return;
     }

@@ -11,7 +11,9 @@
 #include "MatrixGame.h"
 #include "SoundBridge.hpp"
 #include "StandaloneRuntime.hpp"
+#include "MapSelection.hpp"
 #include "SettingsWindow.hpp"
+#include "MapWindow.hpp"
 #include "ScreenLayout.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
@@ -55,6 +57,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
     int exit_code = 1;
     CFormMatrixGame *formgame = nullptr;
     bool initialization_started = false;
+    bool battle_initialized = false;
     bool timer_active = false;
     std::string diagnostic;
     try {
@@ -78,6 +81,8 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         uint32_t seed = (unsigned)time(nullptr);
         initialization_started = true;
         CGame::Init(hInstance, nullptr, map, seed);
+        battle_initialized = true;
+        MapSelection::finish_map_load();
 
         formgame = HNew(NULL) CFormMatrixGame();
         FormChange(formgame);
@@ -133,6 +138,11 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         lgr.fatal(diagnostic);
     }
 
+    // Settings are read with the base library, so a failed map is forgotten before cleanup.
+    if (!diagnostic.empty() && !battle_initialized && MapSelection::forget_remembered_map()) {
+        diagnostic += "\n\nThe map chosen in the Map window could not be started and was forgotten. "
+                      "The next start uses the configured map.";
+    }
     if (initialization_started && !Session::cleanup_standalone(formgame, timer_active)) {
         lgr.fatal("Standalone session cleanup failed");
         exit_code = 1;
@@ -140,6 +150,10 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
     ClipCursor(nullptr);
     if (!diagnostic.empty()) {
         MessageBox(NULL, diagnostic.c_str(), "Exception:", MB_OK);
+    }
+    else if (exit_code == 0 && MapSelection::relaunch_requested() && !MapSelection::relaunch()) {
+        MessageBoxW(nullptr, L"The game could not be started again on the chosen map. Start it again manually.",
+                    L"Map", MB_OK | MB_ICONWARNING);
     }
 
     return exit_code;
@@ -331,9 +345,11 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
         settings = SRobotsSettings::generate_default_settings();
     }
 #ifdef BUILD_EXE
-    const auto standalone = StandaloneSettings::load();
+    auto standalone = StandaloneSettings::load();
     for (const auto &key : standalone.invalid) lgr.error("Invalid {} in CFG/standalone.txt; using its default")(key);
     StandaloneSettings::apply_startup(standalone.values, settings);
+    // Checked before the window opens, so that an unavailable map can be reported in a message box.
+    const std::wstring remembered_map = map == nullptr ? MapSelection::startup_map(standalone.values) : std::wstring{};
 #endif
 
     // Init the 3d engine
@@ -409,8 +425,14 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     else
     {
         mapname = g_MatrixData->BlockGet(L"Config")->ParGet(L"Map");
+#ifdef BUILD_EXE
+        if (!remembered_map.empty()) mapname = remembered_map;
+#endif
     }
 
+#ifdef BUILD_EXE
+    if (!remembered_map.empty()) MapSelection::begin_map_load();
+#endif
     stor.Load(mapname.c_str());
     DCP();
 
@@ -727,6 +749,7 @@ void CGame::Deinit(void) {
         g_Render = NULL;
     }
 
+    MapWindow::shutdown();
     SettingsWindow::shutdown();
     ScreenLayout::laid_out(0, 0);
     CMatrixHint::ClearAll();

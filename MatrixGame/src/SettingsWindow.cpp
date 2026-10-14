@@ -2,6 +2,7 @@
 #include "SettingsWindow.hpp"
 #include "SettingsModel.hpp"
 #include "StandaloneRuntime.hpp"
+#include "MapWindow.hpp"
 
 #include "MatrixMap.hpp"
 #include "MatrixSoundManager.hpp"
@@ -12,6 +13,7 @@
 
 #include <stupid_logger.hpp>
 
+#include <filesystem>
 #include <optional>
 
 namespace SettingsWindow {
@@ -51,6 +53,9 @@ bool inside_menu_entry(int x, int y) {
 }
 
 void apply_handler() { close(true); }
+
+// The Map window saves the edited settings together with the chosen map and returns here when canceled.
+void open_map() { MapWindow::open(MapWindow::Origin::Settings, model->values()); }
 void cancel_handler() { close(false); }
 
 void rebuild() {
@@ -118,7 +123,12 @@ void open() {
     values.display.width = size.width;
     values.display.height = size.height;
     model.emplace(values, adapter_modes(), language());
+    model->set_map_name(std::filesystem::path(g_MatrixMap->MapName()).stem().wstring());
+    resume();
+}
 
+void resume() {
+    if (!available() || !g_MatrixMap || !model) return;
     g_MatrixMap->LeaveDialogMode();
     g_MatrixMap->Pause(true);
     SETFLAG(g_MatrixMap->m_Flags, MMFLAG_DIALOG_MODE);
@@ -159,8 +169,14 @@ bool keyboard(uint8_t vk, bool down) {
             model->move(1);
             update = true;
             break;
-        case VK_LEFT: update = model->change(model->selected(), -1); break;
-        case VK_RIGHT: update = model->change(model->selected(), 1); break;
+        case VK_LEFT:
+        case VK_RIGHT:
+            if (model->selected() == static_cast<int>(SettingsModel::Row::Map)) {
+                open_map();
+                return true;
+            }
+            update = model->change(model->selected(), vk == VK_LEFT ? -1 : 1);
+            break;
         case VK_RETURN: close(true); return true;
         case VK_ESCAPE: close(false); return true;
         default: return true;  // The battle stays paused; other keys are ignored while the dialog is open.
@@ -183,6 +199,11 @@ bool mouse_down(int x, int y) {
     const auto target = hit(x, y);
     if (target.row < 0) return false;  // The hint buttons and the rest of the screen keep their handling.
     model->select(target.row);
+    if (target.row == static_cast<int>(SettingsModel::Row::Map)) {
+        CSound::Play(S_BCLICK);
+        open_map();
+        return true;
+    }
     model->change(target.row, target.direction);
     CSound::Play(S_BCLICK);
     rebuild();

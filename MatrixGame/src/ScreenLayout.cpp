@@ -3,6 +3,7 @@
 
 #include "MatrixMap.hpp"
 #include "SettingsWindow.hpp"
+#include "MapWindow.hpp"
 #include "Interface/CIFaceMenu.h"
 #include "Interface/CInterface.h"
 #include "Interface/MatrixHint.hpp"
@@ -87,6 +88,7 @@ bool update() {
     }
     move_dialogs(old_width, old_height);
     SettingsWindow::relayout();
+    MapWindow::relayout();
     lgr.notice("Interface laid out for {}x{} (was {}x{})")(g_ScreenX, g_ScreenY, old_width, old_height);
     return true;
 }

@@ -3,6 +3,7 @@
 
 #include "StandaloneSettings.hpp"
 
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -27,6 +28,7 @@ enum class Row {
     CameraSpeed,
     RandomGenerator,
     DelayedDamage,
+    Map,  // Shows the battle map; activating it opens the Map window instead of stepping a value.
     Count
 };
 
@@ -84,6 +86,9 @@ public:
     // Steps the value of an option row. Returns true when the value changed.
     bool change(int row, int direction);
 
+    // Name of the map shown in the Map row.
+    void set_map_name(std::wstring name) { m_MapName = std::move(name); }
+
     void set_error(bool failed) { m_Error = failed; }
     bool error() const { return m_Error; }
 
@@ -100,9 +105,15 @@ private:
     Language m_Language;
     int m_Selected;
     bool m_Error = false;
+    std::wstring m_MapName;
 
     const wchar_t *text(const wchar_t *english, const wchar_t *russian) const;
 };
+
+// A hint text element of one row's height at a position in the window, also used by the Map window.
+// align 0 is left-aligned and 1 is centred.
+std::wstring text_element(const std::wstring &text, const wchar_t *font, uint32_t color, int x, int y, int width,
+                          int align);
 
 // CMatrixHint template for the window: the frame and button holes of the original confirmation
 // dialogs, a blank block that sizes the frame, and text placed at the Layout coordinates.

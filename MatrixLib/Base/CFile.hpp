@@ -9,6 +9,7 @@
 
 #include <windows.h>
 #include <string>
+#include <vector>
 
 namespace Base {
 
@@ -48,6 +49,9 @@ public:
     static void AddPackFile(const wchar *name);
     static void OpenPackFiles(void);
     static void ReleasePackFiles(void);
+    // Names of the files, not folders, directly inside a folder of every registered package, in
+    // registration order. A name present in several packages is listed for each of them.
+    static std::vector<std::wstring> PackedFileNames(const std::wstring &folder);
 #endif
 
     static void FindFiles(const std::wstring &folderfrom, const wchar *files, ENUM_FILES ef, DWORD user);
