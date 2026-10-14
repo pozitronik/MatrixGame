@@ -11,6 +11,7 @@
 #include "DelayedDamage.hpp"
 #include "Effects/MatrixEffectWeapon.hpp"
 #include "GroupCounts.hpp"
+#include "PlaceContainment.hpp"
 #include "MapSelection.hpp"
 #include "MapWindow.hpp"
 #include "CStorage.hpp"
@@ -35,6 +36,7 @@ Values custom() {
     values.camera_speed = 200;
     values.delayed_damage = StandaloneSettings::DamageAttribution::Original;
     values.group_counts = StandaloneSettings::GroupCountMode::Original;
+    values.place_containment = StandaloneSettings::PlaceContainmentMode::Original;
     return values;
 }
 
@@ -67,7 +69,7 @@ void immediate_settings() {
     MG_CHECK(g_Config.m_CamMoveSpeed == 2.0f && device->voices[0]->volume == 1.0f);
     MG_CHECK(!DelayedDamage::original());
     MG_CHECK(g_Config.m_ShowStencilShadows && g_Config.m_ShowProjShadows);
-    MG_CHECK(!GroupCounts::original());
+    MG_CHECK(!GroupCounts::original() && !PlaceContainment::original());
 
     g_Config.m_SkyBox = 2;
     g_Config.m_RobotShadow = SHADOW_STENCIL;
@@ -76,6 +78,7 @@ void immediate_settings() {
     MG_CHECK(!g_Config.m_ShowStencilShadows && !g_Config.m_ShowProjShadows);
     MG_CHECK(DelayedDamage::original());  // Delayed-damage attribution applies immediately.
     MG_CHECK(GroupCounts::original());  // The group-count mode applies immediately.
+    MG_CHECK(PlaceContainment::original());
     MG_CHECK(StandaloneSettings::current() == custom());
     // Restart-only options do not change the running engine.
     MG_CHECK(g_Config.m_SkyBox == 2 && g_Config.m_RobotShadow == SHADOW_STENCIL);
@@ -90,7 +93,7 @@ void immediate_settings() {
     MG_CHECK(g_Config.m_CamMoveSpeed == 1.5f);
     StandaloneSettings::initialize_runtime(Values{});
     MG_CHECK(!DelayedDamage::original());
-    MG_CHECK(!GroupCounts::original());
+    MG_CHECK(!GroupCounts::original() && !PlaceContainment::original());
     SoundBridge::shutdown();
     SoundBridge::master_volume(1.0f);
 }
@@ -104,7 +107,8 @@ void restart_detection() {
                         +[](Values &v) { v.display.fullscreen = Display::Mode::Exclusive; },
                         +[](Values &v) { v.display.width = 800; }, +[](Values &v) { v.display.height = 600; },
                         +[](Values &v) { v.delayed_damage = StandaloneSettings::DamageAttribution::Original; },
-                        +[](Values &v) { v.group_counts = StandaloneSettings::GroupCountMode::Original; }}) {
+                        +[](Values &v) { v.group_counts = StandaloneSettings::GroupCountMode::Original; },
+                        +[](Values &v) { v.place_containment = StandaloneSettings::PlaceContainmentMode::Original; }}) {
         change(values);
         MG_CHECK(!StandaloneSettings::restart_pending(values));
     }
@@ -160,6 +164,12 @@ void delayed_damage_build_default() {
 void group_counts_build_default() {
     MG_CHECK(GroupCounts::original_by_default() == bool(MATRIXGAME_TESTS_BUILD_DLL));
     MG_CHECK(GroupCounts::original() == GroupCounts::original_by_default());
+}
+
+// A process starts corrected in the standalone EXE and original in the DLL, whose host owns its settings.
+void place_containment_build_default() {
+    MG_CHECK(PlaceContainment::original_by_default() == bool(MATRIXGAME_TESTS_BUILD_DLL));
+    MG_CHECK(PlaceContainment::original() == PlaceContainment::original_by_default());
 }
 
 void window_availability() {
@@ -268,6 +278,7 @@ constexpr tests::Case cases[] = {
     {"game.settings.delayed_damage_attribution", delayed_damage_attribution},
     {"game.settings.map_choice", map_choice},
     {"game.settings.group_counts_build_default", group_counts_build_default},
+    {"game.settings.place_containment_build_default", place_containment_build_default},
 };
 
 }  // namespace

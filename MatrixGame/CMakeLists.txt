@@ -81,6 +81,7 @@ else()
             src/MatrixGame.cpp
             src/DelayedDamage.cpp
             src/GroupCounts.cpp
+            src/PlaceContainment.cpp
             APPEND
             PROPERTY COMPILE_DEFINITIONS BUILD_EXE
     )
