@@ -51,7 +51,8 @@ CMatrixMap::EScanResult CMatrixMap::ScanLandscapeGroup(void *d, int gx, int gy, 
                                 D3DXVECTOR3(mg->GetPos1().x, mg->GetPos0().y, 0), 0x8000FF00);
                                 */
 
-    float t0 = 0, t1 = 0;
+    // Without X travel only the Y slab limits the interval; the nearest hit so far bounds it.
+    float t0 = 0, t1 = data->dx != 0 ? 0 : data->last_t;
     if (data->dx != 0) {
         float ft0 = ((gx * (GLOBAL_SCALE * MAP_GROUP_SIZE)) - start.x) * data->ddx;
         float ft1 = (((gx + 1) * (GLOBAL_SCALE * MAP_GROUP_SIZE)) - start.x) * data->ddx;

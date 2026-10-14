@@ -275,6 +275,7 @@ target_compile_definitions(matrixgame_combat_scenarios PRIVATE
 add_matrix_test(game.combat.cannon_firing matrixgame_combat_scenarios gameplay ai)
 add_matrix_test(game.combat.robot_firing matrixgame_combat_scenarios gameplay ai)
 add_matrix_test(game.combat.plasma_flight matrixgame_combat_scenarios gameplay ai memory)
+add_matrix_test(game.combat.axis_aligned_trace matrixgame_combat_scenarios gameplay ai)
 foreach(contract volcano_firing electric_firing flame_firing gun_firing missile_firing mortar_firing repair_firing heat_boundary bomb_detonation cannon_projectiles cannon_boundaries cannon_obstruction delayed_damage bomb_order repair_death module_modifiers module_firing splash_boundary chained_bombs repair_redirect cannon_patient cannon_acquisition robot_boundaries status_refresh status_lethal friendly_lethal friendly_difficulty cannon_difficulty building_patient building_dying building_volcano building_electric building_flame building_gun building_missile building_mortar)
     add_matrix_test(game.combat.${contract} matrixgame_combat_scenarios gameplay ai memory)
 endforeach()

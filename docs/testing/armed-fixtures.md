@@ -33,21 +33,10 @@ CTest writes completed schema-1 traces under the build's `tests/scenario-traces`
 
 These contracts establish the shared fixtures and selected COM-01 through COM-03 routes in the [behavior catalog](../research/75-behavior-baseline/README.md). Other weapons, heat limits, repair, complete destruction, carrier delivery, constructor assembly and player command variants remain in their respective scenario suites. Native graphics, sound, original-host execution and packaged resource behavior require separate evidence. No supplied package or extracted game asset is used by these tests.
 
-## Axis-aligned trace defect
+## Axis-aligned trace correction
 
-The correction and its gameplay disposition are tracked in [the axis-aligned trace issue](https://github.com/pozitronik/MatrixGame/issues/129).
+In `CMatrixMap::ScanLandscapeGroup`, `t1` started at zero. The nonzero-X branch could increase it, while the Y branch only decreases it, so for zero X travel the `t < t1 && t > t0` test rejected every object hit through both sphere intersection and mesh `Pick`. The interval for such a ray now starts with the current nearest-hit distance as its upper bound, leaving the Y slab and the existing strict comparisons to clip it. The same interval also bounds the group's minimum ray height used to skip terrain, so zero-X rays now scan terrain over their full span in each group. The source and independent reproduction of the original defect are recorded in the [review findings](https://github.com/pozitronik/MatrixGame/pull/126#pullrequestreview-5503679613); the correction and its gameplay disposition are tracked in [issue 129](https://github.com/pozitronik/MatrixGame/issues/129).
 
-An unregistered correctness probe expects both an oblique ray and a zero-X-travel ray to hit the same synthetic robot, through both sphere intersection and mesh `Pick`. The current engine fails the axis-aligned expectations. This is a defect probe, not a passing golden gameplay rule, and it is excluded from CTest registration. The source and independent reproduction are recorded in the [review findings](https://github.com/pozitronik/MatrixGame/pull/126#pullrequestreview-5503679613).
+`game.combat.axis_aligned_trace` registers the former probe and extends it to zero-Y and reversed rays, group-boundary crossings, nearest-hit selection, skip and mask handling, missing targets and terrain. It failed at the original zero-X assertion before the correction. Native occurrence frequency and gameplay impact are still unmeasured; rays with exactly zero X travel need exactly aligned endpoints. `ScanLandscapeGroupForLand` has the same interval code but is reached only through `TraceLand`, which has no live callers, so it is unchanged.
 
-In `CMatrixMap::ScanLandscapeGroup`, `t1` starts at zero. The nonzero-X branch can increase it; the Y branch only decreases it. For zero X travel the later `t < t1 && t > t0` test rejects object hits. The rejection follows both the sphere-intersection and mesh-picking paths; it is not specific to armed robots or sphere traces. Native occurrence frequency and gameplay impact have not been measured. A separate correction needs regressions and a disposition of any changed gameplay; no production fix is included here.
-
-After building the tests, run the diagnostic directly from the repository root:
-
-```powershell
-& '.\build\mingw-debug-exe\tests\matrixgame_combat_scenarios.exe' 'probe.combat.axis_aligned_trace'
-& '.\build\mingw-release-exe\tests\matrixgame_combat_scenarios.exe' 'probe.combat.axis_aligned_trace'
-```
-
-Both commands should currently exit with code 1 at the final hit assertion, after printing both trace modes for each RNG profile. That expected diagnostic failure is not CI success evidence. Once the engine is corrected, the same correctness assertions should pass and can become registered regression coverage.
-
-The revised fixture suite passes all 240 registered tests in MinGW Debug and Release. Sixteen same-profile trace pairs and eight explicitly overridden cross-build pairs match through the supported comparator. The unregistered axis probe separately exits with code 1 in each configuration, after checking both intersection modes under each RNG profile. Repository checks pass; these local results do not replace supported-toolchain CI or independent review.
+The revised fixture suite passes all 240 registered tests in MinGW Debug and Release. Sixteen same-profile trace pairs and eight explicitly overridden cross-build pairs match through the supported comparator. The then-unregistered axis probe separately exited with code 1 in each configuration, after checking both intersection modes under each RNG profile. Repository checks pass; these local results do not replace supported-toolchain CI or independent review.
