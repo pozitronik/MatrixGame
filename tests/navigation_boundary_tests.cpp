@@ -184,6 +184,11 @@ void road_route_reuse() {
     region_path[1] = 1;
     search(2, 30);
     search(2, 30);
+    // A three-region route into reused storage accumulates distance across both of its legs.
+    int three[] = {0, 2, 1};
+    reused.ClearFast();
+    road.FindPathFromRegionPath(1 << 1, 3, three, &reused);
+    MG_CHECK(reused.m_ListCnt == 1 && reused.m_Header[0].m_Cnt == 3 && reused.m_Header[0].m_Dist == 2);
 }
 
 void collision_boundaries() {
