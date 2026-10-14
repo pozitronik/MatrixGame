@@ -166,6 +166,7 @@ void bomb_escape_capacity() {
                 cannon->m_Place = place;
             }
             auto &start = map.m_RN.m_Place[0];
+            MG_CHECK(start.m_NearCnt + 2 <= 16);
             start.m_Near[start.m_NearCnt] = -1;
             start.m_NearMove[start.m_NearCnt++] = 0;
             start.m_Near[start.m_NearCnt] = map.m_RN.m_PlaceCnt;

@@ -4324,7 +4324,7 @@ void CMatrixSideUnit::TaktHL() {
             if (k < 0)
                 continue;
 
-            u = m_Team[u].m_RobotCnt - m_Team[i].m_RobotCnt;
+            u = m_Team[k].m_RobotCnt - m_Team[i].m_RobotCnt;
             if (u < 2)
                 continue;
             u = u / 2;
@@ -4335,6 +4335,8 @@ void CMatrixSideUnit::TaktHL() {
                     DMSide(L"Robot=<b=16><u> Change team if nerest <b=10><i>-><i>", uintptr_t(ms), k, i);
                     ms->AsRobot()->SetTeam(i);
                     ms->AsRobot()->SetGroupLogic(-1);
+                    --m_Team[k].m_RobotCnt;
+                    ++m_Team[i].m_RobotCnt;
                     u--;
                 }
                 ms = ms->GetNextLogic();

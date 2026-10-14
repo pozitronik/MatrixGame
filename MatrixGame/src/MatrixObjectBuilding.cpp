@@ -81,10 +81,10 @@ CMatrixBuilding::~CMatrixBuilding() {
     UnSelect();
 
     int x = Float2Int(m_Pos.x * INVERT(GLOBAL_SCALE));
-    int y = Float2Int(m_Pos.x * INVERT(GLOBAL_SCALE));
+    int y = Float2Int(m_Pos.y * INVERT(GLOBAL_SCALE));
 
     for (int i = x - 4; i < (x + 4); ++i)
-        for (int j = x - 4; j < (x + 4); ++j) {
+        for (int j = y - 4; j < (y + 4); ++j) {
             SMatrixMapUnit *mu = g_MatrixMap->UnitGetTest(i, j);
             if (mu == NULL)
                 continue;
