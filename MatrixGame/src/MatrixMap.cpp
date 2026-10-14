@@ -9,6 +9,7 @@
 #include <windows.h>
 #include "MatrixMap.hpp"
 #include "SettingsWindow.hpp"
+#include "MapWindow.hpp"
 #include "ShadowPasses.hpp"
 #include "MatrixMapStatic.hpp"
 #include "MatrixObject.hpp"
@@ -3173,6 +3174,10 @@ static void OkHandler(void) {
 }
 static void OkJustExitHandler(void) {
     g_MatrixMap->LeaveDialogMode();
+    // After a won, lost or surrendered battle the standalone game offers the next map; leaving through
+    // the menu's Exit still ends the game.
+    if (g_ExitState != 1 && MapWindow::open_after_battle())
+        return;
     SETFLAG(g_Flags, GFLAG_EXITLOOP);
 }
 static void OkExitWinHandler(void) {

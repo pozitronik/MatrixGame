@@ -29,6 +29,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 | Robot shadows | `RobotShadows` | `On`, `Off` | `On` | After restart |
 | Camera speed | `CameraSpeed` | `25`-`300` percent of the configured scroll speed, in steps of 25 in the window | `100` | Immediately |
 | Random generator | `RandomGenerator` | `ParkMiller`, `LegacyCRT` | `ParkMiller` | After restart |
+| Map | `Map` | A map path such as `Matrix\Map\desert1_3e.cmap`, or empty for `Config/Map` | Empty | Opens the [Map window](MAPS.md), which starts the game again on the chosen map |
 
 **Display.** The display keys keep the contract in [Display settings](DISPLAY.md). The window shows the current window mode, including a mode reached with Alt+Enter, and Apply saves it. Choosing `Borderless` or `Exclusive` as the window mode also makes it the Alt+Enter mode, matching how a fullscreen start behaves. A window-mode change uses the same transition and rollback as Alt+Enter. If exclusive mode is unavailable at the current resolution, the game keeps its current mode and logs the reason.
 
@@ -36,9 +37,9 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 **Graphics.** The stencil and projected shadow options correspond to the original game's shadow settings. Previously the EXE always enabled them; they now default to the same values. Each option controls only its own kind of shadow, so either kind can be shown alone. The sky's `Low` and `High` options select the original low- and high-quality sky textures.
 
-**Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators.
+**Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators. The Map row shows the current battle map; clicking it or pressing Left/Right opens the [Map window](MAPS.md). Playing a map there also saves the Settings window's current values.
 
-Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows` or `CameraSpeed` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
+Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed` or `Map` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
 
 ## Saving
 
@@ -55,6 +56,7 @@ Automated `game.settings.*` contracts cover:
 - Window selection, stepping, mode coupling, hit areas and both label languages.
 - Startup mapping of graphics options.
 - Immediate routing of shadows, camera speed and volume, and shadow pass selection for each combination of the two shadow options.
+- The remembered map; see [Map selection](MAPS.md#verification) for the Map window's own contracts and playtest.
 
 `game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions.
 

@@ -261,6 +261,8 @@ The `game.audio.default_catalog`, `game.audio.map_spawner_catalog`, `game.audio.
 
 Settings regressions are registered under `game.settings.*`. They cover `CFG/standalone.txt` parsing and per-key fallback, text-preserving atomic saves, the window model's selection, stepping, hit areas and labels, and the routing of startup and immediate options into engine settings and audio. `game.audio.master_volume` and `game.audio.master_level_retained` cover master volume. The rendered window and menu entry need the [Settings window](SETTINGS.md#verification) playtest.
 
+Map selection regressions are registered under `game.maps.*`, with `game.settings.map_choice` for the remembered map and `base.layout.package_listing` for package folder listing. They cover the map list's sources, precedence, previews and path rules, and the Map window's selection, paging, hit areas, text and hint markup. The rendered window, previews and restart need the [Map selection](MAPS.md#verification) playtest.
+
 Display-mode regressions are registered under `game.display.*`, with integration checks for shortcut routing, pointer leave, deferred screenshots and canceled selection. They run without a visible window. Use [Display settings and verification](DISPLAY.md) for the required native windowed, borderless and exclusive playtests; synthetic reset callbacks do not prove a driver can perform a fullscreen transition.
 
 Use [Standalone playtesting](PLAYTESTING.md) for packed/text configuration cases, resource failures, the map-argument path and a reproducible validation record.

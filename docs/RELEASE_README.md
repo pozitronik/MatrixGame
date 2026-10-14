@@ -25,6 +25,10 @@ Press Escape during a battle and open Settings (or press `C` in that menu) to ch
 
 Borderless fills the primary display by scaling the configured image; use the monitor's native resolution or the same aspect ratio to avoid stretching. Exclusive mode requires a supported display resolution and minimizes on focus loss. Windowed and borderless modes pause without forcing minimization. Invalid display settings fall back to 1024x768 windowed and are recorded in `test.log`. Changes made with Alt+Enter last for the current session unless saved from the Settings window.
 
+## Maps
+
+Open Settings and click the Map row to choose another installed map, or close the statistics after a battle. The game restarts on the chosen map and remembers it in `CFG/standalone.txt`. A `.cmap` file placed in `Matrix\Map` beside the executable is listed too and replaces a packaged map with the same name. See [Map selection](https://github.com/pozitronik/MatrixGame/blob/dev/docs/MAPS.md).
+
 ## Controls
 
 Dismiss the introductory checkmark, then select a friendly robot. Press `M` and click ground to move, `A` and click an enemy to attack, `S` to stop, or `X` to cancel an order. Arrow keys scroll the tactical camera. Enter toggles manual robot control; `W/A/S/D` move the robot in that mode. Escape opens the menu or leaves manual control. Button hints describe available commands.

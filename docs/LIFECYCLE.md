@@ -1,6 +1,6 @@
 # Session lifetime
 
-The standalone executable initializes one battle per process. The menu's Restart action reloads the current map's dynamic objects inside that session; it does not construct a new window or DirectX device. Relaunching the executable and restarting a battle exercise different lifetime paths. Repeated full initialization inside a host process is a separate contract and is not established by standalone launch tests.
+The standalone executable initializes one battle per process. The menu's Restart action reloads the current map's dynamic objects inside that session; it does not construct a new window or DirectX device. Relaunching the executable and restarting a battle exercise different lifetime paths. Repeated full initialization inside a host process is a separate contract and is not established by standalone launch tests. Choosing a map in the [Map window](MAPS.md) does not reinitialize the battle: the process shuts down normally and then starts the executable again without arguments.
 
 ## Ownership
 

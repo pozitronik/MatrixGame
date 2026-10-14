@@ -48,14 +48,14 @@ std::wstring hex(uint32_t color) {
     return result;
 }
 
+}  // namespace
+
 std::wstring text_element(const std::wstring &text, const wchar_t *font, uint32_t color, int x, int y, int width,
                           int align) {
     return L"|_FONT:" + std::wstring(font) + L"|_COLOR:" + hex(color) + L"|_WIDTH:" + std::to_wstring(width) +
            L"|_HEIGHT:" + std::to_wstring(Layout::row_height - 1) + L"|_ALIGN:" + std::to_wstring(align) +
            L":0|_POS:" + std::to_wstring(x) + L":" + std::to_wstring(y) + L"|_TEXT:" + text;
 }
-
-}  // namespace
 
 bool is_group(int row) {
     const auto value = static_cast<Row>(row);
@@ -200,6 +200,7 @@ std::wstring Window::label(int row) const {
             result = text(L"Random generator", L"\u0421\u043b\u0443\u0447\u0430\u0439\u043d\u044b\u0435 \u0447"
                                                L"\u0438\u0441\u043b\u0430");
             break;
+        case Row::Map: result = text(L"Map", L"\u041a\u0430\u0440\u0442\u0430"); break;
         default: break;
     }
     if (needs_restart(row)) result += L" *";
@@ -238,6 +239,7 @@ std::wstring Window::value(int row) const {
         case Row::RobotShadows: return on_off(values.robot_shadows);
         case Row::CameraSpeed: return std::to_wstring(values.camera_speed) + L"%";
         case Row::RandomGenerator: return utils::to_wstring(RandomConfiguration::name(values.random));
+        case Row::Map: return m_MapName;
         default: return {};
     }
 }

@@ -22,3 +22,6 @@ Skybox=High
 RobotShadows=On
 // Camera scroll speed as a percentage of the configured speed, 25-300.
 CameraSpeed=100
+// Battle map chosen in the Map window (Settings, Map), for example Matrix\Map\desert1_3e.cmap.
+// Empty starts the map configured in the game data.
+Map=

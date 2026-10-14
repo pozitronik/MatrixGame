@@ -8,7 +8,13 @@
 #include "SettingsWindow.hpp"
 #include "ShadowPasses.hpp"
 #include "WindowDisplay.hpp"
+#include "MapSelection.hpp"
+#include "MapWindow.hpp"
+#include "CStorage.hpp"
 
+#include <windows.h>
+
+#include <filesystem>
 #include <utility>
 
 namespace {
@@ -122,13 +128,67 @@ void window_availability() {
     auto menu = disabled;
     SettingsWindow::customize_menu(menu);
     MG_CHECK(!SettingsWindow::available() && menu == disabled);  // A DLL host owns its settings.
+    MG_CHECK(!MapWindow::available() && !MapWindow::open_after_battle());  // and its map selection.
 
     Display::initialize({});  // The standalone EXE manages its window.
-    MG_CHECK(SettingsWindow::available());
+    MG_CHECK(SettingsWindow::available() && MapWindow::available());
     SettingsWindow::customize_menu(menu);
     MG_CHECK(menu == L"x|_COLOR:FFADA793|_POS:6:105|_TEXT:[setup]|y");
     Display::shutdown();
     MG_CHECK(!SettingsWindow::available());
+}
+
+struct TemporaryDirectory {
+    std::filesystem::path previous = std::filesystem::current_path();
+    std::filesystem::path root = previous / ("map-choice-" + std::to_string(GetCurrentProcessId()));
+    TemporaryDirectory() {
+        MG_CHECK(std::filesystem::create_directory(root));
+        std::filesystem::current_path(root);
+    }
+    ~TemporaryDirectory() {
+        std::filesystem::current_path(previous);
+        std::error_code error;
+        for (const auto &entry : std::filesystem::recursive_directory_iterator(root, error))
+            SetFileAttributesW(entry.path().c_str(), FILE_ATTRIBUTE_NORMAL);
+        std::filesystem::remove_all(root, error);
+    }
+};
+
+void map_choice() {
+    TemporaryDirectory directory;
+    std::filesystem::create_directories("Matrix/Map");
+    {
+        Base::CStorageRecord properties(std::wstring(L"properties"));
+        properties.AddItem(Base::CStorageRecordItem(L"Name", Base::ST_WCHAR));
+        properties.AddItem(Base::CStorageRecordItem(L"Value", Base::ST_WCHAR));
+        Base::CStorage map;
+        map.AddRecord(properties);
+        map.Save(L"Matrix\\Map\\Chosen.cmap");
+    }
+    Values none;
+    MG_CHECK(MapSelection::startup_map(none).empty() && !MapSelection::remembered_map_started());
+    MG_CHECK(!MapSelection::forget_remembered_map());
+
+    // Choosing saves the other settings with the map and requests a new start.
+    std::string error;
+    MG_CHECK(!MapSelection::relaunch_requested());
+    MG_CHECK(MapSelection::choose(custom(), L"Matrix\\Map\\Chosen.cmap", error) && error.empty());
+    MG_CHECK(MapSelection::relaunch_requested());
+    auto stored = StandaloneSettings::load();
+    auto expected = custom();
+    expected.map = L"Matrix\\Map\\Chosen.cmap";
+    MG_CHECK(stored.invalid.empty() && stored.values == expected);
+
+    // The next start uses the readable remembered map, and forgets it if battle initialization fails.
+    MG_CHECK(MapSelection::startup_map(stored.values) == expected.map && stored.values == expected);
+    MG_CHECK(MapSelection::remembered_map_started() && MapSelection::forget_remembered_map());
+    stored = StandaloneSettings::load();
+    MG_CHECK(stored.values.map.empty() && stored.values.sound_volume == custom().sound_volume);
+
+    // A failed save is reported and leaves the file unchanged.
+    MG_CHECK(SetFileAttributesW(L"CFG\\standalone.txt", FILE_ATTRIBUTE_READONLY));
+    MG_CHECK(!MapSelection::choose(Values{}, L"Matrix\\Map\\Chosen.cmap", error) && !error.empty());
+    MG_CHECK(StandaloneSettings::load().values.map.empty());
 }
 
 constexpr tests::Case cases[] = {
@@ -137,6 +197,7 @@ constexpr tests::Case cases[] = {
     {"game.settings.restart_detection", restart_detection},
     {"game.settings.independent_shadows", independent_shadows},
     {"game.settings.window_availability", window_availability},
+    {"game.settings.map_choice", map_choice},
 };
 
 }  // namespace

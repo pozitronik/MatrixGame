@@ -155,7 +155,7 @@ add_matrix_test(game.random.configuration_file matrixgame_random_configuration_t
 add_matrix_test(game.random.configuration_report matrixgame_random_configuration_tests gameplay startup random)
 
 add_matrix_test_executable(matrixgame_standalone_settings_tests standalone_settings_tests.cpp
-    ../MatrixGame/src/StandaloneSettings.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+    ../MatrixGame/src/StandaloneSettings.cpp ../MatrixGame/src/RandomConfiguration.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_standalone_settings_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 add_matrix_test(game.settings.defaults matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.explicit_values matrixgame_standalone_settings_tests startup settings)
@@ -175,8 +175,15 @@ foreach(contract merge unsafe_names paths)
     add_matrix_test(game.maps.${contract} matrixgame_map_catalog_tests startup ui)
 endforeach()
 
+add_matrix_test_executable(matrixgame_map_model_tests map_model_tests.cpp ../MatrixGame/src/MapModel.cpp
+    ../MatrixGame/src/MapCatalog.cpp ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+target_include_directories(matrixgame_map_model_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract window_selection window_paging window_geometry window_text window_hint)
+    add_matrix_test(game.maps.${contract} matrixgame_map_model_tests ui)
+endforeach()
+
 add_matrix_test_executable(matrixgame_settings_model_tests settings_model_tests.cpp
-    ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp)
+    ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_settings_model_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 add_matrix_test(game.settings.window_resolutions matrixgame_settings_model_tests ui settings)
 add_matrix_test(game.settings.window_selection matrixgame_settings_model_tests ui settings)
@@ -193,6 +200,7 @@ add_matrix_test(game.settings.immediate_settings matrixgame_settings_runtime_tes
 add_matrix_test(game.settings.restart_detection matrixgame_settings_runtime_tests settings)
 add_matrix_test(game.settings.independent_shadows matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.window_availability matrixgame_settings_runtime_tests settings)
+add_matrix_test(game.settings.map_choice matrixgame_settings_runtime_tests startup settings)
 
 add_matrix_test_executable(matrixgame_random_map_tests random_map_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_random_map_tests PRIVATE MatrixGameInternal)

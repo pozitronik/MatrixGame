@@ -25,6 +25,7 @@ struct Values {
     bool projected_shadows = true;
     Skybox skybox = Skybox::High;
     bool robot_shadows = true;
+    std::wstring map;  // Remembered battle map, Matrix\Map\<name>.cmap; empty selects Config/Map.
     bool operator==(const Values &) const = default;
 };
 
