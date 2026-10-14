@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "test_support.hpp"
 #include "MapModel.hpp"
+#include "CBlockPar.hpp"
 #include "stupid_logger.hpp"
 
 logger_type lgr{std::cerr};
@@ -141,10 +142,32 @@ void hint_text() {
     MG_CHECK(empty.find(L"|_TEXT:No maps found") != std::wstring::npos && empty.find(L"No preview") == std::wstring::npos);
 }
 
+void preview_markup() {
+    for (const auto language : {Language::English, Language::Russian}) {
+        Window window(maps(30), path(3), language);
+        for (const auto size : {SettingsModel::Resolution{200, 100}, SettingsModel::Resolution{100, 200}}) {
+            const Base::ParamParser hint{hint_template(window, size)};
+            int previews = 0;
+            for (int i = 0; i < hint.GetCountPar(L"|"); ++i) {
+                const auto token = hint.GetStrPar(i, L"|");
+                if (!token.starts_with(L"_BITMAP:")) continue;
+                // CMatrixHint::Build passes every bitmap token to Convert, which reads field 2.
+                // Use the production parser: an omitted modifier throws before the dialog appears.
+                const auto modifier = token.GetStrPar(2, L":");
+                if (token.GetStrPar(1, L":") == preview_bitmap) {
+                    MG_CHECK(modifier == L"B");
+                    ++previews;
+                }
+            }
+            MG_CHECK(previews == 1);
+        }
+    }
+}
+
 constexpr tests::Case cases[] = {
         {"game.maps.window_selection", selection}, {"game.maps.window_paging", paging},
         {"game.maps.window_geometry", geometry},   {"game.maps.window_text", text},
-        {"game.maps.window_hint", hint_text},
+        {"game.maps.window_hint", hint_text}, {"game.maps.preview_markup", preview_markup},
 };
 
 }  // namespace

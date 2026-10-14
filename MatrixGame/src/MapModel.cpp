@@ -142,7 +142,7 @@ std::wstring hint_template(const Window &window, SettingsModel::Resolution previ
         if (preview.width > 0) {
             result += L"|_POS:" + std::to_wstring(Layout::preview_x + (Layout::preview_width - preview.width) / 2) +
                       L":" + std::to_wstring(Layout::preview_y + (Layout::preview_height - preview.height) / 2) +
-                      L"|_BITMAP:" + preview_bitmap;
+                      L"|_BITMAP:" + preview_bitmap + L":B";
         }
         else {
             result += text_element(window.missing_preview(), L"Font.2Small", legend_color, Layout::preview_x,

@@ -84,6 +84,7 @@ Automated contracts cover the following:
 - `game.maps.merge`, `game.maps.unsafe_names` and `game.maps.paths`: merging, precedence, preview matching, ordering and path validation.
 - `game.maps.sources`: a synthetic package and loose folder, scanned and read through the production file fallback.
 - `game.maps.window_*`: the window model's selection, paging, hit areas, text in both languages and hint markup.
+- `game.maps.preview_markup`: the production parameter parser accepts the preview bitmap's required placement field in both languages and portrait/landscape layouts. This catches malformed markup before native rendering; it does not validate preview decoding or the rendered window.
 - `game.settings.*`: the `Map` key. `game.settings.map_choice` covers saving a choice, using and forgetting a remembered map, and a failed save.
 
 The rendered window, previews, restart and battle-end entry need a playtest. Run it in Debug and Release with cheats disabled, with packed and text game configuration, at 640x480 and at a large resolution:
