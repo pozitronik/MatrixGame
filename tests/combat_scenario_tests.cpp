@@ -1896,6 +1896,114 @@ void turret_delayed_scaling() {
     }
 }
 
+// Fire and electricity share one stored attacking side; the most recent flame or electric hit owns every
+// later pulse of both statuses. Per-frame fire losses of a player robot set on fire by first_side and,
+// when second_side is nonzero, immediately shocked by second_side without damage, in internal half-points.
+std::vector<long> mixed_status_losses(random::Mode mode, int first_side, int second_side) {
+    tests::BattleCombatAssets assets;
+    Session session(Profile{mode, 82, 10, 1000, false, false});
+    assets.install();
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_FLAMETHROWER)] = {0, 0, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LIGHTENING)] = {0, 0, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_ABLAZE)] = {4, 3, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_SHORTED)] = {0, 0, 0};
+    g_MatrixMap->m_Difficulty.k_friendly_fire = 0.5f;
+    g_MatrixMap->m_Difficulty.k_damage_enemy_to_player = 2.0f;
+    auto *patient = robot(PLAYER_SIDE);
+    patient->InitMaxHitpoint(10000);
+    patient->SetMaxSpeed(0);
+    MG_CHECK(!patient->Damage(WEAPON_FLAMETHROWER, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), first_side, nullptr));
+    if (second_side)
+        MG_CHECK(!patient->Damage(WEAPON_LIGHTENING, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), second_side,
+                                  nullptr));
+    std::vector<long> losses;
+    float health = patient->GetHitPoint();
+    for (int i = 0; i < 60; ++i) {
+        session.advance();
+        losses.push_back(std::lround((health - patient->GetHitPoint()) * 20));
+        health = patient->GetHitPoint();
+    }
+    return losses;
+}
+
+// Kill credit when a robot set on fire by first_side is shocked by second_side and dies from a later fire pulse.
+std::pair<int, int> mixed_status_kill(random::Mode mode, int victim_side, int first_side, int second_side) {
+    tests::BattleCombatAssets assets;
+    Session session(Profile{mode, 82, 10, 1000, false, false});
+    assets.install();
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_FLAMETHROWER)] = {0, 0, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LIGHTENING)] = {0, 0, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_ABLAZE)] = {1, 1, 0};
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_SHORTED)] = {0, 0, 0};
+    auto *patient = robot(victim_side);
+    patient->InitMaxHitpoint(2);
+    patient->SetMaxSpeed(0);
+    MG_CHECK(!patient->Damage(WEAPON_FLAMETHROWER, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), first_side, nullptr));
+    MG_CHECK(!patient->Damage(WEAPON_LIGHTENING, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), second_side, nullptr));
+    CoreLease core(patient->GetCore(DEBUG_CALL_INFO));
+    bool dying = false;
+    for (int i = 0; i < 20 && !dying; ++i) {
+        session.advance();
+        dying = core->m_Object && patient->m_CurrState == ROBOT_DIP;
+    }
+    MG_CHECK(dying);
+    return {g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL),
+            g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL)};
+}
+
+void delayed_status_mixed_owners() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        // Ablaze 4/3 with enemy-to-player 2 and friendly fire 0.5: 16 or 3 half-points per pulse.
+        const long enemy_pulse = 16, friendly_pulse = 3;
+        const auto friendly = mixed_status_losses(mode, PLAYER_SIDE, 0);
+        const auto enemy = mixed_status_losses(mode, 2, 0);
+        const auto friendly_then_enemy = mixed_status_losses(mode, PLAYER_SIDE, 2);
+        const auto enemy_then_friendly = mixed_status_losses(mode, 2, PLAYER_SIDE);
+        long pulses = 0;
+        for (size_t i = 0; i < friendly.size(); ++i) {
+            MG_CHECK(friendly[i] % friendly_pulse == 0 && enemy[i] == friendly[i] / friendly_pulse * enemy_pulse);
+            // The later shock takes over every remaining fire pulse.
+            MG_CHECK(friendly_then_enemy[i] == enemy[i] && enemy_then_friendly[i] == friendly[i]);
+            pulses += friendly[i] / friendly_pulse;
+        }
+        MG_CHECK(pulses >= 3);
+        // A player robot lit by a friendly flame and shocked by the enemy dies on enemy credit, and an enemy
+        // robot lit by the player and shocked by its own side dies without credit for anyone.
+        MG_CHECK(mixed_status_kill(mode, PLAYER_SIDE, PLAYER_SIDE, 2) == std::make_pair(0, 1));
+        MG_CHECK(mixed_status_kill(mode, 2, PLAYER_SIDE, 2) == std::make_pair(0, 0));
+        MG_CHECK(mixed_status_kill(mode, 2, 2, PLAYER_SIDE) == std::make_pair(1, 0));
+    }
+}
+
+// A direct hit by any other weapon still clears the stored side, so a later lethal pulse awards no kill.
+void delayed_status_direct_hit() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (bool electrical : {false, true}) {
+            tests::BattleCombatAssets assets;
+            Session session(Profile{mode, 82, 10, 1000, false, false});
+            assets.install();
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_FLAMETHROWER)] = {0, 0, 0};
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_LIGHTENING)] = {0, 0, 0};
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {0, 0, 0};
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_ABLAZE)] = {1, 1, 0};
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_SHORTED)] = {2, 2, 0};
+            auto *patient = robot(PLAYER_SIDE);
+            patient->InitMaxHitpoint(electrical ? 4 : 2);
+            patient->SetMaxSpeed(0);
+            MG_CHECK(!patient->Damage(electrical ? WEAPON_LIGHTENING : WEAPON_FLAMETHROWER, patient->GetGeoCenter(),
+                                      D3DXVECTOR3(1, 0, 0), 2, nullptr));
+            MG_CHECK(!patient->Damage(WEAPON_GUN, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+            CoreLease core(patient->GetCore(DEBUG_CALL_INFO));
+            bool dying = false;
+            for (int i = 0; i < 20 && !dying; ++i) {
+                session.advance();
+                dying = core->m_Object && patient->m_CurrState == ROBOT_DIP;
+            }
+            MG_CHECK(dying);
+            MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+        }
+}
+
 void friendly_lethal() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         tests::BattleCombatAssets assets;
@@ -1991,6 +2099,8 @@ const tests::Case cases[] = {
         {"game.combat.delayed_status_attribution", delayed_status_attribution},
         {"game.combat.delayed_status_scaling", delayed_status_scaling},
         {"game.combat.delayed_status_attacker_retirement", delayed_status_attacker_retirement},
+        {"game.combat.delayed_status_mixed_owners", delayed_status_mixed_owners},
+        {"game.combat.delayed_status_direct_hit", delayed_status_direct_hit},
         {"game.combat.delayed_status_original", delayed_status_original},
         {"game.combat.turret_delayed_attribution", turret_delayed_attribution},
         {"game.combat.turret_delayed_scaling", turret_delayed_scaling},
