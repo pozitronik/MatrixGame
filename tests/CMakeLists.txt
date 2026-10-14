@@ -508,7 +508,7 @@ foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildin
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
 add_matrix_test(game.ai.bomb_escape_capacity matrixgame_ai_decision_tests gameplay ai)
-foreach(contract regroup_split_counts regroup_merge_counts regroup_count_sequences)
+foreach(contract regroup_split_counts regroup_merge_counts regroup_count_sequences strategic_merged_team_split)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
 

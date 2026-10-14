@@ -44,6 +44,7 @@ void strategic_forward();
 void strategic_objective_replacement();
 void strategic_objective_ties();
 void strategic_empty_team_split();
+void strategic_merged_team_split();
 void uneven_team_correctness();
 void radio_group();
 void radio_team_region();
@@ -450,6 +451,7 @@ int main(int argc, char **argv) {
         {"game.ai.strategic_objective_replacement", tests::ai::strategic_objective_replacement},
         {"game.ai.strategic_objective_ties", tests::ai::strategic_objective_ties},
         {"game.ai.strategic_empty_team_split", tests::ai::strategic_empty_team_split},
+        {"game.ai.strategic_merged_team_split", tests::ai::strategic_merged_team_split},
         {"game.ai.uneven_team_redistribution", tests::ai::uneven_team_correctness},
         {"game.ai.radio_group", tests::ai::radio_group},
         {"game.ai.radio_team_region", tests::ai::radio_team_region},

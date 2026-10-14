@@ -620,6 +620,26 @@ void strategic_empty_team_split() {
     }
 }
 
+// Two nearby members of one team start in separate groups, so Regroup merges them before the empty-team
+// split. The emptied donor group no longer counts as a live group: the team has one group and gives half
+// its robots to the empty team instead of moving a whole group (#140).
+void strategic_merged_team_split() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Profile profile; profile.mode = mode; profile.initial_time_ms = 3001;
+        Session session(profile);
+        building(0, 500, 300);
+        auto &side = *g_MatrixMap->GetSideById(2);
+        auto *first = robot(500, 500), *second = robot(540, 540);
+        first->SetGroupLogic(0); second->SetGroupLogic(1);
+        side.TaktHL();
+        MG_CHECK(side.m_Team[0].m_GroupCnt == 1);
+        MG_CHECK((first->GetTeam() == 1) + (second->GetTeam() == 1) == 1);
+        MG_CHECK((first->GetTeam() == 0) + (second->GetTeam() == 0) == 1);
+        std::cout << "merged-team split first_team=" << first->GetTeam() << " second_team=" << second->GetTeam()
+                  << '\n';
+    }
+}
+
 void uneven_team_correctness() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (int teams : {1, 2, 3}) for (int donor_count : {1, 2, 3, 5})

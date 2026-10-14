@@ -224,11 +224,13 @@ void regroup_count_sequences() {
         auto &side = *g_MatrixMap->GetSideById(a->GetSide());
         // Initial placement only: a distant member of the first group and a nearby robot of another team.
         auto *distant = BattleGeometry::create_robot(*g_MatrixMap, side.m_Id, 600, 600);
+        // A second distant member makes the split move a two-robot subgroup out of the first group.
+        auto *distant_pair = BattleGeometry::create_robot(*g_MatrixMap, side.m_Id, 640, 600);
         auto *other = BattleGeometry::create_robot(*g_MatrixMap, side.m_Id, 100 + distance / 2, 260);
         position(*a, 100, 200); position(*b, 100 + distance, 200);
-        a->SetTeam(0); b->SetTeam(0); distant->SetTeam(0); other->SetTeam(1);
+        a->SetTeam(0); b->SetTeam(0); distant->SetTeam(0); distant_pair->SetTeam(0); other->SetTeam(1);
         a->SetGroupLogic(0); b->SetGroupLogic(initially_together ? 0 : 1);
-        distant->SetGroupLogic(0); other->SetGroupLogic(2);
+        distant->SetGroupLogic(0); distant_pair->SetGroupLogic(0); other->SetGroupLogic(2);
         side.m_LogicGroup[0].m_Action.m_Type = mlat_Attack;
         side.m_LogicGroup[1].m_Action.m_Type = mlat_None;
         const bool together = initially_together ? distance <= 400 : distance < 300;
@@ -240,6 +242,7 @@ void regroup_count_sequences() {
                                              other->GetGroupLogic()};
             MG_CHECK((current[0] == current[1]) == together);
             MG_CHECK(current[2] != current[0] && current[2] != current[1]);
+            MG_CHECK(distant_pair->GetGroupLogic() == current[2]);
             MG_CHECK(current[3] != current[0] && current[3] != current[1] && current[3] != current[2]);
             MG_CHECK(side.m_LogicGroup[current[0]].m_Action.m_Type == mlat_Attack);
             MG_CHECK(side.m_LogicGroup[current[2]].m_Team == 0 && side.m_LogicGroup[current[3]].m_Team == 1);
