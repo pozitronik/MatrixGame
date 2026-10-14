@@ -449,8 +449,7 @@ int main(int argc, char **argv) {
         {"game.ai.strategic_objective_replacement", tests::ai::strategic_objective_replacement},
         {"game.ai.strategic_objective_ties", tests::ai::strategic_objective_ties},
         {"game.ai.strategic_empty_team_split", tests::ai::strategic_empty_team_split},
-        // Correctness regression pending https://github.com/pozitronik/MatrixGame/issues/135
-        {"probe.ai.uneven_team_redistribution", tests::ai::uneven_team_correctness},
+        {"game.ai.uneven_team_redistribution", tests::ai::uneven_team_correctness},
         {"game.ai.radio_group", tests::ai::radio_group},
         {"game.ai.radio_team_region", tests::ai::radio_team_region},
         {"game.ai.radio_filters", tests::ai::radio_filters},

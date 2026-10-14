@@ -510,6 +510,59 @@ void base_exit() {
     }
 }
 
+std::vector<SMatrixMapUnit *> registered_cells(CMatrixBuilding *base) {
+    std::vector<SMatrixMapUnit *> result;
+    for (int y = 0; y < g_MatrixMap->m_Size.y; ++y)
+        for (int x = 0; x < g_MatrixMap->m_Size.x; ++x) {
+            auto *cell = g_MatrixMap->UnitGet(x, y);
+            if (cell->m_Base == base) result.push_back(cell);
+        }
+    MG_CHECK(result.size() == 9);
+    return result;
+}
+
+void base_terrain_cleanup() {
+    for (const auto &point : {CPoint(100, 100), CPoint(100, 300), CPoint(300, 100),
+                              CPoint(30, 30), CPoint(30, 600), CPoint(600, 30), CPoint(600, 600)}) {
+        Session session;
+        auto &geometry = *source_robot()->m_Unit[0].m_Graph->VO();
+        auto neighbor = tests::make_battle_building(geometry, PLAYER_SIDE, BUILDING_BASE, 160, 300);
+        auto *live_neighbor = neighbor.get();
+        g_MatrixMap->AddObject(neighbor.release(), true);
+        auto neighbor_cells = registered_cells(live_neighbor);
+        for (int repeat = 0; repeat < 3; ++repeat) {
+            auto owner = tests::make_battle_building(geometry, PLAYER_SIDE, BUILDING_BASE,
+                float(point.x), float(point.y));
+            auto *base = owner.get();
+            g_MatrixMap->AddObject(owner.release(), true);
+            const auto cells = registered_cells(base);
+            g_MatrixMap->StaticDelete(base);
+            // Inspect only live terrain, never a retired building or its members.
+            for (const auto *cell : cells) MG_CHECK(cell->m_Base == nullptr);
+            for (const auto *cell : neighbor_cells) MG_CHECK(cell->m_Base == live_neighbor);
+        }
+        g_MatrixMap->StaticDelete(live_neighbor);
+        for (const auto *cell : neighbor_cells) MG_CHECK(cell->m_Base == nullptr);
+    }
+}
+
+void base_terrain_teardown() {
+    Session session;
+    auto &geometry = *source_robot()->m_Unit[0].m_Graph->VO();
+    for (const auto &point : {CPoint(100, 300), CPoint(300, 100)}) {
+        auto owner = tests::make_battle_building(geometry, PLAYER_SIDE, BUILDING_BASE,
+            float(point.x), float(point.y));
+        registered_cells(owner.get());
+        g_MatrixMap->AddObject(owner.release(), true);
+    }
+    // Map::Clear calls StaticClear before UnitClear. Inspect this production
+    // teardown boundary while the terrain storage is still alive.
+    g_MatrixMap->StaticClear();
+    for (int y = 0; y < g_MatrixMap->m_Size.y; ++y)
+        for (int x = 0; x < g_MatrixMap->m_Size.x; ++x)
+            MG_CHECK(g_MatrixMap->UnitGet(x, y)->m_Base == nullptr);
+}
+
 void building_geometry() {
     Session session({random::Mode::ParkMiller, 83, 10, 1000, false, false});
     for (auto kind : {BUILDING_BASE, BUILDING_TITAN, BUILDING_PLASMA,
@@ -530,7 +583,7 @@ void building_geometry() {
         building.reset();
         MG_CHECK(cell->m_Base == nullptr);
     }
-    for (const auto &point : {CPoint(100, 300), CPoint(100, 0), CPoint(-1, 100), CPoint(10000, 100)}) {
+    for (const auto &point : {CPoint(100, 0), CPoint(-1, 100), CPoint(10000, 100)}) {
         bool rejected = false;
         try {
             auto invalid = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
@@ -739,6 +792,8 @@ const tests::Case cases[] = {{"game.production.ai_purchase", ai_purchase},
                            {"game.production.constructor_deployment", constructor_deployment},
                            {"game.production.base_exit", base_exit},
                            {"game.production.building_geometry", building_geometry},
+                           {"game.production.base_terrain_cleanup", base_terrain_cleanup},
+                           {"game.production.base_terrain_teardown", base_terrain_teardown},
                            {"game.production.maintenance_clock", maintenance_clock},
                            {"game.production.scheduled_income", scheduled_income}};
 }

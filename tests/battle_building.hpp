@@ -17,18 +17,12 @@ inline EnginePtr<CMatrixBuilding> make_battle_building(CVectorObject &geometry,
         x >= g_MatrixMap->m_Size.x * GLOBAL_SCALE || y >= g_MatrixMap->m_Size.y * GLOBAL_SCALE)
         throw std::invalid_argument("Synthetic building coordinates are outside the map");
     if (kind == BUILDING_BASE) {
-        const int cleanup_x = Float2Int(x * INVERT(GLOBAL_SCALE));
         const int px = Float2Int((x - GLOBAL_SCALE / 2) * INVERT(GLOBAL_SCALE)) - 1;
         const int py = Float2Int((y - GLOBAL_SCALE / 2) * INVERT(GLOBAL_SCALE)) - 1;
         for (int dx = 0; dx < 3; ++dx)
             for (int dy = 0; dy < 3; ++dy) {
-                // The production destructor currently uses the x window on both
-                // axes. Reject unsafe footprints before OnLoad registers cells.
-                // Follow-up: https://github.com/pozitronik/MatrixGame/issues/130
-                if (!g_MatrixMap->UnitGetTest(px + dx, py + dy) ||
-                    px + dx < cleanup_x - 4 || px + dx >= cleanup_x + 4 ||
-                    py + dy < cleanup_x - 4 || py + dy >= cleanup_x + 4)
-                    throw std::invalid_argument("Synthetic base footprint exceeds its destructor cleanup window");
+                if (!g_MatrixMap->UnitGetTest(px + dx, py + dy))
+                    throw std::invalid_argument("Synthetic base footprint is outside the map");
             }
     }
     auto building = make_engine_object<CMatrixBuilding>();

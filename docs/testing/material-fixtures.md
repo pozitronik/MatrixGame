@@ -32,7 +32,7 @@ The factory is removed at 1,010 ms. The base enters its final exploded state at 
 
 Smoke records must have the production smoke type and configured properties, a bounded positive count, and owners that resolve to the resulting ruins or landscape rather than the deleted building. Each RNG mode repeats the complete scenario and compares per-frame state, RNG draw count and smoke placement exactly within the same build. Exact smoke counts and positions are not asserted across compilers because placement depends on random ray/triangle intersections. Both Debug and Release execute the same lifecycle assertions.
 
-This extends the synthetic building lifetime contract. It does not test packaged model decoding, rendered explosions or shadows, arbitrary-coordinate base cleanup, or destruction caused by a complete weapon attack. The existing [base cleanup defect](https://github.com/pozitronik/MatrixGame/issues/130) remains separate; the safe-placement guard is retained. Further combat scenarios can reuse these materials without bypassing the ruin loader.
+This extends the synthetic building lifetime contract. `game.harness.materials.demolish_base_asymmetric` repeats the complete base demolition at (200,400) in both RNG modes, retaining the existing explosion/deletion timing, ruin material and smoke checks and requiring all terrain references to clear. It does not test packaged model decoding, rendered explosions or shadows, or destruction caused by a complete weapon attack. Further combat scenarios can reuse these materials without bypassing the ruin loader.
 
 ## Running the checks
 
