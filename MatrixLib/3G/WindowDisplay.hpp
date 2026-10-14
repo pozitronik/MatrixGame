@@ -15,6 +15,8 @@ HRESULT reset_device(const D3DPRESENT_PARAMETERS &parameters);
 Mode fullscreen_mode();
 // Queues a switch to target (applied by apply_pending) and sets the Alt+Enter fullscreen mode.
 void request(Mode target, Mode fullscreen);
+// Queues a change of the rendering size (applied by apply_pending together with any mode switch).
+void request_size(int width, int height);
 bool handle_shortcut(UINT message, WPARAM key, LPARAM flags);
 void focus_lost();
 void confine_cursor();

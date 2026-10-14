@@ -182,6 +182,59 @@ void transition_failure() {
     MG_CHECK(released == 1 && restored == 0 && rolled_back == 2);
 }
 
+void change_plans() {
+    using Display::Mode;
+    using Display::Size;
+    const Size current{1024, 768};
+    // Alt+Enter between windowed and borderless keeps the back buffer.
+    auto change = Display::plan(Mode::Windowed, Mode::Borderless, true, std::nullopt, current, std::nullopt);
+    MG_CHECK(change.target == Mode::Borderless && change.size == current && !change.resize && !change.reset);
+    change = Display::plan(Mode::Borderless, Mode::Borderless, true, Mode::Windowed, current, std::nullopt);
+    MG_CHECK(change.target == Mode::Windowed && !change.reset);
+    // Entering or leaving exclusive mode resets, as before.
+    MG_CHECK(Display::plan(Mode::Windowed, Mode::Borderless, true, Mode::Exclusive, current, std::nullopt).reset);
+    MG_CHECK(Display::plan(Mode::Exclusive, Mode::Exclusive, true, std::nullopt, current, std::nullopt).reset);
+    // A size change alone keeps the mode and resets the device in every mode.
+    for (Mode mode : {Mode::Windowed, Mode::Borderless, Mode::Exclusive}) {
+        change = Display::plan(mode, Mode::Borderless, false, std::nullopt, current, Size{1920, 1080});
+        MG_CHECK(change.target == mode && change.size == (Size{1920, 1080}) && change.resize && change.reset);
+    }
+    // Requesting the current size is not a resize.
+    change = Display::plan(Mode::Borderless, Mode::Borderless, false, std::nullopt, current, current);
+    MG_CHECK(change.target == Mode::Borderless && !change.resize && !change.reset);
+    // A mode request and a size request apply together.
+    change = Display::plan(Mode::Windowed, Mode::Borderless, true, Mode::Borderless, current, Size{640, 480});
+    MG_CHECK(change.target == Mode::Borderless && change.size == (Size{640, 480}) && change.reset);
+}
+
+// Mirrors apply_pending: the size changes with the reset and returns to the previous size on rollback.
+void resize_rollback() {
+    for (HRESULT failure : {D3D_OK, D3DERR_INVALIDCALL}) {
+        Display::Size size{1024, 768};
+        const Display::Size previous = size, target{1920, 1080};
+        std::vector<Display::Size> reset_sizes;
+        const HRESULT result = Display::transition(true, [] {},
+            [&] {
+                size = target;
+                reset_sizes.push_back(size);
+                return failure;
+            },
+            [&](HRESULT) {
+                size = previous;
+                reset_sizes.push_back(size);
+                return D3D_OK;
+            }, [] {});
+        MG_CHECK(result == D3D_OK);
+        MG_CHECK(size == (failure == D3D_OK ? target : previous));
+        MG_CHECK(reset_sizes.back() == size && reset_sizes.size() == (failure == D3D_OK ? 1u : 2u));
+    }
+    // A lost device keeps the requested size for ordinary recovery to apply.
+    Display::Size size{1024, 768};
+    MG_CHECK(Display::transition(true, [] {}, [&] { size = {640, 480}; return D3DERR_DEVICELOST; },
+                                 [&](HRESULT) { size = {1024, 768}; return D3D_OK; }, [] {}) == D3DERR_DEVICELOST);
+    MG_CHECK(size == (Display::Size{640, 480}));
+}
+
 constexpr tests::Case cases[] = {
     {"game.display.defaults", defaults},
     {"game.display.options", explicit_settings},
@@ -193,6 +246,8 @@ constexpr tests::Case cases[] = {
     {"game.display.reset_parameters", reset_preserves_parameters},
     {"game.display.transition_order", transition_order},
     {"game.display.transition_failure", transition_failure},
+    {"game.display.change_plans", change_plans},
+    {"game.display.resize_rollback", resize_rollback},
 };
 }
 

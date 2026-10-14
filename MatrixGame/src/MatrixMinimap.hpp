@@ -145,6 +145,12 @@ public:
         m_TgtScale = scale;
         m_Dirty = 1;
     }
+    // Moves the output rectangle without changing its size, centre or zoom.
+    void SetOutPos(int x, int y) {
+        m_PosX = x;
+        m_PosY = y;
+        m_Dirty = 1;
+    }
     void SetOutParams(const D3DXVECTOR2 &center) {
         m_Center = center;
         m_Dirty = 1;

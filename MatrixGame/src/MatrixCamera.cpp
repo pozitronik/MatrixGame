@@ -608,6 +608,14 @@ CMatrixCamera::CMatrixCamera(void) {
     m_AngleX = LerpAng();
     m_Dist = LerpDist();
 
+    ResizeScreen();
+
+    m_Flags = 0;
+
+    m_AFD = NULL;
+}
+
+void CMatrixCamera::ResizeScreen(void) {
     _res_x_inversed = (float)(1.0 / (double)g_ScreenX);
     _res_y_inversed = (float)(1.0 / (double)g_ScreenY);
 
@@ -616,8 +624,6 @@ CMatrixCamera::CMatrixCamera(void) {
 
     _mp_11_inversed = (float)(1.0 / m_MatProj._11);
     _mp_22_inversed = (float)(1.0 / m_MatProj._22);
-
-    m_Flags = 0;
 
     ZeroMemory(&m_ViewPort, sizeof(D3DVIEWPORT9));
 
@@ -628,8 +634,6 @@ CMatrixCamera::CMatrixCamera(void) {
 
     m_ViewPort.MinZ = 0.0f;
     m_ViewPort.MaxZ = 1.0f;
-
-    m_AFD = NULL;
 }
 
 void CMatrixCamera::ResetAngles(void) {

@@ -146,6 +146,10 @@ public:
         m_ViewWidthX = width;
         m_ViewHeightY = height;
     }
+    void MoveRenderProps(float dx, float dy) {
+        m_ViewPosX += dx;
+        m_ViewPosY += dy;
+    }
 
     void __stdcall RemoteOperateUnit(void *pObj);
     void OperateUnit(ERobotUnitType type, ERobotUnitKind kind);

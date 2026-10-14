@@ -5,6 +5,7 @@
 
 #include "MatrixFormGame.hpp"
 #include "SettingsWindow.hpp"
+#include "ScreenLayout.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFlyer.hpp"
@@ -345,12 +346,17 @@ void CFormMatrixGame::Takt(int step) {
 
     if (Display::apply_pending(FLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY),
             [] { g_MatrixMap->ReleasePoolDefaultResources(); },
-            [] { g_MatrixMap->CreatePoolDefaultResources(false); })) return;
+            [] { g_MatrixMap->CreatePoolDefaultResources(false); })) {
+        ScreenLayout::update();
+        return;
+    }
 
     if (g_MatrixMap->CheckLostDevice())
     {
         return;
     }
+    // A size change can also complete through deferred device recovery.
+    ScreenLayout::update();
 
     if (CMultiSelection::m_GameSelection) {
         SCallback cbs;

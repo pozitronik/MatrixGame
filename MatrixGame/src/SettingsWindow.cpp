@@ -212,6 +212,11 @@ void menu_mouse_move(int x, int y) {
 
 void menu_closed() { release_menu_highlight(); }
 
+void relayout() {
+    release_menu_highlight();  // Recreated at the menu's new position on the next pointer move.
+    if (active()) rebuild();
+}
+
 void shutdown() {
     release_menu_highlight();
     model.reset();

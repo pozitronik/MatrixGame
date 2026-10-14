@@ -28,6 +28,8 @@ bool menu_mouse_down(int x, int y);
 void menu_mouse_move(int x, int y);
 // Releases the menu highlight; called whenever a dialog closes.
 void menu_closed();
+// Re-centres the open window and drops the menu highlight after the rendering size changes.
+void relayout();
 // Releases dialog state before the session's hints and heap are destroyed.
 void shutdown();
 

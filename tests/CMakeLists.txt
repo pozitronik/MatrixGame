@@ -186,6 +186,12 @@ add_matrix_test(game.settings.restart_detection matrixgame_settings_runtime_test
 add_matrix_test(game.settings.independent_shadows matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.window_availability matrixgame_settings_runtime_tests settings)
 
+add_matrix_test_executable(matrixgame_screen_layout_tests screen_layout_tests.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_screen_layout_tests PRIVATE MatrixGameInternal)
+foreach(contract anchoring dialog_centring tracking)
+    add_matrix_test(game.screen.${contract} matrixgame_screen_layout_tests ui rendering)
+endforeach()
+
 add_matrix_test_executable(matrixgame_random_map_tests random_map_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_random_map_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.random.shared_map_helpers matrixgame_random_map_tests gameplay startup random)
@@ -364,7 +370,7 @@ add_matrix_test(game.device.present_loss matrixgame_device_tests rendering)
 
 add_matrix_test_executable(matrixgame_display_tests display_tests.cpp)
 target_compile_definitions(matrixgame_display_tests PRIVATE WINDOWS_IGNORE_PACKING_MISMATCH)
-foreach(contract defaults options invalid_options files toggle_pairs shortcut coordinates reset_parameters transition_order transition_failure)
+foreach(contract defaults options invalid_options files toggle_pairs shortcut coordinates reset_parameters transition_order transition_failure change_plans resize_rollback)
     add_matrix_test(game.display.${contract} matrixgame_display_tests rendering input)
 endforeach()
 
