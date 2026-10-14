@@ -39,4 +39,6 @@ In `CMatrixMap::ScanLandscapeGroup`, `t1` started at zero. The nonzero-X branch 
 
 `game.combat.axis_aligned_trace` registers the former probe and extends it to zero-Y and reversed rays, group-boundary crossings, nearest-hit selection, skip and mask handling, missing targets and terrain. It failed at the original zero-X assertion before the correction. Native occurrence frequency and gameplay impact are still unmeasured; rays with exactly zero X travel need exactly aligned endpoints. `ScanLandscapeGroupForLand` has the same interval code but is reached only through `TraceLand` and `CatchPoint`, neither of which has a live caller, so it is unchanged.
 
+`game.combat.axis_trace_group_clip` pins the Y-slab clip for zero-X rays, which `axis_aligned_trace` alone does not: removing the clip leaves that case passing but returns the farther of two robots straddling the y = 200 group boundary.
+
 The revised fixture suite passes all 240 registered tests in MinGW Debug and Release. Sixteen same-profile trace pairs and eight explicitly overridden cross-build pairs match through the supported comparator. The then-unregistered axis probe separately exited with code 1 in each configuration, after checking both intersection modes under each RNG profile. Repository checks pass; these local results do not replace supported-toolchain CI or independent review.

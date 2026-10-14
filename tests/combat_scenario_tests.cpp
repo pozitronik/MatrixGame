@@ -1069,6 +1069,45 @@ void position_fixture_robot(CMatrixRobotAI &robot, float x, float y) {
     robot.m_CalcBoundsLastTime=g_MatrixMap->GetTime()-100;
     robot.JoinToGroup();
 }
+// A scan that finds a hit ends Trace's group walk, so a zero-X ray must clip each group's interval to the group's
+// Y span: https://github.com/pozitronik/MatrixGame/issues/157. The farther robot's bounding box reaches below the
+// y = 200 boundary, registering it in the first group, but the ray grazes its sphere past the boundary. The nearer
+// robot is registered only in the next group. Without the clip, the first group would return the farther robot.
+void axis_trace_group_clip() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 82, 10, 1000, false, false});
+        auto *farther = robot(PLAYER_SIDE);
+        auto *nearer = robot(PLAYER_SIDE, 1);
+        constexpr float boundary = GLOBAL_SCALE * MAP_GROUP_SIZE;
+        MG_CHECK(boundary == 200);
+        D3DXVECTOR3 vmin, vmax;
+        // Place the farther robot so that its bounding box starts one unit below the boundary.
+        position_fixture_robot(*farther, 300, 220);
+        MG_CHECK(!farther->CalcBounds(vmin, vmax));
+        position_fixture_robot(*farther, 300, 220 - (vmin.y - (boundary - 1)));
+        MG_CHECK(!farther->CalcBounds(vmin, vmax));
+        const D3DXVECTOR3 center = farther->GetGeoCenter();
+        const float radius = farther->GetRadius();
+        MG_CHECK(vmin.y < boundary && center.y > boundary);
+        // Graze the sphere so that the ray enters it halfway between the boundary and the center.
+        const float entry = (center.y - boundary) / 2, depth = center.y - boundary - entry;
+        const float x = center.x - std::sqrt(radius * radius - depth * depth);
+        // Center the nearer robot on the ray so that it is entered at a quarter of that distance.
+        position_fixture_robot(*nearer, 300, 300);
+        position_fixture_robot(*nearer, 300 + (x - nearer->GetGeoCenter().x),
+                               300 + (boundary + entry / 2 + nearer->GetRadius() - nearer->GetGeoCenter().y));
+        MG_CHECK(!nearer->CalcBounds(vmin, vmax));
+        const D3DXVECTOR3 middle = nearer->GetGeoCenter();
+        MG_CHECK(vmin.y >= boundary);
+        const D3DXVECTOR3 from(x, 150, center.z), to(x, 260, center.z);
+        float t_farther = 0, t_nearer = 0;
+        const D3DXVECTOR3 dir(0, 1, 0);
+        MG_CHECK(IsIntersectSphere(center, radius, from, dir, t_farther));
+        MG_CHECK(IsIntersectSphere(middle, nearer->GetRadius(), from, dir, t_nearer));
+        MG_CHECK(from.y + t_farther > boundary && from.y + t_nearer > boundary && t_nearer < t_farther);
+        MG_CHECK(g_MatrixMap->Trace(nullptr, from, to, TRACE_ROBOT | TRACE_OBJECTSPHERE, nullptr) == nearer);
+    }
+}
 std::vector<std::string> chained_bombs_run(random::Mode mode, int run) {
     tests::BattleCombatAssets assets;
     const Profile profile{mode,82,10,1000,false,false};
@@ -2209,6 +2248,7 @@ void cannon_difficulty() {
 const tests::Case cases[] = {
         {"game.combat.cannon_firing", cannon_firing},         {"game.combat.robot_firing", robot_firing},
         {"game.combat.plasma_flight", plasma_flight},         {"game.combat.axis_aligned_trace", axis_aligned_trace},
+        {"game.combat.axis_trace_group_clip", axis_trace_group_clip},
         {"game.combat.volcano_firing", volcano_firing},       {"game.combat.electric_firing", electric_firing},
         {"game.combat.flame_firing", flame_firing},           {"game.combat.gun_firing", gun_firing},
         {"game.combat.missile_firing", missile_firing},       {"game.combat.mortar_firing", mortar_firing},
