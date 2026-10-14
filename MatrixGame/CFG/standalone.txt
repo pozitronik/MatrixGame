@@ -14,6 +14,8 @@ FullscreenMode=Borderless
 // The in-game Settings window (battle menu, C) rewrites the values below and keeps comments.
 // Master volume for sound effects and speech, 0-100.
 SoundVolume=100
+// Battle music volume, 0-100, independent of SoundVolume. Music plays when DATA/music.pkg is present.
+MusicVolume=100
 // On or Off. Shadow changes apply immediately.
 StencilShadows=On
 ProjectedShadows=On

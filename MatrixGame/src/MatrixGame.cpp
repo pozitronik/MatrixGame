@@ -233,8 +233,10 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 #ifdef BUILD_EXE
     const bool sound_package = Startup::ResourceFileExists(L"DATA\\sound.pkg");
     const bool voices_package = Startup::ResourceFileExists(L"DATA\\voices.pkg");
+    const bool music_package = Startup::ResourceFileExists(L"DATA\\music.pkg");
     if (sound_package) CFile::AddPackFile(L"DATA\\sound.pkg");
     if (voices_package) CFile::AddPackFile(L"DATA\\voices.pkg");
+    if (music_package) CFile::AddPackFile(L"DATA\\music.pkg");
 #endif
     CFile::OpenPackFiles();
 
@@ -385,7 +387,7 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     g_Config.ApplySettings(&settings);
 #ifdef BUILD_EXE
-    SoundBridge::initialize_standalone(sound_package || voices_package);
+    SoundBridge::initialize_standalone(sound_package || voices_package || music_package);
     StandaloneSettings::initialize_runtime(standalone.values);
 #endif
     g_Sampler.ApplySettings(&settings);

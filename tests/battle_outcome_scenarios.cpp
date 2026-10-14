@@ -18,7 +18,10 @@
 #include "Interface/CInterface.h"
 #include "input.hpp"
 #include "cheats.hpp"
+#include "SoundBridge.hpp"
+#include "audio_fixture.hpp"
 #include <climits>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -339,6 +342,36 @@ void special_survival_flags() {
         MG_CHECK(!g_MatrixMap->IsPaused());
         MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
     }
+}
+// SetMusicVolume and RestoreMusicVolume are the calls made by the Terron death and the MUSIC console
+// command. Without a host they fade the standalone music, one thousandth of full level per millisecond.
+void music_fade() {
+    Session session;
+    MG_CHECK(SoundBridge::available() && !SoundBridge::music_available());
+    g_MatrixMap->SetMusicVolume(0);  // Nothing to fade without music, as before.
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING));
+    SoundBridge::install_music({L"synthetic"}, [](const std::wstring &) { return std::vector<uint8_t>{1}; },
+        [](std::vector<uint8_t>) -> std::unique_ptr<Audio::Decoder> {
+            return std::make_unique<audio_fixture::FakeDecoder>(audio_fixture::TrackSpec{1, 8000, 100000, 0});
+        });
+    SoundBridge::update_music();
+    MG_CHECK(SoundBridge::music_available() && SoundBridge::music_level() == 1.0f);
+    const auto fade = [&](float target) {
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING));
+        const int start = session.time();
+        while (FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && session.time() < start + 2000) {
+            const float before = SoundBridge::music_level();
+            session.advance();
+            MG_CHECK(std::fabs(SoundBridge::music_level() - before) <= 0.0101f);
+        }
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && SoundBridge::music_level() == target);
+        const int duration = session.time() - start;
+        MG_CHECK(duration >= 1000 && duration <= 1020);
+    };
+    g_MatrixMap->SetMusicVolume(0);
+    fade(0.0f);
+    g_MatrixMap->RestoreMusicVolume();
+    fade(1.0f);
 }
 void full_auto_escape() {
     Session session;
@@ -1272,6 +1305,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.repeated_sessions", repeated_sessions},
     {"game.outcome.special_survival_flags", special_survival_flags},
     {"game.outcome.full_auto_escape", full_auto_escape},
+    {"game.outcome.music_fade", music_fade},
     {"game.outcome.legacy_loss_cheat", legacy_loss_cheat},
     {"game.outcome.statistics_formatting", statistics_formatting},
     {"game.outcome.scheduled_capture", scheduled_capture},

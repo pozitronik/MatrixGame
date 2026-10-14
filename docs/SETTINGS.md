@@ -23,6 +23,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 | Window mode | `WindowMode` | `Windowed`, `Borderless`, `Exclusive` | `Windowed` | Immediately |
 | Alt+Enter | `FullscreenMode` | `Borderless`, `Exclusive` | `Borderless` | Immediately |
 | Volume | `SoundVolume` | `0`-`100`, in steps of 10 in the window | `100` | Immediately |
+| Music | `MusicVolume` | `0`-`100`, in steps of 10 in the window | `100` | Immediately |
 | Stencil shadows | `StencilShadows` | `On`, `Off` | `On` | Immediately |
 | Projected shadows | `ProjectedShadows` | `On`, `Off` | `On` | Immediately |
 | Sky | `Skybox` | `Off`, `Low`, `High` | `High` | After restart |
@@ -34,7 +35,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 **Display.** The display keys keep the contract in [Display settings](DISPLAY.md). The window shows the current window mode, including a mode reached with Alt+Enter, and Apply saves it. Choosing `Borderless` or `Exclusive` as the window mode also makes it the Alt+Enter mode, matching how a fullscreen start behaves. A window-mode change uses the same transition and rollback as Alt+Enter. A resolution change resets the device in every mode and re-lays out the interface; see [Changing the resolution during a battle](DISPLAY.md#changing-the-resolution-during-a-battle). If exclusive mode is unavailable at the requested resolution, or the change fails, the game keeps its current mode and resolution and logs the reason.
 
-**Sound.** Volume scales every standalone sound effect and speech voice, including sounds already playing. It does not affect a DLL host's audio.
+**Sound.** Volume scales every standalone sound effect and speech voice, including sounds already playing. Music sets the level of the [battle music](AUDIO.md#battle-music), including a track already playing. The two levels are independent. Neither affects a DLL host's audio. The rows are one pixel lower than before so that the window, which gained the Music row, still fits a 640x480 screen; the text keeps its size.
 
 **Graphics.** The stencil and projected shadow options correspond to the original game's shadow settings. Previously the EXE always enabled them; they now default to the same values. Each option controls only its own kind of shadow, so either kind can be shown alone. The sky's `Low` and `High` options select the original low- and high-quality sky textures.
 
@@ -48,7 +49,7 @@ On a player's turret, those hostile pulses also flash the minimap and play the u
 
 In both modes a direct hit by another weapon forgets the side, as in the original game. Switching modes during a battle affects units that are already burning or shorted from their next pulse. Switching to `Original` forgets the side at that pulse, and switching back does not restore a side that was already forgotten. The DLL build always uses the original behavior, because the host game owns its settings.
 
-Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage`, `Map` or `GroupCounts` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
+Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `MusicVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage`, `Map` or `GroupCounts` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
 
 ## Options without a window row
 
@@ -72,18 +73,18 @@ Automated `game.settings.*` contracts cover:
 - Atomic saving and failed-save behavior.
 - Window selection, stepping, mode coupling, hit areas and both label languages.
 - Startup mapping of graphics options and which options need a restart.
-- Immediate routing of shadows, camera speed, volume, status-damage attribution and the AI group-count mode, and shadow pass selection for each combination of the two shadow options.
+- Immediate routing of shadows, camera speed, volume, music volume, status-damage attribution and the AI group-count mode, and shadow pass selection for each combination of the two shadow options.
 - The remembered map; see [Map selection](MAPS.md#verification) for the Map window's own contracts and playtest.
 - The group-count mode a process starts with: `Corrected` in the EXE, `Original` in the DLL (`game.settings.group_counts_build_default`, registered in both build roles). The `game.ai.*` group-count cases check both modes; see [AI decisions](testing/84-ai-decisions.md).
 
-`game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions.
+`game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions. `game.audio.music_volume` and `game.audio.music_sessions` cover the music level, its independence from the effects level and its retention across sessions.
 
 The rendered window, menu integration and real display transitions need a playtest. Run it in Debug and Release with cheats disabled, once with packed and once with text game configuration:
 
 1. Start a battle and press Escape. The settings label must use the same color as the other menu labels and highlight when the pointer is over it or its button. Click it. The Settings window must open centered, with the battle paused.
-2. Move the pointer over the rows and step every option with the mouse, including both ends of Volume and Camera speed. Use Up/Down/Left/Right on the keyboard. Check that labels and values stay inside the frame and that the checkmark and cross sit in their holes.
+2. Move the pointer over the rows and step every option with the mouse, including both ends of Volume, Music and Camera speed. Use Up/Down/Left/Right on the keyboard. Check that labels and values stay inside the frame and that the checkmark and cross sit in their holes.
 3. Press Escape. The menu must reappear and the file must be unchanged. Press `C` to reopen the window; the values must match the file.
-4. Change Resolution and apply; the image must change size at once with the menu re-centred. Set Volume to 30 and apply. Effects must become quieter immediately, including continuing sounds. Change camera speed, apply, and confirm the visible effect. Switch Window mode between Windowed, Borderless and Exclusive, and check the result after each Apply.
+4. Change Resolution and apply; the image must change size at once with the menu re-centred. Set Volume to 30 and apply. Effects must become quieter immediately, including continuing sounds, while music keeps its level. With `DATA/music.pkg`, set Music to 30 and apply; music must become quieter immediately without changing effects. Change camera speed, apply, and confirm the visible effect. Switch Window mode between Windowed, Borderless and Exclusive, and check the result after each Apply.
 5. Starting with both shadow options on, apply in turn: Stencil shadows off, then Projected shadows off, then Stencil shadows on, then Projected shadows on. Each kind of shadow must appear only while its option is on, and a kind turned back on must reappear on objects that were already shadowed.
 6. With Status damage set to Corrected, set an enemy turret and an enemy robot on fire with a flamethrower and stop firing so that burning finishes them. Repeat with an electric weapon. Finish the battle: the statistics must count these kills for the player. Set Status damage to Original, apply without restarting, and repeat: kills by later pulses must not be counted.
 7. Change Sky, Robot shadows and the random generator, apply, and restart. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.

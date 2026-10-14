@@ -19,6 +19,7 @@ enum class Row {
     FullscreenMode,
     SoundGroup,
     SoundVolume,
+    MusicVolume,
     GraphicsGroup,
     StencilShadows,
     ProjectedShadows,
@@ -45,7 +46,7 @@ struct Layout {
     static constexpr int width = 460;
     static constexpr int title_y = 30;
     static constexpr int first_row_y = 58;
-    static constexpr int row_height = 20;
+    static constexpr int row_height = 19;  // Keeps every row within a 640x480 screen.
     static constexpr int label_x = 70;
     static constexpr int previous_x = 250;  // "<" marker; the left half of the value cell steps back.
     static constexpr int value_x = 264;
@@ -110,7 +111,10 @@ private:
     const wchar_t *text(const wchar_t *english, const wchar_t *russian) const;
 };
 
-// A hint text element of one row's height at a position in the window, also used by the Map window.
+// Height of one line of text in the Settings and Map windows, independent of their row spacing.
+constexpr int text_height = 19;
+
+// A hint text element of one line's height at a position in the window, also used by the Map window.
 // align 0 is left-aligned and 1 is centred.
 std::wstring text_element(const std::wstring &text, const wchar_t *font, uint32_t color, int x, int y, int width,
                           int align);

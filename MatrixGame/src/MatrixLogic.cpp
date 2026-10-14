@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include "MatrixGameDll.hpp"
 #include "MatrixMultiSelection.hpp"
+#include "SoundBridge.hpp"
 
 #include <random.hpp>
 
@@ -2800,10 +2801,11 @@ void CMatrixMapLogic::Takt(int step) {
         //_________________________________________________________________________________________________
 
         if (FLAG(m_Flags, MMFLAG_MUSIC_VOL_CHANGING)) {
-            float cv = g_RangersInterface->m_MusicVolumeGet();
+            // The host's music volume, or the standalone music fade level.
+            float cv = SoundBridge::music_level();
             if (fabs(cv - m_TargetMusicVolume) < 0.001f) {
                 RESETFLAG(m_Flags, MMFLAG_MUSIC_VOL_CHANGING);
-                g_RangersInterface->m_MusicVolumeSet(m_TargetMusicVolume);
+                SoundBridge::music_level(m_TargetMusicVolume);
             }
             else {
                 float delta = 0;
@@ -2811,7 +2813,7 @@ void CMatrixMapLogic::Takt(int step) {
                     delta = 1;
                 else
                     delta = -1;
-                g_RangersInterface->m_MusicVolumeSet(cv + delta * float(step) * 0.001f);
+                SoundBridge::music_level(cv + delta * float(step) * 0.001f);
             }
         }
 

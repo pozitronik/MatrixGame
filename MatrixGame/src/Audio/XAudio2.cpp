@@ -7,6 +7,7 @@
 #include <array>
 #include <bit>
 #include <cstdio>
+#include <deque>
 #include <stdexcept>
 #include <utility>
 
@@ -97,6 +98,49 @@ public:
     }
 };
 
+class XStream final : public Stream {
+    // Reverse member destruction stops the voice before its buffers are released.
+    std::deque<std::vector<int16_t>> buffers_;
+    std::unique_ptr<IXAudio2SourceVoice, DestroyVoice> voice_;
+
+    UINT32 pending() const {
+        XAUDIO2_VOICE_STATE state{};
+        voice_->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+        return state.BuffersQueued;
+    }
+
+public:
+    XStream(IXAudio2 *engine, IXAudio2MasteringVoice *master, uint16_t channels, uint32_t sample_rate) {
+        WAVEFORMATEX format{};
+        format.wFormatTag = WAVE_FORMAT_PCM;
+        format.nChannels = channels;
+        format.nSamplesPerSec = sample_rate;
+        format.wBitsPerSample = 16;
+        format.nBlockAlign = WORD(channels * 2);
+        format.nAvgBytesPerSec = sample_rate * format.nBlockAlign;
+        IXAudio2SourceVoice *source{};
+        check(engine->CreateSourceVoice(&source, &format, 0, XAUDIO2_DEFAULT_FREQ_RATIO,
+                                        nullptr, nullptr, nullptr), "CreateSourceVoice");
+        voice_.reset(source);
+        std::array<float, 4> matrix{1.0f, 1.0f, 0.0f, 0.0f};
+        if (channels == 2) matrix = {1.0f, 0.0f, 0.0f, 1.0f};
+        check(voice_->SetOutputMatrix(master, channels, 2, matrix.data(), XAUDIO2_COMMIT_NOW), "Set music balance");
+    }
+
+    void submit(std::vector<int16_t> samples) override {
+        // Buffers finish in submission order, so the oldest ones beyond the queue are done.
+        for (const UINT32 queued = pending(); buffers_.size() > queued;) buffers_.pop_front();
+        buffers_.push_back(std::move(samples));
+        XAUDIO2_BUFFER buffer{};
+        buffer.AudioBytes = static_cast<UINT32>(buffers_.back().size() * sizeof(int16_t));
+        buffer.pAudioData = reinterpret_cast<const BYTE *>(buffers_.back().data());
+        check(voice_->SubmitSourceBuffer(&buffer, nullptr), "Submit music buffer");
+    }
+    size_t queued() const override { return pending(); }
+    void play() override { check(voice_->Start(0, XAUDIO2_COMMIT_NOW), "Start music voice"); }
+    void volume(float value) override { check(voice_->SetVolume(value, XAUDIO2_COMMIT_NOW), "Set music volume"); }
+};
+
 class XDevice final : public Device {
     ComScope com_;
     Library library_;
@@ -119,6 +163,9 @@ public:
     }
     std::unique_ptr<Voice> create(std::shared_ptr<const Clip> clip, bool loop) override {
         return std::make_unique<XVoice>(engine_.get(), master_.get(), std::move(clip), loop);
+    }
+    std::unique_ptr<Stream> stream(uint16_t channels, uint32_t sample_rate) override {
+        return std::make_unique<XStream>(engine_.get(), master_.get(), channels, sample_rate);
     }
 };
 } // namespace

@@ -6,6 +6,10 @@ The package is built with GCC 13.2.0, MinGW-w64 11.0.1 and MCF Gthread 1.6-ga.1 
 
 zlib 1.3.2 is copyright 1995–2026 Jean-loup Gailly and Mark Adler. Its unmodified upstream LICENSE is in `licenses/zlib.txt`.
 
-libpng 1.6.59 is copyright the PNG Reference Library authors, Cosmin Truta, Glenn Randers-Pehrson, Andreas Dilger and Guy Eric Schalnat, Group 42, Inc. Its complete upstream license is in `licenses/libpng.txt`. The source URLs, versions and SHA256 values for both libraries are recorded in `SOURCE.json` and the source archive's dependency manifest.
+libpng 1.6.59 is copyright the PNG Reference Library authors, Cosmin Truta, Glenn Randers-Pehrson, Andreas Dilger and Guy Eric Schalnat, Group 42, Inc. Its complete upstream license is in `licenses/libpng.txt`.
+
+libogg 1.3.6 and libvorbis 1.3.7 are copyright the Xiph.org Foundation and decode the optional battle music. Their unmodified upstream COPYING files are in `licenses/libogg.txt` and `licenses/libvorbis.txt`.
+
+The source URLs, versions and SHA256 values for these libraries are recorded in `SOURCE.json` and the source archive's dependency manifest.
 
 Microsoft DirectX is a separately installed prerequisite. This ZIP includes no Microsoft runtime files or game resource packages. Install the runtime through Microsoft's installer and supply game assets separately.

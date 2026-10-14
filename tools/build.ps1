@@ -64,7 +64,7 @@ try {
         if ($storedCompiler -and $storedCompiler.Matches[0].Groups[1].Value.Replace('\', '/') -ne "$compilerBin/g++.exe") {
             # CMake's automatic compiler change discards options and dependency install prefixes.
             $allowedRoot = [IO.Path]::GetFullPath($buildRoot) + [IO.Path]::DirectorySeparatorChar
-            foreach ($relative in @('', 'zlib/src/zlib-external-build', 'libpng/src/libpng-external-build')) {
+            foreach ($relative in @('', 'zlib/src/zlib-external-build', 'libpng/src/libpng-external-build', 'libogg/src/libogg-external-build', 'libvorbis/src/libvorbis-external-build')) {
                 $configurationRoot = [IO.Path]::GetFullPath((Join-Path $buildRoot $relative))
                 $targetCache = Join-Path $configurationRoot 'CMakeCache.txt'
                 if (-not $targetCache.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Compiler cache migration left the selected build directory.' }
@@ -143,6 +143,7 @@ if (-not $DLL) {
             @{Name = 'robots.dat'; Destination = $configRoot},
             @{Name = 'sound.pkg'; Destination = $dataRoot},
             @{Name = 'voices.pkg'; Destination = $dataRoot},
+            @{Name = 'music.pkg'; Destination = $dataRoot},
             @{Name = 'sounds.txt'; Destination = $configRoot}
         )) {
             $source = Join-Path $repoRoot $resource.Name

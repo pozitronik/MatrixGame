@@ -53,7 +53,7 @@ std::wstring hex(uint32_t color) {
 std::wstring text_element(const std::wstring &text, const wchar_t *font, uint32_t color, int x, int y, int width,
                           int align) {
     return L"|_FONT:" + std::wstring(font) + L"|_COLOR:" + hex(color) + L"|_WIDTH:" + std::to_wstring(width) +
-           L"|_HEIGHT:" + std::to_wstring(Layout::row_height - 1) + L"|_ALIGN:" + std::to_wstring(align) +
+           L"|_HEIGHT:" + std::to_wstring(text_height) + L"|_ALIGN:" + std::to_wstring(align) +
            L":0|_POS:" + std::to_wstring(x) + L":" + std::to_wstring(y) + L"|_TEXT:" + text;
 }
 
@@ -137,6 +137,7 @@ bool Window::change(int row, int direction) {
             if (display.mode != Mode::Windowed) display.mode = display.fullscreen;
             break;
         case Row::SoundVolume: values.sound_volume = step(values.sound_volume, direction, 10, 0, 100); break;
+        case Row::MusicVolume: values.music_volume = step(values.music_volume, direction, 10, 0, 100); break;
         case Row::StencilShadows: values.stencil_shadows = !values.stencil_shadows; break;
         case Row::ProjectedShadows: values.projected_shadows = !values.projected_shadows; break;
         case Row::Skybox: values.skybox = cycle(skyboxes, values.skybox, direction); break;
@@ -182,6 +183,7 @@ std::wstring Window::label(int row) const {
         case Row::SoundVolume:
             result = text(L"Volume", L"\u0413\u0440\u043e\u043c\u043a\u043e\u0441\u0442\u044c");
             break;
+        case Row::MusicVolume: result = text(L"Music", L"\u041c\u0443\u0437\u044b\u043a\u0430"); break;
         case Row::GraphicsGroup: result = text(L"Graphics", L"\u0413\u0440\u0430\u0444\u0438\u043a\u0430"); break;
         case Row::StencilShadows:
             result = text(L"Stencil shadows",
@@ -235,6 +237,7 @@ std::wstring Window::value(int row) const {
         case Row::WindowMode: return mode(values.display.mode);
         case Row::FullscreenMode: return mode(values.display.fullscreen);
         case Row::SoundVolume: return std::to_wstring(values.sound_volume) + L"%";
+        case Row::MusicVolume: return std::to_wstring(values.music_volume) + L"%";
         case Row::StencilShadows: return on_off(values.stencil_shadows);
         case Row::ProjectedShadows: return on_off(values.projected_shadows);
         case Row::Skybox:

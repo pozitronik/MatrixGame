@@ -37,6 +37,7 @@ Values custom() {
     values.delayed_damage = StandaloneSettings::DamageAttribution::Original;
     values.map = L"Matrix\\Map\\Desert (2).cmap";
     values.group_counts = StandaloneSettings::GroupCountMode::Original;
+    values.music_volume = 60;
     return values;
 }
 
@@ -73,6 +74,7 @@ void defaults() {
     MG_CHECK(selection.invalid.empty());
     MG_CHECK(selection.values == Values{});
     MG_CHECK(selection.values.sound_volume == 100 && selection.values.camera_speed == 100);
+    MG_CHECK(selection.values.music_volume == 100);
     MG_CHECK(selection.values.skybox == Skybox::High && selection.values.robot_shadows);
 }
 
@@ -83,7 +85,7 @@ void explicit_values() {
             L"StencilShadows=off\r\nProjectedShadows=FALSE\r\nSkybox=low\r\nRobotShadows=0\r\n"
             L"DelayedDamage=ORIGINAL\r\n"
             L"Map= Matrix\\Map\\Desert (2).cmap // chosen in the Map window\r\n"
-            L"GroupCounts=ORIGINAL\r\n");
+            L"GroupCounts=ORIGINAL\r\nMusicVolume=60 // under the effects\r\n");
     MG_CHECK(selection.invalid.empty());
     MG_CHECK(selection.values == custom());
     MG_CHECK(parse(L"StencilShadows=TRUE\nProjectedShadows=1\nRobotShadows=On\nSkybox=OFF\n").values.skybox ==
@@ -98,7 +100,7 @@ void invalid_values() {
     const auto selection = parse(
             L"SoundVolume=101\nCameraSpeed=24\nStencilShadows=maybe\nProjectedShadows=\nSkybox=Ultra\n"
             L"RobotShadows=Off\nRobotShadows=On\nResolutionWidth=12\nDelayedDamage=Broken\nMap=..\\escape.cmap\n"
-            L"GroupCounts=Fixed\n");
+            L"GroupCounts=Fixed\nMusicVolume=-5\n");
     MG_CHECK(selection.values.sound_volume == 100 && selection.values.camera_speed == 100);
     MG_CHECK(selection.values.stencil_shadows && selection.values.projected_shadows);
     MG_CHECK(selection.values.skybox == Skybox::High && selection.values.robot_shadows);
@@ -106,7 +108,8 @@ void invalid_values() {
     MG_CHECK(selection.values.group_counts == StandaloneSettings::GroupCountMode::Corrected);
     MG_CHECK(selection.invalid == std::vector<std::string>({"SoundVolume", "CameraSpeed", "StencilShadows",
                                                             "ProjectedShadows", "Skybox", "RobotShadows",
-                                                            "DelayedDamage", "Map", "GroupCounts"}));
+                                                            "DelayedDamage", "Map", "GroupCounts", "MusicVolume"}));
+    MG_CHECK(selection.values.music_volume == 100);
     MG_CHECK(selection.values.map.empty());
     for (const wchar_t *text : {L"Map=x.txt\n", L"Map=C:\\x.cmap\n", L"Map=a.cmap\nMap=b.cmap\n", L"Map=a|b.cmap\n"}) {
         const auto rejected = parse(text);
@@ -116,10 +119,13 @@ void invalid_values() {
     const auto repeated = parse(L"GroupCounts=Original\nGroupCounts=Original\n");
     MG_CHECK(repeated.values.group_counts == StandaloneSettings::GroupCountMode::Corrected);
     MG_CHECK(repeated.invalid == std::vector<std::string>({"GroupCounts"}));
+    const auto music = parse(L"MusicVolume=20\nMusicVolume=30\n");
+    MG_CHECK(music.values.music_volume == 100 && music.invalid == std::vector<std::string>({"MusicVolume"}));
     // Display keys keep their established all-or-default contract and diagnostics.
     MG_CHECK(selection.values.display == Display::Settings{});
-    const auto valid = parse(L"SoundVolume=0\nCameraSpeed=300\n");
+    const auto valid = parse(L"SoundVolume=0\nCameraSpeed=300\nMusicVolume=0\n");
     MG_CHECK(valid.invalid.empty() && valid.values.sound_volume == 0 && valid.values.camera_speed == 300);
+    MG_CHECK(valid.values.music_volume == 0);
 }
 
 void preserves_text() {
@@ -158,7 +164,8 @@ void preserves_text() {
             L"CameraSpeed=150\r\n"
             L"DelayedDamage=Original\r\n"
             L"Map=Matrix\\Map\\Desert (2).cmap\r\n"
-            L"GroupCounts=Original\r\n";
+            L"GroupCounts=Original\r\n"
+            L"MusicVolume=60\r\n";
     MG_CHECK(updated == expected);
     MG_CHECK(StandaloneSettings::update_text(updated, custom()) == expected);
     const auto unix = StandaloneSettings::update_text(L"UnknownKey=1\n", Values{});
@@ -192,7 +199,7 @@ void round_trip_inline_blocks() {
              L"SoundVolume=40\nExtension {} // note\nRandomGenerator=", L""},
             // A top-level closing brace ends the reader's input, so new keys must precede it.
             {L"UnknownKey=1\n}\nSoundVolume=20\n", 100, L"UnknownKey=1\nRandomGenerator=", L"}\nSoundVolume=20\n"},
-            {L"Extension {} }\n", 100, L"Extension {} \nRandomGenerator=", L"GroupCounts=Original\n}\n"},
+            {L"Extension {} }\n", 100, L"Extension {} \nRandomGenerator=", L"MusicVolume=60\n}\n"},
     };
     for (const auto &item : cases) {
         MG_CHECK(parse(item.original).values.sound_volume == item.sound_volume);

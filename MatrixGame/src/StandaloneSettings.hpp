@@ -24,6 +24,7 @@ struct Values {
     Display::Settings display;
     random::Mode random = random::Mode::ParkMiller;
     int sound_volume = 100;  // Percent of the clip volume, 0-100.
+    int music_volume = 100;  // Percent of the battle music volume, 0-100.
     int camera_speed = 100;  // Percent of the configured camera scroll speed.
     bool stencil_shadows = true;
     bool projected_shadows = true;

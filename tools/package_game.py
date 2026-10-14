@@ -149,6 +149,8 @@ def package_files(root, build, revision, binary, imports):
         files["licenses/" + name] = committed(root, revision, "docs/licenses/" + name)
     files["licenses/libpng.txt"] = (build / "libpng/src/libpng-external/LICENSE").read_bytes()
     files["licenses/zlib.txt"] = (build / "zlib/src/zlib-external/LICENSE").read_bytes()
+    files["licenses/libogg.txt"] = (build / "libogg/src/libogg-external/COPYING").read_bytes()
+    files["licenses/libvorbis.txt"] = (build / "libvorbis/src/libvorbis-external/COPYING").read_bytes()
     files["SOURCE.json"] = json_bytes({"revision": revision, "project": "MatrixGame",
         "repository": "https://github.com/pozitronik/MatrixGame", "compiler": "GCC 13.2.0",
         "architecture": "x86", "configuration": "Release", "cheats": False,
