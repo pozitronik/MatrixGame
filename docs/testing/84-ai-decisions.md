@@ -65,7 +65,7 @@ Initial logic-list order matters. The production map loader registers buildings,
 
 ## Cleanup and bomb-escape decision boundaries
 
-Three additional registered cases exercise independent production logic without assembled weapon or building models:
+Four additional registered cases exercise independent production logic without assembled weapon or building models:
 
 | Case | Contract |
 | --- | --- |
