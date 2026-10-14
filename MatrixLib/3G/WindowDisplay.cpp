@@ -94,6 +94,11 @@ bool supports_exclusive(int width, int height) {
     }
     return false;
 }
+// The game reads the rendering size from these globals; they change only with the back buffer.
+void publish_size() {
+    g_ScreenX = options.width;
+    g_ScreenY = options.height;
+}
 }  // namespace
 
 bool supports_exclusive() { return supports_exclusive(options.width, options.height); }
@@ -148,9 +153,7 @@ HRESULT reset_device(const D3DPRESENT_PARAMETERS &parameters) {
     const HRESULT result = reset_copy(parameters, [](D3DPRESENT_PARAMETERS *attempt) { return g_D3DD->Reset(attempt); });
     // Also runs after a deferred reset succeeds through ordinary device recovery.
     if (result == D3D_OK && active) {
-        // The game reads the rendering size from these globals; they change only with the back buffer.
-        g_ScreenX = options.width;
-        g_ScreenY = options.height;
+        publish_size();
         apply_window(mode);
         confine_cursor();
     }
@@ -249,10 +252,7 @@ HRESULT reset_to(Mode target, Size size, bool resources_ready, void (*release)()
             steps.window(previous_mode);
             return steps.restore_reset();
         }, restore);
-    if (result == D3D_OK) {
-        g_ScreenX = options.width;
-        g_ScreenY = options.height;
-    }
+    if (result == D3D_OK) publish_size();
     return result;
 }
 

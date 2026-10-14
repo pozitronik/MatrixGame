@@ -209,7 +209,6 @@ void change_plans() {
     MG_CHECK(change.target == Mode::Borderless && change.size == (Size{640, 480}) && change.reset);
 }
 
-// Mirrors apply_pending: the size changes with the reset and returns to the previous size on rollback.
 int resource_releases = 0, resource_restores = 0;
 
 // The controller's size bookkeeping for a reset change: success publishes the new rendering size, a rejected
