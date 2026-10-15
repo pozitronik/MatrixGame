@@ -123,4 +123,3 @@ For every native case record: source revision and binary SHA-256; toolchain and 
 Required native profiles: Debug / Packed, Debug / Text, Release / Packed and Release / Text. Record execution status in the contribution evidence.
 
 Earlier playtests from other changes require an applicability check against the selected revision/profile. Record reused, pending, passed and failed cases separately in the [validation ledger](native-validation.md). Native execution may be deferred independently of completed implementation; before accepting the complete baseline, attach the required reviewed records and explicitly dispose of every missing or failing case above.
-

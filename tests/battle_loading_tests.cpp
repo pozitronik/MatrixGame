@@ -4,6 +4,7 @@
 #include <d3d9.h>
 
 #include <filesystem>
+#include <iostream>
 
 namespace {
 struct Handle {
@@ -120,6 +121,7 @@ void message_pump() {
 
 struct Child {
     PROCESS_INFORMATION process{};
+    Handle output;
     Child(std::wstring arguments, wchar_t *desktop = nullptr) {
         wchar_t executable[32768]{};
         MG_CHECK(GetModuleFileNameW(nullptr, executable, 32768) != 0);
@@ -127,7 +129,17 @@ struct Child {
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         startup.lpDesktop = desktop;
-        MG_CHECK(CreateProcessW(executable, command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
+        SECURITY_ATTRIBUTES security{sizeof(SECURITY_ATTRIBUTES), nullptr, TRUE};
+        Handle writer;
+        MG_CHECK(CreatePipe(&output.value, &writer.value, &security, 0));
+        MG_CHECK(SetHandleInformation(output.value, HANDLE_FLAG_INHERIT, 0));
+        Handle input{CreateFileW(L"NUL", GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+            &security, OPEN_EXISTING, 0, nullptr)};
+        MG_CHECK(input.value != INVALID_HANDLE_VALUE);
+        startup.dwFlags |= STARTF_USESTDHANDLES;
+        startup.hStdInput = input.value;
+        startup.hStdOutput = startup.hStdError = writer.value;
+        MG_CHECK(CreateProcessW(executable, command.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW,
                                 nullptr, nullptr, &startup, &process));
     }
     Child(const Child &) = delete;
@@ -145,6 +157,14 @@ struct Child {
         MG_CHECK(WaitForSingleObject(process.hProcess, timeout) == WAIT_OBJECT_0);
         DWORD code = 1;
         MG_CHECK(GetExitCodeProcess(process.hProcess, &code));
+        if (code != 0) {
+            std::cerr << "Child exited with code " << code << '\n';
+            char buffer[1024];
+            DWORD available = 0, received = 0;
+            while (PeekNamedPipe(output.value, nullptr, 0, nullptr, &available, nullptr) && available &&
+                   ReadFile(output.value, buffer, sizeof(buffer), &received, nullptr) && received)
+                std::cerr.write(buffer, received);
+        }
         MG_CHECK(code == 0);
     }
 };
