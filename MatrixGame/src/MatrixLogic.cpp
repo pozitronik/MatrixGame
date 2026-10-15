@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include "MatrixGameDll.hpp"
 #include "MatrixMultiSelection.hpp"
+#include "PlaceContainment.hpp"
 #include "SoundBridge.hpp"
 
 #include <random.hpp>
@@ -2383,11 +2384,14 @@ int CMatrixMapLogic::FindPlace(const CPoint &mappos) {
     if (zone < 0)
         return -1;
 
+    // The original game bounded X by the place's Y coordinate.
+    const bool original = PlaceContainment::original();
     for (int i = 0; i < m_RN.m_Zone[zone].m_PlaceCnt; i++) {
         int pl = m_RN.m_Zone[zone].m_Place[i];
         CPoint tp = m_RN.m_Place[pl].m_Pos;
 
-        if (mappos.x >= tp.x && mappos.x < (tp.x + 4) && mappos.y >= tp.y && mappos.y < (tp.y + 4))
+        const int x_limit = (original ? tp.y : tp.x) + 4;
+        if (mappos.x >= tp.x && mappos.x < x_limit && mappos.y >= tp.y && mappos.y < (tp.y + 4))
             return pl;
     }
     return -1;

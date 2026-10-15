@@ -48,15 +48,18 @@ On a player's turret, those hostile pulses also flash the minimap and play the u
 
 In both modes a direct hit by another weapon forgets the side, as in the original game. Switching modes during a battle affects units that are already burning or shorted from their next pulse. Switching to `Original` forgets the side at that pulse, and switching back does not restore a side that was already forgotten. The DLL build always uses the original behavior, because the host game owns its settings.
 
-Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `MusicVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage`, `Map`, `BattleBonus` or `GroupCounts` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
+Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `MusicVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage`, `Map`, `BattleBonus`, `GroupCounts` or `PlaceContainment` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
 
 ## Options without a window row
 
 | Key in `CFG/standalone.txt` | Values | Default | Takes effect |
 | --- | --- | --- | --- |
 | `GroupCounts` | `Corrected`, `Original` | `Corrected` | At startup |
+| `PlaceContainment` | `Corrected`, `Original` | `Corrected` | At startup |
 
 **AI group counts.** When the computer AI regroups its robots, the original game counted every robot moved out of a split group as an addition to that group, and left a merged, emptied group with its former count until the next regrouping. A team strategy pass in the same tick then counted the empty group as a live one: a team with nobody to spare moved a whole group to an empty team instead of half its robots, and a team that had just become one group did not clear its wait-for-union state as it should. `Corrected` keeps every count equal to the group's members. `Original` restores the original counting exactly. The DLL build always uses `Original`, because its host owns its settings. The key has no window row; edit the file while the game is closed. Applying the Settings window saves the value the game started with.
+
+**AI place containment.** When computer robots, or player robots in automatic mode, flee a bomb carrier, the game skips refuges that another robot is heading for. It finds the place a destination cell belongs to by testing which place's four-cell square contains the cell. The original game bounded the cell's X coordinate by the place's Y coordinate. Places off the map diagonal therefore missed cells of their own square and claimed cells outside it, so a refuge that another robot was already heading for could be chosen again, and a free refuge could be treated as taken. `Corrected` tests the square itself. `Original` restores the original bound exactly. As with `GroupCounts`, the DLL build always uses `Original`, the key is read at startup and it has no window row. Edit the file while the game is closed: applying the Settings window saves the value the game started with.
 
 ## Saving
 
@@ -72,9 +75,10 @@ Automated `game.settings.*` contracts cover:
 - Atomic saving and failed-save behavior.
 - Window selection, stepping, mode coupling, hit areas and both label languages.
 - Startup mapping of graphics options and which options need a restart.
-- Immediate routing of shadows, camera speed, volume, music volume, status-damage attribution and the AI group-count mode, and shadow pass selection for each combination of the two shadow options.
+- Immediate routing of shadows, camera speed, volume, music volume, status-damage attribution and the AI group-count and place containment modes, and shadow pass selection for each combination of the two shadow options.
 - The remembered map; see [Map selection](MAPS.md#verification) for the Map window's own contracts and playtest.
 - The group-count mode a process starts with: `Corrected` in the EXE, `Original` in the DLL (`game.settings.group_counts_build_default`, registered in both build roles). The `game.ai.*` group-count cases check both modes; see [AI decisions](testing/84-ai-decisions.md).
+- The place containment mode a process starts with, in the same way (`game.settings.place_containment_build_default`). `game.ai.place_axis` and `game.ai.bomb_escape_reservation` check both modes.
 
 `game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions. `game.audio.music_volume` and `game.audio.music_sessions` cover the music level, its independence from the effects level and its retention across sessions.
 

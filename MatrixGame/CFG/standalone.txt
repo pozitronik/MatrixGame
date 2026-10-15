@@ -36,3 +36,7 @@ BattleBonus=None
 // the original game, whose stale counts affect team redistribution. Read at startup; there is no
 // Settings window row.
 GroupCounts=Corrected
+// AI bomb escape place test. Corrected matches each movement cell to the place square containing
+// it; Original restores the original game's bound. Read at startup; there is no Settings window
+// row.
+PlaceContainment=Corrected
