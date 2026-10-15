@@ -5,23 +5,12 @@
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixSide.hpp"
-#include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include <memory>
 
 namespace tests::navigation {
 namespace {
 struct StatusObservation : CMatrixMapStatic {
     static bool shorted(CMatrixMapStatic &target) { return (target.* &StatusObservation::IsShorted)(); }
-};
-struct CraterAccess : CMatrixEffect { using CMatrixEffect::m_SpotProperties; };
-struct CraterCatalog {
-    SSpotProperties previous = CraterAccess::m_SpotProperties[SPOT_VORONKA];
-    void install() {
-        auto &spot = CraterAccess::m_SpotProperties[SPOT_VORONKA];
-        spot = CraterAccess::m_SpotProperties[SPOT_PLASMA_HIT];
-        spot.func = SpotTaktVoronka;
-    }
-    ~CraterCatalog() { CraterAccess::m_SpotProperties[SPOT_VORONKA] = previous; }
 };
 battle::Profile profile(random::Mode mode) {
     battle::Profile result{mode, 81, 10, 2500, false, true};
@@ -47,14 +36,18 @@ void shorted_movement_recovery() {
         g_Config.m_RobotDamages[Weap2Index(WEAPON_SHORTED)] = {0, 0, 0};
         MG_CHECK(!robot->Damage(WEAPON_LIGHTENING, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
         MG_CHECK(StatusObservation::shorted(*robot));
-        for (int i = 0; i < 40; ++i) {
+        for (int i = 0; i < 49; ++i) {
             session.advance();
             MG_CHECK(StatusObservation::shorted(*robot));
             MG_CHECK(robot->m_PosX == x && robot->m_PosY == y);
             MG_CHECK(session.robot(1).order == mpo_MoveTo);
+            MG_CHECK(robot->FindOrderLikeThat(ROT_MOVE_TO));
             MG_CHECK(session.robot(1).destination_x == order.destination_x);
             MG_CHECK(session.robot(1).destination_y == order.destination_y);
         }
+        session.advance();
+        MG_CHECK(!StatusObservation::shorted(*robot));
+        MG_CHECK(robot->m_PosX != x || robot->m_PosY != y);
         for (int i = 0; i < 1800; ++i) session.advance();
         MG_CHECK(!StatusObservation::shorted(*robot) && robot->IsLiveRobot());
         MG_CHECK(session.robot(1).in_place && session.robot(2).in_place);
@@ -67,10 +60,8 @@ void shorted_movement_recovery() {
 void drowning_retirement() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         BattleCombatAssets assets;
-        CraterCatalog crater;
         battle::Session session(profile(mode));
         assets.install();
-        crater.install();
         std::cout << session.metadata("navigation-drowning-retirement-v1") << '\n';
         auto &side = *g_MatrixMap->GetPlayerSide();
         auto *robot = side.GetCurGroup()->GetObjectByN(0)->AsRobot();
