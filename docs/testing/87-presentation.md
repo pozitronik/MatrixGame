@@ -113,3 +113,11 @@ For every native case record: source revision and binary SHA-256; toolchain and 
 Required native profiles: Debug / Packed, Debug / Text, Release / Packed and Release / Text. Record execution status in the contribution evidence.
 
 Earlier playtests from other changes do not automatically establish these cases at the final integration revision. Before accepting the presentation baseline, attach the current records and explicitly dispose of every missing or failing case above.
+
+## Interface focus and manual firing
+
+`game.presentation.manual_fire_interface_focus` delivers pointer movement and button transitions through `CFormMatrixGame`, then advances complete production map ticks. A generated 4x4 texture provides opaque and transparent texels for a visible, always-on-top interface button. The normal interface pass performs geometry and alpha hit testing and selects the focused interface/element; the fixture never assigns `m_InFocus` or the focused element directly. The always-on-top setting keeps this independent synthetic panel visible through `CInterface::Init`, as required for repeated-frame input delivery.
+
+A press over an opaque texel remains held without creating a fire order or damaging the target. Moving onto a transparent texel in the same element bounds releases interface focus and allows firing at the supplied world target. Moving back over an opaque texel while holding fire retains the existing fire order and continues damage. This is the observed distinction: interface focus blocks starting fire, but does not cancel firing already in progress. Releasing the button over the interface stops firing; leaving the interface without pressing again does not restart it. Direct-control identity persists until the explicit Enter exit.
+
+The case uses a real laser-equipped robot and damage receiver, both RNG modes with seed 87, separate 10/16 ms schedules and unavailable audio. Assertions cover focus/element identity, held input, fire-order transitions, actual health changes and stable health after release. World picking remains a supplied trace; the test does not render pixels, deliver OS focus events or prove native pointer alignment. This is shared PRES-01/CMD-05 hover/fire integration evidence. Settings-window input consumption and the remaining presentation baseline retain their separate requirements.

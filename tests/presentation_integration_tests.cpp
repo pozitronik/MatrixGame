@@ -7,6 +7,7 @@
 #include "Interface/CIFaceButton.h"
 #include "Interface/CInterface.h"
 #include "battle_scenario.hpp"
+#include "battle_combat_geometry.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFormGame.hpp"
 #include "input.hpp"
@@ -393,6 +394,93 @@ void textured_button_hit_testing() {
     MG_CHECK(!panel.OnMouseLBDown() && events.size() == event_count);
 }
 
+void manual_fire_interface_focus() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        tests::BattleCombatAssets assets;
+        tests::battle::Session session({mode, 87, step, 1000, false});
+        assets.install();
+        CFormMatrixGame form;
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        auto *robot = side.GetCurGroup()->GetObjectByN(0)->AsRobot();
+        MG_CHECK(session.remove(2) && session.remove(4));
+        CMatrixRobotAI *target = nullptr;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+            if (object->IsLiveRobot() && object->GetSide() == 2) target = object->AsRobot();
+        MG_CHECK(target && session.matches(3, target));
+        target->SetMaxSpeed(0); target->InitMaxHitpoint(1000);
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 600;
+        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {2, 0, 10};
+        g_Config.m_Overheat[WEAPON_LASER_HEAT] = 10;
+        g_Config.m_Overheat[WEAPON_LASER_COOL] = 10;
+        g_Config.m_Overheat[WCP_LASER] = 100;
+        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+        tests::arm_battle_robot(*robot, RUK_WEAPON_LASER);
+        form.Keyboard(true, VK_RETURN); form.Keyboard(false, VK_RETURN);
+        MG_CHECK(side.GetArcadedObject() == robot);
+        MG_CHECK(g_IFaceList->m_First == nullptr);
+        auto *panel = HNew(g_MatrixHeap) CInterface;
+        panel->m_strName = L"synthetic-fire-focus";
+        panel->m_AlwaysOnTop = true;
+        panel->m_VisibleAlpha = IS_VISIBLEA;
+        panel->m_xPos = 100; panel->m_yPos = 200;
+        g_IFaceList->m_First = g_IFaceList->m_Last = panel;
+        auto *texture = static_cast<CTextureManaged *>(g_Cache->Get(CacheClass::TextureManaged, L"synthetic-fire-focus-atlas"));
+        D3DLOCKED_RECT lock{};
+        MG_CHECK(texture->CreateLock(D3DFMT_A8R8G8B8, 4, 4, 1, lock) == D3D_OK);
+        std::array<DWORD, 16> pixels{};
+        pixels[6] = pixels[9] = pixels[10] = 0xffffffff;
+        for (int y = 0; y < 4; ++y)
+            std::memcpy(static_cast<BYTE *>(lock.pBits) + y * lock.Pitch, pixels.data() + y * 4, 4 * sizeof(DWORD));
+        texture->UnlockRect(); texture->Preload();
+        auto *button = HNew(g_MatrixHeap) CIFaceButton;
+        button->m_strName = L"synthetic-fire-focus-button";
+        button->m_xSize = button->m_ySize = 2;
+        for (auto state : {IFACE_NORMAL, IFACE_FOCUSED, IFACE_PRESSED, IFACE_DISABLED})
+            MG_CHECK(button->SetStateImage(state, texture, 1, 1, 4, 4));
+        button->ElementGeomInit(button);
+        MG_CHECK(panel->AddElement(button));
+        button->SetVisibility(true);
+        auto point = [&](int x, int y) {
+            form.MouseMove(x, y);
+            // World picking remains supplied; interface geometry/alpha and focus are production code.
+            g_MatrixMap->m_TraceStopObj = target;
+            g_MatrixMap->m_TraceStopPos = target->GetGeoCenter();
+            session.advance();
+        };
+        auto ticks = [&](int count) { for (int i = 0; i < count; ++i) session.advance(); };
+        point(101, 200); // Opaque UI texel.
+        MG_CHECK(g_IFaceList->m_InFocus == INTERFACE && g_IFaceList->m_FocusedElement == button);
+        form.MouseKey(B_DOWN, VK_LBUTTON, 101, 200);
+        const float initial_health = target->GetHitPoint();
+        ticks(50);
+        MG_CHECK(Input::isVKeyPressed(VK_LBUTTON));
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() == initial_health);
+        point(100, 200); // Transparent texel in the same element bounds.
+        MG_CHECK(g_IFaceList->m_InFocus == UNKNOWN && !g_IFaceList->m_FocusedElement);
+        ticks(100);
+        MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() < initial_health);
+        const float before_hover = target->GetHitPoint();
+        point(101, 200);
+        MG_CHECK(g_IFaceList->m_InFocus == INTERFACE && g_IFaceList->m_FocusedElement == button);
+        ticks(50);
+        // Hover prevents starting fire, but does not cancel an existing fire order.
+        MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() < before_hover);
+        form.MouseKey(B_UP, VK_LBUTTON, 101, 200);
+        ticks(20);
+        MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON) && !robot->FindOrderLikeThat(ROT_FIRE));
+        const float after_release = target->GetHitPoint();
+        point(640, 360);
+        MG_CHECK(g_IFaceList->m_InFocus == UNKNOWN);
+        ticks(50);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() == after_release);
+        MG_CHECK(side.GetArcadedObject() == robot);
+        form.Keyboard(true, VK_RETURN); form.Keyboard(false, VK_RETURN);
+        MG_CHECK(!side.IsArcadeMode());
+        std::cout << session.metadata("manual-fire-interface-delivery-v1") << " damage=" << initial_health - after_release << '\n';
+    }
+}
+
 void update_camera() {
     g_MatrixMap->m_Camera.Takt(0);
     g_MatrixMap->m_Camera.BeforeDraw();
@@ -502,6 +590,7 @@ void camera_input_interruption() {
     }
 }
 constexpr tests::Case cases[]{
+    {"game.presentation.manual_fire_interface_focus", manual_fire_interface_focus},
     {"game.presentation.positional_attenuation_boundaries", positional_attenuation_boundaries},
     {"game.presentation.positional_loop_reentry", positional_loop_reentry},
     {"game.presentation.camera_wheel_limits", camera_wheel_limits},
