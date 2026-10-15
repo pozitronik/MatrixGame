@@ -607,7 +607,7 @@ foreach(contract victory defeat simultaneous_loss automatic_results pause_resume
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay startup)
 endforeach()
 
-add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp navigation_damage_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_navigation_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_tests matrixgame_scenario_identity)
@@ -620,6 +620,9 @@ foreach(contract delivery_flights delivery_carrier_damage local_routes passage_w
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
 add_matrix_test(game.navigation.group_speed_finite matrixgame_navigation_tests gameplay ai navigation)
+foreach(contract shorted_movement_recovery drowning_retirement)
+    add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
+endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_boundary_tests navigation_boundary_tests.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
