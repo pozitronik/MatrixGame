@@ -353,13 +353,13 @@ void repair_movement(bool retire) {
         battle::Session session(profile);
         assets.install();
         auto *observer = owner();
+        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
         configure_repair(*observer);
         g_Config.m_RobotDamages[Weap2Index(WEAPON_REPAIR)] = {8, 4, 0};
-        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
         auto *patient = damaged_friendly(160, 140);
-        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {19, 19, 0};
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {17, 17, 0};
         MG_CHECK(!patient->Damage(WEAPON_LASER, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
-        MG_CHECK(patient->GetHitPoint() == 3);
+        MG_CHECK(patient->GetHitPoint() == 3.2f);
         MG_CHECK(observer->GetEnv()->m_Target == nullptr);
         session.ground_command(500, 200);
         const auto intent = session.robot(1);
@@ -367,16 +367,16 @@ void repair_movement(bool retire) {
         MG_CHECK(observer->GetEnv()->m_Target == patient);
         float health = patient->GetHitPoint();
         int repairs = 0;
-        bool acquired = false;
         for (int i = 0; i < 1800; ++i) {
+            const auto *target_before_tick = observer->GetEnv()->m_Target;
             session.advance();
             const auto state = session.robot(1);
             MG_CHECK(state.order == mpo_MoveTo);
             MG_CHECK(state.destination_x == intent.destination_x && state.destination_y == intent.destination_y);
-            acquired |= observer->GetEnv()->m_Target == patient && patient != nullptr;
             if (patient && patient->GetHitPoint() != health) {
                 MG_CHECK(observer->m_PosX > 100);
-                MG_CHECK(patient->GetHitPoint() == float(30 + 4 * (repairs + 1)) / 10.0f);
+                MG_CHECK(target_before_tick == patient);
+                MG_CHECK(patient->GetHitPoint() == float(std::min(50, 32 + 4 * (repairs + 1))) / 10.0f);
                 health = patient->GetHitPoint();
                 ++repairs;
                 if (retire && repairs == 2) {
@@ -386,7 +386,7 @@ void repair_movement(bool retire) {
                 }
             }
         }
-        MG_CHECK(acquired && repairs == (retire ? 2 : 5));
+        MG_CHECK(repairs == (retire ? 2 : 5));
         if (patient) MG_CHECK(patient->GetHitPoint() == 5 && !patient->NeedRepair());
         MG_CHECK(observer->GetEnv()->m_Target == nullptr);
         MG_CHECK(!observer->FindOrderLikeThat(ROT_FIRE));
