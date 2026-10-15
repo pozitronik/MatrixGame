@@ -93,6 +93,12 @@ void disabled_blocker_run(bool lethal, bool apply_hit = true) {
         battle::Session session(settings);
         assets.install();
         MG_CHECK(session.remove(2));
+        // Keep opposing traffic outside the passage; their AI still ticks.
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+            if (object->IsLiveRobot() && object->GetSide() == 2) {
+                object->AsRobot()->SetMaxSpeed(0);
+                object->AsRobot()->m_GroupSpeed = 0;
+            }
         auto &side = *g_MatrixMap->GetPlayerSide();
         auto *follower = side.GetCurGroup()->GetObjectByN(0)->AsRobot();
         follower->m_PosX = 250; follower->m_PosY = 300;
@@ -101,7 +107,7 @@ void disabled_blocker_run(bool lethal, bool apply_hit = true) {
         blocker->InitMaxHitpoint(100);
         blocker->SetGroupLogic(-1);
         blocker->SetMaxSpeed(0.15f); blocker->m_GroupSpeed = 0.15f;
-        blocker->MoveTo(48, 28);
+        blocker->MoveTo(58, 28);
         std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(blocker->GetCore(DEBUG_CALL_INFO),
             [](SObjectCore *value) { value->Release(); });
         session.ground_command(500, 300);
@@ -109,6 +115,7 @@ void disabled_blocker_run(bool lethal, bool apply_hit = true) {
         while (session.time() < 500) session.advance();
         MG_CHECK(blocker->m_PosX > 310 && follower->m_PosX > 250);
         const float x = blocker->m_PosX, y = blocker->m_PosY;
+        const float follower_at_hit = follower->m_PosX;
         const int hit_time = session.time();
         const auto weapon = lethal ? WEAPON_LASER : WEAPON_LIGHTENING;
         g_Config.m_RobotDamages[Weap2Index(weapon)] = {lethal ? 100 : 0, 0, 0};
@@ -119,7 +126,7 @@ void disabled_blocker_run(bool lethal, bool apply_hit = true) {
             MG_CHECK(destroyed == lethal);
         }
         MG_CHECK(lethal ? !blocker->IsLiveRobot() : StatusObservation::shorted(*blocker) == apply_hit);
-        int disabled_frames = 0, retirement = 0;
+        int disabled_frames = 0, retirement = 0, passed_wreck = 0;
         bool recovered = false;
         while (session.time() < 20000) {
             session.advance();
@@ -128,7 +135,13 @@ void disabled_blocker_run(bool lethal, bool apply_hit = true) {
             MG_CHECK(state.destination_x == intent.destination_x && state.destination_y == intent.destination_y);
             MG_CHECK(std::isfinite(state.x) && std::isfinite(state.y));
             if (state.x >= 280 && state.x <= 360) MG_CHECK(state.y >= 280 && state.y <= 320);
+            MG_CHECK(session.robot(3).x == 500 && session.robot(3).y == 500);
+            MG_CHECK(session.robot(4).x == 540 && session.robot(4).y == 540);
             if (lethal) {
+                if (!passed_wreck && state.x > x) {
+                    passed_wreck = session.time();
+                    MG_CHECK(core->m_Object == blocker && !blocker->IsLiveRobot());
+                }
                 if (core->m_Object) {
                     MG_CHECK(core->m_Object == blocker && !blocker->IsLiveRobot());
                     ++disabled_frames;
@@ -137,44 +150,28 @@ void disabled_blocker_run(bool lethal, bool apply_hit = true) {
                 MG_CHECK(core->m_Object == blocker && blocker->IsLiveRobot());
                 if (StatusObservation::shorted(*blocker)) {
                     MG_CHECK(blocker->m_PosX == x && blocker->m_PosY == y);
-                    MG_CHECK(!recovered);
+                    MG_CHECK(!recovered && follower->m_PosX < x);
                     ++disabled_frames;
                 } else if (!recovered) {
                     if (apply_hit) {
                         MG_CHECK(session.time() - hit_time >= 500 && session.time() - hit_time < 500 + step);
                         MG_CHECK(blocker->m_PosX != x || blocker->m_PosY != y);
+                        MG_CHECK(follower->m_PosX > follower_at_hit && follower->m_PosX < blocker->m_PosX);
+                        MG_CHECK(blocker->FindOrderLikeThat(ROT_MOVE_TO));
                     }
                     recovered = true;
                 }
             }
         }
-        std::cout << session.metadata("disabled-corridor-blocker-v1") << " lethal=" << lethal << " apply_hit=" << apply_hit
+        std::cout << session.metadata("disabled-corridor-blocker-v2") << " lethal=" << lethal << " apply_hit=" << apply_hit
                   << " disabled_frames=" << disabled_frames << " retired=" << retirement
                   << " follower=" << follower->m_PosX << ',' << follower->m_PosY
                   << " in_place=" << session.robot(1).in_place << '\n';
         MG_CHECK((disabled_frames > 0) == apply_hit);
         MG_CHECK(lethal ? retirement > hit_time : recovered);
-        if (lethal) MG_CHECK(session.robot(1).in_place && follower->m_PosX == 500 && follower->m_PosY == 300);
-        else {
-            // A follower can remain in the passage even after the leader clears it.
-            // Observe removal separately from the damage-driven retirement case.
-            MG_CHECK(!session.robot(1).in_place && follower->FindOrderLikeThat(ROT_MOVE_TO));
-            MG_CHECK(follower->m_PosX > 300 && follower->m_PosX < 360);
-            MG_CHECK(blocker->m_PosX > x && blocker->m_PosX < (apply_hit ? 400 : 510));
-            MG_CHECK(blocker->m_PosX > follower->m_PosX);
-            MG_CHECK(blocker->FindOrderLikeThat(ROT_MOVE_TO) == apply_hit);
-            g_MatrixMap->StaticDelete(blocker);
-            MG_CHECK(!core->m_Object);
-            while (session.time() < 24000) {
-                session.advance();
-                MG_CHECK(session.robot(1).order == mpo_MoveTo);
-                MG_CHECK(session.robot(1).destination_x == intent.destination_x && session.robot(1).destination_y == intent.destination_y);
-            }
-            MG_CHECK(!session.robot(1).in_place && follower->FindOrderLikeThat(ROT_MOVE_TO));
-            MG_CHECK(follower->m_PosX >= 280 && follower->m_PosX <= 360);
-            MG_CHECK(follower->m_PosY >= 280 && follower->m_PosY <= 320);
-            std::cout << "after_removal=" << follower->m_PosX << ',' << follower->m_PosY << " arrived=false\n";
-        }
+        if (lethal) MG_CHECK(passed_wreck > hit_time && passed_wreck < retirement);
+        std::cout << "passed_wreck=" << passed_wreck << " leader=" << (core->m_Object ? blocker->m_PosX : -1) << std::endl;
+        MG_CHECK(session.robot(1).in_place && follower->m_PosX == 500 && follower->m_PosY == 300);
         MG_CHECK(side.GetStatValue(STAT_ROBOT_KILL) == 0);
         MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == (lethal ? 1 : 0));
     }
