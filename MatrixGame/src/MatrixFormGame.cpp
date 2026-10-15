@@ -351,6 +351,8 @@ void selcallback(CMatrixMapStatic *ms, uintptr_t param);
 void CFormMatrixGame::Takt(int step) {
     DTRACE();
 
+    // A device error replaces standalone audio, so sound handles from before it are dropped.
+    if (SoundBridge::recover()) CSound::Clear();
     // Keep music queued even while display changes or a lost device skip the rest of the frame.
     SoundBridge::update_music();
 

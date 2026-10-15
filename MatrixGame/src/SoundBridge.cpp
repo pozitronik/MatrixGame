@@ -20,6 +20,10 @@ std::unique_ptr<Audio::Music> music;
 float master = 1.0f;
 float music_setting = 1.0f;
 size_t next_track = 0;  // Each session starts with the track after the last one played.
+// initialize_standalone created the service, so it can be recreated after a device error.
+bool recreatable = false;
+int recoveries = 0;  // Recreations after device errors since initialize_standalone.
+constexpr int recovery_limit = 3;
 constexpr wchar_t music_folder[] = L"music\\BATTLE";
 
 void report(const std::wstring &name, const std::string &message) {
@@ -107,29 +111,22 @@ std::vector<std::wstring> battle_tracks() {
 }
 
 bool available() { return g_RangersInterface != nullptr || standalone != nullptr; }
-void install(std::unique_ptr<Audio::Service> service) {
+namespace {
+void replace(std::unique_ptr<Audio::Service> service) {
     // Music plays through the previous service's device, so it ends with that service.
     if (music) next_track = music->next_track();
     music.reset();
     standalone = std::move(service);
     if (standalone) standalone->master_volume(master);
 }
-void install_music(std::vector<std::wstring> tracks, Audio::Loader loader, Audio::DecoderFactory open) {
-    music.reset();
-    if (!standalone || tracks.empty()) return;
-    music = std::make_unique<Audio::Music>(standalone->device(), std::move(tracks), next_track, std::move(loader),
-                                           std::move(open), report);
-    music->volume(music_setting);
-}
-void shutdown() { install(nullptr); }
 
-void initialize_standalone(bool resources_available) {
-    shutdown();
-    if (!resources_available) return;
+// Creates the standalone device, effects and music; reports a failure and leaves audio disabled.
+void start(uint64_t first_id) {
     try {
         auto mapping = sound_mapping();
-        install(std::make_unique<Audio::Service>(Audio::create_xaudio_device(), std::move(mapping), load_clip,
-                                                 report));
+        replace(std::make_unique<Audio::Service>(Audio::create_xaudio_device(), std::move(mapping), load_clip,
+                                                 report, first_id));
+        recreatable = true;
         lgr.notice("Standalone sound initialized");
 #ifdef MATRIXGAME_MUSIC
         auto tracks = battle_tracks();
@@ -148,6 +145,50 @@ void initialize_standalone(bool resources_available) {
     } catch (const std::exception &error) {
         lgr.error("Standalone sound disabled: {}")(error.what());
     }
+}
+} // namespace
+
+void install(std::unique_ptr<Audio::Service> service) {
+    recreatable = false;
+    replace(std::move(service));
+}
+void install_music(std::vector<std::wstring> tracks, Audio::Loader loader, Audio::DecoderFactory open) {
+    music.reset();
+    if (!standalone || tracks.empty()) return;
+    music = std::make_unique<Audio::Music>(standalone->device(), std::move(tracks), next_track, std::move(loader),
+                                           std::move(open), report);
+    music->volume(music_setting);
+}
+void shutdown() { install(nullptr); }
+
+void initialize_standalone(bool resources_available) {
+    shutdown();
+    recoveries = 0;
+    if (resources_available) start(1);
+}
+
+bool recover() {
+    if (!standalone) return false;
+    const std::string error = standalone->device().critical_error();
+    if (error.empty()) return false;
+    // Handles of the failed service stay unused, so they cannot reach a sound of the new one.
+    const uint64_t first_id = standalone->next_id();
+    const float level = music ? music->level() : 1.0f;
+    const bool owned = recreatable;
+    shutdown();
+    if (!owned) {
+        lgr.error("Standalone sound disabled: {}")(error);
+        return true;
+    }
+    if (recoveries >= recovery_limit) {
+        lgr.error("Standalone sound disabled after {} device errors: {}")(recoveries + 1, error);
+        return true;
+    }
+    ++recoveries;
+    lgr.error("Audio device stopped: {}; recreating standalone sound")(error);
+    start(first_id);
+    if (music) music->level(level);
+    return true;
 }
 
 uint32_t create(wchar_t *name, int group, int loop) {

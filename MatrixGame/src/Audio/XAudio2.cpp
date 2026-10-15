@@ -5,6 +5,7 @@
 #include <xaudio2.h>
 
 #include <array>
+#include <atomic>
 #include <bit>
 #include <cstdio>
 #include <deque>
@@ -13,12 +14,14 @@
 
 namespace Audio {
 namespace {
+std::string hex(HRESULT result) {
+    char code[16]{};
+    std::snprintf(code, sizeof(code), "0x%08lx", static_cast<unsigned long>(result));
+    return code;
+}
+
 void check(HRESULT result, const char *operation) {
-    if (FAILED(result)) {
-        char code[16]{};
-        std::snprintf(code, sizeof(code), "0x%08lx", static_cast<unsigned long>(result));
-        throw std::runtime_error(std::string(operation) + " failed: " + code);
-    }
+    if (FAILED(result)) throw std::runtime_error(std::string(operation) + " failed: " + hex(result));
 }
 
 struct ComScope {
@@ -142,9 +145,22 @@ public:
     void volume(float value) override { check(voice_->SetVolume(value, XAUDIO2_COMMIT_NOW), "Set music volume"); }
 };
 
+// Records a critical engine error. XAudio2 calls it on its own thread, where the engine must not be used.
+class EngineErrors final : public IXAudio2EngineCallback {
+    std::atomic<HRESULT> error_{S_OK};
+
+public:
+    void STDMETHODCALLTYPE OnProcessingPassStart() override {}
+    void STDMETHODCALLTYPE OnProcessingPassEnd() override {}
+    void STDMETHODCALLTYPE OnCriticalError(HRESULT error) override { error_.store(FAILED(error) ? error : E_FAIL); }
+    HRESULT error() const { return error_.load(); }
+};
+
 class XDevice final : public Device {
     ComScope com_;
     Library library_;
+    // Declared before the engine, so it outlives every callback the engine makes.
+    EngineErrors errors_;
     std::unique_ptr<IXAudio2, ReleaseEngine> engine_;
     std::unique_ptr<IXAudio2MasteringVoice, DestroyVoice> master_;
 
@@ -157,6 +173,7 @@ public:
         IXAudio2 *engine{};
         check(create(&engine, 0, XAUDIO2_DEFAULT_PROCESSOR), "XAudio2Create");
         engine_.reset(engine);
+        check(engine_->RegisterForCallbacks(&errors_), "Register audio engine callback");
         IXAudio2MasteringVoice *master{};
         check(engine_->CreateMasteringVoice(&master, 2, XAUDIO2_DEFAULT_SAMPLERATE, 0,
                                             nullptr, nullptr, AudioCategory_GameEffects), "CreateMasteringVoice");
@@ -167,6 +184,10 @@ public:
     }
     std::unique_ptr<Stream> stream(uint16_t channels, uint32_t sample_rate) override {
         return std::make_unique<XStream>(engine_.get(), master_.get(), channels, sample_rate);
+    }
+    std::string critical_error() const override {
+        const HRESULT error = errors_.error();
+        return SUCCEEDED(error) ? std::string{} : "XAudio2 critical error " + hex(error);
     }
 };
 } // namespace

@@ -75,8 +75,9 @@ Clip read_wave(std::span<const uint8_t> bytes) {
     return clip;
 }
 
-Service::Service(std::unique_ptr<Device> device, Mapping mapping, Loader loader, Reporter report)
-    : device_(std::move(device)), mapping_(std::move(mapping)), loader_(std::move(loader)), report_(std::move(report)) {
+Service::Service(std::unique_ptr<Device> device, Mapping mapping, Loader loader, Reporter report, uint64_t first_id)
+    : device_(std::move(device)), mapping_(std::move(mapping)), loader_(std::move(loader)), report_(std::move(report)),
+      next_id_(std::max<uint64_t>(first_id, 1)) {
     if (!device_ || !loader_) throw std::invalid_argument("Audio service requires a device and loader");
 }
 

@@ -2,9 +2,11 @@
 #include "battle_scenario.hpp"
 #include "battle_geometry.hpp"
 #include "battle_combat_geometry.hpp"
+#include "battle_mesh.hpp"
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixSide.hpp"
+#include "MatrixObjectCannon.hpp"
 #include "Logic/MatrixEnvironment.h"
 #include "zero_x_mode.hpp"
 
@@ -21,8 +23,9 @@ void configure() {
     g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
     g_Config.m_WeaponCooldown[Weap2Index(WEAPON_PLASMA)] = 100;
 }
-void evidence(battle::Session &session, const char *trigger, CMatrixRobotAI *robot) {
-    std::cout << session.metadata(robot->HaveRepair() == 2 ? "synthetic-repair-boxes-v1" : "synthetic-armed-boxes-v2") << '\n';
+void evidence(battle::Session &session, const char *trigger, CMatrixRobotAI *robot, const char *fixture = nullptr) {
+    if (!fixture) fixture = robot->HaveRepair() == 2 ? "synthetic-repair-boxes-v1" : "synthetic-armed-boxes-v2";
+    std::cout << session.metadata(fixture) << '\n';
     std::cout << "{\"decision\":\"armed-tactical-boundary\",\"trigger\":\"" << trigger
               << "\",\"enemy_count\":" << robot->GetEnv()->GetEnemyCnt()
               << ",\"move_order\":" << (robot->FindOrderLikeThat(ROT_MOVE_TO) ? "true" : "false")
@@ -190,6 +193,73 @@ void armed_friendly_line() {
     }
 }
 
+void ineffective_fire_run(bool blocked, bool moving = false, int place_not_found = 0) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (bool multiple : {false, true})
+    for (int target_age : {2000, 2001, 4000, 4001})
+    for (int hit_age : {4000, 4001, 6000, 6001, 10000, 10001}) {
+        if (place_not_found != 0 && (target_age != 4001 || hit_age != 6001)) continue;
+        BattleCombatAssets assets;
+        battle::Profile profile{mode, 84};
+        profile.initial_time_ms = 12000;
+        battle::Session session(profile);
+        assets.install(); configure();
+        MG_CHECK(session.remove(2));
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_PLASMA);
+        auto *target = BattleGeometry::create_robot(*g_MatrixMap, 2, 200, 100);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        auto &env = *observer->GetEnv();
+        // Historical enemy memory and an occupied firing place are initial data.
+        // No projectile or hit result is synthesized during the decision call.
+        observer->SetGroupLogic(0);
+        side.m_PlayerGroup[0].Order(mpo_Stop);
+        g_MatrixMap->m_RN.m_Place[0].m_Pos = CPoint(observer->GetMapPosX(), observer->GetMapPosY());
+        env.m_Place = 0;
+        env.m_PlaceNotFound = place_not_found;
+        env.AddToList(target);
+        if (multiple) env.AddToList(BattleGeometry::create_robot(*g_MatrixMap, 2, 240, 180));
+        env.m_TargetAttack = env.m_TargetLast = target;
+        env.m_TargetChange = 12000 - target_age;
+        env.m_LastHitTarget = blocked ? 12000 : 12000 - hit_age;
+        env.m_LastFire = blocked ? 12000 - hit_age : 12000;
+        if (blocked) BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 150, 150);
+        MG_CHECK(!observer->FindOrderLikeThat(ROT_MOVE_TO));
+        if (moving) observer->MoveTo(observer->GetMapPosX(), observer->GetMapPosY());
+        side.WarPL(0);
+        const bool stale = !moving && target_age > 4000 && hit_age > 4000;
+        const bool abandon_place = !moving && (blocked ? target_age > 4000 && hit_age > 6000 && 12000 - place_not_found > 2000
+            : (!multiple && stale) || (target_age > 2000 && hit_age > 10000));
+        MG_CHECK(env.m_TargetAttack == (multiple && stale ? nullptr : target));
+        MG_CHECK(env.m_Place == (abandon_place ? -1 : 0));
+        MG_CHECK(env.IsBadPlace(0) == abandon_place);
+        const bool duplicate_abandon = !moving && !blocked && !multiple && stale && hit_age > 10000;
+        MG_CHECK(env.m_BadPlaceCnt == (duplicate_abandon ? 2 : abandon_place ? 1 : 0));
+        if (abandon_place) MG_CHECK(env.m_BadPlace[0] == 0);
+        // Observed quirk: the second rule remembers the already-invalid place.
+        if (duplicate_abandon) MG_CHECK(env.m_BadPlace[1] == -1);
+        MG_CHECK(env.m_Target == (blocked ? nullptr : target));
+        MG_CHECK(env.m_LastFire == (blocked ? 12000 - hit_age : 12000));
+        MG_CHECK(env.m_LastHitTarget == (blocked ? 12000 : 12000 - hit_age));
+        MG_CHECK(env.m_TargetChange == (moving ? 12000 : 12000 - target_age));
+        MG_CHECK(observer->FindOrderLikeThat(ROT_FIRE) == !blocked);
+        MG_CHECK(observer->FindOrderLikeThat(ROT_MOVE_TO) == moving);
+        MG_CHECK(side.m_PlayerGroup[0].Order() == mpo_Stop && session.time() == 12000);
+        evidence(session, blocked ? "blocked-fire-decision" : "ineffective-fire-decision", observer);
+        std::cout << "targets=" << (multiple ? 2 : 1) << " target_age=" << target_age
+                  << " place_not_found=" << place_not_found << " pending_move=" << moving << " feedback_age=" << hit_age << " place=" << env.m_Place << '\n';
+    }
+}
+
+void ineffective_fire_decisions() { ineffective_fire_run(false); }
+void blocked_fire_decisions() {
+    ineffective_fire_run(true);
+    ineffective_fire_run(true, false, 10000); // Exactly 2000 ms since failed place search.
+    ineffective_fire_run(true, false, 9999);  // The strict cooldown has expired.
+}
+
+void moving_fire_decisions() { ineffective_fire_run(false, true); ineffective_fire_run(true, true); }
+
 void armed_target_retention() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         BattleCombatAssets assets;
@@ -341,6 +411,110 @@ void repair_explicit_priority() {
         MG_CHECK(side.m_PlayerGroup[group].Order() == mpo_Stop);
         MG_CHECK(side.m_PlayerGroup[group].m_Obj == nullptr);
         evidence(session, "completed-explicit-repair-stops-group", observer);
+    }
+}
+
+namespace {
+CMatrixCannon *awareness_cannon(float distance, float range, int side = 2) {
+    auto &props = g_Config.m_CannonsProps[0];
+    props = {};
+    props.m_Hitpoint = 1000;
+    props.weapon = WEAPON_CANNON2;
+    props.m_Strength = 10;
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_CANNON2)] = range;
+    // Low-profile synthetic assembly: the production sight endpoint (ground + 20)
+    // must intersect the model's sphere, unlike the taller combat fixture.
+    const MeshAttachment basis{20, L"Turret", 0, 0, 10};
+    const MeshAttachment turret{20, L"Shaft", 0, 0, 10};
+    const MeshAttachment muzzle{50, L"muzzle", 0, 15, 0};
+    load_battle_mesh(std::span(&basis, 1), L"Matrix\\Cannon\\Basis.vo", true);
+    load_battle_mesh(std::span(&turret, 1), L"Matrix\\Cannon\\Turret1.vo", true);
+    load_battle_mesh(std::span(&muzzle, 1), L"Matrix\\Cannon\\Shaft1.vo", true);
+    auto *target = create_battle_cannon(side, 100 + distance * 0.6f, 200 - distance * 0.8f);
+    MG_CHECK(target->IsLiveCannon() && target->GetFireRadius() == range);
+    return target;
+}
+}
+void turret_acquisition_range() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (bool longer_turret : {false, true}) for (bool inside : {false, true}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 84});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        const float distance = longer_turret ? (inside ? 190 : 210) : (inside ? 95 : 105);
+        auto *target = awareness_cannon(distance, longer_turret ? 200 : 50);
+        MG_CHECK(g_MatrixMap->IsLogicVisible(observer, target, 0));
+        observer->GatherInfo(0);
+        MG_CHECK(bool(observer->GetEnv()->SearchEnemy(target)) == inside);
+        MG_CHECK(!observer->GetEnv()->IsIgnore(target));
+        observer->GatherInfo(0);
+        MG_CHECK(observer->GetEnv()->GetEnemyCnt() == (inside ? 1 : 0));
+        evidence(session, longer_turret ? "turret-own-range" : "observer-range-for-turret", observer, "synthetic-low-turret-v1");
+    }
+}
+void turret_retirement_range() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (bool longer_turret : {false, true})
+    for (bool outside : {false, true}) for (bool aiming_at_observer : {false, true}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 84});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        const float distance = longer_turret ? (outside ? 299 : 297) : (outside ? 147 : 145);
+        auto *target = awareness_cannon(distance, longer_turret ? 200 : 50);
+        auto &env = *observer->GetEnv();
+        env.AddToList(target); // A declared historical sighting, beyond acquisition range.
+        if (aiming_at_observer) target->m_TargetCore = observer->GetCore(DEBUG_CALL_INFO);
+        for (int scan = 1; scan <= 3; ++scan) {
+            observer->GatherInfo(0);
+            auto *entry = env.SearchEnemy(target);
+            const bool retiring = outside && !aiming_at_observer;
+            if (retiring && scan == 3) MG_CHECK(entry == nullptr);
+            else MG_CHECK(entry && entry->m_DelSlowly == (retiring ? scan : 0));
+        }
+        evidence(session, aiming_at_observer ? "turret-aim-retains-memory" : "turret-range-retirement", observer, "synthetic-low-turret-v1");
+    }
+}
+void turret_acquisition_filters() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int filter = 0; filter < 3; ++filter) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 84});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        auto *target = awareness_cannon(95, 100, filter == 0 ? PLAYER_SIDE : 2);
+        if (filter == 1) target->m_CurrState = CANNON_UNDER_CONSTRUCTION;
+        if (filter == 2) observer->GetEnv()->AddIgnore(target);
+        observer->GatherInfo(0);
+        MG_CHECK(!observer->GetEnv()->SearchEnemy(target));
+        if (filter == 0) target->SetSide(2);
+        if (filter == 1) target->m_CurrState = CANNON_IDLE;
+        if (filter == 2) observer->GetEnv()->DelIgnore(target);
+        observer->GatherInfo(0);
+        MG_CHECK(observer->GetEnv()->SearchEnemy(target));
+        evidence(session, "turret-filter-removed", observer, "synthetic-low-turret-v1");
+    }
+}
+void turret_visual_obstruction() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 84});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        auto *target = awareness_cannon(95, 100);
+        auto *blocker = BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 128.5f, 162);
+        MG_CHECK(!g_MatrixMap->IsLogicVisible(observer, target, 0));
+        observer->GatherInfo(0);
+        MG_CHECK(!observer->GetEnv()->SearchEnemy(target) && !observer->GetEnv()->IsIgnore(target));
+        g_MatrixMap->StaticDelete(blocker);
+        MG_CHECK(g_MatrixMap->IsLogicVisible(observer, target, 0));
+        observer->GatherInfo(0);
+        MG_CHECK(observer->GetEnv()->SearchEnemy(target));
+        evidence(session, "turret-occluder-retired", observer, "synthetic-low-turret-v1");
     }
 }
 

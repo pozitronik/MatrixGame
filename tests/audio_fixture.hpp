@@ -53,6 +53,7 @@ struct DeviceState {
     bool fail_stream{};
     bool drain_streams{};
     bool fail_create{};
+    std::string critical_error;  // Reported by the device once set.
     bool destroyed{};
     bool live_clip_at_shutdown{};
 };
@@ -113,6 +114,7 @@ public:
         state_->streams.push_back(stream);
         return std::make_unique<FakeStream>(stream);
     }
+    std::string critical_error() const override { return state_->critical_error; }
 };
 
 // Synthetic PCM track. Sample i of the track holds base + i, so its origin and order are visible.

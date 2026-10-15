@@ -2359,29 +2359,28 @@ void CPackCollection::DelPacketFile(const wchar *name)
     }
 }
 
-bool CPackCollection::OpenPacketFiles(void)
+bool CPackCollection::OpenPacketFiles(std::vector<std::wstring> *failed)
 {
-    int iter = 0;
-    for (; iter < m_PackFiles.size(); ++iter)
+    // A package that cannot be opened is dropped alone, so the other packages stay available.
+    bool dropped = false;
+    for (auto item = m_PackFiles.begin(); item != m_PackFiles.end();)
     {
-        if (!m_PackFiles[iter]->OpenPacketFile())
+        if ((*item)->OpenPacketFile())
         {
-            break;
+            ++item;
+            continue;
         }
+        dropped = true;
+        if (failed)
+        {
+            failed->push_back((*item)->GetName());
+        }
+        (*item)->ClosePacketFile();
+        HDelete(CPackFile, *item, m_Heap);
+        item = m_PackFiles.erase(item);
     }
 
-    // if not all the files were opened, we'll close the open ones
-    if (iter != m_PackFiles.size())
-    {
-        for (; iter >= 0; --iter)
-        {
-            m_PackFiles[iter]->ClosePacketFile();
-        }
-
-        return false;
-    }
-
-    return true;
+    return !dropped || !m_PackFiles.empty();
 }
 
 bool CPackCollection::ClosePacketFiles(void)
