@@ -400,6 +400,24 @@ void music_form_refill() {
     form.Takt(10);
     MG_CHECK(session.time() == time + 10 && audio->streams[0]->buffers.size() == 8);
 }
+// The game form checks the audio device first in a frame; a directly installed service is released
+// after a device error, even when a lost device skips the rest of the frame.
+void form_audio_device_error() {
+    Session session;
+    auto audio = std::make_shared<audio_fixture::DeviceState>();
+    SoundBridge::install(std::make_unique<Audio::Service>(std::make_unique<audio_fixture::FakeDevice>(audio),
+        Audio::Mapping{{L"Sound.Synthetic", L"synthetic.wav"}},
+        [](const std::wstring &) { return audio_fixture::wave(); },
+        [](const std::wstring &, const std::string &error) { throw std::runtime_error(error); }));
+    CFormMatrixGame form;
+    session.device_lost(true);
+    form.Takt(10);
+    MG_CHECK(SoundBridge::available() && !audio->destroyed);
+    audio->critical_error = "Synthetic critical error";
+    form.Takt(10);
+    MG_CHECK(!SoundBridge::available() && audio->destroyed);
+    session.device_lost(false);
+}
 void full_auto_escape() {
     Session session;
     DialogData dialog;
@@ -1334,6 +1352,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.full_auto_escape", full_auto_escape},
     {"game.outcome.music_fade", music_fade},
     {"game.outcome.music_form_refill", music_form_refill},
+    {"game.outcome.form_audio_device_error", form_audio_device_error},
     {"game.outcome.legacy_loss_cheat", legacy_loss_cheat},
     {"game.outcome.statistics_formatting", statistics_formatting},
     {"game.outcome.scheduled_capture", scheduled_capture},

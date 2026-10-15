@@ -9,10 +9,16 @@ namespace SoundBridge {
 bool available();
 // Creates the standalone device when any audio package is present, with battle music when tracks exist.
 void initialize_standalone(bool resources_available);
+// Installs a service that recover cannot recreate; a device error releases it.
 void install(std::unique_ptr<Audio::Service> service);
 // Plays the tracks through the installed service's device, at the retained MusicVolume level.
 void install_music(std::vector<std::wstring> tracks, Audio::Loader loader, Audio::DecoderFactory open);
 void shutdown();
+// Call once per frame before other audio. After a device error, recreates the standalone service and
+// music with the retained levels, up to a few times per initialize_standalone, and otherwise disables
+// standalone audio. Returns true when the service was replaced or released; its sound handles are then
+// void and the caller must drop them.
+bool recover();
 uint32_t create(wchar_t *name, int group, int loop);
 void destroy(uint32_t id);
 void play(uint32_t id);

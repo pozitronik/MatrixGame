@@ -48,6 +48,9 @@ public:
     virtual ~Device() = default;
     virtual std::unique_ptr<Voice> create(std::shared_ptr<const Clip> clip, bool loop) = 0;
     virtual std::unique_ptr<Stream> stream(uint16_t channels, uint32_t sample_rate) = 0;
+    // Empty while the device works; otherwise a description of the asynchronous error after which it
+    // stopped processing every voice. The device cannot recover and must be replaced.
+    virtual std::string critical_error() const { return {}; }
 };
 
 using Mapping = std::unordered_map<std::wstring, std::wstring>;
@@ -76,7 +79,8 @@ class Service {
     void voice_failure(uint32_t id, const std::string &message);
 
 public:
-    Service(std::unique_ptr<Device> device, Mapping mapping, Loader loader, Reporter report);
+    // first_id is the first handle created; a service replacing another starts at its next_id.
+    Service(std::unique_ptr<Device> device, Mapping mapping, Loader loader, Reporter report, uint64_t first_id = 1);
     Service(const Service &) = delete;
     Service &operator=(const Service &) = delete;
     ~Service() = default;
@@ -93,6 +97,7 @@ public:
     void master_volume(float value);
     float master_volume() const { return master_; }
     void clear();
+    uint64_t next_id() const { return next_id_; }
     // Device shared with the music player, which must be destroyed before this service.
     Device &device() { return *device_; }
 };
