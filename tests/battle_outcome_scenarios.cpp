@@ -54,12 +54,18 @@ struct DialogData {
 };
 // Real hint construction and callback binding, with generated pixels instead of text/art.
 struct CallbackDialogs : DialogData {
-    CBitmap bitmap;
+    CBitmap bitmap, reset_bitmap, surrender_bitmap;
     CallbackDialogs() {
         MG_CHECK(!Display::enabled()); // Native standalone display/map-selection continuation is a separate profile.
         bitmap.CreateRGBA(2, 2);
         std::memset(bitmap.Data(), 255, bitmap.Pitch() * bitmap.SizeY());
         CMatrixHint::SetRuntimeBitmap(L"outcome-callback-pixel", &bitmap);
+        reset_bitmap.CreateRGBA(3, 3);
+        surrender_bitmap.CreateRGBA(4, 4);
+        std::memset(reset_bitmap.Data(), 255, reset_bitmap.Pitch() * reset_bitmap.SizeY());
+        std::memset(surrender_bitmap.Data(), 255, surrender_bitmap.Pitch() * surrender_bitmap.SizeY());
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-reset", &reset_bitmap);
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-surrender", &surrender_bitmap);
         g_MatrixData->BlockGetAdd(PAR_REPLACE);
         g_MatrixData->BlockGetAdd(L"Side")->ParSetAdd(L"2", L"Enemy");
         for (const auto *name : {IF_HINTS_OK, IF_HINTS_CANCEL, IF_HINTS_CANCEL_MENU,
@@ -71,7 +77,9 @@ struct CallbackDialogs : DialogData {
         }
         for (const auto *name : {TEMPLATE_DIALOG_WIN, TEMPLATE_DIALOG_LOOSE, TEMPLATE_DIALOG_STATISTICS,
              TEMPLATE_DIALOG_MENU, TEMPLATE_DIALOG_EXIT, TEMPLATE_DIALOG_RESET, TEMPLATE_DIALOG_SURRENDER}) {
-            std::wstring markup = L"-1|_BITMAP:outcome-callback-pixel:";
+            const auto *image = wcscmp(name, TEMPLATE_DIALOG_RESET) == 0 ? L"outcome-callback-reset" :
+                wcscmp(name, TEMPLATE_DIALOG_SURRENDER) == 0 ? L"outcome-callback-surrender" : L"outcome-callback-pixel";
+            std::wstring markup = std::wstring(L"-1|_BITMAP:") + image + L":";
             const int copies = wcscmp(name, TEMPLATE_DIALOG_MENU) == 0 ? 6 : 2;
             for (int i = 0; i < copies; ++i) markup += L"|_MOD:COPY|_BITMAP:outcome-callback-pixel:";
             g_MatrixData->BlockGet(PAR_TEMPLATES)->ParSetAdd(name, markup);
@@ -80,6 +88,8 @@ struct CallbackDialogs : DialogData {
     ~CallbackDialogs() {
         g_MatrixMap->LeaveDialogMode();
         CMatrixHint::SetRuntimeBitmap(L"outcome-callback-pixel", nullptr);
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-reset", nullptr);
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-surrender", nullptr);
     }
 };
 struct CaptureData {
@@ -1491,6 +1501,9 @@ void result_confirmation_callbacks() {
         const int time = session.time();
         const int score_time = side().GetStatValue(STAT_TIME);
         press(form, VK_ESCAPE); // Escape cannot dismiss a battle result.
+        MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) ==
+            (loss ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+        MG_CHECK(g_ExitState == 0);
         MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeHints.size() == 1);
         press(form, VK_RETURN);
         MG_CHECK(g_ExitState == (loss ? 2 : 3));
@@ -1521,6 +1534,9 @@ void menu_confirmation_cancel() {
         auto *menu = g_MatrixMap->m_DialogModeHints[0];
         press(form, key);
         MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 2 && g_MatrixMap->m_DialogModeHints[0] == menu);
+        const int confirmation_height = key == 'E' ? 2 : key == 'R' ? 3 : 4;
+        MG_CHECK(g_MatrixMap->m_DialogModeHints[1]->m_Height == confirmation_height);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints[1]->m_Width == confirmation_height + 4);
         const auto first = session.robot(1), second = session.robot(2);
         const int paused_time = session.time();
         const auto draws = random::draw_count();
