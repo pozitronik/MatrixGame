@@ -9,7 +9,7 @@
 #include "battle_scenario.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFormGame.hpp"
-#include "Input.hpp"
+#include "input.hpp"
 #include <array>
 #include <cstring>
 #include <cmath>
