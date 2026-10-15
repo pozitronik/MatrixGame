@@ -256,6 +256,7 @@ void patrol_interruption(bool stop) {
         ground(500, 200);
         MG_CHECK(session.snapshot() == before);
         expect_order(session, mpo_Patrol);
+        const auto before_stop_first = session.robot(1), before_stop_second = session.robot(2);
         if (stop) press(form, 'S');
         else {
             press(form, 'M');
@@ -277,6 +278,11 @@ void patrol_interruption(bool stop) {
             }
         }
         if (stop) {
+            for (const auto before : {before_stop_first, before_stop_second}) {
+                const auto after = session.robot(before.id);
+                const float dx = after.x - before.x, dy = after.y - before.y;
+                MG_CHECK(dx * dx + dy * dy <= 100.0f * 100.0f);
+            }
             MG_CHECK(!selected(0)->FindOrderLikeThat(ROT_MOVE_TO));
             MG_CHECK(!selected(1)->FindOrderLikeThat(ROT_MOVE_TO));
         } else {
