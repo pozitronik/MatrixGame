@@ -1158,7 +1158,8 @@ void control_group_reassignment() {
         MG_CHECK(first->GetCtrlGroup() == '1' && second->GetCtrlGroup() == 0);
         recall('1', first);
         press(form, '2');
-        MG_CHECK(selected(0) == first && side().GetCurGroup()->GetRobotsCnt() == 1);
+        MG_CHECK(side().GetCurGroup() && side().GetCurGroup()->GetRobotsCnt() == 1);
+        MG_CHECK(selected(0) == first);
         // Assignment with no selection erases the number, unlike empty recall.
         side().Select(NOTHING, nullptr);
         assign('1');
@@ -1199,7 +1200,9 @@ void control_group_combat_death() {
         recall();
         session.ground_command(120, 500);
         for (int i = 0; i < 300; ++i) session.advance();
-        MG_CHECK(session.robot(2).order == mpo_MoveTo && session.robot(2).y > 300);
+        const auto moved = session.robot(2);
+        MG_CHECK(moved.order == mpo_MoveTo && moved.y > 300);
+        MG_CHECK(moved.destination_x == 10 && moved.destination_y == 48);
         MG_CHECK(!session.robot(1).alive);
         MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
         std::cout << session.metadata("control-group-combat-death-v1") << '\n';
