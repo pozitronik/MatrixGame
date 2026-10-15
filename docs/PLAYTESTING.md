@@ -18,7 +18,7 @@ Change output copies only. Keep supplied files at the repository root unchanged.
 
 ## Check an interactive battle
 
-Launch `MatrixGame.exe` without arguments. Record the map named by the active configuration. Dismiss the introductory dialog with its confirmation control before testing commands.
+Launch `MatrixGame.exe` without arguments and choose New battle in the startup menu. Select the scenario's map and bonus explicitly: the remembered choice may differ from the configured fallback. Record `Map`, `BattleBonus` and the effective difficulty multipliers; use None for an ordinary baseline scenario unless its contract specifies a bonus. Start the battle and dismiss the introductory dialog before testing commands. Apply this startup step to each fresh launch in the procedures below.
 
 1. Confirm map rendering, interface text and the resource display. Record the configured resolution and Windows display scaling; physical client pixels can differ from the configured resolution.
 2. Select a robot, issue a move order and verify movement to the selected ground point. Move several robots through a shared route and observe avoidance rather than testing only a single empty route.

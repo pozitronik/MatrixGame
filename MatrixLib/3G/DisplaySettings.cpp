@@ -107,6 +107,12 @@ bool Shortcut::handle(UINT message, WPARAM key, LPARAM flags, bool &request) {
     if (message != WM_KEYDOWN && message != WM_SYSKEYDOWN) return false;
     const bool alt = (static_cast<uintptr_t>(flags) & (1u << 29)) != 0;
     const bool repeat = (static_cast<uintptr_t>(flags) & (1u << 30)) != 0;
+    // A fresh ordinary Enter cannot belong to the previous Alt+Enter press.
+    // Its key-up may have arrived while a display transition suppressed input.
+    if (!alt && !repeat) {
+        held = false;
+        return false;
+    }
     if (!held && !alt) return false;
     request = !held && !repeat;
     held = true;

@@ -10,6 +10,8 @@
 #define CURSOR_Z 0.0f
 
 void CMatrixCursor::SetVisible(bool flag) {
+    // Partial battlefield cleanup may drop orders before Select loaded a cursor.
+    if ((!m_CursorIcons && !m_CursorTexture) || !g_D3DD) return;
     if (!g_Config.m_SoftwareCursor) {
         if (FLAG(m_CursorFlags, CURSOR_VISIBLE) && !flag) {
             while (ShowCursor(false) >= 0)

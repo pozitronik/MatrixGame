@@ -77,6 +77,26 @@ void defaults() {
     MG_CHECK(selection.values.skybox == Skybox::High && selection.values.robot_shadows);
 }
 
+void battle_bonus() {
+    MG_CHECK(parse(L"BattleBonus=None").values.battle_bonus == BattleChoice::Bonus::None);
+    MG_CHECK(parse(L"BattleBonus=AirSupport").values.battle_bonus == BattleChoice::Bonus::AirSupport);
+    MG_CHECK(parse(L"BattleBonus=reinforcedarmor").values.battle_bonus == BattleChoice::Bonus::ReinforcedArmor);
+    for (const auto text : {L"BattleBonus=Hard", L"BattleBonus=", L"BattleBonus=None\nBattleBonus=AirSupport"}) {
+        const auto value = parse(text);
+        MG_CHECK(value.invalid == std::vector<std::string>{"BattleBonus"});
+        MG_CHECK(value.values.battle_bonus == BattleChoice::Bonus::None);
+    }
+    TemporaryDirectory directory;
+    const std::filesystem::path path = L"CFG/standalone.txt";
+    std::string error;
+    for (const auto bonus : {BattleChoice::Bonus::None, BattleChoice::Bonus::AirSupport, BattleChoice::Bonus::ReinforcedArmor}) {
+        auto chosen = custom();
+        chosen.battle_bonus = bonus;
+        if (!StandaloneSettings::save(chosen, error, path.c_str())) throw std::runtime_error(error);
+        MG_CHECK(StandaloneSettings::load(path.c_str()).values == chosen);
+    }
+}
+
 void explicit_values() {
     const auto selection = parse(
             L"RandomGenerator=LegacyCRT\r\nResolutionWidth=1280\r\nResolutionHeight=720\r\n"
@@ -164,6 +184,7 @@ void preserves_text() {
             L"DelayedDamage=Original\r\n"
             L"Map=Matrix\\Map\\Desert (2).cmap\r\n"
             L"GroupCounts=Original\r\n"
+            L"BattleBonus=None\r\n"
             L"ZeroXTrace=Original\r\n";
     MG_CHECK(updated == expected);
     MG_CHECK(StandaloneSettings::update_text(updated, custom()) == expected);
@@ -271,6 +292,7 @@ void unreadable_file() {
 }
 
 constexpr tests::Case cases[] = {
+    {"game.settings.battle_bonus", battle_bonus},
     {"game.settings.defaults", defaults},
     {"game.settings.explicit_values", explicit_values},
     {"game.settings.invalid_values", invalid_values},
