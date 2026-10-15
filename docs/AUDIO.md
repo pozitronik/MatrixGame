@@ -12,7 +12,7 @@ For battle music, copy `DATA/music.pkg` from the original installation to `DATA/
 
 For source builds, put local `sound.pkg` and optional `voices.pkg` and `music.pkg` at the repository root, then build Debug and Release with `tools/build.ps1`. The helper stages these packages under `DATA` beside the executable. Keep supplied packages unchanged and untracked. No resource files are required to compile or run automated tests.
 
-All three audio packages are optional for startup and are checked as files on disk, independently of registered archives. With none present, the game leaves standalone audio disabled and does not read overrides or create an audio device. With only some packages, available mapped clips can play and absent clips or music stay silent. A missing `DATA/robots.pkg` instead produces the resource-placement dialog described in the [README](../README.md).
+All three audio packages are optional for startup and are checked as files on disk, independently of registered archives. A present package that cannot be opened is reported in `test.log` as `Cannot open package DATA\<name>; its files are unavailable` and is then treated as missing; the other packages, including `robots.pkg`, stay available. With none present, the game leaves standalone audio disabled and does not read overrides or create an audio device. With only some packages, available mapped clips can play and absent clips or music stay silent. A missing `DATA/robots.pkg` instead produces the resource-placement dialog described in the [README](../README.md).
 
 ## Optional sound overrides
 

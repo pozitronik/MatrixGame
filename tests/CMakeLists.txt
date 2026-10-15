@@ -141,6 +141,7 @@ add_matrix_test(game.startup.resources_missing matrixgame_resource_tests startup
 add_matrix_test(game.startup.resources_optional matrixgame_resource_tests startup audio)
 add_matrix_test(game.startup.resources_exact_files matrixgame_resource_tests startup)
 add_matrix_test(game.startup.resources_unopened matrixgame_resource_tests startup audio)
+add_matrix_test(game.startup.resources_damaged matrixgame_resource_tests startup audio storage)
 
 add_matrix_test_executable(matrixgame_random_tests random_tests.cpp)
 add_matrix_test(base.random.unit_interval matrixgame_random_tests base random)
