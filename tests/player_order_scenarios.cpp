@@ -269,15 +269,14 @@ void patrol_interruption(bool stop) {
             expect_order(session, stop ? mpo_Stop : mpo_MoveTo);
             MG_CHECK(session.robot(1).destination_x == destination.destination_x);
             MG_CHECK(session.robot(1).destination_y == destination.destination_y);
-            MG_CHECK(session.robot(1).target_is_null && session.robot(2).target_is_null);            if (stop && i >= 1299) for (int unit = 0; unit < 2; ++unit) {
+            MG_CHECK(session.robot(1).target_is_null && session.robot(2).target_is_null);
+            if (stop && i >= 1299) for (int unit = 0; unit < 2; ++unit) {
                 const auto state = session.robot(unit + 1);
                 if (i == 1299) { settled_x[unit] = state.x; settled_y[unit] = state.y; }
                 else MG_CHECK(state.x == settled_x[unit] && state.y == settled_y[unit]);
             }
         }
         if (stop) {
-
-
             MG_CHECK(!selected(0)->FindOrderLikeThat(ROT_MOVE_TO));
             MG_CHECK(!selected(1)->FindOrderLikeThat(ROT_MOVE_TO));
         } else {
