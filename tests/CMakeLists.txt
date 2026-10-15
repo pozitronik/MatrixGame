@@ -645,8 +645,12 @@ target_include_directories(matrixgame_presentation_integration_tests PRIVATE "${
 target_compile_definitions(matrixgame_presentation_integration_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract camera_wheel_limits camera_drag_release camera_input_interruption push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech textured_button_hit_testing)
+foreach(contract push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech textured_button_hit_testing)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
+endforeach()
+
+foreach(contract camera_wheel_limits camera_drag_release camera_input_interruption)
+    add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui input rendering)
 endforeach()
 
 # Manual correctness probes for catalog defect candidates, intentionally outside

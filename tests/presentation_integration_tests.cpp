@@ -343,6 +343,9 @@ void camera_wheel_limits() {
         form.MouseKey(B_WHEEL, -1, 640, 360);
         update_camera();
         MG_CHECK(std::abs(camera_distance() - 250) < 0.001f);
+        form.MouseKey(B_WHEEL, 0, 640, 360);
+        update_camera();
+        MG_CHECK(std::abs(camera_distance() - 250) < 0.001f);
         for (int repeat = 0; repeat < 2; ++repeat) {
             form.MouseKey(B_WHEEL, 100, 640, 360);
             update_camera();
@@ -352,7 +355,6 @@ void camera_wheel_limits() {
         update_camera();
         MG_CHECK(std::abs(camera_distance() - 790) < 0.001f);
         form.MouseKey(B_WHEEL, -1, 640, 360);
-        form.MouseKey(B_WHEEL, 0, 640, 360);
         update_camera();
         MG_CHECK(std::abs(camera_distance() - 790) < 0.001f);
         // Reset restores orientation but deliberately preserves wheel distance.
@@ -375,7 +377,8 @@ void camera_drag_release() {
         MG_CHECK(g_MatrixMap->IsMouseCam() && Input::isVKeyPressed(VK_MBUTTON));
         form.MouseMove(660, 380);
         update_camera();
-        MG_CHECK(camera.GetAngleZ() > original_z && camera.GetAngleX() > original_x);
+        MG_CHECK(std::abs(camera.GetAngleZ() - (original_z + 0.2f)) < 0.00001f);
+        MG_CHECK(std::abs(camera.GetAngleX() - GRAD2RAD(46.0f)) < 0.00001f);
         MG_CHECK(g_MatrixMap->m_Cursor.GetPos() == CPoint(660, 380));
         form.MouseMove(660, 10000);
         update_camera();
