@@ -281,6 +281,7 @@ void installed_device_error() {
     MG_CHECK(CSound::IsSoundPlay(id) && f.device->voices[0]->destroyed == 0);  // A working device is kept.
     f.device->critical_error = "Synthetic critical error";
     form_recover();
+    MG_CHECK(device_creations == 0);  // No startup device is created in place of an installed service.
     MG_CHECK(!SoundBridge::available() && f.device->destroyed && f.device->voices[0]->destroyed == 1);
     MG_CHECK(!CSound::IsSoundPlay(id) && CSound::Play(S_BCLICK, 1, 0, SL_INTERFACE) == SOUND_ID_EMPTY);
     MG_CHECK(!SoundBridge::recover() && f.reports == 0);
@@ -352,6 +353,8 @@ void device_recovery() {
 #ifdef MATRIXGAME_MUSIC
     fixture.track("music/BATTLE/a.dat", 1000);
     fixture.track("music/BATTLE/b.dat", 2000);
+    // Each track fills one buffer, so the first update queues a, b, c, a and leaves a playing.
+    fixture.track("music/BATTLE/c.dat", 3000);
 #endif
     Base::CBlockPar data;
     g_MatrixData = &data;
@@ -392,11 +395,12 @@ void device_recovery() {
     const auto replayed = CSound::Play(S_BCLICK, 1, 0, SL_INTERFACE, SEF_SKIP);
     MG_CHECK(replayed != SOUND_ID_EMPTY && replayed != layered && CSound::IsSoundPlay(replayed));
 #ifdef MATRIXGAME_MUSIC
-    // Music resumes with the track after the one that was playing, at the same levels.
+    // Music resumes with b, the track after the one that was playing, at the same levels; a restart
+    // from the first track would begin with a.
     MG_CHECK(failed->streams.at(0)->destroyed && SoundBridge::music_level() == 0.5f);
     SoundBridge::update_music();
     const auto stream = startup_device->streams.at(0);
-    MG_CHECK(stream->volume == 0.125f && stream->plays == 1 && stream->buffers.at(0).front() == 1000);
+    MG_CHECK(stream->volume == 0.125f && stream->plays == 1 && stream->buffers.at(0).front() == 2000);
 #endif
     MG_CHECK(!SoundBridge::recover());
     CSound::Clear();
