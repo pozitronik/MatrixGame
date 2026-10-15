@@ -774,7 +774,22 @@ void package_handles() {
         MG_CHECK(handle == 0 && read_text(packs, handle) == "first");
         MG_CHECK(packs.Close(handle) && packs.ClosePacketFiles());
     }
-    MG_CHECK(exclusively_openable(first.path()));
+    {
+        // Packages before and after a dropped one stay open, and the later one takes the dropped index.
+        Base::CPackCollection packs(nullptr);
+        packs.AddPacketFile(first.path().c_str());
+        packs.AddPacketFile(malformed.path().c_str());
+        packs.AddPacketFile(second.path().c_str());
+        std::vector<std::wstring> failed;
+        MG_CHECK(packs.OpenPacketFiles(&failed));
+        MG_CHECK(failed == std::vector<std::wstring>{malformed.path().wstring()});
+        const DWORD shadowed = packs.Open("readme.txt");
+        const DWORD only = packs.Open("only.txt");
+        MG_CHECK(shadowed == 0 && only == 16);
+        MG_CHECK(read_text(packs, shadowed) == "first" && read_text(packs, only) == "only");
+        MG_CHECK(packs.Close(shadowed) && packs.Close(only) && packs.ClosePacketFiles());
+    }
+    MG_CHECK(exclusively_openable(first.path()) && exclusively_openable(second.path()));
     {
         // The collection is rejected only when no package opens.
         TemporaryFile truncated(Bytes().u8(4).u8(0).data);
