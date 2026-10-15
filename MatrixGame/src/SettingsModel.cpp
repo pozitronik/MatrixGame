@@ -53,7 +53,7 @@ std::wstring hex(uint32_t color) {
 std::wstring text_element(const std::wstring &text, const wchar_t *font, uint32_t color, int x, int y, int width,
                           int align) {
     return L"|_FONT:" + std::wstring(font) + L"|_COLOR:" + hex(color) + L"|_WIDTH:" + std::to_wstring(width) +
-           L"|_HEIGHT:" + std::to_wstring(text_height) + L"|_ALIGN:" + std::to_wstring(align) +
+           L"|_HEIGHT:" + std::to_wstring(Layout::row_height - 1) + L"|_ALIGN:" + std::to_wstring(align) +
            L":0|_POS:" + std::to_wstring(x) + L":" + std::to_wstring(y) + L"|_TEXT:" + text;
 }
 
@@ -210,7 +210,6 @@ std::wstring Window::label(int row) const {
             result = text(L"Status damage",
                           L"\u0423\u0440\u043e\u043d \u0441\u0442\u0430\u0442\u0443\u0441\u043e\u0432");
             break;
-        case Row::Map: result = text(L"Map", L"\u041a\u0430\u0440\u0442\u0430"); break;
         default: break;
     }
     if (needs_restart(row)) result += L" *";
@@ -254,7 +253,6 @@ std::wstring Window::value(int row) const {
             return values.delayed_damage == StandaloneSettings::DamageAttribution::Original
                            ? text(L"Original", L"\u041e\u0440\u0438\u0433\u0438\u043d\u0430\u043b")
                            : text(L"Corrected", L"\u0418\u0441\u043f\u0440\u0430\u0432\u043b\u0435\u043d");
-        case Row::Map: return m_MapName;
         default: return {};
     }
 }

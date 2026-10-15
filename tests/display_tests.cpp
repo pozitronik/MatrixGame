@@ -121,6 +121,12 @@ void shortcut_consumes_only_alt_enter() {
     shortcut = {}; // Focus loss clears the latch; a held-key repeat must not request a new switch.
     MG_CHECK(shortcut.handle(WM_SYSKEYDOWN, VK_RETURN, alt | repeat, request) && !request);
     MG_CHECK(shortcut.handle(WM_SYSKEYUP, VK_RETURN, alt, request));
+    MG_CHECK(shortcut.handle(WM_SYSKEYDOWN, VK_RETURN, alt, request) && request);
+    // No key-up reached the shortcut during the transition. A new Enter still
+    // belongs to the active dialog, while repeats of the old press stay consumed.
+    MG_CHECK(shortcut.handle(WM_KEYDOWN, VK_RETURN, repeat, request) && !request);
+    MG_CHECK(!shortcut.handle(WM_KEYDOWN, VK_RETURN, 0, request) && !request);
+    MG_CHECK(!shortcut.handle(WM_KEYUP, VK_RETURN, 0, request));
 }
 
 void scaled_mouse_coordinates() {

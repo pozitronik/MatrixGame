@@ -125,7 +125,8 @@ std::wstring CExceptionD3D::Info() const
                DXGetErrorDescriptionW(m_Error)).c_str();
 }
 
-void L3GInitAsEXE(HINSTANCE hinst, [[maybe_unused]] CBlockPar& bpcfg, const wchar* sysname, const wchar* captionname) {
+void L3GInitAsEXE(HINSTANCE hinst, [[maybe_unused]] CBlockPar& bpcfg, const wchar* sysname, const wchar* captionname,
+                  bool defer_exclusive) {
 
     L3GDeinit();
 
@@ -133,8 +134,12 @@ void L3GInitAsEXE(HINSTANCE hinst, [[maybe_unused]] CBlockPar& bpcfg, const wcha
     g_Wnd = NULL;
     g_WndExtern = false;
 
-    const auto selection = Display::load();
+    auto selection = Display::load();
     if (!selection.valid) lgr.error("Invalid display settings in CFG/standalone.txt; using 1024x768 Windowed");
+    // A relaunch keeps the previous process's loading screen on the desktop.
+    // Acquire exclusive mode only after the new battlefield is ready to render.
+    if (defer_exclusive && selection.settings.mode == Display::Mode::Exclusive)
+        selection.settings.mode = Display::Mode::Windowed;
     Display::initialize(selection.settings);
     g_ScreenX = selection.settings.width;
     g_ScreenY = selection.settings.height;

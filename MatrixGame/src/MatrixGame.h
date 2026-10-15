@@ -48,6 +48,7 @@ public:
      *
      * Initializes statics, loads .pkg and .dat files, initializes 3D rendering engine,
      * initializes rendering pipeline, loads map, applies video settings, loads interface.
+     * Interactive EXE startup first runs a menu; exiting it returns with g_MatrixMap still null.
      *
      * BUILD_EXE environment variable determines whether to initialize as a standalone executable or as DLL.
      *
@@ -87,5 +88,6 @@ public:
     static void SaveResult(SRobotGameState *state);
 
 private:
+    friend struct GameStartupTestAccess;
     static void ApplyVideoParams(SRobotsSettings &settings);
 };
