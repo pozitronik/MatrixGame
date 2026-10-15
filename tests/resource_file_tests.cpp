@@ -28,6 +28,13 @@ struct Files {
         file.put('\0');
         MG_CHECK(file.good());
     }
+    // A package with an empty root folder, which opens successfully.
+    void add_package(const wchar_t *name) {
+        std::ofstream file(path(name), std::ios::binary);
+        for (const uint32_t value : {4u, 12u, 0u, 158u})
+            for (int shift = 0; shift < 32; shift += 8) file.put(char((value >> shift) & 0xff));
+        MG_CHECK(file.good());
+    }
 };
 
 void no_packages() {
@@ -69,11 +76,50 @@ void unopened_archive() {
     MG_CHECK(Startup::ResourceFileExists(files.path(L"sound.pkg")));
 }
 
+void damaged_packages() {
+    {
+        // A damaged optional package counts as missing; the packages that opened stay available.
+        Files files;
+        files.add_package(L"robots.pkg");
+        files.add(L"sound.pkg");
+        files.add_package(L"voices.pkg");
+        files.add_package(L"music.pkg");
+        const auto packages = Startup::OpenPackages(files.root / "DATA", true);
+        MG_CHECK(!packages.sound && packages.voices && packages.music && packages.any());
+    }
+    {
+        // music.pkg is left alone without a music decoder.
+        Files files;
+        files.add_package(L"robots.pkg");
+        files.add_package(L"music.pkg");
+        const auto packages = Startup::OpenPackages(files.root / "DATA", false);
+        MG_CHECK(!packages.sound && !packages.voices && !packages.music && !packages.any());
+        MG_CHECK(Startup::ResourceFileExists(files.path(L"music.pkg")));
+    }
+    {
+        // Only damaged or missing packages leave audio disabled.
+        Files files;
+        files.add(L"robots.pkg");
+        files.add(L"sound.pkg");
+        files.add(L"voices.pkg");
+        const auto packages = Startup::OpenPackages(files.root / "DATA", true);
+        MG_CHECK(!packages.any());
+    }
+    {
+        // A valid sound package still opens when robots.pkg is absent.
+        Files files;
+        files.add_package(L"sound.pkg");
+        const auto packages = Startup::OpenPackages(files.root / "DATA", true);
+        MG_CHECK(packages.sound && !packages.voices && !packages.music);
+    }
+}
+
 constexpr tests::Case cases[] = {
     {"game.startup.resources_missing", no_packages},
     {"game.startup.resources_optional", optional_layouts},
     {"game.startup.resources_exact_files", exact_files_only},
     {"game.startup.resources_unopened", unopened_archive},
+    {"game.startup.resources_damaged", damaged_packages},
 };
 } // namespace
 

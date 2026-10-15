@@ -8,6 +8,8 @@
 #include "Interface/CInterface.h"
 #include "battle_scenario.hpp"
 #include "MatrixRobot.hpp"
+#include "MatrixFormGame.hpp"
+#include "Input.hpp"
 #include <array>
 #include <cstring>
 #include <cmath>
@@ -391,9 +393,120 @@ void textured_button_hit_testing() {
     MG_CHECK(!panel.OnMouseLBDown() && events.size() == event_count);
 }
 
+void update_camera() {
+    g_MatrixMap->m_Camera.Takt(0);
+    g_MatrixMap->m_Camera.BeforeDraw();
+}
+float camera_distance() {
+    const auto &camera = g_MatrixMap->m_Camera;
+    const auto &inverse = camera.GetViewInversedMatrix();
+    const auto delta = D3DXVECTOR3(inverse._41, inverse._42, inverse._43) - camera.GetLinkPoint();
+    return D3DXVec3Length(&delta);
+}
+void camera_wheel_limits() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::battle::Session session({mode, 87, 10, 10, false});
+        CFormMatrixGame form;
+        std::cout << session.metadata("synthetic-camera-wheel-v1") << '\n';
+        const auto draws = random::draw_count();
+        MG_CHECK(std::abs(camera_distance() - 250) < 0.001f);
+        form.MouseKey(B_WHEEL, 1, 640, 360);
+        update_camera();
+        MG_CHECK(std::abs(camera_distance() - 209.5f) < 0.001f);
+        form.MouseKey(B_WHEEL, -1, 640, 360);
+        update_camera();
+        MG_CHECK(std::abs(camera_distance() - 250) < 0.001f);
+        form.MouseKey(B_WHEEL, 0, 640, 360);
+        update_camera();
+        MG_CHECK(std::abs(camera_distance() - 250) < 0.001f);
+        for (int repeat = 0; repeat < 2; ++repeat) {
+            form.MouseKey(B_WHEEL, 100, 640, 360);
+            update_camera();
+            MG_CHECK(std::abs(camera_distance() - 115) < 0.001f);
+        }
+        form.MouseKey(B_WHEEL, -100, 640, 360);
+        update_camera();
+        MG_CHECK(std::abs(camera_distance() - 790) < 0.001f);
+        form.MouseKey(B_WHEEL, -1, 640, 360);
+        update_camera();
+        MG_CHECK(std::abs(camera_distance() - 790) < 0.001f);
+        // Reset restores orientation but deliberately preserves wheel distance.
+        form.Keyboard(true, g_Config.m_KeyActions[KA_CAM_SETDEFAULT]);
+        form.Keyboard(false, g_Config.m_KeyActions[KA_CAM_SETDEFAULT]);
+        update_camera();
+        MG_CHECK(std::abs(camera_distance() - 790) < 0.001f);
+        MG_CHECK(random::draw_count() == draws && session.time() == 0);
+    }
+}
+void camera_drag_release() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::battle::Session session({mode, 87, 10, 10, false});
+        CFormMatrixGame form;
+        auto &camera = g_MatrixMap->m_Camera;
+        const float original_x = camera.GetAngleX(), original_z = camera.GetAngleZ();
+        const auto draws = random::draw_count();
+        std::cout << session.metadata("synthetic-camera-drag-v1") << '\n';
+        form.MouseKey(B_DOWN, VK_MBUTTON, 640, 360);
+        MG_CHECK(g_MatrixMap->IsMouseCam() && Input::isVKeyPressed(VK_MBUTTON));
+        form.MouseMove(660, 380);
+        update_camera();
+        MG_CHECK(std::abs(camera.GetAngleZ() - (original_z + 0.2f)) < 0.00001f);
+        MG_CHECK(std::abs(camera.GetAngleX() - GRAD2RAD(46.0f)) < 0.00001f);
+        MG_CHECK(g_MatrixMap->m_Cursor.GetPos() == CPoint(660, 380));
+        form.MouseMove(660, 10000);
+        update_camera();
+        MG_CHECK(camera.GetAngleX() == g_Config.m_CamParams[CAMERA_STRATEGY].m_CamRotAngleMin);
+        form.MouseMove(660, -10000);
+        update_camera();
+        MG_CHECK(camera.GetAngleX() == g_Config.m_CamParams[CAMERA_STRATEGY].m_CamRotAngleMax);
+        form.MouseKey(B_UP, VK_MBUTTON, 660, -10000);
+        MG_CHECK(!g_MatrixMap->IsMouseCam() && !Input::isVKeyPressed(VK_MBUTTON));
+        const float x = camera.GetAngleX(), z = camera.GetAngleZ();
+        form.MouseMove(640, 360);
+        update_camera();
+        MG_CHECK(camera.GetAngleX() == x && camera.GetAngleZ() == z);
+        form.Keyboard(true, g_Config.m_KeyActions[KA_CAM_SETDEFAULT]);
+        form.Keyboard(false, g_Config.m_KeyActions[KA_CAM_SETDEFAULT]);
+        update_camera();
+        MG_CHECK(camera.GetAngleX() == original_x && camera.GetAngleZ() == original_z);
+        MG_CHECK(random::draw_count() == draws && session.time() == 0);
+    }
+}
+void camera_input_interruption() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (auto event : {SYSEV_DEACTIVATING, SYSEV_INPUT_RESET, SYSEV_POINTER_LEFT}) {
+        tests::battle::Session session({mode, 87, 10, 10, false});
+        CFormMatrixGame form;
+        auto &camera = g_MatrixMap->m_Camera;
+        std::cout << session.metadata("synthetic-camera-interruption-v1") << " event=" << int(event) << '\n';
+        form.MouseKey(B_DOWN, VK_MBUTTON, 640, 360);
+        form.MouseMove(660, 380);
+        update_camera();
+        const float x = camera.GetAngleX(), z = camera.GetAngleZ();
+        form.SystemEvent(event);
+        MG_CHECK(!g_MatrixMap->IsMouseCam());
+        // Pointer leave cancels rotation but does not synthesize a key release.
+        MG_CHECK(Input::isVKeyPressed(VK_MBUTTON) == (event == SYSEV_POINTER_LEFT));
+        if (event == SYSEV_POINTER_LEFT) MG_CHECK(g_MatrixMap->m_Cursor.GetPos() == CPoint(-1, -1));
+        form.MouseMove(680, 400);
+        form.MouseKey(B_UP, VK_MBUTTON, 680, 400);
+        update_camera();
+        MG_CHECK(!Input::isVKeyPressed(VK_MBUTTON));
+        MG_CHECK(camera.GetAngleX() == x && camera.GetAngleZ() == z);
+        form.MouseKey(B_DOWN, VK_MBUTTON, 680, 400);
+        form.MouseMove(700, 420);
+        update_camera();
+        MG_CHECK(camera.GetAngleZ() > z && camera.GetAngleX() > x);
+        form.MouseKey(B_UP, VK_MBUTTON, 700, 420);
+        MG_CHECK(!g_MatrixMap->IsMouseCam());
+    }
+}
 constexpr tests::Case cases[]{
     {"game.presentation.positional_attenuation_boundaries", positional_attenuation_boundaries},
     {"game.presentation.positional_loop_reentry", positional_loop_reentry},
+    {"game.presentation.camera_wheel_limits", camera_wheel_limits},
+    {"game.presentation.camera_drag_release", camera_drag_release},
+    {"game.presentation.camera_input_interruption", camera_input_interruption},
     {"game.presentation.textured_button_hit_testing", textured_button_hit_testing},
     {"game.presentation.push_sounds", push_sound_routes},
     {"game.presentation.preset_matching", preset_name_matching},
