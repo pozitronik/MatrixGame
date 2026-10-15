@@ -669,6 +669,10 @@ foreach(contract push_sounds preset_matching disabled optional_audio interface_l
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
 endforeach()
 
+foreach(contract camera_wheel_limits camera_drag_release camera_input_interruption)
+    add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui input rendering)
+endforeach()
+
 # Manual correctness probes for catalog defect candidates, intentionally outside
 # CTest until separately reviewed fixes establish the expected invariants.
 add_matrix_test_executable(matrixgame_presentation_defect_probes presentation_defect_probes.cpp diagnostic_overlay_stub.cpp)
