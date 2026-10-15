@@ -89,3 +89,11 @@ The first MEGABUST invocation doubles the robots' reported maximum health. Its l
 
 These cases use open synthetic terrain, seed 80, 10 ms map ticks and both RNG modes. They exercise production form keys, side ground-click handling and map ticks, with a supplied world trace; screen picking and armed patrol detours remain outside this increment. The return-leg flag is checked explicitly before interruption, with a bounded 20-second wait. These assertions are additional scenario evidence, not accepted historical trajectory references.
 The patrol-interruption profile uses unavailable audio. On this fixture's return-leg transition, the robots already occupy road places and Stop checks persistence rather than repositioning.
+
+## Explicit capture through ownership transfer
+
+`game.player.capture_keyboard_completion` and `game.player.capture_button_completion` reuse the outcome suite's registered factory/base fixtures and assertions. The first sends K down/up through `CFormMatrixGame::Keyboard`; the second calls the production `CIFaceList::PlayerAction` for the Capture button. Both require the capture preorder, deliver the target through `OnLButtonDown`, and require the preorder to clear. Picking is supplied as a world trace; the button case does not claim pixel hit testing or native mouse delivery.
+
+Both explicit routes reproduce the existing context-command outcome boundaries. Neutral and enemy titanium factories run under both RNG modes and separate 10/16 ms schedules, retaining the exact first-paint, neutralization and completion times. Neutral and enemy bases retain the 10 ms fixture profile, exactly one consumed capturer, the surviving group member, opening/closing/ownership timings, queue destruction and original-owner refunds. The base's 16 ms lifecycle is outside this increment. Each completed capture advances further to check stable ownership and cleanup.
+
+This is shared CMD-03/OUT-01 evidence in the outcome executable, registered under `game.player.*`; it does not duplicate building simulation. The original context contracts remain separately registered with unchanged expectations. Run the two new cases together with `game.outcome.registered_.*capture` to compare routes. Other targeted-order validation, special-object commands, cancellation and autonomous contested capture remain separate coverage requirements.

@@ -16,6 +16,7 @@
 #include "MatrixObjectCannon.hpp"
 #include "MatrixRobot.hpp"
 #include "Interface/CInterface.h"
+#include "Interface/CIFaceElement.h"
 #include "input.hpp"
 #include "cheats.hpp"
 #include "SoundBridge.hpp"
@@ -661,13 +662,35 @@ CMatrixBuilding *register_building(int owner, EBuildingType kind, float x, float
     for (auto *robot : robots) { robot->DelLT(); robot->AddLT(); }
     return building;
 }
-void registered_capture_profile(int owner) {
+enum class CaptureRoute { Context, Keyboard, Button };
+void submit_capture(CMatrixBuilding *building, CaptureRoute route) {
+    g_MatrixMap->m_TraceStopObj = building;
+    g_MatrixMap->m_TraceStopPos = building->GetGeoCenter();
+    if (route == CaptureRoute::Context) {
+        side().OnRButtonDown(CPoint(0, 0));
+    } else {
+        if (route == CaptureRoute::Keyboard) {
+            CFormMatrixGame form;
+            press(form, 'K');
+            MG_CHECK(!Input::isVKeyPressed('K'));
+        } else {
+            auto button = tests::make_engine_object<CIFaceElement>();
+            button->m_strName = IF_ORDER_CAPTURE;
+            g_IFaceList->PlayerAction(button.get());
+        }
+        MG_CHECK((g_IFaceList->m_IfListFlags & (PREORDER_CAPTURE | ORDERING_MODE)) ==
+                 (PREORDER_CAPTURE | ORDERING_MODE));
+        side().OnLButtonDown(CPoint(0, 0));
+        MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_CAPTURE | ORDERING_MODE));
+    }
+}
+void registered_capture_profile(int owner, CaptureRoute route = CaptureRoute::Context) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         Session session({mode, 79, step, 3000, false});
+        std::cout << session.metadata("capture-route-completion-v1") << " route=" << int(route) << '\n';
         auto *building = register_building(owner, BUILDING_TITAN, 160, 200);
         auto *robot = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
-        g_MatrixMap->m_TraceStopObj = building;
-        side().OnRButtonDown(CPoint(0, 0));
+        submit_capture(building, route);
         const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
         MG_CHECK(group.Order() == mpo_Capture && group.m_Obj == building);
         int assigned = 0;
@@ -682,7 +705,7 @@ void registered_capture_profile(int owner) {
             if (building->GetSide() == PLAYER_SIDE) completed = session.time();
         }
         std::cout << "registered capture mode=" << int(mode) << " step=" << step
-                  << " owner=" << owner << " progress=" << first_paint << " neutralized=" << neutralized << " completed=" << completed << '\n';
+                  << " route=" << int(route) << " owner=" << owner << " progress=" << first_paint << " neutralized=" << neutralized << " completed=" << completed << '\n';
         MG_CHECK(first_paint == (step == 10 ? 630 : 640));
         if (!owner) MG_CHECK(completed == (step == 10 ? 7530 : 7536));
         else {
@@ -699,9 +722,10 @@ void registered_capture_profile(int owner) {
 }
 void registered_capture() { registered_capture_profile(0); }
 void registered_enemy_capture() { registered_capture_profile(2); }
-void registered_base_capture() {
+void registered_base_capture_profile(CaptureRoute route) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int owner : {0, 2}) {
         Session session({mode, 79, 10, 3000, false});
+        std::cout << session.metadata("capture-route-completion-v1") << " route=" << int(route) << '\n';
         auto *building = register_building(owner, BUILDING_BASE, 100, 100);
         auto &enemy = *g_MatrixMap->GetSideById(2);
         g_Config.m_Timings[UNIT_ROBOT] = 100000;
@@ -720,8 +744,7 @@ void registered_base_capture() {
             if (accepted) queued.release();
             MG_CHECK(accepted);
         }
-        g_MatrixMap->m_TraceStopObj = building;
-        side().OnRButtonDown(CPoint(0, 0));
+        submit_capture(building, route);
         EntityId capturer = 0;
         for (int i = 0; i < 2; ++i) {
             auto *robot = side().GetCurGroup()->GetObjectByN(i)->AsRobot();
@@ -744,7 +767,7 @@ void registered_base_capture() {
                     MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(resource)) == 100);
             }
         }
-        std::cout << "base capture mode=" << int(mode) << " owner=" << owner
+        std::cout << "base capture mode=" << int(mode) << " route=" << int(route) << " owner=" << owner
                   << " opened=" << opened << " closing=" << closing << " captured=" << captured << '\n';
         MG_CHECK(opened == 1280 && closing == 4330 && captured == 5580);
         MG_CHECK(building->GetSide() == PLAYER_SIDE && building->m_State == BASE_CLOSED);
@@ -760,6 +783,17 @@ void registered_base_capture() {
         for (int i = 0; i < 100; ++i) session.advance();
         MG_CHECK(building->GetSide() == PLAYER_SIDE && building->m_State == BASE_CLOSED);
     }
+}
+void registered_base_capture() { registered_base_capture_profile(CaptureRoute::Context); }
+void capture_keyboard_completion() {
+    registered_capture_profile(0, CaptureRoute::Keyboard);
+    registered_capture_profile(2, CaptureRoute::Keyboard);
+    registered_base_capture_profile(CaptureRoute::Keyboard);
+}
+void capture_button_completion() {
+    registered_capture_profile(0, CaptureRoute::Button);
+    registered_capture_profile(2, CaptureRoute::Button);
+    registered_base_capture_profile(CaptureRoute::Button);
 }
 void capture_target_removal() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
@@ -1370,6 +1404,8 @@ void repeated_sessions() {
     }
 }
 constexpr tests::Case cases[] = {
+    {"game.player.capture_keyboard_completion", capture_keyboard_completion},
+    {"game.player.capture_button_completion", capture_button_completion},
     {"game.outcome.flyer_does_not_prevent_elimination", flyer_does_not_prevent_elimination},
     {"game.outcome.transported_robot_prevents_elimination", transported_robot_prevents_elimination},
     {"game.outcome.transported_robot_removal", transported_robot_removal_outcome},
