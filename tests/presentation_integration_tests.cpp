@@ -232,15 +232,23 @@ void positional_loop() {
 void positional_attenuation_boundaries() {
     struct Sample { float distance, volume; };
     constexpr Sample samples[]{{0, 1}, {199, 1}, {200, 1}, {201, 0.999f},
-                              {700, 0.5f}, {1199, 0.001f}, {1200, 0}, {1201, 0}};
+                              {700, 0.5f}, {1199, 0.001f}, {1199.9f, 0.0001f}, {1200, 0}, {1201, 0}, {2000, 0}};
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         BattleSound sound(mode);
         const auto center = g_MatrixMap->m_Camera.GetFrustumCenter();
         const auto right = g_MatrixMap->m_Camera.GetRight();
         const auto draws = random::draw_count();
         for (const auto sample : samples) for (float direction : {-1.0f, 1.0f}) {
+            const auto position = center + right * (direction * sample.distance);
+            float pan = 0, volume = 0;
+            // Observe the frontend before the standalone service clamps volume.
+            CSound::CalcPanVol(position, 0.001f, -1, 1, 0, 1, &pan, &volume);
+            std::cout << "distance=" << sample.distance << " direction=" << direction << " raw_volume=" << std::hexfloat << volume << std::defaultfloat << '\n';
+            if (sample.distance < 200 || sample.distance > 1200) MG_CHECK(volume == sample.volume);
+            else MG_CHECK(std::abs(volume - sample.volume) < 0.00001f);
+            MG_CHECK(std::abs(pan - (sample.distance == 0 ? 0 : direction)) < 0.00001f);
             const auto previous = sound.device->voices.size();
-            const auto id = CSound::Play(S_WEAPON_LASER, center + right * (direction * sample.distance));
+            const auto id = CSound::Play(S_WEAPON_LASER, position);
             if (sample.volume == 0) {
                 MG_CHECK(id == SOUND_ID_EMPTY && sound.device->voices.size() == previous);
             } else {
