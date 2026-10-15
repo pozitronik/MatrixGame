@@ -105,7 +105,7 @@ Side statistics use `timeGetTime`, independently of the fixed simulation clock. 
 
 These cases assert specific outcomes and do not provide persisted historical reference traces. Complete baseline acceptance still requires the agreed manifest, reference comparison, integrated Debug/Release/compiler/DLL evidence and all remaining core catalog variants. No structural gate is waived by this suite.
 
-The remaining dialog callbacks require real hint construction with copy anchors. `CMatrixHint::Build` uploads a managed texture; the reviewed material device now supports bounded single-level uploads, but these outcome tests do not yet supply the hint templates and copy-anchor data. Menu cancellation additionally needs an actual menu hint because its teardown plays the hint's exit sound. These paths need a reviewed presentation fixture or native validation. Registered base/factory cases now use the reusable building geometry; complete weapon-driven building demolition is covered by the combat suite, and full deployment is covered separately by the production suite. Actual four-speed scheduling belongs to `L3GRun` and its wall-clock/message loop, outside the fixed map-tick profile.
+The dialog callback cases below supply generated hint pixels and copy anchors through the production parser and managed-texture upload. They cover form Enter/Escape and menu callbacks with native display disabled; font rendering, native hit testing, the enabled standalone map selector and resource-backed restart still need their own fixtures or applicable native evidence. Registered base/factory cases now use the reusable building geometry; complete weapon-driven building demolition is covered by the combat suite, and full deployment is covered separately by the production suite. Actual four-speed scheduling belongs to `L3GRun` and its wall-clock/message loop, outside the fixed map-tick profile.
 
 
 ## Transport and cargo outcome boundaries
@@ -129,3 +129,16 @@ The NAV-03 `game.navigation.delivery_carrier_damage` contract covers carrier/car
 Non-player carrier requests are reachable through the Debug F command on a traced enemy building; normal reinforcement calls use player buildings. Their player-owned cargo is recorded as a legacy quirk (Q), not as intended ordinary-play ownership.
 
 Transport tests do not cover armed combat flyers, projectile targeting/collision with carriers, native robot portraits or the incomplete restart/menu callback baseline. They close the explicit transport-only outcome gap without establishing the complete OUT-02 or OUT-03 catalog entries.
+
+## Result and menu callbacks through the form
+
+The callback fixture creates an opaque 2x2 bitmap, registers it through `CMatrixHint::SetRuntimeBitmap`, and supplies font-free templates with the required copy anchors. `CMatrixHint::Build` parses them and uploads the resulting managed texture using the existing synthetic device. Real interface elements receive production `CreateHintButton` bindings; `CFormMatrixGame::Keyboard` dispatches Enter and Escape. No game package, window, font substitution or production seam is needed. Fixture teardown leaves dialog mode and unregisters its bitmap before releasing its storage.
+
+| Contract | Required result |
+| --- | --- |
+| `result_confirmation_callbacks` | Production side elimination opens Win/Lose at 2020/2032 ms under 10/16 ms ticks. Escape preserves the result; Enter closes it, sets result 3/2 and requests statistics. The next tick creates statistics without changing the recorded score time. Enter then releases the dialog/pause and sets the exit-loop flag with the same result. |
+| `menu_confirmation_cancel` | Escape opens the menu; E/R/S opens Exit/Restart/Surrender confirmation with two hints. Ten map calls preserve simulation time, RNG draws, robot positions and intent while paused. Escape destroys only the confirmation; another Escape closes the menu, leaving both robots alive without requesting statistics or exit. |
+| `menu_exit_surrender_callbacks` | Confirmed Exit/Surrender selects result 1/4, requests statistics and releases the menu hints. Only Surrender negates the active enemy's supplied statistics time. Confirming statistics requests exit and releases all dialog hints. |
+| `statistics_cheat_dismissal` | Direct invocation of the existing STATS registry entry opens the dismissible statistics variant. Enter resumes play without an exit result; a fresh Move progresses through the next 50 map ticks. This does not claim typed cheat delivery in cheats-disabled builds. |
+
+All four cases use both RNG modes, seed 85 and unavailable audio. Menu and cheat cases use a 10 ms schedule; win/loss cases additionally use 16 ms. The fixture explicitly requires native display to be disabled, so post-battle statistics takes the exit fallback rather than the standalone next-map selector. It validates callback ownership and state transitions, not fonts, rendered appearance, mouse hit testing, restarting a loaded map or the original host's outer loop. These additions extend OUT-02/OUT-03 and MODE-01; the remaining coverage map still applies outside the named callback paths.
