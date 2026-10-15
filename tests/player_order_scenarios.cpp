@@ -230,6 +230,70 @@ void patrol_reversal() {
         expect_order(session, mpo_Stop);
     }
 }
+void patrol_interruption(bool stop) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool returning : {false, true}) {
+        Profile profile{mode, 80, 10, 5000, false};
+        profile.layout = tests::NavigationLayout::Open;
+        Session session(profile);
+        CFormMatrixGame form;
+        std::cout << session.metadata("player-patrol-interruption-v1") << " stop=" << stop
+                  << " returning=" << returning << '\n';
+        g_MatrixData->BlockGet(L"Chars")->BlockGet(L"ChassisSounds")->BlockGet(L"2")
+            ->ParSetAdd(L"Patrol", L"Sound.Synthetic");
+        press(form, 'P');
+        ground(180, 300);
+        expect_order(session, mpo_Patrol);
+        const int group = session.robot(1).group;
+        for (int i = 0; i < 2000; ++i) {
+            session.advance();
+            if (returning ? !side().m_PlayerGroup[group].IsPatrolReturn() : session.time() >= 500) break;
+        }
+        MG_CHECK(side().m_PlayerGroup[group].IsPatrolReturn() == !returning);
+        // Canceling a pending replacement must leave the existing patrol intact.
+        const auto before = session.snapshot();
+        press(form, 'M');
+        press(form, 'X');
+        ground(500, 200);
+        MG_CHECK(session.snapshot() == before);
+        expect_order(session, mpo_Patrol);
+        const auto before_stop_first = session.robot(1), before_stop_second = session.robot(2);
+        if (stop) press(form, 'S');
+        else {
+            press(form, 'M');
+            ground(500, 200);
+        }
+        expect_order(session, stop ? mpo_Stop : mpo_MoveTo);
+        const auto destination = session.robot(1);
+        float settled_x[2]{}, settled_y[2]{};
+        for (int i = 0; i < 1800; ++i) {
+            session.advance();
+            expect_order(session, stop ? mpo_Stop : mpo_MoveTo);
+            MG_CHECK(session.robot(1).destination_x == destination.destination_x);
+            MG_CHECK(session.robot(1).destination_y == destination.destination_y);
+            MG_CHECK(session.robot(1).target_is_null && session.robot(2).target_is_null);
+            if (stop && i >= 1299) for (int unit = 0; unit < 2; ++unit) {
+                const auto state = session.robot(unit + 1);
+                if (i == 1299) { settled_x[unit] = state.x; settled_y[unit] = state.y; }
+                else MG_CHECK(state.x == settled_x[unit] && state.y == settled_y[unit]);
+            }
+        }
+        if (stop) {
+            for (const auto before : {before_stop_first, before_stop_second}) {
+                const auto after = session.robot(before.id);
+                const float dx = after.x - before.x, dy = after.y - before.y;
+                MG_CHECK(dx * dx + dy * dy <= 100.0f * 100.0f);
+            }
+            MG_CHECK(!selected(0)->FindOrderLikeThat(ROT_MOVE_TO));
+            MG_CHECK(!selected(1)->FindOrderLikeThat(ROT_MOVE_TO));
+        } else {
+            MG_CHECK(session.robot(1).in_place && session.robot(2).in_place);
+            MG_CHECK(session.robot(1).x == 500 && session.robot(1).y == 200);
+        }
+    }
+}
+void patrol_stop_lifecycle() { patrol_interruption(true); }
+void patrol_replacement_lifecycle() { patrol_interruption(false); }
+
 void auto_modes() {
     const uint8_t keys[] = {'U', 'C', 'D'};
     const int orders[] = {mpo_AutoAttack, mpo_AutoCapture, mpo_AutoDefence};
@@ -1395,6 +1459,8 @@ constexpr tests::Case cases[] = {
     {"game.player.group_add_cap", group_add_cap},
     {"game.player.shift_rectangle_group_cap", shift_rectangle_group_cap},
     {"game.player.patrol_reversal", patrol_reversal},
+    {"game.player.patrol_stop_lifecycle", patrol_stop_lifecycle},
+    {"game.player.patrol_replacement_lifecycle", patrol_replacement_lifecycle},
     {"game.player.auto_modes", auto_modes},
     {"game.player.manual_control", manual_control},
     {"game.player.controlled_unit_removal", controlled_unit_removal},
