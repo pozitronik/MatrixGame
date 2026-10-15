@@ -85,19 +85,25 @@ std::vector<uint8_t> load_track(const std::wstring &path) { return load(path, 64
 #endif
 } // namespace
 
-std::vector<std::wstring> battle_tracks() {
-    std::vector<std::wstring> names = Base::CFile::PackedFileNames(music_folder);
-    std::error_code error;
-    for (std::filesystem::directory_iterator it(std::filesystem::path(music_folder), error), end;
-         !error && it != end; it.increment(error)) {
-        if (it->is_regular_file(error)) names.push_back(it->path().filename().wstring());
-    }
-    std::ranges::sort(names, [](const std::wstring &a, const std::wstring &b) { return folded(a) < folded(b); });
+std::vector<std::wstring> merge_tracks(std::vector<std::wstring> packed, const std::vector<std::wstring> &loose) {
+    auto names = std::move(packed);
+    names.insert(names.end(), loose.begin(), loose.end());
+    std::ranges::stable_sort(names, [](const std::wstring &a, const std::wstring &b) { return folded(a) < folded(b); });
     names.erase(std::unique(names.begin(), names.end(),
                             [](const std::wstring &a, const std::wstring &b) { return folded(a) == folded(b); }),
                 names.end());
     for (auto &name : names) name = std::wstring(music_folder) + L"\\" + name;
     return names;
+}
+
+std::vector<std::wstring> battle_tracks() {
+    std::vector<std::wstring> loose;
+    std::error_code error;
+    for (std::filesystem::directory_iterator it(std::filesystem::path(music_folder), error), end;
+         !error && it != end; it.increment(error)) {
+        if (it->is_regular_file(error)) loose.push_back(it->path().filename().wstring());
+    }
+    return merge_tracks(Base::CFile::PackedFileNames(music_folder), loose);
 }
 
 bool available() { return g_RangersInterface != nullptr || standalone != nullptr; }

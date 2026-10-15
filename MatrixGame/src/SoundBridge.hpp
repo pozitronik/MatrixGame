@@ -23,7 +23,10 @@ float volume(uint32_t id);
 // Standalone master level for effects and speech; retained across services. Host audio ignores it.
 void master_volume(float value);
 
-// Battle music tracks under music\BATTLE, packaged and loose, in case-insensitive name order.
+// Battle music track paths from the packaged and loose file names in music\BATTLE: case-insensitive
+// name order, with one entry for names that differ only in case.
+std::vector<std::wstring> merge_tracks(std::vector<std::wstring> packed, const std::vector<std::wstring> &loose);
+// The tracks of the registered packages and the loose music\BATTLE folder.
 std::vector<std::wstring> battle_tracks();
 // Starts standalone battle music on the first call and keeps its queue filled; call once per frame.
 void update_music();

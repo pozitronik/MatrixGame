@@ -309,15 +309,25 @@ void host_layer_lifetime() {
 }
 
 
+void music_track_names() {
+    // Packaged names come first in registration order; a loose name that differs only in case is the
+    // same track, which the loose file supplies when it is read.
+    const auto tracks = SoundBridge::merge_tracks({L"fight2.dat", L"Boy1.dat", L"boy1.dat"}, {L"BOY1.DAT", L"a.dat", L"B.dat"});
+    MG_CHECK(tracks == std::vector<std::wstring>({L"music\\BATTLE\\a.dat", L"music\\BATTLE\\B.dat",
+                                                  L"music\\BATTLE\\Boy1.dat", L"music\\BATTLE\\fight2.dat"}));
+    MG_CHECK(SoundBridge::merge_tracks({}, {}).empty());
+}
+
 #ifdef MATRIXGAME_MUSIC
 void music_sessions() {
     StartupFixture fixture;
-    fixture.track("music/BATTLE/b.dat", 2000);
-    fixture.track("music/BATTLE/A.dat", 1000);
+    fixture.track("music/BATTLE/B.dat", 2000);
+    fixture.track("music/BATTLE/a.dat", 1000);
     fixture.track("music/BATTLE/c.dat", 3000);
     fixture.track("music/BATTLE/nested/d.dat", 4000);  // Only files directly in the folder are tracks.
+    // A case-sensitive order would put B.dat first.
     MG_CHECK(SoundBridge::battle_tracks() ==
-             std::vector<std::wstring>({L"music\\BATTLE\\A.dat", L"music\\BATTLE\\b.dat", L"music\\BATTLE\\c.dat"}));
+             std::vector<std::wstring>({L"music\\BATTLE\\a.dat", L"music\\BATTLE\\B.dat", L"music\\BATTLE\\c.dat"}));
     SoundBridge::music_volume(0.5f);  // Set before the service exists, as at startup.
     SoundBridge::initialize_standalone(true);
     MG_CHECK(SoundBridge::music_available() && startup_device->streams.empty());
@@ -414,7 +424,7 @@ constexpr tests::Case cases[] = {
 #else
     {"game.audio.music_not_built", music_not_built},
 #endif
-    {"game.audio.host_music_routing", host_music_routing},
+    {"game.audio.music_track_names", music_track_names}, {"game.audio.host_music_routing", host_music_routing},
 };
 } // namespace
 

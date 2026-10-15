@@ -130,11 +130,12 @@ public:
     void submit(std::vector<int16_t> samples) override {
         // Buffers finish in submission order, so the oldest ones beyond the queue are done.
         for (const UINT32 queued = pending(); buffers_.size() > queued;) buffers_.pop_front();
-        buffers_.push_back(std::move(samples));
         XAUDIO2_BUFFER buffer{};
-        buffer.AudioBytes = static_cast<UINT32>(buffers_.back().size() * sizeof(int16_t));
-        buffer.pAudioData = reinterpret_cast<const BYTE *>(buffers_.back().data());
+        buffer.AudioBytes = static_cast<UINT32>(samples.size() * sizeof(int16_t));
+        buffer.pAudioData = reinterpret_cast<const BYTE *>(samples.data());
         check(voice_->SubmitSourceBuffer(&buffer, nullptr), "Submit music buffer");
+        // Only a queued buffer is kept; moving the vector keeps the storage the voice reads.
+        buffers_.push_back(std::move(samples));
     }
     size_t queued() const override { return pending(); }
     void play() override { check(voice_->Start(0, XAUDIO2_COMMIT_NOW), "Start music voice"); }

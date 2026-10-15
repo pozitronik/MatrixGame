@@ -27,6 +27,7 @@ struct BattleDeviceStats {
 // with D3DERR_NOTAVAILABLE; it never simulates successful drawing.
 // Unknown calls (including rendering, other texture profiles and Reset) terminate the test
 // with the method name, even if the production caller ignores its HRESULT.
+// cooperative_level can report a lost device, which needs no Reset while it lasts.
 class BattleDevice {
     class Device;
     Device *device_;
@@ -38,6 +39,7 @@ public:
     BattleDevice(const BattleDevice &) = delete;
     BattleDevice &operator=(const BattleDevice &) = delete;
     IDirect3DDevice9 *get() const;
+    void cooperative_level(HRESULT status);
     const BattleDeviceStats &stats() const;
 };
 

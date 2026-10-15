@@ -373,6 +373,33 @@ void music_fade() {
     g_MatrixMap->RestoreMusicVolume();
     fade(1.0f);
 }
+// The game form refills music before anything else in a frame, so a lost device that skips the rest
+// of the frame does not starve it.
+void music_form_refill() {
+    Session session;
+    auto audio = std::make_shared<audio_fixture::DeviceState>();
+    SoundBridge::install(std::make_unique<Audio::Service>(std::make_unique<audio_fixture::FakeDevice>(audio),
+        Audio::Mapping{{L"Sound.Synthetic", L"synthetic.wav"}},
+        [](const std::wstring &) { return audio_fixture::wave(); },
+        [](const std::wstring &, const std::string &error) { throw std::runtime_error(error); }));
+    SoundBridge::install_music({L"synthetic"}, [](const std::wstring &) { return std::vector<uint8_t>{1}; },
+        [](std::vector<uint8_t>) -> std::unique_ptr<Audio::Decoder> {
+            return std::make_unique<audio_fixture::FakeDecoder>(audio_fixture::TrackSpec{1, 8000, 100000, 0});
+        });
+    CFormMatrixGame form;
+    MG_CHECK(audio->streams.empty());  // Nothing plays before the first frame.
+    session.device_lost(true);
+    const int time = session.time();
+    form.Takt(10);
+    MG_CHECK(session.time() == time);  // The lost device skipped the map.
+    MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 4 && audio->streams[0]->plays == 1);
+    session.device_lost(false);
+    // Resources count as present, so the recovered device needs nothing recreated.
+    SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+    audio->streams[0]->queued = 0;
+    form.Takt(10);
+    MG_CHECK(session.time() == time + 10 && audio->streams[0]->buffers.size() == 8);
+}
 void full_auto_escape() {
     Session session;
     DialogData dialog;
@@ -1306,6 +1333,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.special_survival_flags", special_survival_flags},
     {"game.outcome.full_auto_escape", full_auto_escape},
     {"game.outcome.music_fade", music_fade},
+    {"game.outcome.music_form_refill", music_form_refill},
     {"game.outcome.legacy_loss_cheat", legacy_loss_cheat},
     {"game.outcome.statistics_formatting", statistics_formatting},
     {"game.outcome.scheduled_capture", scheduled_capture},
