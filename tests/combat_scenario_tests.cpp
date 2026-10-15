@@ -1106,6 +1106,14 @@ void axis_trace_group_clip() {
         MG_CHECK(IsIntersectSphere(middle, nearer->GetRadius(), from, dir, t_nearer));
         MG_CHECK(from.y + t_farther > boundary && from.y + t_nearer > boundary && t_nearer < t_farther);
         MG_CHECK(g_MatrixMap->Trace(nullptr, from, to, TRACE_ROBOT | TRACE_OBJECTSPHERE, nullptr) == nearer);
+        // The near bound: the nearer robot, moved wholly into the next group, is now entered before the
+        // boundary. That group rejects the hit, as it would for an oblique ray, and the farther robot wins.
+        position_fixture_robot(*nearer, nearer->m_PosX, nearer->m_PosY + (boundary + 3 - vmin.y));
+        MG_CHECK(!nearer->CalcBounds(vmin, vmax));
+        MG_CHECK(vmin.y >= boundary);
+        MG_CHECK(IsIntersectSphere(nearer->GetGeoCenter(), nearer->GetRadius(), from, dir, t_nearer));
+        MG_CHECK(from.y + t_nearer < boundary && t_nearer < t_farther);
+        MG_CHECK(g_MatrixMap->Trace(nullptr, from, to, TRACE_ROBOT | TRACE_OBJECTSPHERE, nullptr) == farther);
     }
 }
 std::vector<std::string> chained_bombs_run(random::Mode mode, int run) {
