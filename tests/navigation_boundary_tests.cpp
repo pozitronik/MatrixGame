@@ -391,6 +391,65 @@ void terrain_speed() {
             MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 200);
         }
 }
+int sloped_journey(random::Mode mode, int step, float gradient) {
+    Profile profile{mode, 81, step, 5000, false};
+    profile.layout = NavigationLayout::Open;
+    Session session(profile);
+    MG_CHECK(session.remove(2));
+    auto *robot = g_MatrixMap->GetPlayerSide()->GetCurGroup()->GetObjectByN(0)->AsRobot();
+    // A continuous plane supplies both height triangles and vertex normals.
+    // Navigation masks remain open; the production tick derives chassis tilt.
+    D3DXVECTOR3 normal(-gradient, 0, 1);
+    D3DXVec3Normalize(&normal, &normal);
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
+        auto &unit = *g_MatrixMap->UnitGet(x, y);
+        unit.SetType(CELLFLAG_LAND);
+        unit.a1 = unit.a2 = gradient;
+        unit.b1 = unit.b2 = 0;
+        unit.c1 = unit.c2 = 200 + gradient * x * GLOBAL_SCALE;
+    }
+    for (int y = 0; y <= 32; ++y) for (int x = 0; x <= 32; ++x) {
+        auto &point = *g_MatrixMap->PointGet(x, y);
+        point.z = point.z_land = 200 + gradient * x * GLOBAL_SCALE;
+        point.n = normal;
+    }
+    g_Config.m_ItemChars[CHASSIS2_MOVE_SPEED] = 0.6f;
+    g_Config.m_ItemChars[CHASSIS2_MOVE_SLOPE_CORR_UP] = 0.5f;
+    g_Config.m_ItemChars[CHASSIS2_MOVE_SLOPE_CORR_DOWN] = 3;
+    robot->CalcRobotMass();
+    session.ground_command(500, 200);
+    int samples = 0;
+    while (session.frame() < profile.max_frames) {
+        session.advance();
+        const auto state = session.robot(1);
+        MG_CHECK(state.alive && std::isfinite(state.x) && std::isfinite(state.y));
+        MG_CHECK(!robot->IsMustDie() && state.order == mpo_MoveTo);
+        MG_CHECK(state.destination_x == 48 && state.destination_y == 18);
+        MG_CHECK(std::abs(robot->Z_From_Pos() - (200 + gradient * state.x)) < 0.001f);
+        if (state.x > 240 && state.x < 360) {
+            MG_CHECK(robot->m_Speed > 0);
+            if (gradient > 0) MG_CHECK(robot->m_Speed < 0.4f);
+            else if (gradient < 0) MG_CHECK(robot->m_Speed > 0.8f);
+            else MG_CHECK(std::abs(robot->m_Speed - 0.6f) < 0.00001f);
+            ++samples;
+        }
+        if (robot->PLIsInPlace()) break;
+    }
+    MG_CHECK(robot->PLIsInPlace() && samples > 0);
+    MG_CHECK(std::abs(robot->m_PosX - 500) < 1 && std::abs(robot->m_PosY - 200) < 1);
+    std::cout << session.metadata("continuous-slope-journey-v1") << " gradient=" << gradient
+              << " arrival_ms=" << session.time() << " samples=" << samples << '\n';
+    return session.time();
+}
+void sloped_terrain_journeys() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const int flat = sloped_journey(mode, step, 0);
+        const int uphill = sloped_journey(mode, step, 0.25f);
+        const int downhill = sloped_journey(mode, step, -0.25f);
+        MG_CHECK(uphill > flat && flat > downhill);
+    }
+}
+
 void water_depth() {
     for (float depth : {-101.0f, -102.0f, -103.0f}) {
         Profile p; p.layout = NavigationLayout::Open;
@@ -402,6 +461,7 @@ void water_depth() {
     }
 }
 const Case cases[] = {
+    {"game.navigation.sloped_terrain_journeys", sloped_terrain_journeys},
     {"game.navigation.zone_routes", zone_routes},
     {"game.navigation.chassis_traversal", chassis_traversal},
     {"game.navigation.road_routes", road_routes},

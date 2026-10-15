@@ -95,3 +95,9 @@ All flight resources are generated public fixtures: material wheel/Birex cargo a
 ## Completion assessment
 
 Additional chassis and terrain combinations, broader delivery geometry and persisted reference traces remain implementation work; they are not waiting for a maintainer decision. Representative measurement and exact-revision acceptance remain integration-level obligations. Existing search-footprint observations do not replace internal per-frame work counters.
+
+## Complete journeys on slopes
+
+`sloped_terrain_journeys` supplies a continuous plane through both terrain triangles and matching vertex normals. A single wheel chassis receives the normal context movement command from (100,200) to (500,200); complete map ticks derive its tilt, speed and position. The flat control and gradients +0.25/-0.25 use the same open navigation masks, a declared base speed of 0.6, uphill cutoff 0.5 and downhill multiplier 3. Every tick checks finite live state, retained command/destination and height on the plane. Interior samples at x=240..360 require positive motion: uphill below 0.4, downhill above 0.8, and flat within 0.00001 of 0.6. All journeys must arrive; elapsed time must order uphill > flat > downhill within each profile.
+
+Both RNG modes and independent 10/16 ms schedules run with seed 81 and unavailable audio. The plane remains above water, the second friendly robot is removed before the command, and no robot orientation or movement outcome is injected after setup. This extends NAV-01/NAV-02 terrain evidence beyond the direct Seek arithmetic checks. It does not establish terrain-file loading, changing slope transitions, other chassis, impassable slopes, native rendering or a persisted reference trajectory.
