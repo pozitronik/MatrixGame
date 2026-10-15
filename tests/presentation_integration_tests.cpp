@@ -229,6 +229,71 @@ void positional_loop() {
     MG_CHECK(sound.reported.empty());
 }
 
+void positional_attenuation_boundaries() {
+    struct Sample { float distance, volume; };
+    constexpr Sample samples[]{{0, 1}, {199, 1}, {200, 1}, {201, 0.999f},
+                              {700, 0.5f}, {1199, 0.001f}, {1200, 0}, {1201, 0}};
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        BattleSound sound(mode);
+        const auto center = g_MatrixMap->m_Camera.GetFrustumCenter();
+        const auto right = g_MatrixMap->m_Camera.GetRight();
+        const auto draws = random::draw_count();
+        for (const auto sample : samples) for (float direction : {-1.0f, 1.0f}) {
+            const auto previous = sound.device->voices.size();
+            const auto id = CSound::Play(S_WEAPON_LASER, center + right * (direction * sample.distance));
+            if (sample.volume == 0) {
+                MG_CHECK(id == SOUND_ID_EMPTY && sound.device->voices.size() == previous);
+            } else {
+                MG_CHECK(id != SOUND_ID_EMPTY && sound.device->voices.size() == previous + 1);
+                const auto voice = sound.device->voices.back();
+                MG_CHECK(voice->loop && voice->playing && CSound::IsSoundPlay(id));
+                MG_CHECK(std::abs(voice->volume - sample.volume) < 0.00001f);
+                MG_CHECK(std::abs(voice->pan - (sample.distance == 0 ? 0 : direction)) < 0.00001f);
+                CSound::StopPlay(id);
+                MG_CHECK(!voice->playing && voice->destroyed == 1 && !CSound::IsSoundPlay(id));
+            }
+        }
+        MG_CHECK(sound.loaded == std::vector<std::wstring>{L"wlaser"});
+        MG_CHECK(sound.reported.empty() && random::draw_count() == draws);
+        std::cout << sound.session.metadata("positional-audio-envelope-v1") << '\n';
+    }
+}
+
+void positional_loop_reentry() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        BattleSound sound(mode);
+        const auto center = g_MatrixMap->m_Camera.GetFrustumCenter();
+        const auto right = g_MatrixMap->m_Camera.GetRight();
+        const auto draws = random::draw_count();
+        const auto distant = center + right * 2000;
+        auto id = CSound::Play(S_WEAPON_LASER, distant);
+        MG_CHECK(id == SOUND_ID_EMPTY && sound.device->voices.empty() && sound.loaded.empty());
+        id = CSound::Play(id, S_WEAPON_LASER, center);
+        MG_CHECK(id != SOUND_ID_EMPTY && sound.device->voices.size() == 1);
+        const auto voice = sound.device->voices.back();
+        MG_CHECK(voice->playing && voice->volume == 1 && voice->pan == 0);
+        // Updating an existing loop preserves it even when a new sound here
+        // would be rejected as inaudible. Re-entry must reuse that voice.
+        MG_CHECK(CSound::ChangePos(id, S_WEAPON_LASER, distant) == id);
+        MG_CHECK(voice->volume == 0 && voice->playing && voice->destroyed == 0);
+        MG_CHECK(CSound::Play(id, S_WEAPON_LASER, center - right * 700) == id);
+        MG_CHECK(sound.device->voices.size() == 1 && voice->playing);
+        MG_CHECK(std::abs(voice->volume - 0.5f) < 0.00001f && voice->pan < -0.99999f);
+        CSound::StopPlay(id);
+        MG_CHECK(voice->destroyed == 1 && !voice->playing);
+        MG_CHECK(CSound::ChangePos(id, S_WEAPON_LASER, center) == SOUND_ID_EMPTY);
+        MG_CHECK(sound.device->voices.size() == 1);
+        const auto replacement = CSound::Play(id, S_WEAPON_LASER, center);
+        MG_CHECK(replacement != SOUND_ID_EMPTY && replacement != id);
+        MG_CHECK(sound.device->voices.size() == 2 && sound.device->voices.back()->playing);
+        MG_CHECK(sound.loaded == std::vector<std::wstring>{L"wlaser"});
+        CSound::Clear();
+        for (const auto &item : sound.device->voices) MG_CHECK(!item->playing && item->destroyed == 1);
+        MG_CHECK(sound.reported.empty() && random::draw_count() == draws);
+        std::cout << sound.session.metadata("positional-audio-loop-reentry-v1") << '\n';
+    }
+}
+
 void missing_speech_mapping() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         BattleSound sound(mode, true, false);
@@ -319,6 +384,8 @@ void textured_button_hit_testing() {
 }
 
 constexpr tests::Case cases[]{
+    {"game.presentation.positional_attenuation_boundaries", positional_attenuation_boundaries},
+    {"game.presentation.positional_loop_reentry", positional_loop_reentry},
     {"game.presentation.textured_button_hit_testing", textured_button_hit_testing},
     {"game.presentation.push_sounds", push_sound_routes},
     {"game.presentation.preset_matching", preset_name_matching},

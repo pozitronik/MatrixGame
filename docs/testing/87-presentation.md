@@ -39,6 +39,12 @@ The click-name behavior corresponds to inventory item D5. It is an observable le
 
 Each outstanding entry remains part of the presentation leaf. This document and passing button tests do not satisfy its native acceptance criteria or authorize structural refactoring.
 
+## Positional audio boundaries
+
+`positional_attenuation_boundaries` uses the existing looping laser mapping with attenuation 0.5 (the frontend scales it to 0.001), volume endpoints 0/1 and pan endpoints -1/1. It checks actual standalone voice parameters at the camera center and on both sides at distances 199, 200, 201, 700, 1,199, 1,200 and 1,201. Volume stays at one through 200, then matches 0.999, 0.5 and 0.001 at the intermediate samples. At and beyond 1,200 a new sound is rejected without allocating a voice. Center pan is zero and lateral samples pan fully to the corresponding side. Each created voice is stopped and destroyed once; the PCM clip loads once and positional calls consume no RNG draws.
+
+`positional_loop_reentry` distinguishes creation from updates. An initially distant sound creates no voice and loads no PCM; bringing its empty handle to the center creates a loop. Moving that active loop out of range makes it silent but retains its handle and voice. Returning it on the opposite side restores attenuated volume and pan without allocation. After an explicit stop, ChangePos rejects the stale handle; Play with that handle creates a different voice using the cached clip. Clear destroys each remaining voice exactly once. Both cases run under both RNG modes with seed 87, without advancing simulation or opening an audio device. They extend PRES-03 routing/lifetime evidence; actual audibility, native spatial perception, camera-driven automatic sound updates and full resource-backed scenes still need separate validation.
+
 ## Opt-in defect reproducers
 
 `matrixgame_presentation_defect_probes` is built with the test executables but is deliberately not registered in CTest. Its three probes assert the geometrically correct results and currently return exit code 1 on the reference implementation. They document catalog candidates D1 and D7; they are not accepted baseline goldens or passing regression coverage. After a separately reviewed correction, their assertions can become regular CTest contracts.
