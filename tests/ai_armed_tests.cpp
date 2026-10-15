@@ -6,7 +6,7 @@
 #include "MatrixRobot.hpp"
 #include "MatrixSide.hpp"
 #include "Logic/MatrixEnvironment.h"
-#include "ZeroXTrace.hpp"
+#include "zero_x_mode.hpp"
 
 namespace tests::ai {
 namespace {
@@ -116,7 +116,7 @@ void visual_obstruction() {
 // object hit along such a line, so the observer never saw the enemy.
 void visual_axis_aligned() {
     for (bool original : {false, true}) for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        ZeroXTrace::set_original(original);
+        tests::ZeroXMode zero_x(original);
         BattleCombatAssets assets;
         battle::Session session({mode, 79});
         assets.install(); configure();
@@ -132,7 +132,6 @@ void visual_axis_aligned() {
         MG_CHECK(bool(observer->GetEnv()->SearchEnemy(target)) == !original);
         evidence(session, original ? "visual-axis-original" : "visual-axis-corrected", observer);
     }
-    ZeroXTrace::set_original(ZeroXTrace::original_by_default());
 }
 
 void visual_retirement_range() {

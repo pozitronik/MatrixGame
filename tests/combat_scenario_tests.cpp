@@ -9,7 +9,7 @@
 #include "MatrixObject.hpp"
 #include <set>
 #include "DelayedDamage.hpp"
-#include "ZeroXTrace.hpp"
+#include "zero_x_mode.hpp"
 #include "test_support.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixObjectCannon.hpp"
@@ -271,10 +271,7 @@ void cannon_firing() {
     }
 }
 // Selects the zero-X trace mode for one case and restores the process default.
-struct ZeroXMode {
-    explicit ZeroXMode(bool original) { ZeroXTrace::set_original(original); }
-    ~ZeroXMode() { ZeroXTrace::set_original(ZeroXTrace::original_by_default()); }
-};
+using tests::ZeroXMode;
 
 // Object tracing along and across map axes: https://github.com/pozitronik/MatrixGame/issues/129
 // Groups are 200 world units wide; the first player robot stands on the y = 200 group boundary,
