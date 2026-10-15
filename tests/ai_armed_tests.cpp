@@ -376,7 +376,7 @@ void turret_acquisition_range() {
         assets.install(); configure();
         auto *observer = owner();
         arm_battle_robot(*observer, RUK_WEAPON_LASER);
-        const float distance = longer_turret ? (inside ? 190 : 210) : (inside ? 95 : 115);
+        const float distance = longer_turret ? (inside ? 190 : 210) : (inside ? 95 : 105);
         auto *target = awareness_cannon(distance, longer_turret ? 200 : 50);
         MG_CHECK(g_MatrixMap->IsLogicVisible(observer, target, 0));
         observer->GatherInfo(0);
@@ -389,13 +389,15 @@ void turret_acquisition_range() {
 }
 void turret_retirement_range() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (bool longer_turret : {false, true})
     for (bool outside : {false, true}) for (bool aiming_at_observer : {false, true}) {
         BattleCombatAssets assets;
         battle::Session session({mode, 84});
         assets.install(); configure();
         auto *observer = owner();
         arm_battle_robot(*observer, RUK_WEAPON_LASER);
-        auto *target = awareness_cannon(outside ? 155 : 135, 100);
+        const float distance = longer_turret ? (outside ? 299 : 297) : (outside ? 147 : 145);
+        auto *target = awareness_cannon(distance, longer_turret ? 200 : 50);
         auto &env = *observer->GetEnv();
         env.AddToList(target); // A declared historical sighting, beyond acquisition range.
         if (aiming_at_observer) target->m_TargetCore = observer->GetCore(DEBUG_CALL_INFO);
