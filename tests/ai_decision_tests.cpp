@@ -17,6 +17,10 @@ void automatic_reinforcement_choices();
 void automatic_reinforcement_delivery();
 void capture_guard_interruption();
 void capture_guard_filters();
+void turret_visual_obstruction();
+void turret_acquisition_range();
+void turret_retirement_range();
+void turret_acquisition_filters();
 void visual_acquisition_range();
 void visual_enemy_range();
 void visual_filters();
@@ -415,6 +419,10 @@ int main(int argc, char **argv) {
         {"game.ai.automatic_reinforcement_delivery", tests::ai::automatic_reinforcement_delivery},
         {"game.ai.capture_guard_interruption", tests::ai::capture_guard_interruption},
         {"game.ai.capture_guard_filters", tests::ai::capture_guard_filters},
+        {"game.ai.turret_visual_obstruction", tests::ai::turret_visual_obstruction},
+        {"game.ai.turret_acquisition_range", tests::ai::turret_acquisition_range},
+        {"game.ai.turret_retirement_range", tests::ai::turret_retirement_range},
+        {"game.ai.turret_acquisition_filters", tests::ai::turret_acquisition_filters},
         {"game.ai.visual_acquisition_range", tests::ai::visual_acquisition_range},
         {"game.ai.visual_enemy_range", tests::ai::visual_enemy_range},
         {"game.ai.visual_filters", tests::ai::visual_filters},

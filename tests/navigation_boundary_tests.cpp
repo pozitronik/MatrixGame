@@ -462,6 +462,53 @@ void sloped_terrain_journeys() {
     }
 }
 
+int shallow_water_run(random::Mode mode, int step, bool water) {
+    Profile profile{mode, 81, step, 3000, false};
+    profile.layout = NavigationLayout::Open;
+    Session session(profile);
+    MG_CHECK(session.remove(2));
+    auto *robot = g_MatrixMap->GetPlayerSide()->GetCurGroup()->GetObjectByN(0)->AsRobot();
+    g_Config.m_ItemChars[CHASSIS2_MOVE_WATER_CORR] = 0.5f;
+    robot->CalcRobotMass();
+    robot->SetMaxSpeed(0.6f);
+    // Keep the generated navigation mask traversable; only supplied surface depth differs.
+    for (int x = 10; x < 20; ++x) for (int y = 2; y < 30; ++y)
+        g_MatrixMap->UnitGetTest(x, y)->a1 = water ? -3.0f : 0.0f;
+    std::cout << session.metadata("navigation-shallow-strip-v1") << " water=" << water << '\n';
+    session.ground_command(500, 200);
+    bool crossed = false, recovered = false;
+    int arrival = 0;
+    for (int frame = 0; frame < 3000; ++frame) {
+        session.advance();
+        const auto state = session.robot(1);
+        MG_CHECK(state.alive && !robot->IsMustDie() && std::isfinite(state.x) && std::isfinite(state.y));
+        MG_CHECK(state.order == mpo_MoveTo && state.destination_x == 48 && state.destination_y == 18);
+        if (state.x > 240 && state.x < 360) {
+            const float limit = water ? 0.3f : 0.6f;
+            MG_CHECK(robot->m_Speed >= 0 && robot->m_Speed <= limit + 0.00001f);
+            crossed |= std::abs(robot->m_Speed - limit) < 0.00001f;
+            MG_CHECK(robot->Z_From_Pos() == (water ? -3.0f : 0.0f));
+        }
+        if (state.x > 440 && state.x < 470) {
+            MG_CHECK(robot->m_Speed >= 0 && robot->m_Speed <= 0.60001f);
+            recovered |= std::abs(robot->m_Speed - 0.6f) < 0.00001f;
+            MG_CHECK(robot->Z_From_Pos() == 0);
+        }
+        if (state.in_place) { arrival = session.time(); break; }
+    }
+    MG_CHECK(crossed && recovered && arrival > 0);
+    MG_CHECK(robot->m_PosX == 500 && robot->m_PosY == 200);
+    std::cout << "arrival_ms=" << arrival << '\n';
+    return arrival;
+}
+void shallow_water_traversal() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const int dry = shallow_water_run(mode, step, false);
+        const int water = shallow_water_run(mode, step, true);
+        MG_CHECK(water > dry);
+    }
+}
+
 void water_depth() {
     for (float depth : {-101.0f, -102.0f, -103.0f}) {
         Profile p; p.layout = NavigationLayout::Open;
@@ -486,6 +533,7 @@ const Case cases[] = {
     {"game.navigation.dense_flow", dense_flow},
     {"game.navigation.terrain_speed", terrain_speed},
     {"game.navigation.water_depth", water_depth},
+    {"game.navigation.shallow_water_traversal", shallow_water_traversal},
 };
 }
 int main(int argc, char **argv) {
