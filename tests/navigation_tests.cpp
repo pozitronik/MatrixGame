@@ -17,6 +17,8 @@ void multiregion_movement();
 void multiregion_road_guidance();
 void group_speed_finite();
 void unreachable_replacement();
+void shorted_movement_recovery();
+void drowning_retirement();
 }
 
 namespace {
@@ -439,6 +441,8 @@ int main(int argc, char **argv) {
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
+        {"game.navigation.shorted_movement_recovery", tests::navigation::shorted_movement_recovery},
+        {"game.navigation.drowning_retirement", tests::navigation::drowning_retirement},
         {"game.navigation.delivery_flights", tests::navigation::delivery_flights},
         {"game.navigation.delivery_carrier_damage", tests::navigation::delivery_carrier_damage},
         {"game.navigation.local_routes", local_routes},

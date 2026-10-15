@@ -760,13 +760,47 @@ void package_handles() {
     }
     MG_CHECK(exclusively_openable(first.path()) && exclusively_openable(second.path()));
 
-    // One malformed package rejects the collection and closes packages that were already open.
+    // A malformed package is dropped alone; the packages after it keep working.
     TemporaryFile malformed(Bytes().u32(4096).data);
-    Base::CPackCollection packs(nullptr);
-    packs.AddPacketFile(first.path().c_str());
-    packs.AddPacketFile(malformed.path().c_str());
-    MG_CHECK(!packs.OpenPacketFiles());
-    MG_CHECK(exclusively_openable(first.path()) && exclusively_openable(malformed.path()));
+    {
+        Base::CPackCollection packs(nullptr);
+        packs.AddPacketFile(malformed.path().c_str());
+        packs.AddPacketFile(first.path().c_str());
+        std::vector<std::wstring> failed;
+        MG_CHECK(packs.OpenPacketFiles(&failed));
+        MG_CHECK(failed == std::vector<std::wstring>{malformed.path().wstring()});
+        MG_CHECK(exclusively_openable(malformed.path()));
+        const DWORD handle = packs.Open("readme.txt");
+        MG_CHECK(handle == 0 && read_text(packs, handle) == "first");
+        MG_CHECK(packs.Close(handle) && packs.ClosePacketFiles());
+    }
+    {
+        // Packages before and after a dropped one stay open, and the later one takes the dropped index.
+        Base::CPackCollection packs(nullptr);
+        packs.AddPacketFile(first.path().c_str());
+        packs.AddPacketFile(malformed.path().c_str());
+        packs.AddPacketFile(second.path().c_str());
+        std::vector<std::wstring> failed;
+        MG_CHECK(packs.OpenPacketFiles(&failed));
+        MG_CHECK(failed == std::vector<std::wstring>{malformed.path().wstring()});
+        const DWORD shadowed = packs.Open("readme.txt");
+        const DWORD only = packs.Open("only.txt");
+        MG_CHECK(shadowed == 0 && only == 16);
+        MG_CHECK(read_text(packs, shadowed) == "first" && read_text(packs, only) == "only");
+        MG_CHECK(packs.Close(shadowed) && packs.Close(only) && packs.ClosePacketFiles());
+    }
+    MG_CHECK(exclusively_openable(first.path()) && exclusively_openable(second.path()));
+    {
+        // The collection is rejected only when no package opens.
+        TemporaryFile truncated(Bytes().u8(4).u8(0).data);
+        Base::CPackCollection packs(nullptr);
+        packs.AddPacketFile(malformed.path().c_str());
+        packs.AddPacketFile(truncated.path().c_str());
+        std::vector<std::wstring> failed;
+        MG_CHECK(!packs.OpenPacketFiles(&failed));
+        MG_CHECK(failed.size() == 2 && !packs.FileExists("readme.txt"));
+        MG_CHECK(exclusively_openable(malformed.path()) && exclusively_openable(truncated.path()));
+    }
 }
 
 void check_rejected_package(const Bytes &bytes) {

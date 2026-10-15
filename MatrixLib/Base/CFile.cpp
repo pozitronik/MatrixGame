@@ -10,6 +10,7 @@
 #include "CException.hpp"
 #include "Pack.hpp"
 
+#include <stupid_logger.hpp>
 #include <utils.hpp>
 
 namespace Base {
@@ -25,12 +26,18 @@ void CFile::AddPackFile(const wchar *name) {
 
     m_Packs->AddPacketFile(name);
 }
-void CFile::OpenPackFiles(void) {
+std::vector<std::wstring> CFile::OpenPackFiles(void) {
+    std::vector<std::wstring> failed;
     if (m_Packs) {
-        if (!m_Packs->OpenPacketFiles()) {
+        const bool opened = m_Packs->OpenPacketFiles(&failed);
+        for (const auto &name : failed) {
+            lgr.error("Cannot open package {}; its files are unavailable")(utils::from_wstring(name));
+        }
+        if (!opened) {
             ReleasePackFiles();
         }
     }
+    return failed;
 }
 
 void CFile::ReleasePackFiles(void) {
