@@ -452,6 +452,7 @@ void manual_fire_interface_focus() {
         point(101, 200); // Opaque UI texel.
         MG_CHECK(g_IFaceList->m_InFocus == INTERFACE && g_IFaceList->m_FocusedElement == button);
         form.MouseKey(B_DOWN, VK_LBUTTON, 101, 200);
+        MG_CHECK(button->GetState() == IFACE_PRESSED);
         const float initial_health = target->GetHitPoint();
         ticks(50);
         MG_CHECK(Input::isVKeyPressed(VK_LBUTTON));

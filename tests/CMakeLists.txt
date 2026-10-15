@@ -673,7 +673,9 @@ foreach(contract positional_attenuation_boundaries positional_loop_reentry push_
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
 endforeach()
 
-foreach(contract manual_fire_interface_focus camera_wheel_limits camera_drag_release camera_input_interruption)
+add_matrix_test(game.presentation.manual_fire_interface_focus matrixgame_presentation_integration_tests gameplay ui input)
+
+foreach(contract camera_wheel_limits camera_drag_release camera_input_interruption)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui input rendering)
 endforeach()
 
