@@ -117,3 +117,11 @@ Both cases use seed 81, 10 ms frames, both RNG modes and synthetic combat resour
 ## Completion assessment
 
 Additional chassis and terrain combinations, broader delivery geometry and persisted reference traces remain implementation work; they are not waiting for a maintainer decision. Representative measurement and exact-revision acceptance remain integration-level obligations. Existing search-footprint observations do not replace internal per-frame work counters.
+
+## Following a disabled robot through a narrow passage
+
+`shorted_route_blocker` and `dying_route_blocker` place a slow friendly leader ahead of a faster selected follower in the synthetic corridor. Both receive production movement orders. After at least 500 ms of map ticks, a supplied lightning hit shorts the leader or a lethal laser hit turns it into debris. The cases use both RNG modes with seed 81, separate 10/16 ms schedules, unavailable audio and complete map ticks. Damage is supplied directly; aiming and projectile collision are outside this fixture.
+
+The short lasts 500 ms rounded up to the tick boundary. The leader stays stationary while shorted and resumes physical movement when the effect expires. The follower retains its original Move and destination throughout. This scene does not reliably reach the destination: by 20 seconds the follower is still in the passage, and it remains there after another four seconds with the leader removed. An otherwise identical no-hit control also leaves the follower in the passage, although its leader completes its movement. These assertions preserve a bounded navigation failure; they do not attribute the stall solely to stun or claim a permanent deadlock.
+
+The lethal variant lets debris retire naturally, observes the retained core becoming empty, and requires the follower to arrive at (500, 300) within 20 seconds. Exactly one kill belongs to the damaging enemy side. The short and no-hit variants award no kill. Each tick checks the follower's intent, finite position and passage bounds. No test changes navigation masks, clears orders or teleports a unit after the initial setup. These checks extend NAV-02's disabled-obstacle behavior; generated terrain restrictions, other chassis journeys and work-counter measurements remain separate requirements.
