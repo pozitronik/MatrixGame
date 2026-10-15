@@ -57,6 +57,8 @@ Always select the matching configuration with `-C` for MSVC's multi-configuratio
 
 CI runs the engine suite after every game-build configuration. Test failures fail the build job and the aggregate Required checks gate. JUnit reports are retained as separate artifacts, including when a test fails. Contribution-policy tests remain a separate check.
 
+For current command, navigation, AI and presentation completion work, see the [baseline completion checklist](testing/baseline-completion.md). It reconciles shared test evidence and distinguishes proposed remaining scenario selections from final baseline acceptance. Completed implementation and pending native execution have separate records in the [native validation ledger](testing/native-validation.md); automated regressions continue to run during implementation.
+
 ## Controlled battle scenarios
 
 The `game.scenario.*` cases run synthetic battles through `CMatrixMapLogic::Takt`, including production robot movement, pathfinding, side AI, effects and outcome evaluation. The fixture starts with selected unarmed wheel chassis; context commands enter `CMatrixSideUnit::OnRButtonDown` with a supplied world trace. This exercises its ordinary validation, footprint conversion, group assignment and synchronous command execution. Initial selection is fixture setup; these cases do not claim coverage of screen picking or selection acknowledgement sounds.
