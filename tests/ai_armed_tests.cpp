@@ -2,9 +2,11 @@
 #include "battle_scenario.hpp"
 #include "battle_geometry.hpp"
 #include "battle_combat_geometry.hpp"
+#include "battle_mesh.hpp"
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixSide.hpp"
+#include "MatrixObjectCannon.hpp"
 #include "Logic/MatrixEnvironment.h"
 #include "zero_x_mode.hpp"
 
@@ -21,8 +23,9 @@ void configure() {
     g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
     g_Config.m_WeaponCooldown[Weap2Index(WEAPON_PLASMA)] = 100;
 }
-void evidence(battle::Session &session, const char *trigger, CMatrixRobotAI *robot) {
-    std::cout << session.metadata(robot->HaveRepair() == 2 ? "synthetic-repair-boxes-v1" : "synthetic-armed-boxes-v2") << '\n';
+void evidence(battle::Session &session, const char *trigger, CMatrixRobotAI *robot, const char *fixture = nullptr) {
+    if (!fixture) fixture = robot->HaveRepair() == 2 ? "synthetic-repair-boxes-v1" : "synthetic-armed-boxes-v2";
+    std::cout << session.metadata(fixture) << '\n';
     std::cout << "{\"decision\":\"armed-tactical-boundary\",\"trigger\":\"" << trigger
               << "\",\"enemy_count\":" << robot->GetEnv()->GetEnemyCnt()
               << ",\"move_order\":" << (robot->FindOrderLikeThat(ROT_MOVE_TO) ? "true" : "false")
@@ -344,4 +347,105 @@ void repair_explicit_priority() {
     }
 }
 
+namespace {
+CMatrixCannon *awareness_cannon(float distance, float range, int side = 2) {
+    auto &props = g_Config.m_CannonsProps[0];
+    props = {};
+    props.m_Hitpoint = 1000;
+    props.weapon = WEAPON_CANNON2;
+    props.m_Strength = 10;
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_CANNON2)] = range;
+    // Low-profile synthetic assembly: the production sight endpoint (ground + 20)
+    // must intersect the model's sphere, unlike the taller combat fixture.
+    const MeshAttachment basis{20, L"Turret", 0, 0, 10};
+    const MeshAttachment turret{20, L"Shaft", 0, 0, 10};
+    const MeshAttachment muzzle{50, L"muzzle", 0, 15, 0};
+    load_battle_mesh(std::span(&basis, 1), L"Matrix\\Cannon\\Basis.vo", true);
+    load_battle_mesh(std::span(&turret, 1), L"Matrix\\Cannon\\Turret1.vo", true);
+    load_battle_mesh(std::span(&muzzle, 1), L"Matrix\\Cannon\\Shaft1.vo", true);
+    auto *target = create_battle_cannon(side, 100 + distance * 0.6f, 200 - distance * 0.8f);
+    MG_CHECK(target->IsLiveCannon() && target->GetFireRadius() == range);
+    return target;
+}
+}
+void turret_acquisition_range() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (bool longer_turret : {false, true}) for (bool inside : {false, true}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 84});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        const float distance = longer_turret ? (inside ? 190 : 210) : (inside ? 95 : 115);
+        auto *target = awareness_cannon(distance, longer_turret ? 200 : 50);
+        MG_CHECK(g_MatrixMap->IsLogicVisible(observer, target, 0));
+        observer->GatherInfo(0);
+        MG_CHECK(bool(observer->GetEnv()->SearchEnemy(target)) == inside);
+        MG_CHECK(!observer->GetEnv()->IsIgnore(target));
+        observer->GatherInfo(0);
+        MG_CHECK(observer->GetEnv()->GetEnemyCnt() == (inside ? 1 : 0));
+        evidence(session, longer_turret ? "turret-own-range" : "observer-range-for-turret", observer, "synthetic-low-turret-v1");
+    }
+}
+void turret_retirement_range() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (bool outside : {false, true}) for (bool aiming_at_observer : {false, true}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 84});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        auto *target = awareness_cannon(outside ? 155 : 135, 100);
+        auto &env = *observer->GetEnv();
+        env.AddToList(target); // A declared historical sighting, beyond acquisition range.
+        if (aiming_at_observer) target->m_TargetCore = observer->GetCore(DEBUG_CALL_INFO);
+        for (int scan = 1; scan <= 3; ++scan) {
+            observer->GatherInfo(0);
+            auto *entry = env.SearchEnemy(target);
+            const bool retiring = outside && !aiming_at_observer;
+            if (retiring && scan == 3) MG_CHECK(entry == nullptr);
+            else MG_CHECK(entry && entry->m_DelSlowly == (retiring ? scan : 0));
+        }
+        evidence(session, aiming_at_observer ? "turret-aim-retains-memory" : "turret-range-retirement", observer, "synthetic-low-turret-v1");
+    }
+}
+void turret_acquisition_filters() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int filter = 0; filter < 3; ++filter) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 84});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        auto *target = awareness_cannon(95, 100, filter == 0 ? PLAYER_SIDE : 2);
+        if (filter == 1) target->m_CurrState = CANNON_UNDER_CONSTRUCTION;
+        if (filter == 2) observer->GetEnv()->AddIgnore(target);
+        observer->GatherInfo(0);
+        MG_CHECK(!observer->GetEnv()->SearchEnemy(target));
+        if (filter == 0) target->SetSide(2);
+        if (filter == 1) target->m_CurrState = CANNON_IDLE;
+        if (filter == 2) observer->GetEnv()->DelIgnore(target);
+        observer->GatherInfo(0);
+        MG_CHECK(observer->GetEnv()->SearchEnemy(target));
+        evidence(session, "turret-filter-removed", observer, "synthetic-low-turret-v1");
+    }
+}
+void turret_visual_obstruction() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        BattleCombatAssets assets;
+        battle::Session session({mode, 84});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        auto *target = awareness_cannon(95, 100);
+        auto *blocker = BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 128.5f, 162);
+        MG_CHECK(!g_MatrixMap->IsLogicVisible(observer, target, 0));
+        observer->GatherInfo(0);
+        MG_CHECK(!observer->GetEnv()->SearchEnemy(target) && !observer->GetEnv()->IsIgnore(target));
+        g_MatrixMap->StaticDelete(blocker);
+        MG_CHECK(g_MatrixMap->IsLogicVisible(observer, target, 0));
+        observer->GatherInfo(0);
+        MG_CHECK(observer->GetEnv()->SearchEnemy(target));
+        evidence(session, "turret-occluder-retired", observer, "synthetic-low-turret-v1");
+    }
+}
 }
