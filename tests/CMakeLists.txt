@@ -36,6 +36,14 @@ add_matrix_test(game.audio.master_volume matrixgame_audio_tests gameplay audio)
 add_matrix_test(game.audio.missing_data matrixgame_audio_tests gameplay audio)
 add_matrix_test(game.audio.device_failure matrixgame_audio_tests gameplay audio)
 add_matrix_test(game.audio.shutdown_order matrixgame_audio_tests gameplay audio)
+foreach(music queue order failures format_change volume device_failure)
+  add_matrix_test(game.audio.music_${music} matrixgame_audio_tests gameplay audio)
+endforeach()
+if(MATRIXGAME_MUSIC)
+  target_link_libraries(matrixgame_audio_tests PRIVATE VORBISENC)
+  add_matrix_test(game.audio.vorbis_decode matrixgame_audio_tests gameplay audio dependencies)
+  add_matrix_test(game.audio.vorbis_rejects matrixgame_audio_tests gameplay audio dependencies)
+endif()
 
 add_matrix_test_executable(matrixgame_audio_frontend_tests audio_frontend_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_audio_frontend_tests PRIVATE MatrixGameInternal)
@@ -52,6 +60,14 @@ add_matrix_test(game.audio.master_level_retained matrixgame_audio_frontend_tests
 add_matrix_test(game.audio.mapping_override matrixgame_audio_frontend_tests audio startup)
 add_matrix_test(game.audio.mapping_fallback matrixgame_audio_frontend_tests audio startup)
 add_matrix_test(game.audio.startup_unavailable matrixgame_audio_frontend_tests audio startup)
+if(MATRIXGAME_MUSIC)
+  add_matrix_test(game.audio.music_sessions matrixgame_audio_frontend_tests gameplay audio startup)
+  add_matrix_test(game.audio.music_unavailable matrixgame_audio_frontend_tests gameplay audio startup)
+else()
+  add_matrix_test(game.audio.music_not_built matrixgame_audio_frontend_tests gameplay audio startup)
+endif()
+add_matrix_test(game.audio.music_track_names matrixgame_audio_frontend_tests gameplay audio startup)
+add_matrix_test(game.audio.host_music_routing matrixgame_audio_frontend_tests gameplay audio)
 
 add_matrix_test_executable(matrixgame_base_tests base_tests.cpp)
 
@@ -581,7 +597,7 @@ target_include_directories(matrixgame_battle_outcome_scenarios PRIVATE "${CMAKE_
 target_compile_definitions(matrixgame_battle_outcome_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract carrier_removal flyer_does_not_prevent_elimination transported_robot_prevents_elimination transported_robot_removal capture_target_damage special_break special_explosion special_animation capture_combat_death turret_does_not_prevent_elimination registered_enemy_capture capture_target_removal registered_base_capture capture_candidate_lifetime registered_capture base_survival factory_does_not_prevent_elimination neutral_capture enemy_capture capture_rejection capture_rollback competing_capturers competing_color special_survival_flags statistics_formatting scheduled_capture acquisition_after_removal enemy_capture_rollback capture_queue_refund)
+foreach(contract carrier_removal flyer_does_not_prevent_elimination transported_robot_prevents_elimination transported_robot_removal capture_target_damage special_break special_explosion special_animation capture_combat_death turret_does_not_prevent_elimination registered_enemy_capture capture_target_removal registered_base_capture capture_candidate_lifetime registered_capture base_survival factory_does_not_prevent_elimination neutral_capture enemy_capture capture_rejection capture_rollback competing_capturers competing_color special_survival_flags music_fade music_form_refill statistics_formatting scheduled_capture acquisition_after_removal enemy_capture_rollback capture_queue_refund)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay)
 endforeach()
 foreach(contract base_capture_interruption protected_base_command full_auto_escape legacy_loss_cheat paused_orders)

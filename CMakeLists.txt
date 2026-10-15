@@ -19,6 +19,14 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 option(MATRIXGAME_BUILD_DLL "Build dll instead of exe" TRUE)
 option(MATRIXGAME_CHEATS "Enable cheats" TRUE)
 option(MATRIXGAME_COVERAGE "Instrument project code for gcov coverage (MinGW only)" OFF)
+# The DLL's host owns music, so only the standalone EXE decodes it by default.
+if(MATRIXGAME_BUILD_DLL)
+    set(MATRIXGAME_MUSIC_DEFAULT OFF)
+else()
+    set(MATRIXGAME_MUSIC_DEFAULT ON)
+endif()
+option(MATRIXGAME_MUSIC "Build the standalone battle music decoder with libogg and libvorbis"
+       ${MATRIXGAME_MUSIC_DEFAULT})
 
 if(MATRIXGAME_COVERAGE)
     if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU" OR NOT CMAKE_C_COMPILER_ID STREQUAL "GNU")
@@ -40,6 +48,9 @@ endif()
 include(ThirdParty/CMakeLists.txt)
 
 list(APPEND COMPILE_DEFINITIONS MATRIXGAME_EXPORTS $<$<CONFIG:Release>:ASSERT_OFF>)
+if(MATRIXGAME_MUSIC)
+    list(APPEND COMPILE_DEFINITIONS MATRIXGAME_MUSIC)
+endif()
 
 if(MSVC)
     set(COMPILE_OPTIONS

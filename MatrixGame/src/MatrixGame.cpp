@@ -256,8 +256,14 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 #ifdef BUILD_EXE
     const bool sound_package = Startup::ResourceFileExists(L"DATA\\sound.pkg");
     const bool voices_package = Startup::ResourceFileExists(L"DATA\\voices.pkg");
+#ifdef MATRIXGAME_MUSIC
+    const bool music_package = Startup::ResourceFileExists(L"DATA\\music.pkg");
+#else
+    const bool music_package = false;  // Without a decoder the package is not used.
+#endif
     if (sound_package) CFile::AddPackFile(L"DATA\\sound.pkg");
     if (voices_package) CFile::AddPackFile(L"DATA\\voices.pkg");
+    if (music_package) CFile::AddPackFile(L"DATA\\music.pkg");
 #endif
     CFile::OpenPackFiles();
 
@@ -411,7 +417,7 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     g_Config.ApplySettings(&settings);
 #ifdef BUILD_EXE
-    SoundBridge::initialize_standalone(sound_package || voices_package);
+    SoundBridge::initialize_standalone(sound_package || voices_package || music_package);
 #endif
     g_Sampler.ApplySettings(&settings);
     SetMaxCameraDistance(settings.m_MaxDistance);
