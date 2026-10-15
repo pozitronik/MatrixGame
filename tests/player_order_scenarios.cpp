@@ -1130,6 +1130,82 @@ void manual_combat_death() {
     }
 }
 
+void control_group_reassignment() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 80});
+        CFormMatrixGame form;
+        auto *first = selected(0), *second = selected(1);
+        const auto assign = [&](uint8_t key) {
+            form.Keyboard(true, VK_CONTROL);
+            press(form, key);
+            form.Keyboard(false, VK_CONTROL);
+        };
+        const auto recall = [&](uint8_t key, CMatrixRobotAI *expected) {
+            side().Select(NOTHING, nullptr);
+            press(form, key);
+            MG_CHECK(side().GetCurGroup() && side().GetCurGroup()->GetRobotsCnt() == 1);
+            MG_CHECK(selected(0) == expected);
+        };
+        assign('1');
+        side().CreateGroupFromCurrent(first);
+        side().Select(ROBOT, nullptr);
+        assign('2');
+        MG_CHECK(first->GetCtrlGroup() == '2' && second->GetCtrlGroup() == '1');
+        recall('1', second);
+        recall('2', first);
+        // Reusing a number clears its previous members, even outside selection.
+        assign('1');
+        MG_CHECK(first->GetCtrlGroup() == '1' && second->GetCtrlGroup() == 0);
+        recall('1', first);
+        press(form, '2');
+        MG_CHECK(selected(0) == first && side().GetCurGroup()->GetRobotsCnt() == 1);
+        // Assignment with no selection erases the number, unlike empty recall.
+        side().Select(NOTHING, nullptr);
+        assign('1');
+        MG_CHECK(first->GetCtrlGroup() == 0 && second->GetCtrlGroup() == 0);
+        press(form, '1');
+        MG_CHECK(!side().GetCurGroup() && side().GetCurSelGroup()->GetObjectsCnt() == 0);
+        MG_CHECK(session.robot(1).alive && session.robot(2).alive);
+        std::cout << session.metadata("control-group-reassignment-v1") << '\n';
+    }
+}
+
+void control_group_combat_death() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::BattleCombatAssets assets;
+        PlayerCraterAssets crater;
+        Session session({mode, 80, 10, 1000, false, true});
+        assets.install();
+        crater.install();
+        CFormMatrixGame form;
+        auto *robot = selected(0), *survivor = selected(1);
+        std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
+            [](SObjectCore *value) { value->Release(); });
+        form.Keyboard(true, VK_CONTROL);
+        press(form, '1');
+        form.Keyboard(false, VK_CONTROL);
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {10000, 10000, 0};
+        MG_CHECK(robot->Damage(WEAPON_GUN, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+        MG_CHECK(robot->m_CurrState == ROBOT_DIP && core->m_Object == robot);
+        const auto recall = [&] {
+            side().Select(NOTHING, nullptr);
+            press(form, '1');
+            MG_CHECK(side().GetCurGroup() && side().GetCurGroup()->GetRobotsCnt() == 1);
+            MG_CHECK(selected(0) == survivor);
+        };
+        recall(); // The dead object still exists; recall must already exclude it.
+        for (int i = 0; i < 600; ++i) session.advance();
+        MG_CHECK(core->m_Object == nullptr);
+        recall();
+        session.ground_command(120, 500);
+        for (int i = 0; i < 300; ++i) session.advance();
+        MG_CHECK(session.robot(2).order == mpo_MoveTo && session.robot(2).y > 300);
+        MG_CHECK(!session.robot(1).alive);
+        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+        std::cout << session.metadata("control-group-combat-death-v1") << '\n';
+    }
+}
+
 void manual_exit_keys() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         for (uint8_t key : {uint8_t(VK_RETURN), uint8_t(VK_SPACE), uint8_t(VK_ESCAPE)}) {
@@ -1363,6 +1439,8 @@ void manual_control() {
     MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
 }
 constexpr tests::Case cases[] = {
+    {"game.player.control_group_reassignment", control_group_reassignment},
+    {"game.player.control_group_combat_death", control_group_combat_death},
     {"game.player.manual_bomb_key", manual_bomb_key},
     {"game.player.manual_combat_death", manual_combat_death},
     {"game.player.manual_exit_keys", manual_exit_keys},
