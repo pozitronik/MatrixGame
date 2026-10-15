@@ -21,7 +21,7 @@ Cancel returns to the startup or battle menu without saving the browsed map or b
 
 ## Map information
 
-To show original names and descriptions, copy the desired original game's language catalog to `CFG/Lang.dat` beside the executable. For example, copy the original installation's `CFG/Eng/Lang.dat` for English or `CFG/Rus/Lang.dat` for Russian. No conversion tool or Python runtime is needed. This optional file is not included in the repository or release archive.
+To show original names and descriptions, copy the desired original game's language catalog to `CFG/Lang.dat` beside the executable. For example, copy the original installation's `CFG/Eng/Lang.dat` for English or `CFG/Rus/Lang.dat` for Russian. No conversion tool or Python runtime is needed. The build helper stages a `Lang.dat` placed at the repository root there. This optional file is not included in the repository or release archive.
 
 The catalog describes 74 maps in the inspected original installation; availability still comes from installed `.cmap` files. Entries match case-insensitive filenames, including loose replacements with the same name. A replacement using an original filename therefore inherits that catalog entry; use a distinct filename for an unrelated custom map. Without a matching entry, the selector shows the filename and available preview. An absent catalog is normal; invalid data is ignored with a diagnostic in `test.log`, and maps remain selectable.
 

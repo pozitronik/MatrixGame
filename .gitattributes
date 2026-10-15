@@ -2,3 +2,4 @@
 .github/scripts/*.py text eol=lf
 docs/licenses/* -text -whitespace
 docs/research/*/evidence/*.patch -whitespace
+*.bat text eol=crlf

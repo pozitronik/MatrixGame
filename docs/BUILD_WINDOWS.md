@@ -3,6 +3,41 @@
 Run commands from the repository root in PowerShell. MatrixGame targets Windows
 x86 and uses C++20 and DirectX 9.
 
+## Guided build
+
+`build.bat` in the repository root starts the interactive build wizard `tools/build-wizard.ps1` with Windows PowerShell. It can be run from Explorer, cmd.exe or PowerShell; when started from Explorer, it keeps its window open at the end. The wizard asks for the configuration, compiler, EXE or DLL output, cheats, music decoder, tests and number of parallel jobs. It then runs `tools/build.ps1` with those options.
+
+For each tool, the wizard shows what it found and offers three choices: use it, enter another installation path, or prepare the pinned version from a verified download or a supplied archive. The pinned versions are prepared with the setup scripts described below: MinGW with `setup-toolchain.ps1`, CMake with `setup-cmake.ps1` and the DirectX SDK subset with `setup-directx-sdk.ps1`. It validates a supplied installation before using it:
+- The compiler must target `i686-w64-mingw32` and provide Ninja and objdump.
+- CMake must be version 3.27 or newer and include CTest.
+- The DirectX SDK must contain the D3DX9 headers and x86 libraries.
+
+Versions other than the pinned ones are accepted with a warning.
+
+7-Zip is needed only to extract downloaded archives. When 7-Zip is not found, the wizard can install it with winget, after confirmation. MSVC builds need Visual Studio 2022 with the x86/x64 C++ tools; the wizard can install the Visual Studio 2022 Build Tools with winget, after confirmation. Newer Visual Studio versions are reported but not used, because the build helper selects the Visual Studio 2022 generator.
+
+For a standalone build, the wizard can import resources from an owned Space Rangers 2 installation. It looks for the installation in Steam and GOG libraries, or accepts the path of the directory that contains `DATA/robots.pkg`. It copies the following files to the ignored repository-root names that the build helper stages:
+- `robots.pkg`;
+- the packed `robots.dat`, which is optional;
+- `sound.pkg`;
+- the speech archive of the chosen language, as `voices.pkg`;
+- `music.pkg`;
+- the chosen language's `Lang.dat`.
+
+Files that already match are left alone, and a different existing file is replaced only after confirmation. The installation itself is never modified. When the x86 `d3dx9_43.dll` is not installed, the wizard can prepare the pinned runtime with `setup-directx-runtime.ps1` and copy it beside the built executable.
+
+Answers are saved in the ignored `.local/build-wizard.env`, and later runs offer to build with them directly. The wizard accepts these options:
+
+| Option | Effect |
+| --- | --- |
+| `-Reconfigure` | Ask every question again, with the saved answers as defaults |
+| `-NonInteractive` | Use saved, discovered or default answers without asking. Download missing pinned tools, but never install system software. Import only missing resources, and only from a saved installation |
+| `-Check` | Report the environment without downloading, installing, copying or saving anything. Exit with status 1 when a required component is missing |
+| `-Reset` | Remove the saved answers |
+| `-Configuration`, `-Compiler` | Preselect these answers |
+
+For scripted builds, tests and options the wizard does not ask about, use `tools/build.ps1` directly.
+
 ## MinGW
 
 Install 7-Zip and make `7z.exe` available on PATH. The setup script downloads and verifies a WinLibs bundle containing GCC 13.2.0 and Ninja 1.11.1 under the ignored `.tools/winlibs-13.2.0/` directory. It also prepares the separately pinned CMake/CTest 4.4.4 i386 release under `.tools/cmake-4.4.4-windows-i386/`. The compiler target remains Windows x86; CMake 4.4 requires a Windows 10 or newer build host.
@@ -53,6 +88,8 @@ CFG/
 DATA/
   robots.pkg
 ```
+
+An optional root-level `Lang.dat`, the original game's map language catalog, is staged as `CFG/Lang.dat`; see [Map selection](MAPS.md).
 
 `robots.pkg` is required to play. If `DATA/robots.pkg` is absent, the EXE shows "Place robots.pkg at DATA/robots.pkg." and exits with status 1 before game initialization. The path is relative to the executable directory; this dialog also works without `DATA` or `CFG` directories. If `CFG/robots.dat` is absent, the standalone game uses the text configuration. The helper refreshes the tracked configuration after each build, then copies any supplied `robots.dat`.
 
