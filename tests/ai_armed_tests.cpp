@@ -6,6 +6,7 @@
 #include "MatrixRobot.hpp"
 #include "MatrixSide.hpp"
 #include "Logic/MatrixEnvironment.h"
+#include "zero_x_mode.hpp"
 
 namespace tests::ai {
 namespace {
@@ -108,6 +109,28 @@ void visual_obstruction() {
         observer->GatherInfo(0);
         MG_CHECK(observer->GetEnv()->SearchEnemy(target));
         evidence(session, "visual-blocker-retired", observer);
+    }
+}
+
+// An enemy straight ahead along the Y axis: the sight line has no X travel. The original trace rejected every
+// object hit along such a line, so the observer never saw the enemy.
+void visual_axis_aligned() {
+    for (bool original : {false, true}) for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::ZeroXMode zero_x(original);
+        BattleCombatAssets assets;
+        battle::Session session({mode, 79});
+        assets.install(); configure();
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        observer->m_HullForward = D3DXVECTOR3(0, -1, 0);
+        // Another player robot stands further along +Y on x = 100, so the enemy is placed on the -Y side.
+        auto *target = BattleGeometry::create_robot(*g_MatrixMap, 2, observer->m_PosX, observer->m_PosY - 60);
+        const D3DXVECTOR3 from = observer->GetGeoCenter(), to = target->GetGeoCenter();
+        MG_CHECK(from.x == to.x && from.y != to.y);
+        MG_CHECK(g_MatrixMap->IsLogicVisible(observer, target, 0.0f) == !original);
+        observer->GatherInfo(0);
+        MG_CHECK(bool(observer->GetEnv()->SearchEnemy(target)) == !original);
+        evidence(session, original ? "visual-axis-original" : "visual-axis-corrected", observer);
     }
 }
 

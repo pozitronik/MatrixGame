@@ -82,6 +82,7 @@ else()
             src/DelayedDamage.cpp
             src/GroupCounts.cpp
             src/PlaceContainment.cpp
+            src/ZeroXTrace.cpp
             APPEND
             PROPERTY COMPILE_DEFINITIONS BUILD_EXE
     )

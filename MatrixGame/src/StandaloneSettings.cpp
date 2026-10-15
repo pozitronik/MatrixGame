@@ -24,7 +24,7 @@ constexpr std::array keys{L"RandomGenerator", L"ResolutionWidth", L"ResolutionHe
                           L"FullscreenMode",  L"SoundVolume",     L"StencilShadows",   L"ProjectedShadows",
                           L"Skybox",          L"RobotShadows",    L"CameraSpeed",      L"DelayedDamage",
                           L"Map",             L"GroupCounts",      L"BattleBonus",      L"PlaceContainment",
-                          L"MusicVolume"};
+                          L"ZeroXTrace",      L"MusicVolume"};
 
 std::optional<std::wstring> single(const Base::CBlockPar &options, const wchar_t *key) {
     if (options.ParCount(key) != 1) return std::nullopt;
@@ -82,6 +82,12 @@ std::optional<PlaceContainmentMode> place_containment(const std::wstring &value)
     return std::nullopt;
 }
 
+std::optional<ZeroXTraceMode> zero_x_trace(const std::wstring &value) {
+    if (value == L"corrected") return ZeroXTraceMode::Corrected;
+    if (value == L"original") return ZeroXTraceMode::Original;
+    return std::nullopt;
+}
+
 // Reads an optional key; an absent key keeps the default, a present invalid key is reported.
 template<class T, class Parse>
 void read(const Base::CBlockPar &options, const wchar_t *key, T &target, Parse parse, Selection &selection) {
@@ -124,6 +130,7 @@ std::wstring value_text(const Values &values, std::wstring_view key) {
     if (key == L"Map") return values.map;
     if (key == L"GroupCounts") return utils::to_wstring(name(values.group_counts));
     if (key == L"PlaceContainment") return utils::to_wstring(name(values.place_containment));
+    if (key == L"ZeroXTrace") return utils::to_wstring(name(values.zero_x_trace));
     if (key == L"MusicVolume") return std::to_wstring(values.music_volume);
     throw std::logic_error("Unknown settings key");
 }
@@ -262,6 +269,10 @@ const char *name(PlaceContainmentMode mode) {
     return mode == PlaceContainmentMode::Original ? "Original" : "Corrected";
 }
 
+const char *name(ZeroXTraceMode mode) {
+    return mode == ZeroXTraceMode::Original ? "Original" : "Corrected";
+}
+
 Selection resolve(const Base::CBlockPar &options) {
     Selection selection;
     auto &values = selection.values;
@@ -284,6 +295,7 @@ Selection resolve(const Base::CBlockPar &options) {
     read(options, L"BattleBonus", values.battle_bonus, battle_bonus, selection);
     read(options, L"GroupCounts", values.group_counts, group_counts, selection);
     read(options, L"PlaceContainment", values.place_containment, place_containment, selection);
+    read(options, L"ZeroXTrace", values.zero_x_trace, zero_x_trace, selection);
     read(options, L"MusicVolume", values.music_volume,
          [](const std::wstring &value) { return percent(value, 0, 100); }, selection);
     return selection;

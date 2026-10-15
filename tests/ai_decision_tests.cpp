@@ -21,6 +21,7 @@ void visual_acquisition_range();
 void visual_enemy_range();
 void visual_filters();
 void visual_obstruction();
+void visual_axis_aligned();
 void visual_retirement_range();
 void armed_friendly_line();
 void armed_target_retention();
@@ -416,6 +417,7 @@ int main(int argc, char **argv) {
         {"game.ai.visual_enemy_range", tests::ai::visual_enemy_range},
         {"game.ai.visual_filters", tests::ai::visual_filters},
         {"game.ai.visual_obstruction", tests::ai::visual_obstruction},
+        {"game.ai.visual_axis_aligned", tests::ai::visual_axis_aligned},
         {"game.ai.visual_retirement_range", tests::ai::visual_retirement_range},
         {"game.ai.armed_friendly_line", tests::ai::armed_friendly_line},
         {"game.ai.armed_target_retention", tests::ai::armed_target_retention},

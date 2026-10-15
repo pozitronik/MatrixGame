@@ -122,6 +122,7 @@ _BUILD_PROFILE_FIELDS = {
     "configuration", "compiler", "compiler_version", "assert_off",
     "precision_control", "build_exe", "cheats", "delayed_damage", "group_counts",
     "place_containment",
+    "zero_x_trace",
 }
 
 
