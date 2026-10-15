@@ -386,7 +386,8 @@ add_matrix_test(game.lifecycle.graphics_partial_init matrixgame_lifecycle_tests 
 
 add_matrix_test_executable(matrixgame_loading_tests battle_loading_tests.cpp ../MatrixGame/src/BattleLoading.cpp)
 target_include_directories(matrixgame_loading_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
-foreach(contract names presentation failure child_ready child_exit bounded_wait message_pump)
+foreach(contract names presentation failure child_ready child_exit bounded_wait message_pump
+                 dismiss_button dismiss_close dismiss_escape)
     add_matrix_test(game.loading.${contract} matrixgame_loading_tests startup ui)
 endforeach()
 
