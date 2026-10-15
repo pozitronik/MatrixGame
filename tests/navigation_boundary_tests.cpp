@@ -416,6 +416,10 @@ int sloped_journey(random::Mode mode, int step, float gradient) {
         point.z = point.z_land = 200 + gradient * x * GLOBAL_SCALE;
         point.n = normal;
     }
+    // The robot was created on the original flat fixture. Refresh its cached
+    // transform once after installing the plane, before issuing any command.
+    robot->RChange(MR_Matrix);
+    robot->RNeed(MR_Matrix);
     g_Config.m_ItemChars[CHASSIS2_MOVE_SPEED] = 0.6f;
     g_Config.m_ItemChars[CHASSIS2_MOVE_SLOPE_CORR_UP] = 0.5f;
     g_Config.m_ItemChars[CHASSIS2_MOVE_SLOPE_CORR_DOWN] = 3;
@@ -431,6 +435,10 @@ int sloped_journey(random::Mode mode, int step, float gradient) {
         MG_CHECK(!robot->IsMustDie() && state.order == mpo_MoveTo);
         MG_CHECK(state.destination_x == 48 && state.destination_y == 18);
         MG_CHECK(core->m_Object == robot);
+        if (std::abs(core->m_Matrix._43 - (200 + gradient * core->m_Matrix._41)) >= 0.001f)
+            std::cout << "height sample frame=" << session.frame() << " gradient=" << gradient
+                      << " position=" << state.x << ',' << state.y << " core=" << core->m_Matrix._41
+                      << ',' << core->m_Matrix._42 << ',' << core->m_Matrix._43 << '\n';
         MG_CHECK(std::abs(core->m_Matrix._43 - (200 + gradient * core->m_Matrix._41)) < 0.001f);
         if (state.x > 240 && state.x < 360) {
             MG_CHECK(std::abs(core->m_Matrix._23 - slope) < 0.001f);
