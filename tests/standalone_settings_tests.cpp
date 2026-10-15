@@ -38,6 +38,7 @@ Values custom() {
     values.map = L"Matrix\\Map\\Desert (2).cmap";
     values.group_counts = StandaloneSettings::GroupCountMode::Original;
     values.place_containment = StandaloneSettings::PlaceContainmentMode::Original;
+    values.zero_x_trace = StandaloneSettings::ZeroXTraceMode::Original;
     return values;
 }
 
@@ -104,7 +105,7 @@ void explicit_values() {
             L"StencilShadows=off\r\nProjectedShadows=FALSE\r\nSkybox=low\r\nRobotShadows=0\r\n"
             L"DelayedDamage=ORIGINAL\r\n"
             L"Map= Matrix\\Map\\Desert (2).cmap // chosen in the Map window\r\n"
-            L"GroupCounts=ORIGINAL\r\nPlaceContainment=original\r\n");
+            L"GroupCounts=ORIGINAL\r\nPlaceContainment=original\r\nZeroXTrace=original\r\n");
     MG_CHECK(selection.invalid.empty());
     MG_CHECK(selection.values == custom());
     MG_CHECK(parse(L"StencilShadows=TRUE\nProjectedShadows=1\nRobotShadows=On\nSkybox=OFF\n").values.skybox ==
@@ -119,17 +120,18 @@ void invalid_values() {
     const auto selection = parse(
             L"SoundVolume=101\nCameraSpeed=24\nStencilShadows=maybe\nProjectedShadows=\nSkybox=Ultra\n"
             L"RobotShadows=Off\nRobotShadows=On\nResolutionWidth=12\nDelayedDamage=Broken\nMap=..\\escape.cmap\n"
-            L"GroupCounts=Fixed\nPlaceContainment=Diagonal\n");
+            L"GroupCounts=Fixed\nPlaceContainment=Diagonal\nZeroXTrace=Vertical\n");
     MG_CHECK(selection.values.sound_volume == 100 && selection.values.camera_speed == 100);
     MG_CHECK(selection.values.stencil_shadows && selection.values.projected_shadows);
     MG_CHECK(selection.values.skybox == Skybox::High && selection.values.robot_shadows);
     MG_CHECK(selection.values.delayed_damage == StandaloneSettings::DamageAttribution::Corrected);
     MG_CHECK(selection.values.group_counts == StandaloneSettings::GroupCountMode::Corrected);
     MG_CHECK(selection.values.place_containment == StandaloneSettings::PlaceContainmentMode::Corrected);
+    MG_CHECK(selection.values.zero_x_trace == StandaloneSettings::ZeroXTraceMode::Corrected);
     MG_CHECK(selection.invalid == std::vector<std::string>({"SoundVolume", "CameraSpeed", "StencilShadows",
                                                             "ProjectedShadows", "Skybox", "RobotShadows",
                                                             "DelayedDamage", "Map", "GroupCounts",
-                                                            "PlaceContainment"}));
+                                                            "PlaceContainment", "ZeroXTrace"}));
     MG_CHECK(selection.values.map.empty());
     for (const wchar_t *text : {L"Map=x.txt\n", L"Map=C:\\x.cmap\n", L"Map=a.cmap\nMap=b.cmap\n", L"Map=a|b.cmap\n"}) {
         const auto rejected = parse(text);
@@ -142,6 +144,9 @@ void invalid_values() {
     const auto repeated_place = parse(L"PlaceContainment=Original\nPlaceContainment=Original\n");
     MG_CHECK(repeated_place.values.place_containment == StandaloneSettings::PlaceContainmentMode::Corrected);
     MG_CHECK(repeated_place.invalid == std::vector<std::string>({"PlaceContainment"}));
+    const auto repeated_trace = parse(L"ZeroXTrace=Original\nZeroXTrace=Original\n");
+    MG_CHECK(repeated_trace.values.zero_x_trace == StandaloneSettings::ZeroXTraceMode::Corrected);
+    MG_CHECK(repeated_trace.invalid == std::vector<std::string>({"ZeroXTrace"}));
     // Display keys keep their established all-or-default contract and diagnostics.
     MG_CHECK(selection.values.display == Display::Settings{});
     const auto valid = parse(L"SoundVolume=0\nCameraSpeed=300\n");
@@ -186,7 +191,8 @@ void preserves_text() {
             L"Map=Matrix\\Map\\Desert (2).cmap\r\n"
             L"GroupCounts=Original\r\n"
             L"BattleBonus=None\r\n"
-            L"PlaceContainment=Original\r\n";
+            L"PlaceContainment=Original\r\n"
+            L"ZeroXTrace=Original\r\n";
     MG_CHECK(updated == expected);
     MG_CHECK(StandaloneSettings::update_text(updated, custom()) == expected);
     const auto unix = StandaloneSettings::update_text(L"UnknownKey=1\n", Values{});
@@ -220,7 +226,7 @@ void round_trip_inline_blocks() {
              L"SoundVolume=40\nExtension {} // note\nRandomGenerator=", L""},
             // A top-level closing brace ends the reader's input, so new keys must precede it.
             {L"UnknownKey=1\n}\nSoundVolume=20\n", 100, L"UnknownKey=1\nRandomGenerator=", L"}\nSoundVolume=20\n"},
-            {L"Extension {} }\n", 100, L"Extension {} \nRandomGenerator=", L"PlaceContainment=Original\n}\n"},
+            {L"Extension {} }\n", 100, L"Extension {} \nRandomGenerator=", L"ZeroXTrace=Original\n}\n"},
     };
     for (const auto &item : cases) {
         MG_CHECK(parse(item.original).values.sound_volume == item.sound_volume);

@@ -10,6 +10,7 @@
 #include "MatrixObjectRobot.hpp"
 #include "MatrixFlyer.hpp"
 #include "MatrixObjectCannon.hpp"
+#include "ZeroXTrace.hpp"
 
 typedef struct {
     D3DXVECTOR3 dir;
@@ -24,6 +25,7 @@ typedef struct {
     CMatrixMapStatic *obj;
     CMatrixMapStatic *skip;
     DWORD mask;
+    bool original_zero_x;  // Selected once per Trace call; see ZeroXTrace.
 } internal_trace_data;
 
 CMatrixMap::EScanResult CMatrixMap::ScanLandscapeGroup(void *d, int gx, int gy, const D3DXVECTOR3 &start,
@@ -51,8 +53,9 @@ CMatrixMap::EScanResult CMatrixMap::ScanLandscapeGroup(void *d, int gx, int gy, 
                                 D3DXVECTOR3(mg->GetPos1().x, mg->GetPos0().y, 0), 0x8000FF00);
                                 */
 
-    // Without X travel only the Y slab limits the interval; the nearest hit so far bounds it.
-    float t0 = 0, t1 = data->dx != 0 ? 0 : data->last_t;
+    // Without X travel only the Y slab limits the interval; the nearest hit so far bounds it. The original
+    // game started that interval empty.
+    float t0 = 0, t1 = data->dx != 0 || data->original_zero_x ? 0 : data->last_t;
     if (data->dx != 0) {
         float ft0 = ((gx * (GLOBAL_SCALE * MAP_GROUP_SIZE)) - start.x) * data->ddx;
         float ft1 = (((gx + 1) * (GLOBAL_SCALE * MAP_GROUP_SIZE)) - start.x) * data->ddx;
@@ -386,6 +389,7 @@ CMatrixMapStatic *CMatrixMap::Trace(D3DXVECTOR3 *result, const D3DXVECTOR3 &star
 
     data.skip = skip;
     data.mask = mask;
+    data.original_zero_x = ZeroXTrace::original();
 
     data.dx = end.x - start.x;
     data.dy = end.y - start.y;
