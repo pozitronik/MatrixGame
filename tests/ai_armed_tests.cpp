@@ -190,6 +190,62 @@ void armed_friendly_line() {
     }
 }
 
+void ineffective_fire_run(bool blocked, bool moving = false) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (bool multiple : {false, true})
+    for (int target_age : {2000, 2001, 4000, 4001})
+    for (int hit_age : {4000, 4001, 6000, 6001, 10000, 10001}) {
+        BattleCombatAssets assets;
+        battle::Profile profile{mode, 84};
+        profile.initial_time_ms = 12000;
+        battle::Session session(profile);
+        assets.install(); configure();
+        MG_CHECK(session.remove(2));
+        auto *observer = owner();
+        arm_battle_robot(*observer, RUK_WEAPON_PLASMA);
+        auto *target = BattleGeometry::create_robot(*g_MatrixMap, 2, 200, 100);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        auto &env = *observer->GetEnv();
+        // Historical enemy memory and an occupied firing place are initial data.
+        // No projectile or hit result is synthesized during the decision call.
+        observer->SetGroupLogic(0);
+        side.m_PlayerGroup[0].Order(mpo_Stop);
+        g_MatrixMap->m_RN.m_Place[0].m_Pos = CPoint(observer->GetMapPosX(), observer->GetMapPosY());
+        env.m_Place = 0;
+        env.AddToList(target);
+        if (multiple) env.AddToList(BattleGeometry::create_robot(*g_MatrixMap, 2, 240, 180));
+        env.m_TargetAttack = env.m_TargetLast = target;
+        env.m_TargetChange = 12000 - target_age;
+        env.m_LastHitTarget = blocked ? 12000 : 12000 - hit_age;
+        env.m_LastFire = blocked ? 12000 - hit_age : 12000;
+        if (blocked) BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 150, 150);
+        MG_CHECK(!observer->FindOrderLikeThat(ROT_MOVE_TO));
+        if (moving) observer->MoveTo(observer->GetMapPosX(), observer->GetMapPosY());
+        side.WarPL(0);
+        const bool stale = !moving && target_age > 4000 && hit_age > 4000;
+        const bool abandon_place = !moving && (blocked ? target_age > 4000 && hit_age > 6000
+            : (!multiple && stale) || (target_age > 2000 && hit_age > 10000));
+        MG_CHECK(env.m_TargetAttack == (multiple && stale ? nullptr : target));
+        MG_CHECK(env.m_Place == (abandon_place ? -1 : 0));
+        MG_CHECK(env.IsBadPlace(0) == abandon_place);
+        MG_CHECK(env.m_Target == (blocked ? nullptr : target));
+        MG_CHECK(env.m_LastFire == (blocked ? 12000 - hit_age : 12000));
+        MG_CHECK(env.m_LastHitTarget == (blocked ? 12000 : 12000 - hit_age));
+        MG_CHECK(env.m_TargetChange == (moving ? 12000 : 12000 - target_age));
+        MG_CHECK(observer->FindOrderLikeThat(ROT_FIRE) == !blocked);
+        MG_CHECK(observer->FindOrderLikeThat(ROT_MOVE_TO) == moving);
+        MG_CHECK(side.m_PlayerGroup[0].Order() == mpo_Stop && session.time() == 12000);
+        evidence(session, blocked ? "blocked-fire-decision" : "ineffective-fire-decision", observer);
+        std::cout << "targets=" << (multiple ? 2 : 1) << " target_age=" << target_age
+                  << " pending_move=" << moving << " feedback_age=" << hit_age << " place=" << env.m_Place << '\n';
+    }
+}
+
+void ineffective_fire_decisions() { ineffective_fire_run(false); }
+void blocked_fire_decisions() { ineffective_fire_run(true); }
+
+void moving_fire_decisions() { ineffective_fire_run(false, true); ineffective_fire_run(true, true); }
+
 void armed_target_retention() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         BattleCombatAssets assets;

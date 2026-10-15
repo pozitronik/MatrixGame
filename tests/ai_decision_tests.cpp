@@ -25,6 +25,9 @@ void visual_axis_aligned();
 void visual_retirement_range();
 void armed_friendly_line();
 void armed_target_retention();
+void ineffective_fire_decisions();
+void blocked_fire_decisions();
+void moving_fire_decisions();
 void repair_acquisition_range();
 void repair_target_retention();
 void repair_explicit_priority();
@@ -421,6 +424,9 @@ int main(int argc, char **argv) {
         {"game.ai.visual_retirement_range", tests::ai::visual_retirement_range},
         {"game.ai.armed_friendly_line", tests::ai::armed_friendly_line},
         {"game.ai.armed_target_retention", tests::ai::armed_target_retention},
+        {"game.ai.ineffective_fire_decisions", tests::ai::ineffective_fire_decisions},
+        {"game.ai.blocked_fire_decisions", tests::ai::blocked_fire_decisions},
+        {"game.ai.moving_fire_decisions", tests::ai::moving_fire_decisions},
         {"game.ai.repair_acquisition_range", tests::ai::repair_acquisition_range},
         {"game.ai.repair_target_retention", tests::ai::repair_target_retention},
         {"game.ai.repair_explicit_priority", tests::ai::repair_explicit_priority},
