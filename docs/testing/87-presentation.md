@@ -51,7 +51,7 @@ The [completion checklist](baseline-completion.md) defines the bounded scenarios
 | PRES-03: startup and resources | Existing resource/path/startup/package contracts and audio catalog checks | P3: fresh archive/package/configuration/path/exit matrix and CalcVis output provenance. P5 retains D7 correction/disposition. |
 | PRES-04: settings | Existing settings parsing, persistence, model, runtime and display checks | P4: real menu/form input, pause, Apply/Cancel, failed save, rollback and effective versus saved settings. The current storage-only device does not establish rendered hint/font or adapter behavior. |
 
-Each outstanding entry remains part of the presentation leaf. This document and passing button tests do not satisfy its native acceptance criteria or authorize structural refactoring.
+The presentation implementation issue owns missing automated contracts, fixtures and exact native procedures/setup. Native execution and reuse of earlier records are tracked in the [validation ledger](native-validation.md) under #191. The implementation issue may close after those implementation deliverables and explicit case handoffs are complete; the complete baseline still requires reviewed native results and its other acceptance evidence.
 
 ## Positional audio boundaries
 
@@ -114,4 +114,4 @@ For every native case record: source revision and binary SHA-256; toolchain and 
 
 Required native profiles: Debug / Packed, Debug / Text, Release / Packed and Release / Text. Record execution status in the contribution evidence.
 
-Earlier playtests from other changes do not automatically establish these cases at the final integration revision. Before accepting the presentation baseline, attach the current records and explicitly dispose of every missing or failing case above.
+Earlier playtests from other changes require an applicability check against the selected revision/profile. Record reused, pending, passed and failed cases separately in the [validation ledger](native-validation.md). Native execution may be deferred independently of completed implementation; before accepting the complete baseline, attach the required reviewed records and explicitly dispose of every missing or failing case above.

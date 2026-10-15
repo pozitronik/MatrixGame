@@ -1,0 +1,45 @@
+# Native baseline validation ledger
+
+The [native validation task](https://github.com/pozitronik/MatrixGame/issues/191) owns execution records transferred from implementation packages. Execution is deferred until the maintainer is ready or adequate reviewed pre-baseline test tooling is available. The [complete baseline](https://github.com/pozitronik/MatrixGame/issues/69) remains open until the required evidence and its other acceptance criteria are satisfied. Implementation issues can close after their own tests/tooling and procedure handoffs are complete.
+
+This initial ledger organizes required evidence; it reports no newly executed playtests. Earlier records have not yet been audited for reuse here. The [completion checklist](baseline-completion.md) proposes the bounded P1-P4 selection; review of those scenario details remains separate from the agreed implementation/execution split.
+
+## Pending evidence groups
+
+Before executing a group, expand it into per-case records for the exact procedure variants and required profiles. A group can pass only when every required record has reviewed evidence or an explicit maintainer disposition. Keep automated test development and missing procedure/setup work with the originating issue.
+
+| Group | Catalog and implementation owner | Procedure source / preparation needed | Execution state |
+| --- | --- | --- | --- |
+| NV-01 | PRES-01, CMD-01/02/05; presentation #87 with commands #80 | [Native steps 1-4](87-presentation.md#native-procedures), [selection/display/input procedures](../PLAYTESTING.md); P1's scenario-specific device-failure observations need an applicability record | Pending; earlier evidence not yet audited |
+| NV-02 | PRES-02, NAV-03; presentation #87 with navigation #81 | Native steps 1/6 and [audio profiles](../PLAYTESTING.md#prepare-the-configuration-cases); prepare P2's moving/removed sound-emitter and successful carrier/icon scenes | Pending; scene preparation remains with implementation |
+| NV-03 | PRES-03; presentation #87 | [Release preparation](../RELEASING.md), native startup/package procedures; prepare exact invalid-configuration, damaged-package and CalcVis inputs/output expectations without bundling private resources | Pending; earlier evidence not yet audited |
+| NV-04 | PRES-04; presentation #87 with commands #80 and outcomes #85 | Native step 5 and [settings verification](../SETTINGS.md#verification); record setup for save failure, display rollback and gameplay/cheat-input consumption | Pending; setup completeness needs review |
+| NV-05 | AI-03, MODE-01, OUT-02/03; AI #84, commands #80 and outcomes #85 | A8 demo versus AUTO profile and C7 timing/result continuation; implementation owners must supply exact launch, scene and expected transition procedures | Pending; procedure preparation required |
+| NV-06 | OUT-02/03; outcomes #85 | [Outcome coverage](85-battle-outcomes.md) and [lifecycle procedures](../PLAYTESTING.md); implementation owner must map loaded-map restart, failure/result transitions and cleanup to precise native steps | Pending; procedure preparation required |
+| NV-07 | Original x86 host boundary; baseline #69 with applicable implementation owners | [Testing](../TESTING.md) and the [behavior catalog](../research/75-behavior-baseline/README.md); enumerate the required real-host checks, supported setup and observations before execution | Pending; host procedure/resource availability not established |
+
+P5's clear-rectangle/plane defects stay with their implementation/disposition owners. A failure found during any native group links to its defect and blocks acceptance of that case; moving the execution record here does not turn the defect into postponed validation.
+
+## Per-case record
+
+Use this record when preparing or executing a case; keep one result per execution profile. Procedure preparation and execution status are separate fields.
+
+| Field | Required value |
+| --- | --- |
+| Identity | Group and unique case ID; catalog entries; originating implementation issue; procedure path and version |
+| Preparation | Ready or missing setup; responsible implementation owner; exact commands, inputs, steps and expected observations/exit status |
+| Execution profile | Source revision, binary SHA-256, pinned compiler/dependencies, Debug/Release, EXE/DLL role, cheats/assertion options, packed/text mode |
+| Game profile | Map/configuration/resource identities, effective difficulty/settings, RNG and compatibility modes, audio packages/mapping, time and command schedule where required |
+| Device profile | Windows/adapter, resolution/mode/scaling, input and observation method; precision/render policy where required by the catalog |
+| Result | Pending, passed, failed or reused; actual observations, exit code, diagnostic/evidence reference and reviewing decision |
+| Reuse or disposition | For reused evidence, original record and applicability analysis against changed code/profile; for a missing or failed variant, explicit unresolved item or maintainer disposition and revalidation record |
+
+Keep source assets and private configuration copies untracked. Public evidence contains reproducible setup descriptions and results; privately retained resource identities can be referenced without uploading packages.
+
+## Execution and acceptance
+
+Apply the existing Debug/Packed, Debug/Text, Release/Packed and Release/Text requirements to the relevant native cases. Record audio availability profiles independently. Host procedures use their supported x86 host configuration rather than assuming standalone behavior. Unavailable host/resources/localization or hardware behavior remain named gaps until the required check is performed or the maintainer explicitly disposes of that requirement.
+
+Continue to run automated regressions during implementation. A future native-control adapter can execute applicable cases if its observations establish the contract. The production AI API remains downstream of baseline acceptance, so this ledger must not depend on its delivery. No game window is launched by preparing this document.
+
+The implementation completion comment must identify all transferred case IDs and delivered setup. The validation task closes after its records are reviewed; #69 additionally needs its reference/comparison, integrated build, measurement and explicit acceptance evidence. Earlier manual testing is eligible for reuse after an applicability check, but pending audit cannot be reported as a pass.

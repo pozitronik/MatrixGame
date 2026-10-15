@@ -4,6 +4,14 @@ This reconciliation covers the command, navigation, AI and presentation work pac
 
 The scenario selections below are the proposed finite completion boundary for these four packages. Review of this document must confirm that selection against the catalog. A row describes work to implement or evidence to reconcile, not a passing test. It does not accept a reference revision, waive a catalog variant, or authorize structural changes. If an implementation discovers a missing behavior, identify the affected catalog entry and obtain a scoped addition rather than treating every possible input combination as an implicit requirement.
 
+## Implementation closure and deferred execution
+
+Implementation and native execution have separate completion records. An implementation PR may merge after its own reviewed scope and required CI pass. Its issue may close after the required code, automated scenarios, fixtures/tooling and exact native procedures are delivered, with all pending native cases explicitly handed off to [native validation](https://github.com/pozitronik/MatrixGame/issues/191). The completion comment links the merged revisions, actual automated results, procedure versions and outstanding case IDs. Missing automated tests, failed checks and unresolved implementation defects remain implementation work.
+
+The [native validation ledger](native-validation.md) collects unperformed execution and applicability checks for older evidence. Execution is deferred until the maintainer is ready or suitable reviewed pre-baseline tooling can perform the applicable checks. An API observation must still prove the property under test; rendered pixels, OS focus and audible output need suitable observations. The production AI API depends on baseline acceptance and is not a prerequisite for this task.
+
+The [complete baseline](https://github.com/pozitronik/MatrixGame/issues/69) retains reference/comparison records, integrated checks, coverage/performance measurements and explicit acceptance. It is blocked by the native execution task even after implementation issues close. Deferred or failed execution never counts as a pass. Preparing procedures and running automated regressions may continue while native execution is deferred. The checklist's scenario selection remains subject to review; this accepted tracking split does not reduce it.
+
 ## Evidence already available
 
 Reuse these production-path checks across package boundaries. Their remaining limitations define the work below; a second test with the same inputs and assertions is unnecessary.
@@ -22,7 +30,7 @@ Reuse these production-path checks across package boundaries. Their remaining li
 
 Each automated row needs named CTest cases linked to production code, explicit fixture inputs and a bounded command/tick schedule. Record the resulting intent, physical outcome, lifetime and RNG observations relevant to that row. Determine expectations from measured reference behavior; a proposed scenario does not prescribe a more desirable game rule. Run both supported RNG modes where applicable, MinGW Debug/Release, and the supported MSVC/x86 DLL CI configurations. Time-dependent scenarios use the catalog's separate 10/16 ms profiles where applicable; any narrower schedule needs a documented reason. Cheats, `_DEBUG`, `_TRACE` and host-only behavior use only builds that expose the path.
 
-A row is complete when its listed variants have assertions and review evidence, or when existing cases are shown to establish those same variants. Update the row with that evidence. Native observations have their own record requirements below. A shared row has one implementation owner; other packages link its evidence rather than making duplicate fixtures.
+A row's implementation is complete when its automated variants have assertions and review evidence, or when existing cases establish those same variants, and any required native procedure/setup is delivered. Record native execution separately in the linked ledger; a prepared procedure is not an executed case. A shared row has one implementation owner; other packages link its evidence rather than making duplicate fixtures.
 
 ## Player commands
 
@@ -74,7 +82,7 @@ The [AI guide](84-ai-decisions.md) supplies existing decision contracts. C4/A1/A
 
 ## Presentation and native evidence
 
-Owner: the presentation work package, with command input ownership and outcome pause/restart checks shared as indicated. The [native procedure](87-presentation.md#native-procedures) is the executable checklist for manual checks. First audit earlier records; retain evidence whose binary/profile and affected paths remain applicable, and name the changed or missing checks that need a new run.
+Implementation owner: the presentation work package, with command input ownership and outcome pause/restart checks shared as indicated. Execution owner: the [native validation task](https://github.com/pozitronik/MatrixGame/issues/191). The [native procedure](87-presentation.md#native-procedures) supplies the current steps; missing scenario-specific setup stays with the implementation owner. First audit earlier records; retain evidence whose binary/profile and affected paths remain applicable, and name the changed or missing checks that need a new run.
 
 | ID / catalog | Finite scenario selection | Required observation |
 | --- | --- | --- |
@@ -96,6 +104,6 @@ These obligations belong to the complete baseline work package. They should not 
 | G2: recordings and reproducibility | Persist reference/candidate traces for the required scenarios, run at least three fresh processes plus the required repeated-session case, and record first divergences. Apply the measured exact/invariant/numeric comparison tiers per profile. Printed observations and passing same-process comparisons alone do not finish this evidence. |
 | G3: integrated validation | Required Debug/Release, supported compiler and x86 DLL checks on the same integration revision; catalog-to-case mapping and assertion negative controls; reviewed native evidence from P1-P4 and the outcome/host procedures. Branch-specific CI establishes those branch revisions only. |
 | G4: coverage and performance | Run the existing measurement tooling on the selected integration revision, map uncovered behavior to the catalog, and record representative movement/combat/AI costs with N5's required counters. Measurement infrastructure being available is distinct from publishing the final baseline results. |
-| G5: acceptance | Close each implementation package against its reconciled evidence, resolve every unexplained difference/defect, and obtain explicit maintainer acceptance of the complete catalog and exact revision. Structural refactoring, production automation and x64 implementation retain their existing gates. |
+| G5: acceptance | Close implementation packages against their revised implementation criteria and explicit native handoffs. Complete the separate native execution task, resolve every unexplained difference/defect, and obtain explicit maintainer acceptance of the complete catalog and exact revision. Structural refactoring, production automation and x64 implementation retain their existing gates. |
 
 No issue is completed merely by merging this document. Implementations should replace the corresponding row's missing evidence with named contracts and reviewed results. A discovered scenario outside the agreed selection requires an explicit scope decision; a failed required scenario remains blocking.
