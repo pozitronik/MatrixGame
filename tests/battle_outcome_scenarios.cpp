@@ -1002,7 +1002,46 @@ void transported_robot_removal_outcome() {
         MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
     }
 }
-void carrier_removal_outcome() {
+void transported_robot_damage_outcome() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int hit_at : {1000, 7000}) {
+        tests::BattleMaterialProfile materials;
+        tests::BattleCombatAssets assets;
+        CaptureCraterAssets crater;
+        Session session(transport_outcome_profile(mode));
+        assets.install();
+        crater.install();
+        DialogData dialog;
+        std::cout << "hit_at=" << hit_at << ' ' << session.metadata("synthetic-transport-cargo-damage-v1") << '\n';
+        auto *carrier = order_outcome_transport(PLAYER_SIDE);
+        auto carrier_core = retain_core(*carrier);
+        auto *robot = carrier->GetCarryingRobot()->AsRobot();
+        auto robot_core = retain_core(*robot);
+        MG_CHECK(session.remove(1) && session.remove(2));
+        advance_to(session, hit_at);
+        MG_CHECK(robot_core->m_Object == robot && carrier_core->m_Object == carrier);
+        MG_CHECK(robot->m_CurrState == (hit_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
+        g_MatrixMap->m_Difficulty.k_damage_enemy_to_player = 1;
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {100000, 0, 0};
+        MG_CHECK(robot->Damage(WEAPON_LASER, robot->GetGeoCenter(), D3DXVECTOR3(0, 0, 1), 2, nullptr));
+        MG_CHECK(robot_core->m_Object == robot && robot->m_CurrState == ROBOT_DIP);
+        MG_CHECK(carrier_core->m_Object == carrier && !carrier->CarryingRobot());
+        MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
+        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+        const int eliminated_at = hit_at == 1000 ? 2020 : 8050;
+        advance_to(session, eliminated_at - 10);
+        MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->IsPaused());
+        session.advance();
+        MG_CHECK(side().GetStatus() == SS_NONE && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        MG_CHECK(!g_MatrixMap->m_DialogModeName);
+        advance_to(session, eliminated_at + 2000);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        session.advance();
+        MG_CHECK(g_MatrixMap->IsPaused());
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+    }
+}
+void carrier_loss_outcome(bool damage) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000}) {
         tests::BattleMaterialProfile materials;
         tests::BattleCombatAssets assets;
@@ -1011,7 +1050,7 @@ void carrier_removal_outcome() {
         assets.install();
         crater.install();
         DialogData dialog;
-        std::cout << "remove_at=" << remove_at << ' ' << session.metadata("synthetic-carrier-removal-outcome-v1") << '\n';
+        std::cout << "remove_at=" << remove_at << ' ' << session.metadata(damage ? "synthetic-carrier-damage-outcome-v1" : "synthetic-carrier-removal-outcome-v1") << '\n';
         auto *carrier = order_outcome_transport(PLAYER_SIDE);
         auto carrier_core = retain_core(*carrier);
         auto *robot = carrier->GetCarryingRobot()->AsRobot();
@@ -1020,7 +1059,18 @@ void carrier_removal_outcome() {
         advance_to(session, remove_at);
         MG_CHECK(robot_core->m_Object == robot && carrier_core->m_Object == carrier);
         MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
-        g_MatrixMap->StaticDelete(carrier);
+        if (damage) {
+            const auto position = carrier->GetPos();
+            MG_CHECK(carrier->GetHitPoint() == 1000);
+            g_Config.m_FlyerDamages[Weap2Index(WEAPON_LASER)] = {1, 0, 0};
+            MG_CHECK(!carrier->Damage(WEAPON_LASER, position, D3DXVECTOR3(0, 0, 1), 2, nullptr));
+            MG_CHECK(carrier_core->m_Object == carrier && carrier->GetHitPoint() == 999);
+            MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->m_DialogModeName);
+            g_Config.m_FlyerDamages[Weap2Index(WEAPON_LASER)] = {999, 0, 0};
+            MG_CHECK(carrier->Damage(WEAPON_LASER, position, D3DXVECTOR3(0, 0, 1), 2, nullptr));
+        } else {
+            g_MatrixMap->StaticDelete(carrier);
+        }
         MG_CHECK(carrier_core->m_Object == nullptr && g_MatrixMap->m_AD_Obj_cnt == 0);
         MG_CHECK(robot_core->m_Object == robot && robot->IsMustDie() == (remove_at == 1000));
         MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_FALLING : ROBOT_SUCCESSFULLY_BUILD));
@@ -1043,6 +1093,8 @@ void carrier_removal_outcome() {
         MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
     }
 }
+void carrier_removal_outcome() { carrier_loss_outcome(false); }
+void carrier_damage_outcome() { carrier_loss_outcome(true); }
 std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base) {
     tests::BattleMaterialProfile materials;
     tests::BattleCombatAssets assets;
@@ -1243,6 +1295,8 @@ constexpr tests::Case cases[] = {
     {"game.outcome.transported_robot_prevents_elimination", transported_robot_prevents_elimination},
     {"game.outcome.transported_robot_removal", transported_robot_removal_outcome},
     {"game.outcome.carrier_removal", carrier_removal_outcome},
+    {"game.outcome.carrier_damage", carrier_damage_outcome},
+    {"game.outcome.transported_robot_damage", transported_robot_damage_outcome},
     {"game.outcome.capture_target_damage", capture_target_damage},
     {"game.outcome.special_break", special_object_destruction<0>},
     {"game.outcome.special_explosion", special_object_destruction<1>},
