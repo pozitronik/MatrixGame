@@ -47,7 +47,9 @@ public:
 
 #ifndef MAXEXP_EXPORTS
     static void AddPackFile(const wchar *name);
-    static void OpenPackFiles(void);
+    // Opens the registered packages. A package that cannot be opened is dropped with a diagnostic, and
+    // the others stay available; the collection is released only when none opens. Returns the dropped names.
+    static std::vector<std::wstring> OpenPackFiles(void);
     static void ReleasePackFiles(void);
     // Names of the files, not folders, directly inside a folder of every registered package, in
     // registration order. A name present in several packages is listed for each of them.

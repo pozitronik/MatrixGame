@@ -17,6 +17,10 @@ void automatic_reinforcement_choices();
 void automatic_reinforcement_delivery();
 void capture_guard_interruption();
 void capture_guard_filters();
+void turret_visual_obstruction();
+void turret_acquisition_range();
+void turret_retirement_range();
+void turret_acquisition_filters();
 void visual_acquisition_range();
 void visual_enemy_range();
 void visual_filters();
@@ -28,6 +32,8 @@ void armed_target_retention();
 void ineffective_fire_decisions();
 void blocked_fire_decisions();
 void moving_fire_decisions();
+void repair_movement_completion();
+void repair_movement_retirement();
 void repair_acquisition_range();
 void repair_target_retention();
 void repair_explicit_priority();
@@ -416,6 +422,10 @@ int main(int argc, char **argv) {
         {"game.ai.automatic_reinforcement_delivery", tests::ai::automatic_reinforcement_delivery},
         {"game.ai.capture_guard_interruption", tests::ai::capture_guard_interruption},
         {"game.ai.capture_guard_filters", tests::ai::capture_guard_filters},
+        {"game.ai.turret_visual_obstruction", tests::ai::turret_visual_obstruction},
+        {"game.ai.turret_acquisition_range", tests::ai::turret_acquisition_range},
+        {"game.ai.turret_retirement_range", tests::ai::turret_retirement_range},
+        {"game.ai.turret_acquisition_filters", tests::ai::turret_acquisition_filters},
         {"game.ai.visual_acquisition_range", tests::ai::visual_acquisition_range},
         {"game.ai.visual_enemy_range", tests::ai::visual_enemy_range},
         {"game.ai.visual_filters", tests::ai::visual_filters},
@@ -427,6 +437,8 @@ int main(int argc, char **argv) {
         {"game.ai.ineffective_fire_decisions", tests::ai::ineffective_fire_decisions},
         {"game.ai.blocked_fire_decisions", tests::ai::blocked_fire_decisions},
         {"game.ai.moving_fire_decisions", tests::ai::moving_fire_decisions},
+        {"game.ai.repair_movement_completion", tests::ai::repair_movement_completion},
+        {"game.ai.repair_movement_retirement", tests::ai::repair_movement_retirement},
         {"game.ai.repair_acquisition_range", tests::ai::repair_acquisition_range},
         {"game.ai.repair_target_retention", tests::ai::repair_target_retention},
         {"game.ai.repair_explicit_priority", tests::ai::repair_explicit_priority},

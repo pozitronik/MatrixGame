@@ -252,20 +252,18 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     g_MatrixHeap = HNew(NULL) CHeap;
 
-    CFile::AddPackFile(L"DATA\\robots.pkg");
 #ifdef BUILD_EXE
-    const bool sound_package = Startup::ResourceFileExists(L"DATA\\sound.pkg");
-    const bool voices_package = Startup::ResourceFileExists(L"DATA\\voices.pkg");
 #ifdef MATRIXGAME_MUSIC
-    const bool music_package = Startup::ResourceFileExists(L"DATA\\music.pkg");
+    constexpr bool music = true;
 #else
-    const bool music_package = false;  // Without a decoder the package is not used.
+    constexpr bool music = false;  // Without a decoder the package is not used.
 #endif
-    if (sound_package) CFile::AddPackFile(L"DATA\\sound.pkg");
-    if (voices_package) CFile::AddPackFile(L"DATA\\voices.pkg");
-    if (music_package) CFile::AddPackFile(L"DATA\\music.pkg");
-#endif
+    // Audio follows the packages that opened; a damaged optional package counts as missing.
+    const auto audio_packages = Startup::OpenPackages(L"DATA", music);
+#else
+    CFile::AddPackFile(L"DATA\\robots.pkg");
     CFile::OpenPackFiles();
+#endif
 
     CLoadProgress lp;
     g_LoadProgress = &lp;
@@ -417,7 +415,7 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     g_Config.ApplySettings(&settings);
 #ifdef BUILD_EXE
-    SoundBridge::initialize_standalone(sound_package || voices_package || music_package);
+    SoundBridge::initialize_standalone(audio_packages.any());
 #endif
     g_Sampler.ApplySettings(&settings);
     SetMaxCameraDistance(settings.m_MaxDistance);
