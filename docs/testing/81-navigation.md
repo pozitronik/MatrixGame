@@ -95,3 +95,11 @@ All flight resources are generated public fixtures: material wheel/Birex cargo a
 ## Completion assessment
 
 Additional chassis and terrain combinations, broader delivery geometry and persisted reference traces remain implementation work; they are not waiting for a maintainer decision. Representative measurement and exact-revision acceptance remain integration-level obligations. Existing search-footprint observations do not replace internal per-frame work counters.
+
+## Shallow-water traversal
+
+`shallow_water_traversal` compares a single wheel robot crossing the same open route on dry terrain and through a shallow strip. Synthetic flat cells covering world X [200, 400) have height -3 in the wet profile and 0 in the control. The generated navigation mask remains traversable in both cases; terrain loading and mask generation are not exercised. The robot receives the ordinary context Move command to (500, 200), with maximum speed 0.6 and water correction 0.5.
+
+Production map ticks must retain the destination and keep the robot alive. Interior samples must not exceed the expected speed limit (0.3 wet, 0.6 dry), and at least one sample must reach that limit. Waypoint approach can shorten a movement step, so every sample is not required to have full speed. After leaving the strip, the robot must reach dry speed again, then arrive exactly at its requested destination. The wet run must take longer than its matching dry control. Surface height, finite positions and absence of the drowning flag are checked along the route.
+
+Both RNG modes use seed 81 and 10/16 ms frames, with a 3,000-frame limit per run. Reported arrival times are observations for these profiles, not universal trajectory references. Sloped surfaces, remaining chassis, terrain-mask generation and native water rendering remain separate coverage requirements.
