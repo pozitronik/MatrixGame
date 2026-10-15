@@ -10,6 +10,7 @@
 #include <algorithm>
 #include "Logic/MatrixEnvironment.h"
 #include "GroupCounts.hpp"
+#include "PlaceContainment.hpp"
 #include <array>
 
 // The existing bomb-command fixture uses the same idle production effect.
@@ -170,34 +171,54 @@ void place_bounds() {
     MG_CHECK(map.FindPlace(CPoint(map.m_SizeMove.x, 8)) == -1);
 }
 
+// Selects the place containment mode for one case and restores the process default.
+struct ContainmentMode {
+    explicit ContainmentMode(bool original) { PlaceContainment::set_original(original); }
+    ~ContainmentMode() { PlaceContainment::set_original(PlaceContainment::original_by_default()); }
+};
+
 void place_axis_correctness() {
-    Session session;
-    auto &map = *g_MatrixMap;
-    const CPoint origins[]{{8, 8}, {48, 8}, {8, 48}, {48, 48}};
-    for (int place = 0; place < 4; ++place) {
-        const CPoint origin = origins[place];
-        MG_CHECK(map.m_RN.m_Place[place].m_Pos == origin);
-        // Each place owns the half-open four-cell square at its origin.
-        for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x)
-            MG_CHECK(map.FindPlace(CPoint(origin.x + x, origin.y + y)) == place);
-        for (int i = 0; i < 4; ++i) {
-            MG_CHECK(map.FindPlace(CPoint(origin.x - 1, origin.y + i)) == -1);
-            MG_CHECK(map.FindPlace(CPoint(origin.x + 4, origin.y + i)) == -1);
-            MG_CHECK(map.FindPlace(CPoint(origin.x + i, origin.y - 1)) == -1);
-            MG_CHECK(map.FindPlace(CPoint(origin.x + i, origin.y + 4)) == -1);
+    for (bool original : {false, true}) {
+        ContainmentMode containment(original);
+        Session session;
+        auto &map = *g_MatrixMap;
+        const CPoint origins[]{{8, 8}, {48, 8}, {8, 48}, {48, 48}};
+        for (int place = 0; place < 4; ++place) {
+            const CPoint origin = origins[place];
+            MG_CHECK(map.m_RN.m_Place[place].m_Pos == origin);
+            // The original game bounded X by the place's Y coordinate. Place 1 at (48, 8) owns no cell, and place 2
+            // at (8, 48) reaches X 51, so it also claims the square of place 3, which follows it in the zone list.
+            constexpr int original_owner[]{0, -1, 2, 2};
+            const int owner = original ? original_owner[place] : place;
+            // Each place owns the half-open four-cell square at its origin.
+            for (int y = 0; y < 4; ++y) for (int x = 0; x < 4; ++x)
+                MG_CHECK(map.FindPlace(CPoint(origin.x + x, origin.y + y)) == owner);
+            // The original place 2 also covers the cells left of place 3's square.
+            const int left = original && place == 3 ? 2 : -1;
+            for (int i = 0; i < 4; ++i) {
+                MG_CHECK(map.FindPlace(CPoint(origin.x - 1, origin.y + i)) == left);
+                MG_CHECK(map.FindPlace(CPoint(origin.x + i, origin.y - 1)) == -1);
+                MG_CHECK(map.FindPlace(CPoint(origin.x + i, origin.y + 4)) == -1);
+            }
+            if (!original || origin.x == origin.y)
+                for (int i = 0; i < 4; ++i) MG_CHECK(map.FindPlace(CPoint(origin.x + 4, origin.y + i)) == -1);
         }
+        // The original bound gives place 2 the cells right of its square up to X 51, and place 1 none.
+        MG_CHECK(map.FindPlace(CPoint(20, 48)) == (original ? 2 : -1));
+        MG_CHECK(map.FindPlace(CPoint(12, 51)) == (original ? 2 : -1));
+        MG_CHECK(map.FindPlace(CPoint(51, 8)) == (original ? -1 : 1) && map.FindPlace(CPoint(8, 51)) == 2);
+        MG_CHECK(map.FindPlace(CPoint(8, -1)) == -1 && map.FindPlace(CPoint(8, map.m_SizeMove.y)) == -1);
+        // Cells outside every zone have no place, even inside a place square. The original mode uses place 0,
+        // because place 1 owns no cell there.
+        const int owner = original ? 0 : 1;
+        const CPoint inside(origins[owner].x + 1, origins[owner].y + 1);
+        auto &cell = *map.MoveGet(inside.x, inside.y);
+        const int zone = cell.m_Zone;
+        cell.m_Zone = -1;
+        MG_CHECK(map.FindPlace(inside) == -1 && map.FindPlace(origins[owner]) == owner);
+        cell.m_Zone = zone;
+        MG_CHECK(map.FindPlace(inside) == owner);
     }
-    // The previous comparison bounded X by the place's Y coordinate.
-    MG_CHECK(map.FindPlace(CPoint(20, 48)) == -1);
-    MG_CHECK(map.FindPlace(CPoint(51, 8)) == 1 && map.FindPlace(CPoint(8, 51)) == 2);
-    MG_CHECK(map.FindPlace(CPoint(8, -1)) == -1 && map.FindPlace(CPoint(8, map.m_SizeMove.y)) == -1);
-    // Cells outside every zone have no place, even inside a place square.
-    auto &cell = *map.MoveGet(49, 9);
-    const int zone = cell.m_Zone;
-    cell.m_Zone = -1;
-    MG_CHECK(map.FindPlace(CPoint(49, 9)) == -1 && map.FindPlace(CPoint(48, 8)) == 1);
-    cell.m_Zone = zone;
-    MG_CHECK(map.FindPlace(CPoint(49, 9)) == 1);
 }
 
 // Selects the group-count mode for one case and restores the process default.
@@ -381,6 +402,41 @@ void bomb_escape_capacity() {
                     MG_CHECK(std::count(begin, begin + capacity, i) == 1);
             }
         }
+    }
+}
+
+// Another robot heading for place 1 reserves it, so the escaping robot takes place 2. The original containment
+// test does not find place 1 at its own origin (48, 8), leaves it free and sends the escaping robot there.
+void bomb_escape_reservation() {
+    for (bool original : {false, true}) for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        ContainmentMode containment(original);
+        Profile profile; profile.mode = mode;
+        Session session(profile);
+        // The trace header records the active mode.
+        const auto header = session.metadata();
+        MG_CHECK(header.find(original ? R"("place_containment":"Original")" : R"("place_containment":"Corrected")") !=
+                 std::string::npos);
+        auto robots = units();
+        auto *cover = robots[0], *escaping = robots[1], *bomber = robots[2];
+        position(*cover, 120, 100); position(*escaping, 180, 100); position(*bomber, 100, 100);
+        IdleBomb bomb(*bomber);
+        bomber->GetEnv()->AddToList(cover);
+        cover->SetGroupLogic(0); escaping->SetGroupLogic(0);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        side.m_PlayerGroup[0].Order(mpo_AutoAttack);
+        MG_CHECK(g_MatrixMap->m_RN.m_Place[1].m_Pos == CPoint(48, 8));
+        MG_CHECK(g_MatrixMap->m_RN.m_Place[2].m_Pos == CPoint(8, 48));
+        cover->MoveTo(48, 8);
+        escaping->MoveTo(20, 20);
+        const auto draws = random::draw_count();
+        side.EscapeFromBomb();
+        MG_CHECK(random::draw_count() == draws);
+        CPoint destination, previous;
+        MG_CHECK(escaping->GetMoveToCoords(destination));
+        MG_CHECK(escaping->GetReturnCoords(previous) && previous == CPoint(20, 20));
+        MG_CHECK(destination == (original ? CPoint(48, 8) : CPoint(8, 48)));
+        std::cout << "bomb reservation original=" << original << " destination=" << destination.x << ','
+                  << destination.y << '\n';
     }
 }
 

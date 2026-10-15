@@ -210,6 +210,7 @@ add_matrix_test(game.settings.window_availability matrixgame_settings_runtime_te
 add_matrix_test(game.settings.delayed_damage_attribution matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.delayed_damage_build_default matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.group_counts_build_default matrixgame_settings_runtime_tests ai settings)
+add_matrix_test(game.settings.place_containment_build_default matrixgame_settings_runtime_tests ai settings)
 target_compile_definitions(matrixgame_settings_runtime_tests PRIVATE MATRIXGAME_TESTS_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>)
 add_matrix_test(game.settings.map_choice matrixgame_settings_runtime_tests startup settings)
 
@@ -563,6 +564,7 @@ foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildin
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
 add_matrix_test(game.ai.bomb_escape_capacity matrixgame_ai_decision_tests gameplay ai)
+add_matrix_test(game.ai.bomb_escape_reservation matrixgame_ai_decision_tests gameplay ai)
 add_matrix_test(game.ai.place_axis matrixgame_ai_decision_tests gameplay ai)
 foreach(contract regroup_split_counts regroup_merge_counts regroup_count_sequences strategic_merged_team_split)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
