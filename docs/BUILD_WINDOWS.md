@@ -34,6 +34,8 @@ launching it.
 
 Game builds compile the CTest executables by default. Run them with `tools/test.ps1`; use `-WithoutTests` for a game-only build or `-TestsOnly` to build the test targets without staging game resources. See [Testing](TESTING.md) for commands, results and instructions for adding a regression.
 
+`-WithoutMusic` builds the standalone game without the battle music decoder by configuring `MATRIXGAME_MUSIC=OFF`. libogg and libvorbis are then neither downloaded nor built, and the game runs normally without music, writing `Battle music disabled: this build has no music decoder` to `test.log`. DLL builds always use `MATRIXGAME_MUSIC=OFF`, because the host owns music. The option defaults to `ON` for a standalone EXE configured directly with CMake and `OFF` for a DLL. The test helper accepts the same switch. Release packages require the decoder.
+
 `-Coverage` builds an instrumented MinGW copy in a separate directory ending in `-coverage`, for example `build/mingw-debug-exe-coverage`. See [Coverage and performance measurements](MEASUREMENTS.md).
 
 ## Game resources and configuration
@@ -54,7 +56,7 @@ DATA/
 
 `robots.pkg` is required to play. If `DATA/robots.pkg` is absent, the EXE shows "Place robots.pkg at DATA/robots.pkg." and exits with status 1 before game initialization. The path is relative to the executable directory; this dialog also works without `DATA` or `CFG` directories. If `CFG/robots.dat` is absent, the standalone game uses the text configuration. The helper refreshes the tracked configuration after each build, then copies any supplied `robots.dat`.
 
-Standalone sound on Windows 10/11 uses optional local `sound.pkg` and `voices.pkg` with built-in sound-name mappings. Copy the desired archives from an owned installation to the repository root; the build stages them under `DATA`. No mapping preparation is required for standard sound effects. An existing root-level `sounds.txt` is staged under `CFG` as an optional override. Missing audio packages are ignored during startup; with neither present the audio service stays disabled. See [Standalone sound](AUDIO.md) for speech selection, custom mappings and listening checks.
+Standalone sound on Windows 10/11 uses optional local `sound.pkg`, `voices.pkg` and `music.pkg` with built-in sound-name mappings. Copy the desired archives from an owned installation to the repository root; the build stages them under `DATA`. No mapping preparation is required for standard sound effects. An existing root-level `sounds.txt` is staged under `CFG` as an optional override. Missing audio packages are ignored during startup; with none present the audio service stays disabled. See [Standalone sound](AUDIO.md) for speech selection, custom mappings and listening checks.
 
 `-WithoutResources` skips copying external resources. It leaves any copies
 already present in a reused build directory. Compilation itself does not require
@@ -91,7 +93,7 @@ Instead of installing the SDK, `tools/setup-directx-sdk.ps1` can prepare the fil
 Output is under `build/msvc-release-exe/MatrixGame/Release`.
 The corresponding Visual C++ x86 runtime is required to run the game.
 
-Debug builds retain `/RTC1` stack and uninitialized-variable checks. `/RTCc` narrowing checks are omitted because they reject valid casts in the Windows CRT and C++ standard library; see [Microsoft's runtime-check documentation](https://learn.microsoft.com/cpp/build/reference/rtc-run-time-error-checks). The `_ALLOW_RTCc_IN_STL` workaround is unnecessary. External zlib and libpng builds install and link the selected Debug or Release configuration so their CRT matches the engine.
+Debug builds retain `/RTC1` stack and uninitialized-variable checks. `/RTCc` narrowing checks are omitted because they reject valid casts in the Windows CRT and C++ standard library; see [Microsoft's runtime-check documentation](https://learn.microsoft.com/cpp/build/reference/rtc-run-time-error-checks). The `_ALLOW_RTCc_IN_STL` workaround is unnecessary. External zlib, libpng, libogg and libvorbis builds install and link the selected Debug or Release configuration so their CRT matches the engine.
 
 ## DLL
 
@@ -111,7 +113,7 @@ CI builds normal standalone Debug/Release configurations for MinGW and MSVC, a M
 
 ## Dependencies and cached builds
 
-[ThirdParty/dependencies.json](../ThirdParty/dependencies.json) records zlib 1.3.2 and libpng 1.6.59 source URLs and upstream SHA256 values. CMake verifies release archives in `.tools/downloads/` before extracting them into the selected build directory. A prepared cache permits new dependency builds without network access; provide the exact filenames and bytes from the manifest. `tools/fetch-dependencies.ps1` prepares it with the same verification and retry rules as setup, together with the thread-runtime source archive used by packaging. There are no floating Git tags, submodule updates or requests during an unchanged incremental build. A damaged cache requires a verified replacement and is not an offline-ready source.
+[ThirdParty/dependencies.json](../ThirdParty/dependencies.json) records zlib 1.3.2, libpng 1.6.59, libogg 1.3.6 and libvorbis 1.3.7 source URLs and upstream SHA256 values. libogg and libvorbis decode the optional battle music and are skipped when `MATRIXGAME_MUSIC` is `OFF`; libvorbis 1.3.7 is configured with `CMAKE_POLICY_VERSION_MINIMUM=3.5` because its build declares compatibility with CMake 2.8.12, which the pinned CMake no longer accepts. CMake verifies release archives in `.tools/downloads/` before extracting them into the selected build directory. A prepared cache permits new dependency builds without network access; provide the exact filenames and bytes from the manifest. `tools/fetch-dependencies.ps1` prepares it with the same verification and retry rules as setup, together with the thread-runtime source archive used by packaging. There are no floating Git tags, submodule updates or requests during an unchanged incremental build. A damaged cache requires a verified replacement and is not an offline-ready source.
 
 Dependencies build as static libraries with the selected compiler and Debug/Release configuration. MSVC configuration/CRT selection matches the engine; MinGW Debug dependencies now carry Debug information instead of using Release libraries. Installed headers and archives are declared build outputs so Ninja rebuilds consumers after an update. Sources and installed files belong to each normal build directory; supplied game resources and other configurations are retained. Explicit archive paths prevent obsolete libraries left in a reused directory from being selected.
 

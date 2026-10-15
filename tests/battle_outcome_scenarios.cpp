@@ -18,7 +18,10 @@
 #include "Interface/CInterface.h"
 #include "input.hpp"
 #include "cheats.hpp"
+#include "SoundBridge.hpp"
+#include "audio_fixture.hpp"
 #include <climits>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -339,6 +342,63 @@ void special_survival_flags() {
         MG_CHECK(!g_MatrixMap->IsPaused());
         MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
     }
+}
+// SetMusicVolume and RestoreMusicVolume are the calls made by the Terron death and the MUSIC console
+// command. Without a host they fade the standalone music, one thousandth of full level per millisecond.
+void music_fade() {
+    Session session;
+    MG_CHECK(SoundBridge::available() && !SoundBridge::music_available());
+    g_MatrixMap->SetMusicVolume(0);  // Nothing to fade without music, as before.
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING));
+    SoundBridge::install_music({L"synthetic"}, [](const std::wstring &) { return std::vector<uint8_t>{1}; },
+        [](std::vector<uint8_t>) -> std::unique_ptr<Audio::Decoder> {
+            return std::make_unique<audio_fixture::FakeDecoder>(audio_fixture::TrackSpec{1, 8000, 100000, 0});
+        });
+    SoundBridge::update_music();
+    MG_CHECK(SoundBridge::music_available() && SoundBridge::music_level() == 1.0f);
+    const auto fade = [&](float target) {
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING));
+        const int start = session.time();
+        while (FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && session.time() < start + 2000) {
+            const float before = SoundBridge::music_level();
+            session.advance();
+            MG_CHECK(std::fabs(SoundBridge::music_level() - before) <= 0.0101f);
+        }
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && SoundBridge::music_level() == target);
+        const int duration = session.time() - start;
+        MG_CHECK(duration >= 1000 && duration <= 1020);
+    };
+    g_MatrixMap->SetMusicVolume(0);
+    fade(0.0f);
+    g_MatrixMap->RestoreMusicVolume();
+    fade(1.0f);
+}
+// The game form refills music before anything else in a frame, so a lost device that skips the rest
+// of the frame does not starve it.
+void music_form_refill() {
+    Session session;
+    auto audio = std::make_shared<audio_fixture::DeviceState>();
+    SoundBridge::install(std::make_unique<Audio::Service>(std::make_unique<audio_fixture::FakeDevice>(audio),
+        Audio::Mapping{{L"Sound.Synthetic", L"synthetic.wav"}},
+        [](const std::wstring &) { return audio_fixture::wave(); },
+        [](const std::wstring &, const std::string &error) { throw std::runtime_error(error); }));
+    SoundBridge::install_music({L"synthetic"}, [](const std::wstring &) { return std::vector<uint8_t>{1}; },
+        [](std::vector<uint8_t>) -> std::unique_ptr<Audio::Decoder> {
+            return std::make_unique<audio_fixture::FakeDecoder>(audio_fixture::TrackSpec{1, 8000, 100000, 0});
+        });
+    CFormMatrixGame form;
+    MG_CHECK(audio->streams.empty());  // Nothing plays before the first frame.
+    session.device_lost(true);
+    const int time = session.time();
+    form.Takt(10);
+    MG_CHECK(session.time() == time);  // The lost device skipped the map.
+    MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 4 && audio->streams[0]->plays == 1);
+    session.device_lost(false);
+    // Resources count as present, so the recovered device needs nothing recreated.
+    SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+    audio->streams[0]->queued = 0;
+    form.Takt(10);
+    MG_CHECK(session.time() == time + 10 && audio->streams[0]->buffers.size() == 8);
 }
 void full_auto_escape() {
     Session session;
@@ -1020,6 +1080,7 @@ void transported_robot_damage_outcome() {
         advance_to(session, hit_at);
         MG_CHECK(robot_core->m_Object == robot && carrier_core->m_Object == carrier);
         MG_CHECK(robot->m_CurrState == (hit_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
+        MG_CHECK(carrier->CarryingRobot() == (hit_at == 1000));
         g_MatrixMap->m_Difficulty.k_damage_enemy_to_player = 1;
         g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {100000, 0, 0};
         MG_CHECK(robot->Damage(WEAPON_LASER, robot->GetGeoCenter(), D3DXVECTOR3(0, 0, 1), 2, nullptr));
@@ -1050,7 +1111,7 @@ void carrier_loss_outcome(bool damage) {
         assets.install();
         crater.install();
         DialogData dialog;
-        std::cout << "remove_at=" << remove_at << ' ' << session.metadata(damage ? "synthetic-carrier-damage-outcome-v1" : "synthetic-carrier-removal-outcome-v1") << '\n';
+        std::cout << (damage ? "hit_at=" : "remove_at=") << remove_at << ' ' << session.metadata(damage ? "synthetic-carrier-damage-outcome-v1" : "synthetic-carrier-removal-outcome-v1") << '\n';
         auto *carrier = order_outcome_transport(PLAYER_SIDE);
         auto carrier_core = retain_core(*carrier);
         auto *robot = carrier->GetCarryingRobot()->AsRobot();
@@ -1326,6 +1387,8 @@ constexpr tests::Case cases[] = {
     {"game.outcome.repeated_sessions", repeated_sessions},
     {"game.outcome.special_survival_flags", special_survival_flags},
     {"game.outcome.full_auto_escape", full_auto_escape},
+    {"game.outcome.music_fade", music_fade},
+    {"game.outcome.music_form_refill", music_form_refill},
     {"game.outcome.legacy_loss_cheat", legacy_loss_cheat},
     {"game.outcome.statistics_formatting", statistics_formatting},
     {"game.outcome.scheduled_capture", scheduled_capture},

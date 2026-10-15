@@ -19,6 +19,7 @@ enum class Row {
     FullscreenMode,
     SoundGroup,
     SoundVolume,
+    MusicVolume,
     GraphicsGroup,
     StencilShadows,
     ProjectedShadows,
