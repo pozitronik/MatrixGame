@@ -28,7 +28,7 @@ instructions and configuration options.
 
 The [packaging guide](docs/RELEASES.md) describes the minimal standalone ZIP, source archive, checksums and release checklist.
 
-Resolution, windowed/borderless/exclusive modes, volume, shadows, camera speed and the random generator can be changed in the in-game [Settings window](docs/SETTINGS.md) (battle menu, `C`) or in `CFG/standalone.txt`; see also [Display settings](docs/DISPLAY.md). The Settings window's Map row, and the end of a battle, open the [Map window](docs/MAPS.md) for choosing the next battle map.
+Resolution, windowed/borderless/exclusive modes, volume, shadows, camera speed and the random generator can be changed in the in-game [Settings window](docs/SETTINGS.md) (battle menu, `C`) or in `CFG/standalone.txt`; see also [Display settings](docs/DISPLAY.md). Choose **New battle** in the startup menu or battle menu (`N`) to open the [map selector](docs/MAPS.md), inspect installed maps and choose a bonus. No battlefield loads before the startup selection. Closing the statistics after a battle also opens the selector.
 
 ## Development
 

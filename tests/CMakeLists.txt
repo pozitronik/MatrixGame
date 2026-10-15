@@ -157,6 +157,7 @@ add_matrix_test(game.random.configuration_report matrixgame_random_configuration
 add_matrix_test_executable(matrixgame_standalone_settings_tests standalone_settings_tests.cpp
     ../MatrixGame/src/StandaloneSettings.cpp ../MatrixGame/src/RandomConfiguration.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_standalone_settings_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+add_matrix_test(game.settings.battle_bonus matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.defaults matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.explicit_values matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.invalid_values matrixgame_standalone_settings_tests startup settings)
@@ -169,16 +170,22 @@ add_matrix_test(game.settings.save_creates_file matrixgame_standalone_settings_t
 add_matrix_test(game.settings.save_failure matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.unreadable_file matrixgame_standalone_settings_tests startup settings)
 
+add_matrix_test_executable(matrixgame_map_metadata_tests map_metadata_tests.cpp ../MatrixGame/src/MapMetadata.cpp)
+target_include_directories(matrixgame_map_metadata_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract format envelope damage tree text files catalog substitution_bounds)
+    add_matrix_test(game.maps.metadata_${contract} matrixgame_map_metadata_tests startup ui)
+endforeach()
+
 add_matrix_test_executable(matrixgame_map_catalog_tests map_catalog_tests.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_map_catalog_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
 foreach(contract merge unsafe_names paths)
     add_matrix_test(game.maps.${contract} matrixgame_map_catalog_tests startup ui)
 endforeach()
 
-add_matrix_test_executable(matrixgame_map_model_tests map_model_tests.cpp ../MatrixGame/src/MapModel.cpp
+add_matrix_test_executable(matrixgame_map_model_tests map_model_tests.cpp ../MatrixGame/src/MapModel.cpp ../MatrixGame/src/MapMetadata.cpp
     ../MatrixGame/src/MapCatalog.cpp ../MatrixGame/src/SettingsModel.cpp ../MatrixGame/src/RandomConfiguration.cpp)
 target_include_directories(matrixgame_map_model_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
-foreach(contract window_selection window_paging window_geometry window_text window_hint)
+foreach(contract window_selection window_paging window_geometry window_text window_hint preview_markup metadata_display bonus_controls)
     add_matrix_test(game.maps.${contract} matrixgame_map_model_tests ui)
 endforeach()
 
@@ -203,6 +210,8 @@ add_matrix_test(game.settings.window_availability matrixgame_settings_runtime_te
 add_matrix_test(game.settings.delayed_damage_attribution matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.delayed_damage_build_default matrixgame_settings_runtime_tests gameplay settings)
 add_matrix_test(game.settings.group_counts_build_default matrixgame_settings_runtime_tests ai settings)
+add_matrix_test(game.settings.place_containment_build_default matrixgame_settings_runtime_tests ai settings)
+add_matrix_test(game.settings.zero_x_trace_build_default matrixgame_settings_runtime_tests gameplay settings)
 target_compile_definitions(matrixgame_settings_runtime_tests PRIVATE MATRIXGAME_TESTS_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>)
 add_matrix_test(game.settings.map_choice matrixgame_settings_runtime_tests startup settings)
 
@@ -363,7 +372,7 @@ add_matrix_test(game.input.keepalive_keys matrixgame_keepalive_tests gameplay in
 add_matrix_test(game.input.keepalive_fresh matrixgame_keepalive_tests gameplay input)
 add_matrix_test(game.input.ordinary_deactivation matrixgame_keepalive_tests gameplay input)
 
-add_matrix_test_executable(matrixgame_lifecycle_tests lifecycle_tests.cpp diagnostic_overlay_stub.cpp)
+add_matrix_test_executable(matrixgame_lifecycle_tests lifecycle_tests.cpp native_startup_reset.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_lifecycle_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.lifecycle.configuration_cleanup matrixgame_lifecycle_tests startup memory)
 add_matrix_test(game.lifecycle.empty_configuration matrixgame_lifecycle_tests startup memory)
@@ -372,10 +381,24 @@ add_matrix_test(game.lifecycle.form_construction_failure matrixgame_lifecycle_te
 add_matrix_test(game.lifecycle.repeated_forms matrixgame_lifecycle_tests startup)
 add_matrix_test(game.lifecycle.partial_startup matrixgame_lifecycle_tests startup memory)
 add_matrix_test(game.lifecycle.safe_free_without_cache matrixgame_lifecycle_tests startup memory)
+add_matrix_test(game.lifecycle.cursor_before_initialization matrixgame_lifecycle_tests startup input)
 add_matrix_test(game.lifecycle.graphics_references matrixgame_lifecycle_tests startup rendering)
 add_matrix_test(game.lifecycle.cleanup_failure matrixgame_lifecycle_tests startup)
 add_matrix_test(game.lifecycle.standalone_partial_cleanup matrixgame_lifecycle_tests startup memory)
 add_matrix_test(game.lifecycle.graphics_partial_init matrixgame_lifecycle_tests startup rendering)
+
+add_matrix_test_executable(matrixgame_loading_tests battle_loading_tests.cpp ../MatrixGame/src/BattleLoading.cpp)
+target_include_directories(matrixgame_loading_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract names presentation failure child_ready child_exit bounded_wait message_pump
+                 dismiss_button dismiss_close dismiss_escape)
+    add_matrix_test(game.loading.${contract} matrixgame_loading_tests startup ui)
+endforeach()
+
+add_matrix_test_executable(matrixgame_battle_launch_tests battle_launch_tests.cpp)
+target_include_directories(matrixgame_battle_launch_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
+foreach(contract arguments relaunch_command action_keys)
+    add_matrix_test(game.startup.${contract} matrixgame_battle_launch_tests startup input)
+endforeach()
 
 add_matrix_test_executable(matrixgame_font_tests font_tests.cpp native_font_reset.cpp
     ../MatrixGame/src/Text/Font.cpp ../MatrixGame/src/Text/FontCache.cpp)
@@ -543,6 +566,8 @@ foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildin
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
 add_matrix_test(game.ai.bomb_escape_capacity matrixgame_ai_decision_tests gameplay ai)
+add_matrix_test(game.ai.bomb_escape_reservation matrixgame_ai_decision_tests gameplay ai)
+add_matrix_test(game.ai.visual_axis_aligned matrixgame_ai_decision_tests gameplay ai)
 add_matrix_test(game.ai.place_axis matrixgame_ai_decision_tests gameplay ai)
 foreach(contract regroup_split_counts regroup_merge_counts regroup_count_sequences strategic_merged_team_split)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)

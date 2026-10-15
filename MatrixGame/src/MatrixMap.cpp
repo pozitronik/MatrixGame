@@ -10,6 +10,7 @@
 #include "MatrixMap.hpp"
 #include "SettingsWindow.hpp"
 #include "MapWindow.hpp"
+#include "StandaloneRuntime.hpp"
 #include "ScreenLayout.hpp"
 #include "ShadowPasses.hpp"
 #include "MatrixMapStatic.hpp"
@@ -3269,6 +3270,10 @@ void ResetRequestHandler(void) {
 }
 
 void HelpRequestHandler(void) {
+    if (MapWindow::available()) {
+        MapWindow::open(MapWindow::Origin::Menu, StandaloneSettings::current());
+        return;
+    }
     g_MatrixMap->LeaveDialogMode();
     std::wstring fn;
     if (CFile::FileExist(fn, L"Manual.exe")) {
@@ -3336,6 +3341,7 @@ void CMatrixMap::EnterDialogMode(const wchar *hint_i) {
 
             if (0 == wcscmp(hint, TEMPLATE_DIALOG_MENU)) {
                 SettingsWindow::customize_menu(templ);
+                MapWindow::customize_menu(templ);
             }
             CMatrixHint *h = CMatrixHint::Build(templ, g_MatrixData->BlockGet(PAR_REPLACE), hint);
 

@@ -25,10 +25,20 @@ CameraSpeed=100
 // Ablaze and shorted damage pulses. Corrected keeps the attacker's kill credit and friendly-fire
 // scaling for every pulse; Original restores the original game. Applies immediately.
 DelayedDamage=Corrected
-// Battle map chosen in the Map window (Settings, Map), for example Matrix\Map\desert1_3e.cmap.
-// Empty starts the map configured in the game data.
+// Battle map chosen in New battle, for example Matrix\Map\desert1_3e.cmap.
+// Empty selects the configured fallback in the startup selector.
 Map=
+// Bonus for the next battle: None, AirSupport or ReinforcedArmor. Friendly fire is unchanged.
+BattleBonus=None
 // AI group counts after regrouping. Corrected keeps them equal to the members; Original restores
 // the original game, whose stale counts affect team redistribution. Read at startup; there is no
 // Settings window row.
 GroupCounts=Corrected
+// AI bomb escape place test. Corrected matches each movement cell to the place square containing
+// it; Original restores the original game's bound. Read at startup; there is no Settings window
+// row.
+PlaceContainment=Corrected
+// Hits along lines with no X travel, for sight, aiming, shots and picking. Corrected finds them;
+// Original restores the original game, which missed objects along such lines. Read at startup;
+// there is no Settings window row.
+ZeroXTrace=Corrected

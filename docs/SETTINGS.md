@@ -30,7 +30,6 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 | Camera speed | `CameraSpeed` | `25`-`300` percent of the configured scroll speed, in steps of 25 in the window | `100` | Immediately |
 | Random generator | `RandomGenerator` | `ParkMiller`, `LegacyCRT` | `ParkMiller` | After restart |
 | Status damage | `DelayedDamage` | `Corrected`, `Original` | `Corrected` | Immediately |
-| Map | `Map` | A map path such as `Matrix\Map\desert1_3e.cmap`, or empty for `Config/Map` | Empty | Opens the [Map window](MAPS.md), which starts the game again on the chosen map |
 
 **Display.** The display keys keep the contract in [Display settings](DISPLAY.md). The window shows the current window mode, including a mode reached with Alt+Enter, and Apply saves it. Choosing `Borderless` or `Exclusive` as the window mode also makes it the Alt+Enter mode, matching how a fullscreen start behaves. A window-mode change uses the same transition and rollback as Alt+Enter. A resolution change resets the device in every mode and re-lays out the interface; see [Changing the resolution during a battle](DISPLAY.md#changing-the-resolution-during-a-battle). If exclusive mode is unavailable at the requested resolution, or the change fails, the game keeps its current mode and resolution and logs the reason.
 
@@ -38,7 +37,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 **Graphics.** The stencil and projected shadow options correspond to the original game's shadow settings. Previously the EXE always enabled them; they now default to the same values. Each option controls only its own kind of shadow, so either kind can be shown alone. The sky's `Low` and `High` options select the original low- and high-quality sky textures.
 
-**Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators. The Map row shows the current battle map; clicking it or pressing Left/Right opens the [Map window](MAPS.md). Playing a map there also saves the Settings window's current values.
+**Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators. Map and bonus selection belong to the separate [New battle dialog](MAPS.md), available from the startup and battle menus.
 
 Status damage selects who is responsible for ablaze and shorted damage pulses on robots and turrets. A flamethrower or electric hit records the attacking side. Fire and electricity share this record, so the most recent flame or electric hit replaces it for both statuses.
 - With `Corrected`, every later pulse of either status is dealt on behalf of the recorded side. That side receives the kill credit. A player's unit hit by friendly fire takes friendly damage with the friendly-fire multiplier. A unit set on fire by one side and then shocked by another therefore burns on behalf of the second side.
@@ -48,15 +47,21 @@ On a player's turret, those hostile pulses also flash the minimap and play the u
 
 In both modes a direct hit by another weapon forgets the side, as in the original game. Switching modes during a battle affects units that are already burning or shorted from their next pulse. Switching to `Original` forgets the side at that pulse, and switching back does not restore a side that was already forgotten. The DLL build always uses the original behavior, because the host game owns its settings.
 
-Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage`, `Map` or `GroupCounts` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
+Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage`, `Map`, `BattleBonus`, `GroupCounts`, `PlaceContainment` or `ZeroXTrace` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
 
 ## Options without a window row
 
 | Key in `CFG/standalone.txt` | Values | Default | Takes effect |
 | --- | --- | --- | --- |
 | `GroupCounts` | `Corrected`, `Original` | `Corrected` | At startup |
+| `PlaceContainment` | `Corrected`, `Original` | `Corrected` | At startup |
+| `ZeroXTrace` | `Corrected`, `Original` | `Corrected` | At startup |
 
 **AI group counts.** When the computer AI regroups its robots, the original game counted every robot moved out of a split group as an addition to that group, and left a merged, emptied group with its former count until the next regrouping. A team strategy pass in the same tick then counted the empty group as a live one: a team with nobody to spare moved a whole group to an empty team instead of half its robots, and a team that had just become one group did not clear its wait-for-union state as it should. `Corrected` keeps every count equal to the group's members. `Original` restores the original counting exactly. The DLL build always uses `Original`, because its host owns its settings. The key has no window row; edit the file while the game is closed. Applying the Settings window saves the value the game started with.
+
+**AI place containment.** When computer robots, or player robots in automatic mode, flee a bomb carrier, the game skips refuges that another robot is heading for. It finds the place a destination cell belongs to by testing which place's four-cell square contains the cell. The original game bounded the cell's X coordinate by the place's Y coordinate. Places off the map diagonal therefore missed cells of their own square and claimed cells outside it, so a refuge that another robot was already heading for could be chosen again, and a free refuge could be treated as taken. `Corrected` tests the square itself. `Original` restores the original bound exactly. As with `GroupCounts`, the DLL build always uses `Original`, the key is read at startup and it has no window row. Edit the file while the game is closed: applying the Settings window saves the value the game started with.
+
+**Lines without X travel.** Sight lines, aiming checks, shots, debris and cursor picking all trace a line through the map. When the line's two ends have exactly the same X coordinate but different Y coordinates, the original game rejected every object along it and skipped the terrain when the line descended. Robots and turrets lined up along the Y axis therefore could not see or hit each other, and such shots passed through objects and the ground. `Corrected` traces these lines like any other. `Original` restores the original behaviour exactly. Lines with no horizontal travel at all are unaffected. As with `GroupCounts`, the DLL build always uses `Original`, the key is read at startup and it has no window row. Edit the file while the game is closed: applying the Settings window saves the value the game started with.
 
 ## Saving
 
@@ -72,9 +77,11 @@ Automated `game.settings.*` contracts cover:
 - Atomic saving and failed-save behavior.
 - Window selection, stepping, mode coupling, hit areas and both label languages.
 - Startup mapping of graphics options and which options need a restart.
-- Immediate routing of shadows, camera speed, volume, status-damage attribution and the AI group-count mode, and shadow pass selection for each combination of the two shadow options.
+- Immediate routing of shadows, camera speed, volume, status-damage attribution and the AI group-count and place containment modes and the zero-X trace mode, and shadow pass selection for each combination of the two shadow options.
 - The remembered map; see [Map selection](MAPS.md#verification) for the Map window's own contracts and playtest.
 - The group-count mode a process starts with: `Corrected` in the EXE, `Original` in the DLL (`game.settings.group_counts_build_default`, registered in both build roles). The `game.ai.*` group-count cases check both modes; see [AI decisions](testing/84-ai-decisions.md).
+- The place containment mode a process starts with, in the same way (`game.settings.place_containment_build_default`). `game.ai.place_axis` and `game.ai.bomb_escape_reservation` check both modes.
+- The zero-X trace mode a process starts with, in the same way (`game.settings.zero_x_trace_build_default`). `game.combat.axis_aligned_trace` and `game.ai.visual_axis_aligned` check both modes.
 
 `game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions.
 
