@@ -6,6 +6,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <memory>
 
 namespace {
 using namespace tests;
@@ -397,6 +398,8 @@ int sloped_journey(random::Mode mode, int step, float gradient) {
     Session session(profile);
     MG_CHECK(session.remove(2));
     auto *robot = g_MatrixMap->GetPlayerSide()->GetCurGroup()->GetObjectByN(0)->AsRobot();
+    const auto release_core = [](SObjectCore *core) { core->Release(); };
+    std::unique_ptr<SObjectCore, decltype(release_core)> core(robot->GetCore(DEBUG_CALL_INFO), release_core);
     // A continuous plane supplies both height triangles and vertex normals.
     // Navigation masks remain open; the production tick derives chassis tilt.
     D3DXVECTOR3 normal(-gradient, 0, 1);
@@ -418,6 +421,8 @@ int sloped_journey(random::Mode mode, int step, float gradient) {
     g_Config.m_ItemChars[CHASSIS2_MOVE_SLOPE_CORR_DOWN] = 3;
     robot->CalcRobotMass();
     session.ground_command(500, 200);
+    const float slope = gradient / std::sqrt(1 + gradient * gradient);
+    const float expected_speed = 0.6f * (slope >= 0 ? 1 - slope / 0.5f : 1 - 2 * slope);
     int samples = 0;
     while (session.frame() < profile.max_frames) {
         session.advance();
@@ -425,18 +430,17 @@ int sloped_journey(random::Mode mode, int step, float gradient) {
         MG_CHECK(state.alive && std::isfinite(state.x) && std::isfinite(state.y));
         MG_CHECK(!robot->IsMustDie() && state.order == mpo_MoveTo);
         MG_CHECK(state.destination_x == 48 && state.destination_y == 18);
-        MG_CHECK(std::abs(robot->Z_From_Pos() - (200 + gradient * state.x)) < 0.001f);
+        MG_CHECK(core->m_Object == robot);
+        MG_CHECK(std::abs(core->m_Matrix._43 - (200 + gradient * core->m_Matrix._41)) < 0.001f);
         if (state.x > 240 && state.x < 360) {
-            MG_CHECK(robot->m_Speed > 0);
-            if (gradient > 0) MG_CHECK(robot->m_Speed < 0.4f);
-            else if (gradient < 0) MG_CHECK(robot->m_Speed > 0.8f);
-            else MG_CHECK(std::abs(robot->m_Speed - 0.6f) < 0.00001f);
+            MG_CHECK(std::abs(core->m_Matrix._23 - slope) < 0.001f);
+            MG_CHECK(std::abs(robot->m_Speed - expected_speed) < 0.001f);
             ++samples;
         }
         if (robot->PLIsInPlace()) break;
     }
     MG_CHECK(robot->PLIsInPlace() && samples > 0);
-    MG_CHECK(std::abs(robot->m_PosX - 500) < 1 && std::abs(robot->m_PosY - 200) < 1);
+    MG_CHECK(robot->m_PosX == 500 && robot->m_PosY == 200);
     std::cout << session.metadata("continuous-slope-journey-v1") << " gradient=" << gradient
               << " arrival_ms=" << session.time() << " samples=" << samples << '\n';
     return session.time();
