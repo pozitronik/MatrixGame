@@ -267,6 +267,26 @@ void no_optional_packages() {
     MG_CHECK(!SoundBridge::available() && f.reports == 0);
 }
 
+// The game form drops CSound handles whenever the bridge replaces or releases the service.
+void form_recover() {
+    if (SoundBridge::recover()) CSound::Clear();
+}
+
+// A directly installed service cannot be recreated: a device error releases it and its layered sounds.
+void installed_device_error() {
+    Frontend f;
+    const auto id = CSound::Play(S_BCLICK, 1, 0, SL_INTERFACE, SEF_INTERRUPT);
+    MG_CHECK(CSound::IsSoundPlay(id));
+    form_recover();
+    MG_CHECK(CSound::IsSoundPlay(id) && f.device->voices[0]->destroyed == 0);  // A working device is kept.
+    f.device->critical_error = "Synthetic critical error";
+    form_recover();
+    MG_CHECK(device_creations == 0);  // No startup device is created in place of an installed service.
+    MG_CHECK(!SoundBridge::available() && f.device->destroyed && f.device->voices[0]->destroyed == 1);
+    MG_CHECK(!CSound::IsSoundPlay(id) && CSound::Play(S_BCLICK, 1, 0, SL_INTERFACE) == SOUND_ID_EMPTY);
+    MG_CHECK(!SoundBridge::recover() && f.reports == 0);
+}
+
 int host_created{}, host_played{}, host_destroyed{}, host_group{}, host_loop{};
 dword __stdcall host_create(wchar *, int group, int loop) { ++host_created; host_group = group; host_loop = loop; return 71; }
 void __stdcall host_play(dword id) { if (id == 71) ++host_played; }
@@ -316,6 +336,102 @@ void music_track_names() {
     MG_CHECK(tracks == std::vector<std::wstring>({L"music\\BATTLE\\a.dat", L"music\\BATTLE\\B.dat",
                                                   L"music\\BATTLE\\Boy1.dat", L"music\\BATTLE\\fight2.dat"}));
     MG_CHECK(SoundBridge::merge_tracks({}, {}).empty());
+}
+
+// Marks the current startup device as failed; later devices get a fresh state.
+std::shared_ptr<audio_fixture::DeviceState> fail_startup_device() {
+    auto failed = startup_device;
+    failed->critical_error = "Synthetic critical error";
+    startup_device = std::make_shared<audio_fixture::DeviceState>();
+    return failed;
+}
+
+// A device error recreates standalone audio with the retained levels; handles from before it stay void.
+void device_recovery() {
+    StartupFixture fixture;
+    fixture.wave("sound/ButtonClick.wav");
+#ifdef MATRIXGAME_MUSIC
+    fixture.track("music/BATTLE/a.dat", 1000);
+    fixture.track("music/BATTLE/b.dat", 2000);
+    // Each track fills one buffer, so the first update queues a, b, c, a and leaves a playing.
+    fixture.track("music/BATTLE/c.dat", 3000);
+#endif
+    Base::CBlockPar data;
+    g_MatrixData = &data;
+    auto *event = data.BlockGetAdd(L"Sounds")->BlockGetAdd(L"bclick");
+    event->ParSetAdd(L"path", L"Sound.ButtonClick");
+    event->ParSetAdd(L"looped", L"1");
+    event->ParSetAdd(L"vol", L"1,1");
+    CSound::Init();
+    SoundBridge::master_volume(0.5f);
+    SoundBridge::music_volume(0.25f);
+    SoundBridge::initialize_standalone(true);
+    const auto layered = CSound::Play(S_BCLICK, 1, 0, SL_INTERFACE, SEF_INTERRUPT);
+    wchar_t name[] = L"Sound.ButtonClick";
+    const auto old_id = SoundBridge::create(name, 0, 1);
+    SoundBridge::play(old_id);
+    MG_CHECK(CSound::IsSoundPlay(layered) && SoundBridge::playing(old_id));
+#ifdef MATRIXGAME_MUSIC
+    SoundBridge::update_music();
+    SoundBridge::music_level(0.5f);  // An engine fade in progress.
+    MG_CHECK(startup_device->streams.at(0)->volume == 0.125f);
+#endif
+    form_recover();
+    MG_CHECK(device_creations == 1 && CSound::IsSoundPlay(layered));  // A working device is kept.
+
+    const auto failed = fail_startup_device();
+    form_recover();
+    MG_CHECK(device_creations == 2 && failed->destroyed && SoundBridge::available());
+    MG_CHECK(failed->voices.size() == 2 && failed->voices[0]->destroyed == 1 && failed->voices[1]->destroyed == 1);
+    MG_CHECK(!CSound::IsSoundPlay(layered) && !SoundBridge::playing(old_id));
+    // Old handles reach no sound of the new service, and new handles continue after them.
+    const auto new_id = SoundBridge::create(name, 0, 0);
+    MG_CHECK(new_id > old_id && startup_device->voices.size() == 1);
+    SoundBridge::destroy(old_id);
+    SoundBridge::volume(old_id, 1.0f);
+    MG_CHECK(startup_device->voices[0]->destroyed == 0 && startup_device->voices[0]->volume == 0.5f);
+    SoundBridge::play(new_id);
+    MG_CHECK(SoundBridge::playing(new_id));
+    const auto replayed = CSound::Play(S_BCLICK, 1, 0, SL_INTERFACE, SEF_SKIP);
+    MG_CHECK(replayed != SOUND_ID_EMPTY && replayed != layered && CSound::IsSoundPlay(replayed));
+#ifdef MATRIXGAME_MUSIC
+    // Music resumes with b, the track after the one that was playing, at the same levels; a restart
+    // from the first track would begin with a.
+    MG_CHECK(failed->streams.at(0)->destroyed && SoundBridge::music_level() == 0.5f);
+    SoundBridge::update_music();
+    const auto stream = startup_device->streams.at(0);
+    MG_CHECK(stream->volume == 0.125f && stream->plays == 1 && stream->buffers.at(0).front() == 2000);
+#endif
+    MG_CHECK(!SoundBridge::recover());
+    CSound::Clear();
+    SoundBridge::shutdown();
+    g_MatrixData = nullptr;
+    SoundBridge::master_volume(1.0f);
+    SoundBridge::music_volume(1.0f);
+}
+
+// Recreation is bounded per session, and a failing recreation leaves audio disabled.
+void device_recovery_limit() {
+    StartupFixture fixture;
+    fixture.wave("sound/ButtonClick.wav");
+    wchar_t name[] = L"Sound.ButtonClick";
+    SoundBridge::initialize_standalone(true);
+    for (int i = 0; i < 3; ++i) {
+        fail_startup_device();
+        MG_CHECK(SoundBridge::recover() && SoundBridge::available());
+    }
+    MG_CHECK(device_creations == 4);
+    const auto last = fail_startup_device();
+    MG_CHECK(SoundBridge::recover() && !SoundBridge::available() && device_creations == 4 && last->destroyed);
+    MG_CHECK(!SoundBridge::recover() && SoundBridge::create(name, 0, 0) == 0);
+
+    // A new session has a new budget.
+    SoundBridge::initialize_standalone(true);
+    MG_CHECK(SoundBridge::available() && device_creations == 5);
+    fail_startup_device();
+    fail_device = true;
+    MG_CHECK(SoundBridge::recover() && !SoundBridge::available() && device_creations == 6);
+    MG_CHECK(!SoundBridge::recover());
 }
 
 #ifdef MATRIXGAME_MUSIC
@@ -419,6 +535,8 @@ constexpr tests::Case cases[] = {
     {"game.audio.stale_layer_slot", stale_layer_slot}, {"game.audio.host_layer_lifetime", host_layer_lifetime},
     {"game.audio.frontend_missing", missing_mapping}, {"game.audio.host_routing", host_routing},
     {"game.audio.no_optional_packages", no_optional_packages},
+    {"game.audio.installed_device_error", installed_device_error},
+    {"game.audio.device_recovery", device_recovery}, {"game.audio.device_recovery_limit", device_recovery_limit},
 #ifdef MATRIXGAME_MUSIC
     {"game.audio.music_sessions", music_sessions}, {"game.audio.music_unavailable", music_unavailable},
 #else
