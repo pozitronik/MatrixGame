@@ -30,7 +30,6 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 | Camera speed | `CameraSpeed` | `25`-`300` percent of the configured scroll speed, in steps of 25 in the window | `100` | Immediately |
 | Random generator | `RandomGenerator` | `ParkMiller`, `LegacyCRT` | `ParkMiller` | After restart |
 | Status damage | `DelayedDamage` | `Corrected`, `Original` | `Corrected` | Immediately |
-| Map | `Map` | A map path such as `Matrix\Map\desert1_3e.cmap`, or empty for `Config/Map` | Empty | Opens the [Map window](MAPS.md), which starts the game again on the chosen map |
 
 **Display.** The display keys keep the contract in [Display settings](DISPLAY.md). The window shows the current window mode, including a mode reached with Alt+Enter, and Apply saves it. Choosing `Borderless` or `Exclusive` as the window mode also makes it the Alt+Enter mode, matching how a fullscreen start behaves. A window-mode change uses the same transition and rollback as Alt+Enter. A resolution change resets the device in every mode and re-lays out the interface; see [Changing the resolution during a battle](DISPLAY.md#changing-the-resolution-during-a-battle). If exclusive mode is unavailable at the requested resolution, or the change fails, the game keeps its current mode and resolution and logs the reason.
 
@@ -38,7 +37,7 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 
 **Graphics.** The stencil and projected shadow options correspond to the original game's shadow settings. Previously the EXE always enabled them; they now default to the same values. Each option controls only its own kind of shadow, so either kind can be shown alone. The sky's `Low` and `High` options select the original low- and high-quality sky textures.
 
-**Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators. The Map row shows the current battle map; clicking it or pressing Left/Right opens the [Map window](MAPS.md). Playing a map there also saves the Settings window's current values.
+**Gameplay.** Camera speed scales keyboard and screen-edge scrolling. See [Battle random generation](RANDOM.md) for the random generators. Map and bonus selection belong to the separate [New battle dialog](MAPS.md), available from the startup and battle menus.
 
 Status damage selects who is responsible for ablaze and shorted damage pulses on robots and turrets. A flamethrower or electric hit records the attacking side. Fire and electricity share this record, so the most recent flame or electric hit replaces it for both statuses.
 - With `Corrected`, every later pulse of either status is dealt on behalf of the recorded side. That side receives the kill credit. A player's unit hit by friendly fire takes friendly damage with the friendly-fire multiplier. A unit set on fire by one side and then shocked by another therefore burns on behalf of the second side.
@@ -48,7 +47,7 @@ On a player's turret, those hostile pulses also flash the minimap and play the u
 
 In both modes a direct hit by another weapon forgets the side, as in the original game. Switching modes during a battle affects units that are already burning or shorted from their next pulse. Switching to `Original` forgets the side at that pulse, and switching back does not restore a side that was already forgotten. The DLL build always uses the original behavior, because the host game owns its settings.
 
-Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage`, `Map`, `GroupCounts` or `PlaceContainment` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
+Values in the file are case-insensitive, and `true`/`false` and `1`/`0` are also accepted for `On`/`Off`. A missing key uses its default. An invalid or repeated `SoundVolume`, `StencilShadows`, `ProjectedShadows`, `Skybox`, `RobotShadows`, `CameraSpeed`, `DelayedDamage`, `Map`, `BattleBonus`, `GroupCounts` or `PlaceContainment` falls back to its own default and writes a diagnostic to `test.log`. Display and random-generator keys keep their existing fallback rules.
 
 ## Options without a window row
 

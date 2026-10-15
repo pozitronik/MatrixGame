@@ -54,8 +54,6 @@ bool inside_menu_entry(int x, int y) {
 
 void apply_handler() { close(true); }
 
-// The Map window saves the edited settings together with the chosen map and returns here when canceled.
-void open_map() { MapWindow::open(MapWindow::Origin::Settings, model->values()); }
 void cancel_handler() { close(false); }
 
 void rebuild() {
@@ -123,7 +121,6 @@ void open() {
     values.display.width = size.width;
     values.display.height = size.height;
     model.emplace(values, adapter_modes(), language());
-    model->set_map_name(std::filesystem::path(g_MatrixMap->MapName()).stem().wstring());
     resume();
 }
 
@@ -171,10 +168,6 @@ bool keyboard(uint8_t vk, bool down) {
             break;
         case VK_LEFT:
         case VK_RIGHT:
-            if (model->selected() == static_cast<int>(SettingsModel::Row::Map)) {
-                open_map();
-                return true;
-            }
             update = model->change(model->selected(), vk == VK_LEFT ? -1 : 1);
             break;
         case VK_RETURN: close(true); return true;
@@ -199,11 +192,6 @@ bool mouse_down(int x, int y) {
     const auto target = hit(x, y);
     if (target.row < 0) return false;  // The hint buttons and the rest of the screen keep their handling.
     model->select(target.row);
-    if (target.row == static_cast<int>(SettingsModel::Row::Map)) {
-        CSound::Play(S_BCLICK);
-        open_map();
-        return true;
-    }
     model->change(target.row, target.direction);
     CSound::Play(S_BCLICK);
     rebuild();

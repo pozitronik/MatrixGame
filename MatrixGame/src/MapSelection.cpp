@@ -2,12 +2,15 @@
 #include "MapSelection.hpp"
 #include "MapCatalog.hpp"
 #include "ExecutablePath.hpp"
+#include "BattleLoading.hpp"
+#include "BattleLaunch.hpp"
 
 #include "utils.hpp"
 
 #include <windows.h>
 
 #include <cwctype>
+#include <memory>
 
 #include <stupid_logger.hpp>
 
@@ -45,8 +48,8 @@ std::wstring startup_map(StandaloneSettings::Values &values) {
     }
     lgr.error("The remembered map {} cannot be read; starting the configured map")(utils::from_wstring(values.map));
     const std::wstring message = L"The map " + values.map +
-                                 L" chosen in the Map window cannot be loaded.\nThe game starts the configured map "
-                                 L"instead. Choose another map in Settings, Map.";
+                                 L" chosen in the map selector cannot be loaded.\nThe game starts the configured map "
+                                 L"instead. Choose another map in New battle.";
     values.map.clear();
     auto stored = StandaloneSettings::load().values;
     stored.map.clear();
@@ -95,7 +98,14 @@ bool relaunch_requested() { return relaunch_pending; }
 
 bool relaunch() {
     const auto executable = Startup::ExecutablePath();
-    std::wstring command = L"\"" + executable.native() + L"\"";
+    const auto event_name = BattleLoading::event_name();
+    std::unique_ptr<void, decltype(&CloseHandle)> ready(CreateEventW(nullptr, TRUE, FALSE, event_name.c_str()), &CloseHandle);
+    if (!ready || GetLastError() == ERROR_ALREADY_EXISTS) {
+        BattleLoading::hide();
+        lgr.error("Cannot create the battle-loading handshake");
+        return false;
+    }
+    std::wstring command = BattleLaunch::command(executable.native(), event_name);
     const std::wstring directory = executable.parent_path().native();
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
@@ -103,10 +113,20 @@ bool relaunch() {
     if (!CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr, directory.c_str(),
                         &startup, &process)) {
         lgr.error("Cannot start the game again (Windows error {})")(GetLastError());
+        BattleLoading::hide();
         return false;
     }
     CloseHandle(process.hThread);
-    CloseHandle(process.hProcess);
+    std::unique_ptr<void, decltype(&CloseHandle)> child(process.hProcess, &CloseHandle);
+    const auto result = BattleLoading::wait(ready.get(), child.get());
+    BattleLoading::hide();
+    switch (result) {
+        case BattleLoading::WaitResult::Ready: break;
+        case BattleLoading::WaitResult::ChildExited: lgr.warning("The new game exited before the loading handoff"); break;
+        case BattleLoading::WaitResult::Dismissed: lgr.warning("Loading screen dismissed; the new game may still be loading"); break;
+        case BattleLoading::WaitResult::TimedOut: lgr.warning("Loading handoff timed out after 120 seconds; the new game may still be loading"); break;
+        case BattleLoading::WaitResult::Failed: lgr.error("Loading handoff wait failed"); break;
+    }
     return true;
 }
 

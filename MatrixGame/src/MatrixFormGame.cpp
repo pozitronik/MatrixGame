@@ -6,6 +6,7 @@
 #include "MatrixFormGame.hpp"
 #include "SettingsWindow.hpp"
 #include "MapWindow.hpp"
+#include "BattleLoading.hpp"
 #include "ScreenLayout.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
@@ -323,7 +324,11 @@ void CFormMatrixGame::Draw(void) {
         // Capture a complete frame before DISCARD presentation invalidates it.
         make_screenshot();
     }
-    Rendering::CheckPresentResult(g_D3DD->Present(NULL, NULL, NULL, NULL));
+    const HRESULT presented = g_D3DD->Present(NULL, NULL, NULL, NULL);
+    Rendering::CheckPresentResult(presented);
+#ifdef BUILD_EXE
+    BattleLoading::presented(presented);
+#endif
 
 #ifdef _DEBUG
     RESETFLAG(g_Flags, GFLAG_RENDERINPROGRESS);
@@ -459,6 +464,11 @@ void selcallback(CMatrixMapStatic *ms, uintptr_t param) {
 #endif
 
 void CFormMatrixGame::MouseMove(int x, int y) {
+    if (MapWindow::active()) {
+        g_MatrixMap->m_Cursor.SetPos(x, y);
+        return;
+    }
+
     DTRACE();
 
     CMatrixSideUnit *p_side = g_MatrixMap->GetPlayerSide();
@@ -540,16 +550,19 @@ void CFormMatrixGame::MouseKey(ButtonStatus status, int key, int x, int y) {
         Input::onKeyUp(key);
     }
 
+    if (MapWindow::active()) {
+        if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON)
+            MapWindow::mouse_down(x, y, status == B_DOUBLE);
+        if (status == B_WHEEL) MapWindow::mouse_wheel(key, x, y);
+        return; // No camera or battle input passes through the selector.
+    }
+
     if ((status == B_DOWN || status == B_DOUBLE) && key == VK_LBUTTON &&
-        (MapWindow::mouse_down(x, y) || SettingsWindow::mouse_down(x, y) || SettingsWindow::menu_mouse_down(x, y))) {
+        (MapWindow::menu_mouse_down(x, y) || SettingsWindow::mouse_down(x, y) || SettingsWindow::menu_mouse_down(x, y))) {
         return;
     }
 
     if (status == B_WHEEL) {
-        if (MapWindow::active()) {
-            MapWindow::mouse_wheel(key);
-            return;
-        }
         while (key > 0) {
             g_MatrixMap->m_Camera.ZoomInStep();
             --key;
@@ -788,7 +801,7 @@ void CFormMatrixGame::Keyboard(bool down, uint8_t vk)
         return;
     }
 
-    if (MapWindow::keyboard(vk, down) || SettingsWindow::keyboard(vk, down))
+    if (MapWindow::menu_keyboard(vk, down) || MapWindow::keyboard(vk, down) || SettingsWindow::keyboard(vk, down))
     {
         return;
     }
@@ -1745,6 +1758,7 @@ void CFormMatrixGame::SystemEvent(ESysEvent se) {
     }
     if (se == SYSEV_DEACTIVATING || se == SYSEV_INPUT_RESET) {
         Input::onFocusLost();
+        MapWindow::reset_input();
         g_MatrixMap->m_VKeyDown = 0;
         g_MatrixMap->MouseCam(false);
         g_MatrixMap->m_Console.Keyboard(VK_SHIFT, false);

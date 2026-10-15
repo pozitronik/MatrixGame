@@ -38,7 +38,9 @@ bool choose(StandaloneSettings::Values values, const std::wstring &map, std::str
 
 bool relaunch_requested();
 
-// Starts a new instance of the executable without arguments. Call after the session is cleaned up.
+// Starts a new instance with --start-selected-battle, bypassing the startup menu for a valid selection.
+// Call after session cleanup. Keeps the loading screen until the child presents, reports failure or exits,
+// or until dismissal / a 120-second timeout. The child is not terminated on dismissal or timeout.
 bool relaunch();
 
 }  // namespace MapSelection

@@ -12,8 +12,13 @@
 #include "SoundBridge.hpp"
 #include "StandaloneRuntime.hpp"
 #include "MapSelection.hpp"
+#include "MapCatalog.hpp"
 #include "SettingsWindow.hpp"
+#include "SettingsModel.hpp"
 #include "MapWindow.hpp"
+#include "StartupMenu.hpp"
+#include "BattleLoading.hpp"
+#include "BattleLaunch.hpp"
 #include "ScreenLayout.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMap.hpp"
@@ -32,12 +37,14 @@
 #include "RandomConfiguration.hpp"
 #include "ResourceFiles.hpp"
 #include "WindowDisplay.hpp"
+#include "Text/Font.hpp"
 
 #include <new>
 #include <fstream>
 #include <iostream>
 #include <filesystem>
 #include <memory>
+#include <vector>
 
 ////////////////////////////////////////////////////////////////////////////////
 #include <stupid_logger.hpp>
@@ -69,10 +76,16 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         const auto app_path = Startup::ExecutablePath();
         lgr.info(utils::from_wstring(app_path.native()));
         std::filesystem::current_path(app_path.parent_path());
-        const wchar *map = numarg > 1 ? args.get()[1] : nullptr;
+        std::vector<std::wstring_view> arguments;
+        for (int i = 1; i < numarg; ++i) arguments.emplace_back(args.get()[i]);
+        const auto launch = BattleLaunch::classify(arguments);
+        if (launch.selected && numarg == 3) BattleLoading::connect(launch.event);
+        StartupMenu::set_direct_start(launch.selected);
+        const wchar *map = numarg > 1 && !launch.selected ? args.get()[1] : nullptr;
 
         if (!Startup::ResourceFileExists(L"DATA\\robots.pkg")) {
             lgr.error("Missing DATA/robots.pkg");
+            BattleLoading::failed();
             MessageBoxW(nullptr, L"Place robots.pkg at DATA/robots.pkg.\nThe DATA folder is beside MatrixGame.exe.",
                         L"Game resources required", MB_OK | MB_ICONINFORMATION);
             return exit_code;
@@ -81,32 +94,40 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
         uint32_t seed = (unsigned)time(nullptr);
         initialization_started = true;
         CGame::Init(hInstance, nullptr, map, seed);
-        battle_initialized = true;
-        MapSelection::finish_map_load();
+        if (g_MatrixMap) {
+            battle_initialized = true;
+            MapSelection::finish_map_load();
 
-        formgame = HNew(NULL) CFormMatrixGame();
-        FormChange(formgame);
-
-        timer_active = timeBeginPeriod(1) == TIMERR_NOERROR;
-
-        if (map)
-        {
-            {
-                std::ofstream out("calcvis.log", std::ios::app);
-                std::string name = utils::from_wstring(g_MatrixMap->MapName());
-                out << name << " ...";
+            formgame = HNew(NULL) CFormMatrixGame();
+            FormChange(formgame);
+            if (BattleLoading::has_parent()) {
+                const auto &display = StandaloneSettings::current().display;
+                Display::request(display.mode, display.fullscreen);
             }
+            ShowWindow(g_Wnd, SW_SHOWNORMAL);
+            UpdateWindow(g_Wnd);
 
-            g_MatrixMap->CalcVis();
+            timer_active = timeBeginPeriod(1) == TIMERR_NOERROR;
 
+            if (map)
             {
-                std::ofstream out("calcvis.log", std::ios::app);
-                out << "done\n";
+                {
+                    std::ofstream out("calcvis.log", std::ios::app);
+                    std::string name = utils::from_wstring(g_MatrixMap->MapName());
+                    out << name << " ...";
+                }
+
+                g_MatrixMap->CalcVis();
+
+                {
+                    std::ofstream out("calcvis.log", std::ios::app);
+                    out << "done\n";
+                }
             }
-        }
-        else
-        {
-            L3GRun();
+            else
+            {
+                L3GRun();
+            }
         }
 
         exit_code = 0;
@@ -140,7 +161,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
 
     // Settings are read with the base library, so a failed map is forgotten before cleanup.
     if (!diagnostic.empty() && !battle_initialized && MapSelection::forget_remembered_map()) {
-        diagnostic += "\n\nThe map chosen in the Map window could not be started and was forgotten. "
+        diagnostic += "\n\nThe map chosen in the map selector could not be started and was forgotten. "
                       "The next start uses the configured map.";
     }
     if (initialization_started && !Session::cleanup_standalone(formgame, timer_active)) {
@@ -149,6 +170,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
     }
     ClipCursor(nullptr);
     if (!diagnostic.empty()) {
+        BattleLoading::failed();
         MessageBox(NULL, diagnostic.c_str(), "Exception:", MB_OK);
     }
     else if (exit_code == 0 && MapSelection::relaunch_requested() && !MapSelection::relaunch()) {
@@ -156,6 +178,7 @@ int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE, LPTSTR, int)
                     L"Map", MB_OK | MB_ICONWARNING);
     }
 
+    BattleLoading::failed();
     return exit_code;
 }
 
@@ -348,13 +371,12 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     auto standalone = StandaloneSettings::load();
     for (const auto &key : standalone.invalid) lgr.error("Invalid {} in CFG/standalone.txt; using its default")(key);
     StandaloneSettings::apply_startup(standalone.values, settings);
-    // Checked before the window opens, so that an unavailable map can be reported in a message box.
-    const std::wstring remembered_map = map == nullptr ? MapSelection::startup_map(standalone.values) : std::wstring{};
+    std::wstring remembered_map;
 #endif
 
     // Init the 3d engine
 #ifdef BUILD_EXE
-    L3GInitAsEXE(inst, *g_MatrixData->BlockGet(L"Config"), L"MatrixGame", L"Matrix Game");
+    L3GInitAsEXE(inst, *g_MatrixData->BlockGet(L"Config"), L"MatrixGame", L"Matrix Game", BattleLoading::has_parent());
     settings.m_ResolutionX = g_ScreenX;
     settings.m_ResolutionY = g_ScreenY;
 #else
@@ -375,8 +397,12 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     g_Render = HNew(g_MatrixHeap) CRenderPipeline;  // prepare pipelines
 
-    ShowWindow(g_Wnd, SW_SHOWNORMAL);
-    UpdateWindow(g_Wnd);
+    // The previous process owns the loading screen during a map-switch handoff.
+    // Reveal this window only once battlefield initialization has finished.
+    if (!BattleLoading::has_parent()) {
+        ShowWindow(g_Wnd, SW_SHOWNORMAL);
+        UpdateWindow(g_Wnd);
+    }
 
     DCP();
 
@@ -386,7 +412,6 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
     g_Config.ApplySettings(&settings);
 #ifdef BUILD_EXE
     SoundBridge::initialize_standalone(sound_package || voices_package);
-    StandaloneSettings::initialize_runtime(standalone.values);
 #endif
     g_Sampler.ApplySettings(&settings);
     SetMaxCameraDistance(settings.m_MaxDistance);
@@ -394,7 +419,36 @@ void CGame::Init(HINSTANCE inst, [[maybe_unused]] HWND wnd, const wchar *map,uin
 
     DCP();
 
+#ifdef BUILD_EXE
+    if (!map) {
+        const auto configured = g_MatrixData->BlockGet(L"Config")->ParGet(L"Map");
+        // A direct relaunch is meaningful only with a still-readable remembered selection.
+        const bool resume = StartupMenu::direct_start() && !standalone.values.map.empty() &&
+                            MapCatalog::readable(standalone.values.map);
+        if (standalone.values.map.empty()) standalone.values.map = configured;
+        if (!resume) {
+            // A selection removed between processes must reveal the fallback menu,
+            // rather than leave it hidden behind the previous process's loader.
+            if (BattleLoading::has_parent()) {
+                BattleLoading::failed();
+                Display::request(standalone.values.display.mode, standalone.values.display.fullscreen);
+                ShowWindow(g_Wnd, SW_SHOWNORMAL);
+                UpdateWindow(g_Wnd);
+            }
+            if (!StartupMenu::run(standalone.values)) return;
+        }
+        remembered_map = MapSelection::startup_map(standalone.values);
+        if (!BattleLoading::show(g_Wnd, SettingsModel::detect_language(
+            g_MatrixData->BlockGet(PAR_REPLACE)->ParGetNE(L"setup")) == SettingsModel::Language::Russian))
+            lgr.warning("Cannot create the loading screen; continuing battle initialization");
+    }
+    StandaloneSettings::initialize_runtime(standalone.values);
+#endif
+
     g_MatrixMap = HNew(g_MatrixHeap) CMatrixMapLogic;
+#ifdef BUILD_EXE
+    if (!map) BattleChoice::apply(standalone.values.battle_bonus, g_MatrixMap->m_Difficulty);
+#endif
 
     g_MatrixMap->LoadSide(*g_MatrixData->BlockGet(L"Side"));
     // g_MatrixMap->LoadTactics(*g_MatrixData->BlockGet(L"Tactics"));
@@ -674,6 +728,12 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
 
     SETFLAG(g_Flags, GFLAG_STENCILAVAILABLE);
 
+#ifdef BUILD_EXE
+    // The standalone menu has already drawn on this device. Its default-pool
+    // buffers and font state must be released before the battlefield reset.
+    CInstDraw::MarkAllBuffersNoNeed();
+    Text::OnLostDevice();
+#endif
     if (D3D_OK != Display::reset_device(g_D3Dpp)) {
         if (bpp == 16)
             g_D3Dpp.AutoDepthStencilFormat = D3DFMT_D16;
@@ -686,6 +746,9 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
         }
         RESETFLAG(g_Flags, GFLAG_STENCILAVAILABLE);
     }
+#ifdef BUILD_EXE
+    Text::OnResetDevice();
+#endif
 
     D3DVIEWPORT9 ViewPort;
     ZeroMemory(&ViewPort, sizeof(D3DVIEWPORT9));

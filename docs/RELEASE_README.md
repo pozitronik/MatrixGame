@@ -27,7 +27,7 @@ Borderless fills the primary display by scaling the configured image; use the mo
 
 ## Maps
 
-Open Settings and click the Map row to choose another installed map, or close the statistics after a battle. The game restarts on the chosen map and remembers it in `CFG/standalone.txt`. A `.cmap` file placed in `Matrix\Map` beside the executable is listed too and replaces a packaged map with the same name. See [Map selection](https://github.com/pozitronik/MatrixGame/blob/dev/docs/MAPS.md).
+Choose **New battle** in the startup menu before loading a battlefield. During play, open the battle menu with Escape and choose **New battle (N)**, or close the statistics after a battle. The separate selector shows previews, available descriptions and bonuses. Start with its button, Enter or a double-click on a map name. The game remembers the map and bonus in `CFG/standalone.txt` and starts a new process when changing battles. An animated loading screen covers the transition; it can be dismissed without stopping the new process and closes after 120 seconds if the handoff does not complete. A `.cmap` file placed in `Matrix\Map` beside the executable is listed too and replaces a packaged map with the same name. Optional `CFG/Lang.dat` supplies original descriptions and is not bundled. See [Map selection](https://github.com/pozitronik/MatrixGame/blob/dev/docs/MAPS.md).
 
 ## Controls
 

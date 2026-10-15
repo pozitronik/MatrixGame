@@ -2,6 +2,7 @@
 #pragma once
 
 #include "DisplaySettings.hpp"
+#include "BattleChoice.hpp"
 #include "random.hpp"
 
 #include <string>
@@ -33,6 +34,7 @@ struct Values {
     bool robot_shadows = true;
     DamageAttribution delayed_damage = DamageAttribution::Corrected;
     std::wstring map;  // Remembered battle map, Matrix\Map\<name>.cmap; empty selects Config/Map.
+    BattleChoice::Bonus battle_bonus = BattleChoice::Bonus::None;
     GroupCountMode group_counts = GroupCountMode::Corrected;
     PlaceContainmentMode place_containment = PlaceContainmentMode::Corrected;
     bool operator==(const Values &) const = default;

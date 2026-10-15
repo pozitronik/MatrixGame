@@ -208,7 +208,6 @@ std::wstring Window::label(int row) const {
             result = text(L"Status damage",
                           L"\u0423\u0440\u043e\u043d \u0441\u0442\u0430\u0442\u0443\u0441\u043e\u0432");
             break;
-        case Row::Map: result = text(L"Map", L"\u041a\u0430\u0440\u0442\u0430"); break;
         default: break;
     }
     if (needs_restart(row)) result += L" *";
@@ -251,7 +250,6 @@ std::wstring Window::value(int row) const {
             return values.delayed_damage == StandaloneSettings::DamageAttribution::Original
                            ? text(L"Original", L"\u041e\u0440\u0438\u0433\u0438\u043d\u0430\u043b")
                            : text(L"Corrected", L"\u0418\u0441\u043f\u0440\u0430\u0432\u043b\u0435\u043d");
-        case Row::Map: return m_MapName;
         default: return {};
     }
 }
