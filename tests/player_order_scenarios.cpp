@@ -1097,6 +1097,7 @@ void manual_combat_death() {
         g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
         g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(180, 240, 35);
         form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+        MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
         session.advance();
         MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE) && robot->FindOrderLikeThat(ROT_MOVE_TO));
         g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {20, 20, 0};
@@ -1111,10 +1112,13 @@ void manual_combat_death() {
         MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
         MG_CHECK(Input::isVKeyPressed(forward) && Input::isVKeyPressed(VK_LBUTTON));
         // Input release arrives after loss of control but before debris retirement.
+        const auto *group_before_release = side().GetCurGroup();
+        const auto selection_before_release = side().m_CurrSel;
         form.Keyboard(false, forward);
         form.MouseKey(B_UP, VK_LBUTTON, 640, 360);
         MG_CHECK(!Input::isVKeyPressed(forward) && !Input::isVKeyPressed(VK_LBUTTON));
-        MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+        MG_CHECK(side().GetCurGroup() == group_before_release);
+        MG_CHECK(side().m_CurrSel == selection_before_release);
         const float x = survivor->m_PosX, y = survivor->m_PosY;
         for (int i = 0; i < 600; ++i) session.advance();
         MG_CHECK(!core->m_Object && !session.robot(1).alive);
