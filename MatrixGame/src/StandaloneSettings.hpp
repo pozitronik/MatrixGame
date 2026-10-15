@@ -20,6 +20,8 @@ enum class Skybox { Off, Low, High };
 enum class DamageAttribution { Corrected, Original };
 // Cached AI group counts after regrouping; Original restores the original game's behaviour.
 enum class GroupCountMode { Corrected, Original };
+// Place containment test used by AI bomb escape; Original restores the original game's behaviour.
+enum class PlaceContainmentMode { Corrected, Original };
 // Tracing of segments without X travel; Original restores the original game's behaviour.
 enum class ZeroXTraceMode { Corrected, Original };
 
@@ -36,6 +38,7 @@ struct Values {
     std::wstring map;  // Remembered battle map, Matrix\Map\<name>.cmap; empty selects Config/Map.
     BattleChoice::Bonus battle_bonus = BattleChoice::Bonus::None;
     GroupCountMode group_counts = GroupCountMode::Corrected;
+    PlaceContainmentMode place_containment = PlaceContainmentMode::Corrected;
     ZeroXTraceMode zero_x_trace = ZeroXTraceMode::Corrected;
     bool operator==(const Values &) const = default;
 };
@@ -61,6 +64,7 @@ bool save(const Values &values, std::string &error, const wchar_t *path = L"CFG\
 const char *name(Skybox skybox);
 const char *name(DamageAttribution attribution);
 const char *name(GroupCountMode mode);
+const char *name(PlaceContainmentMode mode);
 const char *name(ZeroXTraceMode mode);
 
 }  // namespace StandaloneSettings

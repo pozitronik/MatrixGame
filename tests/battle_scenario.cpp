@@ -2,6 +2,7 @@
 #include "battle_scenario.hpp"
 #include "DelayedDamage.hpp"
 #include "GroupCounts.hpp"
+#include "PlaceContainment.hpp"
 #include "ZeroXTrace.hpp"
 #include "scenario_build_identity.hpp"
 #include "battle_device.hpp"
@@ -350,6 +351,7 @@ std::string Session::metadata(std::string_view fixture) const {
         << ",\"cheats\":" << (MATRIXGAME_SCENARIO_CHEATS ? "true" : "false")
         << ",\"delayed_damage\":\"" << (DelayedDamage::original() ? "Original" : "Corrected") << '"'
         << ",\"group_counts\":\"" << (GroupCounts::original() ? "Original" : "Corrected") << '"'
+        << ",\"place_containment\":\"" << (PlaceContainment::original() ? "Original" : "Corrected") << '"'
         << ",\"zero_x_trace\":\"" << (ZeroXTrace::original() ? "Original" : "Corrected") << '"'
 #ifdef ASSERT_OFF
         << ",\"assert_off\":true"

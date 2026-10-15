@@ -23,7 +23,8 @@ namespace {
 constexpr std::array keys{L"RandomGenerator", L"ResolutionWidth", L"ResolutionHeight", L"WindowMode",
                           L"FullscreenMode",  L"SoundVolume",     L"StencilShadows",   L"ProjectedShadows",
                           L"Skybox",          L"RobotShadows",    L"CameraSpeed",      L"DelayedDamage",
-                          L"Map",             L"GroupCounts",      L"BattleBonus",      L"ZeroXTrace"};
+                          L"Map",             L"GroupCounts",      L"BattleBonus",      L"PlaceContainment",
+                          L"ZeroXTrace"};
 
 std::optional<std::wstring> single(const Base::CBlockPar &options, const wchar_t *key) {
     if (options.ParCount(key) != 1) return std::nullopt;
@@ -75,6 +76,12 @@ std::optional<BattleChoice::Bonus> battle_bonus(const std::wstring &value) {
     return std::nullopt;
 }
 
+std::optional<PlaceContainmentMode> place_containment(const std::wstring &value) {
+    if (value == L"corrected") return PlaceContainmentMode::Corrected;
+    if (value == L"original") return PlaceContainmentMode::Original;
+    return std::nullopt;
+}
+
 std::optional<ZeroXTraceMode> zero_x_trace(const std::wstring &value) {
     if (value == L"corrected") return ZeroXTraceMode::Corrected;
     if (value == L"original") return ZeroXTraceMode::Original;
@@ -122,6 +129,7 @@ std::wstring value_text(const Values &values, std::wstring_view key) {
     }
     if (key == L"Map") return values.map;
     if (key == L"GroupCounts") return utils::to_wstring(name(values.group_counts));
+    if (key == L"PlaceContainment") return utils::to_wstring(name(values.place_containment));
     if (key == L"ZeroXTrace") return utils::to_wstring(name(values.zero_x_trace));
     throw std::logic_error("Unknown settings key");
 }
@@ -256,6 +264,10 @@ const char *name(GroupCountMode mode) {
     return mode == GroupCountMode::Original ? "Original" : "Corrected";
 }
 
+const char *name(PlaceContainmentMode mode) {
+    return mode == PlaceContainmentMode::Original ? "Original" : "Corrected";
+}
+
 const char *name(ZeroXTraceMode mode) {
     return mode == ZeroXTraceMode::Original ? "Original" : "Corrected";
 }
@@ -281,6 +293,7 @@ Selection resolve(const Base::CBlockPar &options) {
     }
     read(options, L"BattleBonus", values.battle_bonus, battle_bonus, selection);
     read(options, L"GroupCounts", values.group_counts, group_counts, selection);
+    read(options, L"PlaceContainment", values.place_containment, place_containment, selection);
     read(options, L"ZeroXTrace", values.zero_x_trace, zero_x_trace, selection);
     return selection;
 }
