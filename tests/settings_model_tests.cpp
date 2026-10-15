@@ -30,6 +30,8 @@ void selection() {
     MG_CHECK(!window.select(row(Row::SoundGroup)) && !window.select(-1) && !window.select(row_count));
     MG_CHECK(window.select(row(Row::SoundVolume)) && !window.select(row(Row::SoundVolume)));
     window.move(1);
+    MG_CHECK(window.selected() == row(Row::MusicVolume));
+    window.move(1);
     MG_CHECK(window.selected() == row(Row::StencilShadows));  // The graphics group row is skipped.
     window.select(row(Row::Resolution));
     window.move(-1);
@@ -48,6 +50,9 @@ void stepping() {
     MG_CHECK(window.change(row(Row::SoundVolume), -1) && window.values().sound_volume == 90);
     for (int i = 0; i < 12; ++i) window.change(row(Row::SoundVolume), -1);
     MG_CHECK(window.values().sound_volume == 0 && !window.change(row(Row::SoundVolume), -1));
+    MG_CHECK(window.change(row(Row::MusicVolume), -1) && window.values().music_volume == 90);
+    MG_CHECK(window.change(row(Row::MusicVolume), 1) && !window.change(row(Row::MusicVolume), 1));
+    MG_CHECK(window.values().music_volume == 100 && window.values().sound_volume == 0);  // Independent levels.
     MG_CHECK(window.change(row(Row::CameraSpeed), 1) && window.values().camera_speed == 125);
     for (int i = 0; i < 20; ++i) window.change(row(Row::CameraSpeed), 1);
     MG_CHECK(window.values().camera_speed == StandaloneSettings::max_camera_speed);
@@ -67,8 +72,10 @@ void stepping() {
     Values custom;
     custom.sound_volume = 45;
     custom.camera_speed = 110;
+    custom.music_volume = 33;
     auto off_grid = english(custom);
     MG_CHECK(off_grid.change(row(Row::SoundVolume), 1) && off_grid.values().sound_volume == 50);
+    MG_CHECK(off_grid.change(row(Row::MusicVolume), -1) && off_grid.values().music_volume == 30);
     MG_CHECK(off_grid.change(row(Row::CameraSpeed), -1) && off_grid.values().camera_speed == 100);
 }
 
@@ -105,10 +112,12 @@ void text() {
     auto window = english();
     MG_CHECK(window.title() == L"Settings" && window.label(row(Row::SoundVolume)) == L"Volume");
     MG_CHECK(window.label(row(Row::Resolution)) == L"Resolution");
+    MG_CHECK(window.label(row(Row::MusicVolume)) == L"Music" && window.value(row(Row::MusicVolume)) == L"100%");
     for (const auto restart : {Row::Skybox, Row::RobotShadows, Row::RandomGenerator})
         MG_CHECK(needs_restart(row(restart)) && window.label(row(restart)).ends_with(L" *"));
     for (const auto live : {Row::Resolution, Row::WindowMode, Row::FullscreenMode, Row::SoundVolume,
-                            Row::StencilShadows, Row::ProjectedShadows, Row::CameraSpeed, Row::DelayedDamage})
+                            Row::MusicVolume, Row::StencilShadows, Row::ProjectedShadows, Row::CameraSpeed,
+                            Row::DelayedDamage})
         MG_CHECK(!needs_restart(row(live)));
     MG_CHECK(window.value(row(Row::Resolution)) == L"1024x768" && window.value(row(Row::SoundVolume)) == L"100%");
     MG_CHECK(window.value(row(Row::WindowMode)) == L"Windowed" && window.value(row(Row::FullscreenMode)) == L"Borderless");

@@ -69,9 +69,19 @@ These cases cover Break and Anim objective families. The older `special_survival
 
 ## Terron destruction
 
-`terron_destruction` loads a synthetic Terron descriptor and actual named Main/Pain/Death animation records. Enemy damage leaves health, progress-bar ownership and RNG consumption unchanged. Player damage lowers health from ten to six and selects Pain; the lethal hit selects Death, removes the progress bar and sets the Terron-dead flag. A repeated hit does not consume the objective. Complete production map ticks then keep the objective active at exactly 5,000 ms, convert it to static ruins at 5,010 ms, decrement the objective count and award one building kill. The result remains pending at 8,040 ms and opens the paused win dialog at 8,050 ms. Both RNG modes run with seed 85 and 10 ms steps, with the player army either retained or removed immediately after the lethal hit; the latter verifies that Terron's death suppresses ordinary elimination.
+`terron_destruction` loads a synthetic Terron descriptor and actual named Main/Pain/Death animation records. Enemy damage leaves health, progress-bar ownership and RNG consumption unchanged. Player damage lowers health from ten to six and selects Pain; the lethal hit selects Death, removes the progress bar and sets the Terron-dead flag. Repeated hits immediately after death and at 2,000 ms leave RNG consumption, Death animation, zero health and the objective count unchanged; the later hit must not restart the countdown. Complete production map ticks then keep the objective active at exactly 5,000 ms, convert it to static ruins at 5,010 ms, decrement the objective count and award one building kill. The result remains pending at 8,040 ms and opens the paused win dialog at 8,050 ms. Both RNG modes run with seed 85 and 10 ms steps, with the player army either retained or removed immediately after the lethal hit; the latter verifies that Terron's death suppresses ordinary elimination.
 
-The synthetic objective is at (600,100), with a blast radius of 20 and cooldown of 100 ms. This isolates the death/outcome sequence from collateral damage. Animation records each contain one synthetic frame; explosion effects advance but no image or sound is rendered. Delayed blast damage remains a separate gap: a probe at (400,100) with radius 150 reaches the Debug attacker-membership assertion in `CMatrixRobotAI::Damage` after the source converts to static ruins. This is failure evidence, not accepted baseline behavior; the successful bounded case does not establish nearby-unit safety.
+The synthetic objective is at (600,100), with a blast radius of 20 and cooldown of 100 ms. This isolates the death/outcome sequence from collateral damage. Animation records each contain one synthetic frame; explosion effects advance but no image or sound is rendered. Delayed blast damage is tracked in [#186](https://github.com/pozitronik/MatrixGame/issues/186): the opt-in `probe.outcome.terron_blast_after_conversion` case at (400,100) with radius 150 reaches the Debug attacker-membership assertion in `CMatrixRobotAI::Damage` after the source converts to static ruins. This is failure evidence, not accepted baseline behavior; the successful bounded case does not establish nearby-unit safety.
+
+The probe is compiled into the outcome executable but deliberately not registered with CTest. Build that target first, then run it explicitly:
+
+```powershell
+& .tools/cmake-4.4.4-windows-i386/bin/cmake.exe --build build/mingw-debug-exe --target matrixgame_battle_outcome_scenarios
+& ./build/mingw-debug-exe/tests/matrixgame_battle_outcome_scenarios.exe probe.outcome.terron_blast_after_conversion
+```
+
+With the pinned MinGW toolchain, the Debug probe exits with `0x80000003` while advancing from 5,200 to 5,210 ms; its trace prints each tick immediately before the failure. The Release probe completes all four mode/army combinations with exit code 0. Replace `mingw-debug-exe` with `mingw-release-exe` to investigate the Release path. Passing in Release alone would not establish damage, attribution or RNG equivalence; that characterization and the production fix belong to #186.
+
 
 ## Result and pause boundaries
 

@@ -18,7 +18,10 @@
 #include "Interface/CInterface.h"
 #include "input.hpp"
 #include "cheats.hpp"
+#include "SoundBridge.hpp"
+#include "audio_fixture.hpp"
 #include <climits>
+#include <cmath>
 #include <string>
 
 namespace {
@@ -339,6 +342,63 @@ void special_survival_flags() {
         MG_CHECK(!g_MatrixMap->IsPaused());
         MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
     }
+}
+// SetMusicVolume and RestoreMusicVolume are the calls made by the Terron death and the MUSIC console
+// command. Without a host they fade the standalone music, one thousandth of full level per millisecond.
+void music_fade() {
+    Session session;
+    MG_CHECK(SoundBridge::available() && !SoundBridge::music_available());
+    g_MatrixMap->SetMusicVolume(0);  // Nothing to fade without music, as before.
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING));
+    SoundBridge::install_music({L"synthetic"}, [](const std::wstring &) { return std::vector<uint8_t>{1}; },
+        [](std::vector<uint8_t>) -> std::unique_ptr<Audio::Decoder> {
+            return std::make_unique<audio_fixture::FakeDecoder>(audio_fixture::TrackSpec{1, 8000, 100000, 0});
+        });
+    SoundBridge::update_music();
+    MG_CHECK(SoundBridge::music_available() && SoundBridge::music_level() == 1.0f);
+    const auto fade = [&](float target) {
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING));
+        const int start = session.time();
+        while (FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && session.time() < start + 2000) {
+            const float before = SoundBridge::music_level();
+            session.advance();
+            MG_CHECK(std::fabs(SoundBridge::music_level() - before) <= 0.0101f);
+        }
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && SoundBridge::music_level() == target);
+        const int duration = session.time() - start;
+        MG_CHECK(duration >= 1000 && duration <= 1020);
+    };
+    g_MatrixMap->SetMusicVolume(0);
+    fade(0.0f);
+    g_MatrixMap->RestoreMusicVolume();
+    fade(1.0f);
+}
+// The game form refills music before anything else in a frame, so a lost device that skips the rest
+// of the frame does not starve it.
+void music_form_refill() {
+    Session session;
+    auto audio = std::make_shared<audio_fixture::DeviceState>();
+    SoundBridge::install(std::make_unique<Audio::Service>(std::make_unique<audio_fixture::FakeDevice>(audio),
+        Audio::Mapping{{L"Sound.Synthetic", L"synthetic.wav"}},
+        [](const std::wstring &) { return audio_fixture::wave(); },
+        [](const std::wstring &, const std::string &error) { throw std::runtime_error(error); }));
+    SoundBridge::install_music({L"synthetic"}, [](const std::wstring &) { return std::vector<uint8_t>{1}; },
+        [](std::vector<uint8_t>) -> std::unique_ptr<Audio::Decoder> {
+            return std::make_unique<audio_fixture::FakeDecoder>(audio_fixture::TrackSpec{1, 8000, 100000, 0});
+        });
+    CFormMatrixGame form;
+    MG_CHECK(audio->streams.empty());  // Nothing plays before the first frame.
+    session.device_lost(true);
+    const int time = session.time();
+    form.Takt(10);
+    MG_CHECK(session.time() == time);  // The lost device skipped the map.
+    MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 4 && audio->streams[0]->plays == 1);
+    session.device_lost(false);
+    // Resources count as present, so the recovered device needs nothing recreated.
+    SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+    audio->streams[0]->queued = 0;
+    form.Takt(10);
+    MG_CHECK(session.time() == time + 10 && audio->streams[0]->buffers.size() == 8);
 }
 void full_auto_escape() {
     Session session;
@@ -1225,7 +1285,7 @@ template<int Family> void special_object_destruction() {
         MG_CHECK(first == special_object_run(mode, Family));
     }
 }
-void terron_destruction() {
+void terron_destruction_run(bool collateral) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool lose_army : {false, true}) {
         tests::BattleMaterialProfile materials;
         tests::BattleCombatAssets assets;
@@ -1233,12 +1293,12 @@ void terron_destruction() {
         Session session({mode, 85, 10, 1500, false});
         assets.install(); crater.install();
         DialogData dialog;
-        g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 20;
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = collateral ? 150 : 20;
         g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
         install_objective_catalog(L"+Break,1,10,Terron", true);
-        auto *terron = create_objective(600);
+        auto *terron = create_objective(collateral ? 400 : 600);
         MG_CHECK(terron->m_BehFlag == BEHF_TERRON && g_MatrixMap->m_BeforeWinCount == 1);
-        std::cout << session.metadata("synthetic-terron-outcome-v1") << " lose_army=" << lose_army << '\n';
+        std::cout << session.metadata(collateral ? "synthetic-terron-collateral-probe-v1" : "synthetic-terron-outcome-v1") << " lose_army=" << lose_army << '\n';
         const auto hit = [&](int attacker) {
             terron->Damage(WEAPON_LASER, terron->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), attacker, nullptr);
         };
@@ -1255,9 +1315,17 @@ void terron_destruction() {
         MG_CHECK(terron->m_BreakHitPoint == 0 && terron->m_PB == nullptr);
         MG_CHECK(terron->m_Graph->IsAnim(L"Death"));
         MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_TERRON_DEAD));
-        hit(PLAYER_SIDE);
-        MG_CHECK(terron->m_BreakHitPoint == 0 && g_MatrixMap->m_BeforeWinCount == 1);
+        const auto repeated_hit = [&] {
+            const auto before = random::draw_count();
+            hit(PLAYER_SIDE);
+            MG_CHECK(random::draw_count() == before);
+            MG_CHECK(terron->m_Graph->IsAnim(L"Death"));
+            MG_CHECK(terron->m_BreakHitPoint == 0 && g_MatrixMap->m_BeforeWinCount == 1);
+        };
+        repeated_hit();
         if (lose_army) MG_CHECK(session.remove(1) && session.remove(2));
+        advance_to(session, 2000);
+        repeated_hit(); // Must not restart the remaining death countdown.
         advance_to(session, 5000);
         MG_CHECK(terron->IsSpecial() && terron->m_BehFlag == BEHF_TERRON);
         MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && side().GetStatValue(STAT_BUILDING_KILL) == 0);
@@ -1267,15 +1335,26 @@ void terron_destruction() {
         MG_CHECK(!terron->IsSpecial() && terron->m_Type == 1 && terron->m_BehFlag == BEHF_STATIC);
         MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && side().GetStatValue(STAT_BUILDING_KILL) == 1);
         MG_CHECK(side().GetStatus() == SS_JUST_WIN && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        if (collateral) {
+            // Opt-in defect evidence for #186; never an accepted baseline result.
+            while (session.time() < 5220) {
+                std::cout << "blast probe: before tick at " << session.time()
+                          << " ms; draws=" << random::draw_count() << std::endl;
+                session.advance();
+            }
+        }
         advance_to(session, 8040);
         MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
         session.advance();
         MG_CHECK(g_MatrixMap->IsPaused() && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
         MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
         MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1);
-        MG_CHECK(session.robot(3).alive && session.robot(4).alive);
+        if (!collateral) MG_CHECK(session.robot(3).alive && session.robot(4).alive);
     }
 }
+
+void terron_destruction() { terron_destruction_run(false); }
+void terron_blast_after_conversion() { terron_destruction_run(true); }
 
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
@@ -1299,6 +1378,8 @@ constexpr tests::Case cases[] = {
     {"game.outcome.carrier_removal", carrier_removal_outcome},
     {"game.outcome.capture_target_damage", capture_target_damage},
     {"game.outcome.terron_destruction", terron_destruction},
+    // Deliberately absent from CTest: known Debug failure tracked in #186.
+    {"probe.outcome.terron_blast_after_conversion", terron_blast_after_conversion},
     {"game.outcome.special_break", special_object_destruction<0>},
     {"game.outcome.special_explosion", special_object_destruction<1>},
     {"game.outcome.special_animation", special_object_destruction<2>},
@@ -1327,6 +1408,8 @@ constexpr tests::Case cases[] = {
     {"game.outcome.repeated_sessions", repeated_sessions},
     {"game.outcome.special_survival_flags", special_survival_flags},
     {"game.outcome.full_auto_escape", full_auto_escape},
+    {"game.outcome.music_fade", music_fade},
+    {"game.outcome.music_form_refill", music_form_refill},
     {"game.outcome.legacy_loss_cheat", legacy_loss_cheat},
     {"game.outcome.statistics_formatting", statistics_formatting},
     {"game.outcome.scheduled_capture", scheduled_capture},
