@@ -1028,6 +1028,129 @@ void bomb_command_routes() {
         }
 }
 
+void manual_bomb_key() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        for (bool armed : {false, true}) {
+            tests::BattleCombatAssets assets;
+            PlayerCraterAssets crater;
+            Session session({mode, 80, 10, 1000, false, true});
+            std::cout << session.metadata("player-manual-bomb-v1") << "\narmed=" << armed << '\n';
+            assets.install();
+            crater.install();
+            CFormMatrixGame form;
+            auto *robot = selected(0);
+            auto *neighbour = selected(1);
+            neighbour->InitMaxHitpoint(1000);
+            neighbour->SetMaxSpeed(0);
+            g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 150;
+            g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {10, 4, 0};
+            if (armed) tests::arm_battle_robot(*robot, RUK_WEAPON_BOMB);
+            std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
+                [](SObjectCore *value) { value->Release(); });
+            press(form, VK_RETURN);
+            MG_CHECK(side().GetArcadedObject() == robot);
+            const auto health = neighbour->GetHitPoint();
+            press(form, static_cast<uint8_t>(g_Config.m_KeyActions[KA_UNIT_BOOM]));
+            MG_CHECK(robot->IsMustDie() == armed);
+            MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB | ORDERING_MODE));
+            int damage_events = 0;
+            float previous_health = health;
+            for (int i = 0; i < 600; ++i) {
+                session.advance();
+                if (neighbour->GetHitPoint() != previous_health) {
+                    ++damage_events;
+                    previous_health = neighbour->GetHitPoint();
+                }
+            }
+            MG_CHECK(damage_events == (armed ? 1 : 0));
+            MG_CHECK(neighbour->GetHitPoint() == (armed ? health - 0.4f : health));
+            MG_CHECK(bool(core->m_Object) == !armed);
+            MG_CHECK(side().IsArcadeMode() == !armed);
+            MG_CHECK(side().GetArcadedObject() == (armed ? nullptr : robot));
+            MG_CHECK(!neighbour->IsMustDie() && !neighbour->FindOrderLikeThat(ROT_FIRE));
+            MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+            if (!armed) press(form, VK_RETURN);
+        }
+    }
+}
+
+void manual_combat_death() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        tests::BattleCombatAssets assets;
+        PlayerCraterAssets crater;
+        Session session({mode, 80, 10, 1000, false, true});
+        std::cout << session.metadata("player-manual-combat-death-v1") << '\n';
+        assets.install();
+        crater.install();
+        CFormMatrixGame form;
+        auto *robot = selected(0);
+        auto *survivor = selected(1);
+        robot->InitMaxHitpoint(100);
+        const float speed = robot->GetMaxSpeed();
+        std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
+            [](SObjectCore *value) { value->Release(); });
+        press(form, VK_RETURN);
+        const auto forward = static_cast<uint8_t>(g_Config.m_KeyActions[KA_UNIT_FORWARD]);
+        form.Keyboard(true, forward);
+        g_IFaceList->m_InFocus = UNKNOWN;
+        g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
+        g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(180, 240, 35);
+        form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+        session.advance();
+        MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE) && robot->FindOrderLikeThat(ROT_MOVE_TO));
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {20, 20, 0};
+        MG_CHECK(!robot->Damage(WEAPON_GUN, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+        MG_CHECK(robot->GetHitPoint() == 8.0f);
+        MG_CHECK(side().GetArcadedObject() == robot && side().IsArcadeMode());
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {1000, 1000, 0};
+        MG_CHECK(robot->Damage(WEAPON_GUN, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+        MG_CHECK(robot->m_CurrState == ROBOT_DIP && core->m_Object == robot);
+        MG_CHECK(side().GetArcadedObject() == nullptr && !side().IsArcadeMode());
+        MG_CHECK(robot->GetMaxSpeed() == speed);
+        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+        MG_CHECK(Input::isVKeyPressed(forward) && Input::isVKeyPressed(VK_LBUTTON));
+        // Input release arrives after loss of control but before debris retirement.
+        form.Keyboard(false, forward);
+        form.MouseKey(B_UP, VK_LBUTTON, 640, 360);
+        MG_CHECK(!Input::isVKeyPressed(forward) && !Input::isVKeyPressed(VK_LBUTTON));
+        MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+        const float x = survivor->m_PosX, y = survivor->m_PosY;
+        for (int i = 0; i < 600; ++i) session.advance();
+        MG_CHECK(!core->m_Object && !session.robot(1).alive);
+        MG_CHECK(survivor->m_PosX == x && survivor->m_PosY == y);
+        MG_CHECK(!survivor->FindOrderLikeThat(ROT_FIRE) && !survivor->FindOrderLikeThat(ROT_MOVE_TO));
+        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+        side().CreateGroupFromCurrent(survivor);
+        side().Select(ROBOT, nullptr);
+        press(form, VK_RETURN);
+        MG_CHECK(side().GetArcadedObject() == survivor);
+        press(form, VK_RETURN);
+        MG_CHECK(!side().IsArcadeMode());
+    }
+}
+
+void manual_exit_keys() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        for (uint8_t key : {uint8_t(VK_RETURN), uint8_t(VK_SPACE), uint8_t(VK_ESCAPE)}) {
+            Session session({mode});
+            CFormMatrixGame form;
+            auto *robot = selected(0);
+            const float speed = robot->GetMaxSpeed();
+            press(form, VK_SPACE);
+            MG_CHECK(side().GetArcadedObject() == robot && robot->GetMaxSpeed() == speed * 1.1f);
+            press(form, key);
+            MG_CHECK(!side().IsArcadeMode() && robot->GetMaxSpeed() == speed);
+            MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_DIALOG_MODE));
+            MG_CHECK(!g_MatrixMap->IsPaused());
+            MG_CHECK(session.robot(1).order == mpo_Attack && session.robot(1).target_is_null);
+            session.ground_command(120, 500);
+            for (int i = 0; i < 1500; ++i) session.advance();
+            MG_CHECK(session.robot(1).y > 450 && session.robot(1).in_place);
+        }
+    }
+}
+
 void registered_cheat_effects() {
     Profile profile;
     profile.initially_selected = false;
@@ -1240,6 +1363,9 @@ void manual_control() {
     MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
 }
 constexpr tests::Case cases[] = {
+    {"game.player.manual_bomb_key", manual_bomb_key},
+    {"game.player.manual_combat_death", manual_combat_death},
+    {"game.player.manual_exit_keys", manual_exit_keys},
     {"game.player.bomb_command_routes", bomb_command_routes},
     {"game.player.repair_command_routes", repair_command_routes},
     {"game.player.megabust_cheat", megabust_cheat},
