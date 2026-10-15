@@ -1291,7 +1291,7 @@ std::wstring objective_descriptor(const std::wstring &behavior) {
     }
     return result;
 }
-void install_objective_catalog(const std::wstring &behavior) {
+void install_objective_catalog(const std::wstring &behavior, bool terron = false) {
     MG_CHECK(g_MatrixMap->m_IdsCnt == 1);
     const auto map_name = g_MatrixMap->m_Ids[0];
     g_MatrixMap->m_Ids[0].~basic_string();
@@ -1303,7 +1303,9 @@ void install_objective_catalog(const std::wstring &behavior) {
         ++g_MatrixMap->m_IdsCnt;
     }
     tests::install_battle_texture(L"synthetic-objective/surface");
-    tests::load_battle_material_mesh({}, L"synthetic-objective/box.vo", L"synthetic-objective/surface");
+    const wchar_t *terron_animations[] = {L"Main", L"Pain", L"Death"};
+    tests::load_battle_material_mesh({}, L"synthetic-objective/box.vo", L"synthetic-objective/surface", false,
+        terron ? std::span<const wchar_t *const>(terron_animations) : std::span<const wchar_t *const>{});
 }
 CMatrixMapObject *create_objective(float x) {
     auto *object = g_MatrixMap->StaticAdd<CMatrixMapObject>();
@@ -1388,6 +1390,77 @@ template<int Family> void special_object_destruction() {
         MG_CHECK(first == special_object_run(mode, Family));
     }
 }
+void terron_destruction_run(bool collateral) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool lose_army : {false, true}) {
+        tests::BattleMaterialProfile materials;
+        tests::BattleCombatAssets assets;
+        CaptureCraterAssets crater;
+        Session session({mode, 85, 10, 1500, false});
+        assets.install(); crater.install();
+        DialogData dialog;
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = collateral ? 150 : 20;
+        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+        install_objective_catalog(L"+Break,1,10,Terron", true);
+        auto *terron = create_objective(collateral ? 400 : 600);
+        MG_CHECK(terron->m_BehFlag == BEHF_TERRON && g_MatrixMap->m_BeforeWinCount == 1);
+        std::cout << session.metadata(collateral ? "synthetic-terron-collateral-probe-v1" : "synthetic-terron-outcome-v1") << " lose_army=" << lose_army << '\n';
+        const auto hit = [&](int attacker) {
+            terron->Damage(WEAPON_LASER, terron->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), attacker, nullptr);
+        };
+        g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)] = {4, 0, 0};
+        const auto draws = random::draw_count();
+        hit(2);
+        MG_CHECK(terron->m_BreakHitPoint == 10 && terron->m_PB == nullptr);
+        MG_CHECK(random::draw_count() == draws && !FLAG(g_MatrixMap->m_Flags, MMFLAG_TERRON_DEAD));
+        hit(PLAYER_SIDE);
+        MG_CHECK(terron->m_BreakHitPoint == 6 && terron->m_PB != nullptr);
+        MG_CHECK(terron->m_Graph->IsAnim(L"Pain"));
+        g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)] = {6, 0, 0};
+        hit(PLAYER_SIDE);
+        MG_CHECK(terron->m_BreakHitPoint == 0 && terron->m_PB == nullptr);
+        MG_CHECK(terron->m_Graph->IsAnim(L"Death"));
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_TERRON_DEAD));
+        const auto repeated_hit = [&] {
+            const auto before = random::draw_count();
+            hit(PLAYER_SIDE);
+            MG_CHECK(random::draw_count() == before);
+            MG_CHECK(terron->m_Graph->IsAnim(L"Death"));
+            MG_CHECK(terron->m_BreakHitPoint == 0 && g_MatrixMap->m_BeforeWinCount == 1);
+        };
+        repeated_hit();
+        if (lose_army) MG_CHECK(session.remove(1) && session.remove(2));
+        advance_to(session, 2000);
+        repeated_hit(); // Must not restart the remaining death countdown.
+        advance_to(session, 5000);
+        MG_CHECK(terron->IsSpecial() && terron->m_BehFlag == BEHF_TERRON);
+        MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && side().GetStatValue(STAT_BUILDING_KILL) == 0);
+        MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->IsPaused());
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        session.advance();
+        MG_CHECK(!terron->IsSpecial() && terron->m_Type == 1 && terron->m_BehFlag == BEHF_STATIC);
+        MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && side().GetStatValue(STAT_BUILDING_KILL) == 1);
+        MG_CHECK(side().GetStatus() == SS_JUST_WIN && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        if (collateral) {
+            // Opt-in defect evidence for #186; never an accepted baseline result.
+            while (session.time() < 5220) {
+                std::cout << "blast probe: before tick at " << session.time()
+                          << " ms; draws=" << random::draw_count() << std::endl;
+                session.advance();
+            }
+        }
+        advance_to(session, 8040);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        session.advance();
+        MG_CHECK(g_MatrixMap->IsPaused() && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
+        MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1);
+        if (!collateral) MG_CHECK(session.robot(3).alive && session.robot(4).alive);
+    }
+}
+
+void terron_destruction() { terron_destruction_run(false); }
+void terron_blast_after_conversion() { terron_destruction_run(true); }
+
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
         outcome(run % 2 == 0, true);
@@ -1413,6 +1486,9 @@ constexpr tests::Case cases[] = {
     {"game.outcome.carrier_damage", carrier_damage_outcome},
     {"game.outcome.transported_robot_damage", transported_robot_damage_outcome},
     {"game.outcome.capture_target_damage", capture_target_damage},
+    {"game.outcome.terron_destruction", terron_destruction},
+    // Deliberately absent from CTest: known Debug failure tracked in #186.
+    {"probe.outcome.terron_blast_after_conversion", terron_blast_after_conversion},
     {"game.outcome.special_break", special_object_destruction<0>},
     {"game.outcome.special_explosion", special_object_destruction<1>},
     {"game.outcome.special_animation", special_object_destruction<2>},
