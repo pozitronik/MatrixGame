@@ -41,4 +41,6 @@ In `CMatrixMap::ScanLandscapeGroup`, `t1` started at zero. The nonzero-X branch 
 
 The original empty interval stays selectable through `ZeroXTrace=Original` ([Settings](../SETTINGS.md)). `Trace` reads the mode once per call into its trace data, so the group scan only tests a flag.
 
+`game.combat.axis_trace_group_clip` pins both bounds of the Y-slab clip for zero-X rays, which `axis_aligned_trace` alone does not. Removing the far bound leaves that case passing but returns the farther robot, which straddles the y = 200 group boundary, instead of the nearer one in the next group. Removing the near bound returns the nearer robot from a hit before the boundary.
+
 The revised fixture suite passes all 240 registered tests in MinGW Debug and Release. Sixteen same-profile trace pairs and eight explicitly overridden cross-build pairs match through the supported comparator. The then-unregistered axis probe separately exited with code 1 in each configuration, after checking both intersection modes under each RNG profile. Repository checks pass; these local results do not replace supported-toolchain CI or independent review.
