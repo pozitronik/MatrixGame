@@ -326,7 +326,10 @@ public:
     void AddPacketFile(const wchar *filename);
     void DelPacketFile(const wchar *filename);
     //******** Процедуры для работы с пакетными файлами ***********//
-    bool OpenPacketFiles(void);
+    // Opens every registered package. A package that cannot be opened is removed from the collection,
+    // and its name is added to failed when given. Returns false only when packages were registered and
+    // none of them opened.
+    bool OpenPacketFiles(std::vector<std::wstring> *failed = nullptr);
     bool ClosePacketFiles(void);
     bool OpenPacketFilesEx(void);
     bool ClosePacketFilesEx(void);
