@@ -54,7 +54,8 @@ struct MeshFile {
 };
 
 void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachment> attachments,
-                bool combat_animations, float height, const wchar_t *texture_name = nullptr) {
+                bool combat_animations, float height, const wchar_t *texture_name = nullptr,
+                std::span<const wchar_t *const> extra_animations = {}) {
     CStorage storage;
     if (texture_name) {
         schema(storage, L"surfs", {{L"texs", ST_WCHAR}});
@@ -102,6 +103,7 @@ void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachmen
     std::vector<const wchar_t *> animations = {ANIMATION_NAME_IDLE, ANIMATION_NAME_STAY,
         ANIMATION_NAME_MOVE, ANIMATION_NAME_MOVE_BACK, ANIMATION_NAME_ROTATE};
     if (combat_animations) { animations.push_back(ANIMATION_NAME_FIRE); animations.push_back(ANIMATION_NAME_FIRELOOP); }
+    animations.insert(animations.end(), extra_animations.begin(), extra_animations.end());
     std::vector<DWORD> ids, offsets, counts;
     std::vector<SVOFrameIndex> frames;
     for (size_t i = 0; i < std::size(animations); ++i) {
@@ -148,12 +150,13 @@ CVectorObject *load_battle_mesh(std::span<const MeshAttachment> attachments, con
 }
 
 CVectorObject *load_battle_material_mesh(std::span<const MeshAttachment> attachments,
-    const wchar_t *cache_name, const wchar_t *texture_name, bool combat_animations) {
+    const wchar_t *cache_name, const wchar_t *texture_name, bool combat_animations,
+    std::span<const wchar_t *const> extra_animations) {
     MG_CHECK(cache_name && *cache_name && texture_name && *texture_name);
     MG_CHECK(g_Cache->Find(CacheClass::VO, cache_name) == nullptr);
     MG_CHECK(g_Cache->Find(CacheClass::TextureManaged, texture_name) != nullptr);
     MeshFile file;
-    write_mesh(file.path, attachments, combat_animations, 20.0f, texture_name);
+    write_mesh(file.path, attachments, combat_animations, 20.0f, texture_name, extra_animations);
     auto *geometry = static_cast<CVectorObject *>(g_Cache->Get(CacheClass::VO, file.path.c_str()));
     geometry->LoadSpecial(OLF_NO_TEX, nullptr, 0);
     MG_CHECK(std::filesystem::remove(file.path));
