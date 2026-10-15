@@ -27,6 +27,7 @@
 #include "MatrixGamePathUtils.hpp"
 #include "DeviceRecovery.hpp"
 #include "WindowDisplay.hpp"
+#include "SoundBridge.hpp"
 
 #include <input.hpp>
 
@@ -349,6 +350,9 @@ void selcallback(CMatrixMapStatic *ms, uintptr_t param);
 
 void CFormMatrixGame::Takt(int step) {
     DTRACE();
+
+    // Keep music queued even while display changes or a lost device skip the rest of the frame.
+    SoundBridge::update_music();
 
     if (Display::apply_pending(FLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY),
             [] { g_MatrixMap->ReleasePoolDefaultResources(); },

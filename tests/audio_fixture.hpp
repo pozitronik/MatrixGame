@@ -1,6 +1,9 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #pragma once
 #include "Audio.hpp"
+#include "Music.hpp"
+#include <algorithm>
+#include <cstdint>
 #include <stdexcept>
 namespace audio_fixture {
 inline void word(std::vector<uint8_t> &out, uint16_t n) { out.push_back(uint8_t(n)); out.push_back(uint8_t(n >> 8)); }
@@ -31,8 +34,24 @@ struct State {
     std::weak_ptr<const Audio::Clip> clip;
 };
 
+struct StreamState {
+    uint16_t channels{};
+    uint32_t sample_rate{};
+    std::vector<std::vector<int16_t>> buffers;  // Every submitted buffer, in order.
+    size_t queued{};                             // Decrement to simulate playback.
+    bool drains{};                               // Plays each buffer as soon as it is submitted.
+    int plays{};
+    float volume{1};
+    bool fail_submit{};
+    bool fail_volume{};
+    bool destroyed{};
+};
+
 struct DeviceState {
     std::vector<std::shared_ptr<State>> voices;
+    std::vector<std::shared_ptr<StreamState>> streams;
+    bool fail_stream{};
+    bool drain_streams{};
     bool fail_create{};
     bool destroyed{};
     bool live_clip_at_shutdown{};
@@ -53,6 +72,24 @@ public:
     void pan(float n) override { state_->pan = n; }
 };
 
+class FakeStream final : public Audio::Stream {
+    std::shared_ptr<StreamState> state_;
+public:
+    explicit FakeStream(std::shared_ptr<StreamState> state) : state_(std::move(state)) {}
+    ~FakeStream() override { state_->destroyed = true; }
+    void submit(std::vector<int16_t> samples) override {
+        if (state_->fail_submit) throw std::runtime_error("Synthetic submit failure");
+        state_->buffers.push_back(std::move(samples));
+        if (!state_->drains) ++state_->queued;
+    }
+    size_t queued() const override { return state_->queued; }
+    void play() override { ++state_->plays; }
+    void volume(float n) override {
+        if (state_->fail_volume) throw std::runtime_error("Synthetic music volume failure");
+        state_->volume = n;
+    }
+};
+
 class FakeDevice final : public Audio::Device {
     std::shared_ptr<DeviceState> state_;
 public:
@@ -66,6 +103,42 @@ public:
         auto voice = std::make_shared<State>(); voice->loop = loop; voice->clip = clip;
         state_->voices.push_back(voice);
         return std::make_unique<FakeVoice>(voice, std::move(clip));
+    }
+    std::unique_ptr<Audio::Stream> stream(uint16_t channels, uint32_t sample_rate) override {
+        if (state_->fail_stream) throw std::runtime_error("Synthetic stream failure");
+        auto stream = std::make_shared<StreamState>();
+        stream->channels = channels;
+        stream->sample_rate = sample_rate;
+        stream->drains = state_->drain_streams;
+        state_->streams.push_back(stream);
+        return std::make_unique<FakeStream>(stream);
+    }
+};
+
+// Synthetic PCM track. Sample i of the track holds base + i, so its origin and order are visible.
+struct TrackSpec {
+    uint16_t channels{1};
+    uint32_t sample_rate{8000};
+    size_t frames{10000};
+    int16_t base{};
+    size_t fail_after{SIZE_MAX};  // Samples decoded before a synthetic decode error.
+};
+
+class FakeDecoder final : public Audio::Decoder {
+    TrackSpec spec_;
+    size_t position_{};
+public:
+    explicit FakeDecoder(TrackSpec spec) : spec_(spec) {}
+    uint16_t channels() const override { return spec_.channels; }
+    uint32_t sample_rate() const override { return spec_.sample_rate; }
+    size_t read(std::span<int16_t> out) override {
+        if (position_ >= spec_.fail_after) throw std::runtime_error("Synthetic decode failure");
+        const size_t total = spec_.frames * spec_.channels;
+        size_t count = std::min(out.size() / spec_.channels * spec_.channels, total - position_);
+        count = std::min(count, spec_.fail_after - position_);
+        for (size_t i = 0; i < count; ++i) out[i] = int16_t(spec_.base + int16_t(position_ + i));
+        position_ += count;
+        return count;
     }
 };
 

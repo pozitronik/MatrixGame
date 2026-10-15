@@ -59,11 +59,13 @@ class PackageTests(unittest.TestCase):
         self.command("commit", "-qm", "Synthetic fixture")
         self.revision = self.command("rev-parse", "HEAD").decode().strip()
         self.binary = executable()
-        self.cache = b"CMAKE_BUILD_TYPE:STRING=Release\nMATRIXGAME_BUILD_DLL:BOOL=OFF\nMATRIXGAME_CHEATS:BOOL=OFF\nCMAKE_CXX_COMPILER:FILEPATH=C:/fixture/.tools/winlibs-13.2.0/mingw32/bin/g++.exe\n"
+        self.cache = b"CMAKE_BUILD_TYPE:STRING=Release\nMATRIXGAME_BUILD_DLL:BOOL=OFF\nMATRIXGAME_CHEATS:BOOL=OFF\nMATRIXGAME_MUSIC:BOOL=ON\nCMAKE_CXX_COMPILER:FILEPATH=C:/fixture/.tools/winlibs-13.2.0/mingw32/bin/g++.exe\n"
         self.write("build/mingw-release-exe/CMakeCache.txt", self.cache)
         self.write("build/mingw-release-exe/MatrixGame/MatrixGame.exe", self.binary)
         self.write("build/mingw-release-exe/libpng/src/libpng-external/LICENSE", b"synthetic png license")
         self.write("build/mingw-release-exe/zlib/src/zlib-external/LICENSE", b"synthetic zlib license")
+        self.write("build/mingw-release-exe/libogg/src/libogg-external/COPYING", b"synthetic ogg license")
+        self.write("build/mingw-release-exe/libvorbis/src/libvorbis-external/COPYING", b"synthetic vorbis license")
         self.write("build/mingw-release-exe/packaging-build.json", package.json_bytes({"revision": self.revision,
             "binary_sha256": package.digest(self.binary), "cache_sha256": package.digest(self.cache)}))
 
@@ -80,7 +82,7 @@ class PackageTests(unittest.TestCase):
             return package.create_package(self.root, self.build, self.root / output, Path("unused-objdump"))
 
     def test_explicit_files_exclude_contaminated_output(self):
-        for relative in ["DATA/robots.pkg", "DATA/sound.pkg", "CFG/robots.dat", "CFG/sounds.txt", "test.log", "probe.exe", "stray.dll"]:
+        for relative in ["DATA/robots.pkg", "DATA/sound.pkg", "DATA/music.pkg", "CFG/robots.dat", "CFG/sounds.txt", "test.log", "probe.exe", "stray.dll"]:
             self.write("build/mingw-release-exe/MatrixGame/" + relative, b"private poison")
         self.write("build/mingw-release-exe/MatrixGame/CFG/robots/data.txt", b"private override")
         names = self.create()
@@ -89,6 +91,8 @@ class PackageTests(unittest.TestCase):
             self.assertNotIn("DATA/robots.pkg", archive.namelist())
             self.assertFalse(any(name.endswith((".pkg", ".dll", ".dat", ".log")) for name in archive.namelist()))
             self.assertEqual(archive.read("CFG/robots/data.txt"), b"synthetic committed defaults")
+            self.assertEqual(archive.read("licenses/libogg.txt"), b"synthetic ogg license")
+            self.assertEqual(archive.read("licenses/libvorbis.txt"), b"synthetic vorbis license")
             self.assertFalse(any(b"private" in archive.read(name) for name in archive.namelist()))
             info = json.loads(archive.read("SOURCE.json"))
             self.assertEqual(info["revision"], self.revision)
@@ -149,7 +153,8 @@ class PackageTests(unittest.TestCase):
 
     def test_wrong_configuration_and_architecture_rejected(self):
         for needle, replacement in [(b"=Release", b"=Debug"), (b"BUILD_DLL:BOOL=OFF", b"BUILD_DLL:BOOL=ON"),
-                                    (b"CHEATS:BOOL=OFF", b"CHEATS:BOOL=ON"), (b"winlibs-13.2.0", b"unknown-tools")]:
+                                    (b"CHEATS:BOOL=OFF", b"CHEATS:BOOL=ON"), (b"MUSIC:BOOL=ON", b"MUSIC:BOOL=OFF"),
+                                    (b"winlibs-13.2.0", b"unknown-tools")]:
             with self.assertRaises(ValueError):
                 package.validate_build(self.cache.replace(needle, replacement), self.binary)
         wrong = bytearray(self.binary)

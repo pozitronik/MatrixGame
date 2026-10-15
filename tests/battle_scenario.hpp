@@ -60,6 +60,8 @@ public:
     int frame() const;
     int time() const;
     std::uint64_t rejected_icon_targets() const;
+    // Makes the surrogate device report a lost device until called with false.
+    void device_lost(bool lost);
     void check_running() const;
     std::string metadata(std::string_view fixture = "unarmed-chassis-obstacle-v1") const;
 

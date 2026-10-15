@@ -260,8 +260,9 @@ public:
         if (!remaining) delete this;
         return remaining;
     }
+    HRESULT cooperative_level = D3D_OK;
     HRESULT STDMETHODCALLTYPE TestCooperativeLevel() override {
-        return D3D_OK;
+        return cooperative_level;
     }
     UINT STDMETHODCALLTYPE GetAvailableTextureMem() override {
         unsupported("GetAvailableTextureMem");
@@ -705,6 +706,10 @@ BattleDevice::~BattleDevice() {
 }
 
 IDirect3DDevice9 *BattleDevice::get() const { return device_; }
+void BattleDevice::cooperative_level(HRESULT status) {
+    if (status != D3D_OK && status != D3DERR_DEVICELOST) unsupported("cooperative level other than OK or lost");
+    device_->cooperative_level = status;
+}
 const BattleDeviceStats &BattleDevice::stats() const { return device_->statistics; }
 
 } // namespace tests

@@ -26,6 +26,7 @@
 #include "MatrixTerSurface.hpp"
 #include "MatrixSkinManager.hpp"
 #include "MatrixSoundManager.hpp"
+#include "SoundBridge.hpp"
 #include "Interface/MatrixHint.hpp"
 #include "MatrixInstantDraw.hpp"
 
@@ -3420,14 +3421,14 @@ void CMatrixMap::EnterDialogMode(const wchar *hint_i) {
 }
 
 void CMatrixMap::RestoreMusicVolume(void) {
-    if (!g_RangersInterface)
+    if (!SoundBridge::music_available())
         return;
     SETFLAG(m_Flags, MMFLAG_MUSIC_VOL_CHANGING);
     m_TargetMusicVolume = m_StoreCurrentMusicVolume;
 }
 
 void CMatrixMap::SetMusicVolume(float vol) {
-    if (!g_RangersInterface)
+    if (!SoundBridge::music_available())
         return;
 
     if (FLAG(m_Flags, MMFLAG_MUSIC_VOL_CHANGING)) {
@@ -3435,7 +3436,7 @@ void CMatrixMap::SetMusicVolume(float vol) {
     }
     else {
         SETFLAG(m_Flags, MMFLAG_MUSIC_VOL_CHANGING);
-        m_StoreCurrentMusicVolume = g_RangersInterface->m_MusicVolumeGet();
+        m_StoreCurrentMusicVolume = SoundBridge::music_level();
     }
     m_TargetMusicVolume = vol;
 }
