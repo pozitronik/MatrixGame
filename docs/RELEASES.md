@@ -1,6 +1,6 @@
 # Standalone packaging
 
-The supported package is a minimal Windows x86 MinGW Release ZIP with cheats disabled. It contains the executable, committed text configuration, player README, notices, license texts and `SOURCE.json`. The source ZIP contains committed project source and pinned MCF Gthread source. DirectX and game packages are supplied separately.
+The supported package is a minimal Windows x86 MinGW Release ZIP with cheats disabled and the battle music decoder (`MATRIXGAME_MUSIC=ON`) built in. It contains the executable, committed text configuration, player README, notices, license texts and `SOURCE.json`. The source ZIP contains committed project source and pinned MCF Gthread source. DirectX and game packages are supplied separately.
 
 For tag-triggered builds, release notes and GitHub draft releases, follow [Preparing a release](RELEASING.md). The instructions below cover the archive format and local package validation.
 

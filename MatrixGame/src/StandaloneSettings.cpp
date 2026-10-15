@@ -24,7 +24,7 @@ constexpr std::array keys{L"RandomGenerator", L"ResolutionWidth", L"ResolutionHe
                           L"FullscreenMode",  L"SoundVolume",     L"StencilShadows",   L"ProjectedShadows",
                           L"Skybox",          L"RobotShadows",    L"CameraSpeed",      L"DelayedDamage",
                           L"Map",             L"GroupCounts",      L"BattleBonus",      L"PlaceContainment",
-                          L"ZeroXTrace"};
+                          L"ZeroXTrace",      L"MusicVolume"};
 
 std::optional<std::wstring> single(const Base::CBlockPar &options, const wchar_t *key) {
     if (options.ParCount(key) != 1) return std::nullopt;
@@ -131,6 +131,7 @@ std::wstring value_text(const Values &values, std::wstring_view key) {
     if (key == L"GroupCounts") return utils::to_wstring(name(values.group_counts));
     if (key == L"PlaceContainment") return utils::to_wstring(name(values.place_containment));
     if (key == L"ZeroXTrace") return utils::to_wstring(name(values.zero_x_trace));
+    if (key == L"MusicVolume") return std::to_wstring(values.music_volume);
     throw std::logic_error("Unknown settings key");
 }
 
@@ -295,6 +296,8 @@ Selection resolve(const Base::CBlockPar &options) {
     read(options, L"GroupCounts", values.group_counts, group_counts, selection);
     read(options, L"PlaceContainment", values.place_containment, place_containment, selection);
     read(options, L"ZeroXTrace", values.zero_x_trace, zero_x_trace, selection);
+    read(options, L"MusicVolume", values.music_volume,
+         [](const std::wstring &value) { return percent(value, 0, 100); }, selection);
     return selection;
 }
 

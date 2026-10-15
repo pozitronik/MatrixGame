@@ -39,6 +39,7 @@ Values custom() {
     values.group_counts = StandaloneSettings::GroupCountMode::Original;
     values.place_containment = StandaloneSettings::PlaceContainmentMode::Original;
     values.zero_x_trace = StandaloneSettings::ZeroXTraceMode::Original;
+    values.music_volume = 70;
     return values;
 }
 
@@ -69,6 +70,7 @@ void immediate_settings() {
     g_Config.m_CamMoveSpeed = 2.0f;  // Value read from the game data.
     StandaloneSettings::initialize_runtime(Values{});
     MG_CHECK(g_Config.m_CamMoveSpeed == 2.0f && device->voices[0]->volume == 1.0f);
+    MG_CHECK(SoundBridge::music_volume() == 1.0f);
     MG_CHECK(!DelayedDamage::original());
     MG_CHECK(g_Config.m_ShowStencilShadows && g_Config.m_ShowProjShadows);
     MG_CHECK(!GroupCounts::original() && !PlaceContainment::original() && !ZeroXTrace::original());
@@ -77,6 +79,7 @@ void immediate_settings() {
     g_Config.m_RobotShadow = SHADOW_STENCIL;
     StandaloneSettings::apply_runtime(custom());
     MG_CHECK(g_Config.m_CamMoveSpeed == 4.0f && device->voices[0]->volume == 0.3f);
+    MG_CHECK(SoundBridge::music_volume() == 0.7f);  // The music level applies immediately.
     MG_CHECK(!g_Config.m_ShowStencilShadows && !g_Config.m_ShowProjShadows);
     MG_CHECK(DelayedDamage::original());  // Delayed-damage attribution applies immediately.
     MG_CHECK(GroupCounts::original());  // The group-count mode applies immediately.
@@ -99,6 +102,7 @@ void immediate_settings() {
     MG_CHECK(!GroupCounts::original() && !PlaceContainment::original() && !ZeroXTrace::original());
     SoundBridge::shutdown();
     SoundBridge::master_volume(1.0f);
+    SoundBridge::music_volume(1.0f);
 }
 
 void restart_detection() {
@@ -112,7 +116,8 @@ void restart_detection() {
                         +[](Values &v) { v.delayed_damage = StandaloneSettings::DamageAttribution::Original; },
                         +[](Values &v) { v.group_counts = StandaloneSettings::GroupCountMode::Original; },
                         +[](Values &v) { v.place_containment = StandaloneSettings::PlaceContainmentMode::Original; },
-                        +[](Values &v) { v.zero_x_trace = StandaloneSettings::ZeroXTraceMode::Original; }}) {
+                        +[](Values &v) { v.zero_x_trace = StandaloneSettings::ZeroXTraceMode::Original; },
+                        +[](Values &v) { v.music_volume = 20; }}) {
         change(values);
         MG_CHECK(!StandaloneSettings::restart_pending(values));
     }

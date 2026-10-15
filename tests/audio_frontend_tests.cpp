@@ -25,6 +25,12 @@ std::unique_ptr<Device> create_xaudio_device() {
     MG_CHECK(startup_device != nullptr);
     return std::make_unique<audio_fixture::FakeDevice>(startup_device);
 }
+// Synthetic tracks hold their first sample value as two little-endian bytes.
+std::unique_ptr<Decoder> open_vorbis(std::vector<uint8_t> bytes) {
+    if (bytes.size() != 2) throw std::runtime_error("Synthetic unsupported track");
+    return std::make_unique<audio_fixture::FakeDecoder>(
+        audio_fixture::TrackSpec{1, 8000, 2000, int16_t(bytes[0] | (bytes[1] << 8))});
+}
 }
 
 namespace {
@@ -51,6 +57,12 @@ struct StartupFixture {
         const auto bytes = audio_fixture::wave();
         std::ofstream stream(path, std::ios::binary);
         stream.write(reinterpret_cast<const char *>(bytes.data()), bytes.size());
+        MG_CHECK(stream.good());
+    }
+    void track(const std::filesystem::path &path, int16_t base) {
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream stream(path, std::ios::binary);
+        stream.put(char(base & 0xff)).put(char(base >> 8));
         MG_CHECK(stream.good());
     }
     void override_text(const std::string &text) {
@@ -296,6 +308,106 @@ void host_layer_lifetime() {
     g_RangersInterface = nullptr;
 }
 
+
+void music_track_names() {
+    // Packaged names come first in registration order; a loose name that differs only in case is the
+    // same track, which the loose file supplies when it is read.
+    const auto tracks = SoundBridge::merge_tracks({L"fight2.dat", L"Boy1.dat", L"boy1.dat"}, {L"BOY1.DAT", L"a.dat", L"B.dat"});
+    MG_CHECK(tracks == std::vector<std::wstring>({L"music\\BATTLE\\a.dat", L"music\\BATTLE\\B.dat",
+                                                  L"music\\BATTLE\\Boy1.dat", L"music\\BATTLE\\fight2.dat"}));
+    MG_CHECK(SoundBridge::merge_tracks({}, {}).empty());
+}
+
+#ifdef MATRIXGAME_MUSIC
+void music_sessions() {
+    StartupFixture fixture;
+    fixture.track("music/BATTLE/B.dat", 2000);
+    fixture.track("music/BATTLE/a.dat", 1000);
+    fixture.track("music/BATTLE/c.dat", 3000);
+    fixture.track("music/BATTLE/nested/d.dat", 4000);  // Only files directly in the folder are tracks.
+    // A case-sensitive order would put B.dat first.
+    MG_CHECK(SoundBridge::battle_tracks() ==
+             std::vector<std::wstring>({L"music\\BATTLE\\a.dat", L"music\\BATTLE\\B.dat", L"music\\BATTLE\\c.dat"}));
+    SoundBridge::music_volume(0.5f);  // Set before the service exists, as at startup.
+    SoundBridge::initialize_standalone(true);
+    MG_CHECK(SoundBridge::music_available() && startup_device->streams.empty());
+    SoundBridge::update_music();
+    auto stream = startup_device->streams.at(0);
+    MG_CHECK(stream->volume == 0.5f && stream->plays == 1 && stream->buffers.size() == 4);
+    MG_CHECK(stream->buffers[0].front() == 1000 && stream->buffers[1].front() == 2000);
+    MG_CHECK(stream->buffers[2].front() == 3000 && stream->buffers[3].front() == 1000);
+    SoundBridge::music_level(0.5f);  // The engine fade multiplies the listener level.
+    MG_CHECK(SoundBridge::music_level() == 0.5f && stream->volume == 0.25f);
+    SoundBridge::music_volume(1.0f);
+    MG_CHECK(stream->volume == 0.5f);
+    SoundBridge::master_volume(0.1f);  // The effects level does not reach music.
+    MG_CHECK(stream->volume == 0.5f);
+    SoundBridge::master_volume(1.0f);
+    // A new session starts after the track that was playing and resets the fade.
+    SoundBridge::initialize_standalone(true);
+    MG_CHECK(stream->destroyed && SoundBridge::music_level() == 1.0f);
+    SoundBridge::update_music();
+    stream = startup_device->streams.at(1);
+    MG_CHECK(stream->volume == 1.0f && stream->buffers[0].front() == 2000);
+    SoundBridge::shutdown();
+    MG_CHECK(stream->destroyed && !SoundBridge::music_available());
+    SoundBridge::update_music();
+    SoundBridge::music_level(0.5f);
+    MG_CHECK(startup_device->streams.size() == 2 && SoundBridge::music_level() == 0.0f);
+}
+
+void music_unavailable() {
+    StartupFixture fixture;
+    SoundBridge::initialize_standalone(true);  // Sound packages without battle tracks.
+    SoundBridge::update_music();
+    MG_CHECK(SoundBridge::available() && !SoundBridge::music_available() && startup_device->streams.empty());
+    fixture.track("music/BATTLE/a.dat", 1000);
+    SoundBridge::initialize_standalone(false);  // No audio package: no device and no music.
+    SoundBridge::update_music();
+    MG_CHECK(!SoundBridge::music_available() && device_creations == 1);
+    // An undecodable track disables music without affecting effects.
+    std::filesystem::remove("music/BATTLE/a.dat");
+    fixture.wave("music/BATTLE/a.dat");
+    fixture.wave("sound/ButtonClick.wav");
+    SoundBridge::initialize_standalone(true);
+    SoundBridge::update_music();
+    SoundBridge::update_music();
+    MG_CHECK(SoundBridge::music_available() && startup_device->streams.empty());
+    fixture.play(L"Sound.ButtonClick");
+    MG_CHECK(startup_device->voices.size() == 1);
+}
+#else
+// A build without the decoder leaves music off and lists no tracks; effects still play.
+void music_not_built() {
+    StartupFixture fixture;
+    fixture.track("music/BATTLE/a.dat", 1000);
+    fixture.wave("sound/ButtonClick.wav");
+    SoundBridge::initialize_standalone(true);
+    SoundBridge::update_music();
+    MG_CHECK(SoundBridge::available() && !SoundBridge::music_available() && startup_device->streams.empty());
+    fixture.play(L"Sound.ButtonClick");
+    MG_CHECK(startup_device->voices.size() == 1);
+}
+#endif
+
+float host_music = 0.75f;
+float __stdcall host_music_get() { return host_music; }
+void __stdcall host_music_set(float value) { host_music = value; }
+
+void host_music_routing() {
+    Frontend f;
+    SMGDRangersInterface host{};
+    host.m_MusicVolumeGet = host_music_get; host.m_MusicVolumeSet = host_music_set;
+    g_RangersInterface = &host;
+    MG_CHECK(SoundBridge::music_available() && SoundBridge::music_level() == 0.75f);
+    SoundBridge::music_level(0.25f);
+    SoundBridge::music_volume(0.5f);  // The standalone setting does not change host music.
+    MG_CHECK(host_music == 0.25f && SoundBridge::music_level() == 0.25f);
+    g_RangersInterface = nullptr;
+    SoundBridge::music_volume(1.0f);
+    MG_CHECK(!SoundBridge::music_available() && f.device->streams.empty());
+}
+
 constexpr tests::Case cases[] = {
     {"game.audio.default_catalog", default_catalog_startup},
     {"game.audio.map_spawner_catalog", map_spawner_catalog_startup},
@@ -307,6 +419,12 @@ constexpr tests::Case cases[] = {
     {"game.audio.stale_layer_slot", stale_layer_slot}, {"game.audio.host_layer_lifetime", host_layer_lifetime},
     {"game.audio.frontend_missing", missing_mapping}, {"game.audio.host_routing", host_routing},
     {"game.audio.no_optional_packages", no_optional_packages},
+#ifdef MATRIXGAME_MUSIC
+    {"game.audio.music_sessions", music_sessions}, {"game.audio.music_unavailable", music_unavailable},
+#else
+    {"game.audio.music_not_built", music_not_built},
+#endif
+    {"game.audio.music_track_names", music_track_names}, {"game.audio.host_music_routing", host_music_routing},
 };
 } // namespace
 

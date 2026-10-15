@@ -450,4 +450,59 @@ void turret_visual_obstruction() {
         evidence(session, "turret-occluder-retired", observer, "synthetic-low-turret-v1");
     }
 }
+
+namespace {
+void repair_movement(bool retire) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        BattleCombatAssets assets;
+        battle::Profile profile{mode, 84, 10, 2000, false, true};
+        profile.layout = NavigationLayout::Open;
+        battle::Session session(profile);
+        assets.install();
+        auto *observer = owner();
+        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+        configure_repair(*observer);
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_REPAIR)] = {8, 4, 0};
+        auto *patient = damaged_friendly(160, 140);
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {17, 17, 0};
+        MG_CHECK(!patient->Damage(WEAPON_LASER, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+        MG_CHECK(patient->GetHitPoint() == 3.2f);
+        MG_CHECK(observer->GetEnv()->m_Target == nullptr);
+        session.ground_command(500, 200);
+        const auto intent = session.robot(1);
+        MG_CHECK(intent.order == mpo_MoveTo);
+        MG_CHECK(observer->GetEnv()->m_Target == patient);
+        float health = patient->GetHitPoint();
+        int repairs = 0;
+        for (int i = 0; i < 1800; ++i) {
+            const auto *target_before_tick = observer->GetEnv()->m_Target;
+            session.advance();
+            const auto state = session.robot(1);
+            MG_CHECK(state.order == mpo_MoveTo);
+            MG_CHECK(state.destination_x == intent.destination_x && state.destination_y == intent.destination_y);
+            if (patient && patient->GetHitPoint() != health) {
+                MG_CHECK(observer->m_PosX > 100);
+                MG_CHECK(target_before_tick == patient);
+                MG_CHECK(patient->GetHitPoint() == float(std::min(50, 32 + 4 * (repairs + 1))) / 10.0f);
+                health = patient->GetHitPoint();
+                ++repairs;
+                if (retire && repairs == 2) {
+                    g_MatrixMap->StaticDelete(patient);
+                    patient = nullptr;
+                    MG_CHECK(observer->GetEnv()->m_Target == nullptr);
+                }
+            }
+        }
+        MG_CHECK(repairs == (retire ? 2 : 5));
+        if (patient) MG_CHECK(patient->GetHitPoint() == 5 && !patient->NeedRepair());
+        MG_CHECK(observer->GetEnv()->m_Target == nullptr);
+        MG_CHECK(!observer->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(session.robot(1).in_place && session.robot(2).in_place);
+        MG_CHECK(observer->m_PosX == 500 && observer->m_PosY == 200);
+        evidence(session, retire ? "moving-repair-patient-retired" : "moving-repair-completed", observer);
+    }
+}
+}
+void repair_movement_completion() { repair_movement(false); }
+void repair_movement_retirement() { repair_movement(true); }
 }

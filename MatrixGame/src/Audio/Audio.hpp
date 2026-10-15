@@ -31,10 +31,23 @@ public:
     virtual void pan(float value) = 0;
 };
 
+// A voice fed with interleaved signed 16-bit PCM buffers while it plays.
+class Stream {
+public:
+    virtual ~Stream() = default;
+    // The stream keeps each buffer until the device has finished reading it.
+    virtual void submit(std::vector<int16_t> samples) = 0;
+    // Submitted buffers that have not finished playing.
+    virtual size_t queued() const = 0;
+    virtual void play() = 0;
+    virtual void volume(float value) = 0;
+};
+
 class Device {
 public:
     virtual ~Device() = default;
     virtual std::unique_ptr<Voice> create(std::shared_ptr<const Clip> clip, bool loop) = 0;
+    virtual std::unique_ptr<Stream> stream(uint16_t channels, uint32_t sample_rate) = 0;
 };
 
 using Mapping = std::unordered_map<std::wstring, std::wstring>;
@@ -80,6 +93,8 @@ public:
     void master_volume(float value);
     float master_volume() const { return master_; }
     void clear();
+    // Device shared with the music player, which must be destroyed before this service.
+    Device &device() { return *device_; }
 };
 
 std::unique_ptr<Device> create_xaudio_device();
