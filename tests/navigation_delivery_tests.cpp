@@ -192,6 +192,14 @@ void delivery_carrier_damage() {
     }
 }
 void neighboring_delivery_landings() {
+    // Recorded landing ticks: PM/10, PM/16, CRT/10, CRT/16; then terrain
+    // variants 0..2 and the two carriers in their request order.
+    constexpr int landing_times[4][3][2] = {
+        {{6520, 4170}, {6500, 4170}, {6470, 4090}},
+        {{6528, 4176}, {6512, 4176}, {6480, 4096}},
+        {{6150, 4670}, {6130, 4670}, {6160, 4700}},
+        {{6160, 4672}, {6128, 4672}, {6160, 4704}},
+    };
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
       for (int step : {10, 16}) for (int variant = 0; variant < 3; ++variant) {
         BattleMaterialProfile materials;
@@ -273,14 +281,14 @@ void neighboring_delivery_landings() {
             CMatrixRobotAI *robot;
             CoreLease carrier_core;
             CoreLease robot_core;
-            int place, group;
+            int place, group, expected_landing;
             CPoint destination;
             int release = -1, landing = -1, retired = -1, falling_samples = 0;
             D3DXVECTOR3 released{};
             float previous_z = 0;
-            explicit Cargo(CMatrixFlyer *flyer) : carrier(flyer), robot(static_cast<CMatrixRobotAI *>(flyer->GetCarryingRobot())),
+            Cargo(CMatrixFlyer *flyer, int expected) : carrier(flyer), robot(static_cast<CMatrixRobotAI *>(flyer->GetCarryingRobot())),
                 carrier_core(flyer->GetCore(DEBUG_CALL_INFO)), robot_core(robot->GetCore(DEBUG_CALL_INFO)),
-                place(robot->GetEnv()->m_Place), group(robot->GetGroupLogic()),
+                place(robot->GetEnv()->m_Place), group(robot->GetGroupLogic()), expected_landing(expected),
                 destination(g_MatrixMap->m_RN.m_Place[place].m_Pos) {}
         };
         std::vector<Cargo> cargo;
@@ -291,9 +299,10 @@ void neighboring_delivery_landings() {
             MG_CHECK(carrier->CarryingRobot());
             auto *robot = static_cast<CMatrixRobotAI *>(carrier->GetCarryingRobot());
             MG_CHECK(robot->GetEnv()->m_Place > 0 && robot->GetEnv()->m_Place < road.m_PlaceCnt);
-            cargo.emplace_back(carrier);
+            const int row = (mode == random::Mode::LegacyCRT ? 2 : 0) + (step == 16 ? 1 : 0);
+            cargo.emplace_back(carrier, landing_times[row][variant][i]);
             const auto &item = cargo.back();
-            MG_CHECK(item.place > 0 && item.place < 4 && places.insert(item.place).second);
+            MG_CHECK(places.insert(item.place).second);
             MG_CHECK(variant == 0 || item.place != 1);
             MG_CHECK(item.robot->m_CurrState == ROBOT_CARRYING);
             MG_CHECK(item.group >= 0 && item.group < MAX_LOGIC_GROUP);
@@ -331,9 +340,18 @@ void neighboring_delivery_landings() {
                     MG_CHECK(item.robot->m_PosX == item.released.x && item.robot->m_PosY == item.released.y);
                     MG_CHECK(item.robot->GetMatrix()._43 <= item.previous_z);
                     item.previous_z = item.robot->GetMatrix()._43;
+                    // Falling matrices retain their actual height; a later
+                    // standing refresh must not conceal penetration below it.
+                    MG_CHECK(item.previous_z >= 200 + slope * item.robot->m_PosX - 0.001f);
                 }
                 if (item.landing < 0 && item.release >= 0 && item.robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) {
                     item.landing = session.time();
+                    if (item.landing != item.expected_landing)
+                        std::cout << "place=" << item.place << " landing_ms=" << item.landing
+                                  << " expected_landing_ms=" << item.expected_landing << std::endl;
+                    MG_CHECK(item.landing == item.expected_landing);
+                    // JoinToGroup can refresh the transform after contact:
+                    // this checks standing height, not the contact threshold.
                     MG_CHECK(std::abs(item.robot->GetMatrix()._43 - (200 + slope * item.robot->m_PosX)) < 0.001f);
                 }
             }
@@ -349,8 +367,9 @@ void neighboring_delivery_landings() {
             MG_CHECK(item.robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD && item.robot->PLIsInPlace());
             MG_CHECK(item.robot->m_PosX == (item.destination.x + 2) * GLOBAL_SCALE_MOVE);
             MG_CHECK(item.robot->m_PosY == (item.destination.y + 2) * GLOBAL_SCALE_MOVE);
-            // Logic may snap the last sub-step to the destination before the
-            // next transform refresh. Compare height with that cached pose.
+            // Without drawing, the last bounds-cache refresh may precede
+            // arrival by up to 100 ms. One unit per axis is an empirical bound
+            // for these profiles, not a bound on the final movement snap.
             const auto &pose = item.robot->GetMatrix();
             MG_CHECK(std::abs(pose._43 - (200 + slope * pose._41)) < 0.001f);
             MG_CHECK(std::abs(pose._41 - item.robot->m_PosX) < 1);
