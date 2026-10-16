@@ -627,7 +627,7 @@ foreach(contract delivery_flights delivery_carrier_damage local_routes passage_w
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
 add_matrix_test(game.navigation.group_speed_finite matrixgame_navigation_tests gameplay ai navigation)
-foreach(contract shorted_movement_recovery drowning_retirement)
+foreach(contract shorted_route_blocker dying_route_blocker shorted_movement_recovery drowning_retirement)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
 

@@ -17,6 +17,8 @@ void multiregion_movement();
 void multiregion_road_guidance();
 void group_speed_finite();
 void unreachable_replacement();
+void shorted_route_blocker();
+void dying_route_blocker();
 void shorted_movement_recovery();
 void drowning_retirement();
 }
@@ -441,6 +443,8 @@ int main(int argc, char **argv) {
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
+        {"game.navigation.shorted_route_blocker", tests::navigation::shorted_route_blocker},
+        {"game.navigation.dying_route_blocker", tests::navigation::dying_route_blocker},
         {"game.navigation.shorted_movement_recovery", tests::navigation::shorted_movement_recovery},
         {"game.navigation.drowning_retirement", tests::navigation::drowning_retirement},
         {"game.navigation.delivery_flights", tests::navigation::delivery_flights},
