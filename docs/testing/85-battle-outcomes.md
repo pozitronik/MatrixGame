@@ -61,6 +61,8 @@ These death scenarios reuse synthetic combat debris and billboards and provide a
 
 ## Destructible map objectives
 
+The timing descriptions below retain the original 10 ms profile. The [special-object timing guide](85-special-profiles.md) records the 10 ms and 16 ms coverage, measured conversion/result boundaries and remaining special-object scenarios.
+
 `special_break`, `special_explosion` and `special_animation` load synthetic object descriptors through production `CMatrixMapObject::Init` and run the resulting special-object rules. Two objectives begin at ten health each. An enemy-side hit is rejected without allocating a progress bar or consuming RNG; a player hit reduces health to five. A second hit at the configured minimum threshold of five leaves health unchanged. Lowering the configured threshold to four allows the lethal hit at exactly zero. The destroyed object removes its special marker, decrements the objective counter once and awards one building kill.
 
 The Break variants replace their type with a static object. The lethal-hit boundary asserts that the Explode variant adds production effects and that the non-explosive Break and Anim variants do not. The Anim variant follows its descriptor to animation state one and changes zero configured health to the engine's two-billion sentinel. Generated material-bearing box geometry and managed CPU textures support ordinary graph and skin loading; the test does not claim native artwork or visible animation fidelity. The explosion variant supplies the same scoped crater catalog as robot death.
