@@ -221,6 +221,9 @@ public:
 class BattleDevice::Device final : public IDirect3DDevice9 {
     ULONG references_ = 1;
     D3DMATERIAL9 material_{};
+    D3DLIGHT9 directional_light_{};
+    BOOL light_enabled_{};
+    bool light_defined_{};
     D3DVIEWPORT9 viewport_{0, 0, 1280, 720, 0.0f, 1.0f};
     std::map<D3DTRANSFORMSTATETYPE, D3DMATRIX> transforms_;
     std::map<D3DRENDERSTATETYPE, DWORD> render_states_;
@@ -470,17 +473,30 @@ public:
         *pMaterial = material_;
         return D3D_OK;
     }
-    HRESULT STDMETHODCALLTYPE SetLight(DWORD, const D3DLIGHT9 *) override {
-        unsupported("SetLight");
+    HRESULT STDMETHODCALLTYPE SetLight(DWORD index, const D3DLIGHT9 *light) override {
+        if (index != 0 || !light || light->Type != D3DLIGHT_DIRECTIONAL)
+            unsupported("SetLight profile (requires directional light 0)");
+        directional_light_ = *light;
+        light_defined_ = true;
+        ++statistics.light_updates;
+        return D3D_OK;
     }
-    HRESULT STDMETHODCALLTYPE GetLight(DWORD, D3DLIGHT9*) override {
-        unsupported("GetLight");
+    HRESULT STDMETHODCALLTYPE GetLight(DWORD index, D3DLIGHT9 *light) override {
+        if (index != 0 || !light || !light_defined_) return D3DERR_INVALIDCALL;
+        *light = directional_light_;
+        return D3D_OK;
     }
-    HRESULT STDMETHODCALLTYPE LightEnable(DWORD, BOOL) override {
-        unsupported("LightEnable");
+    HRESULT STDMETHODCALLTYPE LightEnable(DWORD index, BOOL enabled) override {
+        if (index != 0 || !light_defined_ || (enabled != TRUE && enabled != FALSE))
+            unsupported("LightEnable profile (requires light 0)");
+        light_enabled_ = enabled;
+        ++statistics.light_enable_updates;
+        return D3D_OK;
     }
-    HRESULT STDMETHODCALLTYPE GetLightEnable(DWORD, BOOL*) override {
-        unsupported("GetLightEnable");
+    HRESULT STDMETHODCALLTYPE GetLightEnable(DWORD index, BOOL *enabled) override {
+        if (index != 0 || !enabled || !light_defined_) return D3DERR_INVALIDCALL;
+        *enabled = light_enabled_;
+        return D3D_OK;
     }
     HRESULT STDMETHODCALLTYPE SetClipPlane(DWORD, const float *) override {
         unsupported("SetClipPlane");
@@ -516,8 +532,9 @@ public:
     HRESULT STDMETHODCALLTYPE GetTexture(DWORD, IDirect3DBaseTexture9**) override {
         unsupported("GetTexture");
     }
-    HRESULT STDMETHODCALLTYPE SetTexture(DWORD, IDirect3DBaseTexture9*) override {
-        unsupported("SetTexture");
+    HRESULT STDMETHODCALLTYPE SetTexture(DWORD stage, IDirect3DBaseTexture9 *texture) override {
+        if (stage >= 8 || texture) unsupported("SetTexture profile (only unbinding stages 0..7)");
+        return D3D_OK;
     }
     HRESULT STDMETHODCALLTYPE GetTextureStageState(DWORD Stage, D3DTEXTURESTAGESTATETYPE Type, DWORD* pValue) override {
         const auto entry = texture_states_.find({Stage, Type});

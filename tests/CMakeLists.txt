@@ -718,3 +718,8 @@ add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_suppor
 target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
+
+add_matrix_test_executable(matrixgame_battle_restart_failures battle_restart_failures.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_restart_failures PRIVATE MatrixGameInternal)
+add_matrix_test(game.restart.game_owned_cleanup matrixgame_battle_restart_failures gameplay startup)

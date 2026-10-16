@@ -18,6 +18,8 @@ struct BattleDeviceStats {
     std::uint64_t textures_created{};
     std::uint64_t texture_locks{};
     std::uint64_t rejected_icon_targets{};
+    std::uint64_t light_updates{};
+    std::uint64_t light_enable_updates{};
 };
 
 // A storage/state-only device for the explicitly no-render scenario profile.
@@ -25,6 +27,8 @@ struct BattleDeviceStats {
 // Textures support one A8R8G8B8 mip level in managed CPU storage, without drawing.
 // Opt-in IconTargets::Unavailable rejects only the 256x256 icon render target
 // with D3DERR_NOTAVAILABLE; it never simulates successful drawing.
+// Form entry may unbind eight texture stages and store directional light 0;
+// these are state-only operations, with no rendering support.
 // Unknown calls (including rendering, other texture profiles and Reset) terminate the test
 // with the method name, even if the production caller ignores its HRESULT.
 // cooperative_level can report a lost device, which needs no Reset while it lasts.
