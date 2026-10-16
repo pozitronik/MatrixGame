@@ -786,6 +786,9 @@ target_compile_definitions(matrixgame_battle_restart_scenarios PRIVATE
 foreach(contract movement pending_win pending_loss retired_group)
     add_matrix_test(game.restart.${contract} matrixgame_battle_restart_scenarios gameplay startup)
 endforeach()
+if(NOT MATRIXGAME_BUILD_DLL)
+    add_matrix_test(game.restart.saved_settings matrixgame_battle_restart_scenarios gameplay settings startup)
+endif()
 
 add_matrix_test_executable(matrixgame_map_window_scenarios map_window_scenarios.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
