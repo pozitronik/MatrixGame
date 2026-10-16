@@ -18,6 +18,9 @@ void automatic_reinforcement_delivery();
 void capture_guard_interruption();
 void capture_guard_filters();
 void turret_visual_obstruction();
+void turret_acquisition_equality();
+void turret_retirement_equality();
+void turret_elevated_terrain();
 void turret_acquisition_range();
 void turret_retirement_range();
 void turret_acquisition_filters();
@@ -424,6 +427,9 @@ int main(int argc, char **argv) {
         {"game.ai.automatic_reinforcement_delivery", tests::ai::automatic_reinforcement_delivery},
         {"game.ai.capture_guard_interruption", tests::ai::capture_guard_interruption},
         {"game.ai.capture_guard_filters", tests::ai::capture_guard_filters},
+        {"game.ai.turret_acquisition_equality", tests::ai::turret_acquisition_equality},
+        {"game.ai.turret_retirement_equality", tests::ai::turret_retirement_equality},
+        {"game.ai.turret_elevated_terrain", tests::ai::turret_elevated_terrain},
         {"game.ai.turret_visual_obstruction", tests::ai::turret_visual_obstruction},
         {"game.ai.turret_acquisition_range", tests::ai::turret_acquisition_range},
         {"game.ai.turret_retirement_range", tests::ai::turret_retirement_range},
