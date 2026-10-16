@@ -18,6 +18,7 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 
 option(MATRIXGAME_BUILD_DLL "Build dll instead of exe" TRUE)
 option(MATRIXGAME_CHEATS "Enable cheats" TRUE)
+option(MATRIXGAME_TRACE "Enable the legacy diagnostic trace build" OFF)
 option(MATRIXGAME_COVERAGE "Instrument project code for gcov coverage (MinGW only)" OFF)
 # The DLL's host owns music, so only the standalone EXE decodes it by default.
 if(MATRIXGAME_BUILD_DLL)
@@ -48,6 +49,10 @@ endif()
 include(ThirdParty/CMakeLists.txt)
 
 list(APPEND COMPILE_DEFINITIONS MATRIXGAME_EXPORTS $<$<CONFIG:Release>:ASSERT_OFF>)
+if(MATRIXGAME_TRACE)
+    # Keep diagnostic signatures and layouts consistent across libraries, game and tests.
+    list(APPEND COMPILE_DEFINITIONS _TRACE)
+endif()
 if(MATRIXGAME_MUSIC)
     list(APPEND COMPILE_DEFINITIONS MATRIXGAME_MUSIC)
 endif()
@@ -101,6 +106,11 @@ else()
     set(LINK_OPTIONS
         $<$<CONFIG:Release>:-static -s -Wl,--no-insert-timestamp>
     )
+    if(MATRIXGAME_TRACE)
+        # Legacy trace assertions throw, including in noexcept destructors. Retain
+        # their existing termination behavior and warning in this opt-in build.
+        list(APPEND COMPILE_OPTIONS -Wno-error=terminate)
+    endif()
 endif()
 
 add_subdirectory(MatrixLib)

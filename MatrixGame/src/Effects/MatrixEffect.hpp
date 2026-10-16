@@ -292,6 +292,9 @@ struct SEffectHandler {
     SEffectHandler(void) : effect(NULL) {}
     ~SEffectHandler() { Release(); }
     void Release(void);
+#ifdef _TRACE
+    void Release(const SDebugCallInfo &) { Release(); }
+#endif
 #endif
     void Unconnect(void);
     void Rebase(void);

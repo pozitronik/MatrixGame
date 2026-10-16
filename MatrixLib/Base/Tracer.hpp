@@ -127,7 +127,7 @@ extern int g_CheckPointNumber;
 #define DCP()     CDebugTracer UNIQID(check_point)(__FILE__, __LINE__, true)
 #endif
 
-#define TRACE_PARAM_DEF  const char *_file, int _line,
+#define TRACE_PARAM_DEF  [[maybe_unused]] const char *_file, [[maybe_unused]] int _line,
 #define TRACE_PARAM_CALL __FILE__, __LINE__,
 
 #define HISTORY_SIZE 1024

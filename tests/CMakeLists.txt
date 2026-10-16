@@ -626,6 +626,9 @@ endforeach()
 foreach(contract victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions pending_result_pause pending_result_late_elimination)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay startup)
 endforeach()
+if(MATRIXGAME_TRACE)
+    add_matrix_test(game.outcome.trace_result_callbacks matrixgame_battle_outcome_scenarios gameplay input)
+endif()
 
 add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_chassis_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp navigation_damage_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
