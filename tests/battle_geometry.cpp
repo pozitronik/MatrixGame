@@ -10,6 +10,7 @@
 #include <cmath>
 #include <filesystem>
 #include <initializer_list>
+#include <string_view>
 #include <vector>
 
 namespace tests {
@@ -55,7 +56,7 @@ struct MeshFile {
 
 void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachment> attachments,
                 bool combat_animations, float height, const wchar_t *texture_name = nullptr,
-                std::span<const wchar_t *const> extra_animations = {}) {
+                std::span<const wchar_t *const> extra_animations = {}, bool pneumatic = false) {
     CStorage storage;
     if (texture_name) {
         schema(storage, L"surfs", {{L"texs", ST_WCHAR}});
@@ -93,7 +94,9 @@ void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachmen
     frame.m_Radius = height == 20.0f ? 20.0f : std::sqrt(288.0f + height * height / 4.0f);
     frame.m_VerCnt = 8;
     frame.m_UnionCnt = 1;
-    bytes(storage, L"frames", L"data", &frame, 1);
+    const int frame_count = pneumatic ? 4 : 1;
+    const std::vector<SVOKadr> mesh_frames(frame_count, frame);
+    bytes(storage, L"frames", L"data", mesh_frames.data(), mesh_frames.size());
     const int vertex_indices[] = {0, 1, 2, 3, 4, 5, 6, 7};
     const DWORD union_index = 0;
     bytes(storage, L"frames", L"verts", vertex_indices, std::size(vertex_indices));
@@ -109,9 +112,14 @@ void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachmen
     for (size_t i = 0; i < std::size(animations); ++i) {
         storage.GetBuf(L"anims", L"name", ST_WCHAR)->AddWStr(animations[i]);
         ids.push_back(static_cast<DWORD>(i));
-        offsets.push_back(static_cast<DWORD>(i));
-        counts.push_back(1);
-        frames.push_back({0, 100});
+        offsets.push_back(static_cast<DWORD>(frames.size()));
+        const std::wstring_view animation(animations[i]);
+        const bool moving = pneumatic && (animation == ANIMATION_NAME_MOVE || animation == ANIMATION_NAME_MOVE_BACK);
+        counts.push_back(moving ? frame_count : 1);
+        for (int index = 0; index < (moving ? frame_count : 1); ++index) {
+            const bool backwards = animation == ANIMATION_NAME_MOVE_BACK;
+            frames.push_back({pneumatic && backwards ? (frame_count - index) % frame_count : index, 100});
+        }
     }
     numbers(storage, L"anims", L"id", ids);
     numbers(storage, L"anims", L"disp", offsets);
@@ -126,7 +134,14 @@ void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachmen
         D3DXMATRIX matrix;
         D3DXMatrixIdentity(&matrix);
         matrix._41 = item.x; matrix._42 = item.y; matrix._43 = item.z;
-        matrices.push_back(matrix);
+        for (int index = 0; index < frame_count; ++index) {
+            // A four-frame alternating gait. Foot attachments, rather than a
+            // test-side position correction, drive production pneumatic linking.
+            const float stride[] = {1.55f, 0.0f, -1.55f, 0.0f};
+            if (pneumatic && (item.id == 2 || item.id == 3))
+                matrix._42 = item.y + stride[(index + (item.id == 3 ? 2 : 0)) % 4];
+            matrices.push_back(matrix);
+        }
     }
     numbers(storage, L"matrices", L"id", matrix_ids);
     numbers(storage, L"matrices", L"disp", matrix_offsets);
@@ -390,9 +405,25 @@ CMatrixRobotAI *BattleGeometry::create_robot(CMatrixMapLogic &map, int side, flo
 }
 
 CMatrixRobotAI *BattleGeometry::create_robot(CMatrixMapLogic &map, int side, float x, float y, ERobotUnitKind chassis) {
-    MG_CHECK(chassis == RUK_CHASSIS_WHEEL || chassis == RUK_CHASSIS_TRACK);
-    const MeshAttachment attachment{1, L"chassis-link", 0, 0, 20};
-    auto *geometry = load_battle_mesh(std::span(&attachment, 1));
+    MG_CHECK(chassis >= RUK_CHASSIS_PNEUMATIC && chassis <= RUK_CHASSIS_ANTIGRAVITY);
+    std::vector<MeshAttachment> attachments{{1, L"chassis-link", 0, 0, 20}};
+    if (chassis == RUK_CHASSIS_PNEUMATIC) {
+        attachments.push_back({2, L"left-foot", -5, 0, 0});
+        attachments.push_back({3, L"right-foot", 5, 0, 0});
+    } else if (chassis == RUK_CHASSIS_ANTIGRAVITY) {
+        attachments.push_back({10, L"left-exhaust", -5, -10, 5});
+        attachments.push_back({11, L"right-exhaust", 5, -10, 5});
+    }
+    CVectorObject *geometry;
+    if (chassis == RUK_CHASSIS_PNEUMATIC) {
+        MeshFile file;
+        write_mesh(file.path, attachments, false, 20, nullptr, {}, true);
+        geometry = static_cast<CVectorObject *>(g_Cache->Get(CacheClass::VO, file.path.c_str()));
+        geometry->LoadSpecial(OLF_NO_TEX, nullptr, 0);
+        MG_CHECK(std::filesystem::remove(file.path));
+    } else {
+        geometry = load_battle_mesh(attachments);
+    }
     auto *robot = map.StaticAdd<CMatrixRobotAI>();
     robot->m_CurrState = ROBOT_SUCCESSFULLY_BUILD;
     robot->m_Side = side;
