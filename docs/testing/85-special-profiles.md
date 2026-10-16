@@ -38,6 +38,6 @@ From the repository root, using the pinned prerequisites:
 
 These five CTest cases contain their own RNG/schedule variants. Their fixtures require no original resource package, visible game window or listening check.
 
-## Remaining O4 work
+## Related coverage and remaining gates
 
-This increment does not complete O4: mixed Break/Anim ordering, an ordinary-object negative control, Terron alongside a surviving Break objective and loss immediately before versus after the decisive transition remain selected work. The [post-conversion Terron blast regression](186-terron-owner.md) covers the former Debug-only failure separately; the normal Terron case keeps nearby robots outside the damaging radius. These timing profiles do not establish acceptance of the complete historical reference. Persisted comparisons and same-revision integrated acceptance remain with the [baseline checklist](baseline-completion.md).
+The [mixed-objective cases](85-mixed-objectives.md) cover Break/Anim retirement in either order, an ordinary-object negative control, Terron alongside a surviving Break objective and last-player loss immediately before versus after the decisive transition. The [post-conversion Terron blast regression](186-terron-owner.md) covers the former Debug-only failure separately; the normal Terron case keeps nearby robots outside the damaging radius. These fixtures establish the finite O4 family selection, not every original map or weapon/input route. Persisted comparisons and same-revision integrated acceptance remain with the [baseline checklist](baseline-completion.md).
