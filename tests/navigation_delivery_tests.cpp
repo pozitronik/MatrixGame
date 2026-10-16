@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_flyer.hpp"
+#include "battle_building.hpp"
 #include "battle_combat_geometry.hpp"
 #include "MatrixFlyer.hpp"
 #include "MatrixRobot.hpp"
@@ -9,6 +10,8 @@
 #include <cmath>
 #include <memory>
 #include <array>
+#include <set>
+#include <vector>
 
 namespace tests::navigation {
 namespace {
@@ -188,4 +191,175 @@ void delivery_carrier_damage() {
         }
     }
 }
+void neighboring_delivery_landings() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (int step : {10, 16}) for (int variant = 0; variant < 3; ++variant) {
+        BattleMaterialProfile materials;
+        Session session(profile(mode, step));
+        install_battle_transport(60);
+        auto &map = *g_MatrixMap;
+        auto &side = *map.GetPlayerSide();
+        auto &road = map.m_RN;
+        const float slope = variant == 2 ? 0.25f : 0.0f;
+        // Consistent height triangles and vertex normals, declared as initial
+        // terrain data. Navigation restrictions are supplied, not regenerated.
+        D3DXVECTOR3 normal(-slope, 0, 1);
+        D3DXVec3Normalize(&normal, &normal);
+        for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
+            auto &unit = *map.UnitGet(x, y);
+            unit.SetType(CELLFLAG_LAND);
+            unit.a1 = unit.a2 = slope;
+            unit.b1 = unit.b2 = 0;
+            unit.c1 = unit.c2 = 200 + slope * x * GLOBAL_SCALE;
+        }
+        for (int y = 0; y <= 32; ++y) for (int x = 0; x <= 32; ++x) {
+            auto &point = *map.PointGet(x, y);
+            point.z = point.z_land = 200 + slope * x * GLOBAL_SCALE;
+            point.n = normal;
+        }
+        MG_CHECK(road.m_PlaceCnt == 4);
+        for (int i = 0; i < 4; ++i) road.m_Place[i].m_Pos = CPoint(24 + (i % 2) * 4, 24 + (i / 2) * 4);
+        road.InitPL(BattleGeometry::movement_size, BattleGeometry::movement_size);
+        for (int i = 0; i < 4; ++i)
+            MG_CHECK(road.m_Place[i].m_Pos == CPoint(24 + (i % 2) * 4, 24 + (i / 2) * 4));
+        if (variant != 0) {
+            road.m_Place[1].m_Move = 31;
+            // The rejected landing footprint occupies [28,32) by [24,28).
+            for (int y = 0; y < BattleGeometry::movement_size; ++y)
+              for (int x = 0; x < BattleGeometry::movement_size; ++x)
+                for (int size = 1; size <= 5; ++size)
+                    if (x < 32 && x + size > 28 && y < 28 && y + size > 24)
+                        map.MoveGet(x, y)->m_Stop |= DWORD{31} << (6 * (size - 1));
+        }
+        MG_CHECK(session.remove(2) && session.remove(4));
+        CMatrixRobotAI *donor = nullptr;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+            if (!object->IsRobot()) continue;
+            auto *robot = object->AsRobot();
+            robot->SetMaxSpeed(0);
+            robot->m_GroupSpeed = 0;
+            robot->GetEnv()->m_Place = -1;
+            if (robot->GetSide() == 2) {
+                // Keep the opposing sentinel outside both declared approach paths.
+                robot->m_PosX = 540;
+                robot->m_PosY = 100;
+                robot->MapPosCalc();
+                robot->JoinToGroup();
+            }
+            robot->RChange(MR_Matrix);
+            robot->RNeed(MR_Matrix);
+            if (robot->GetSide() == PLAYER_SIDE) donor = robot;
+        }
+        MG_CHECK(donor != nullptr);
+        donor->GetEnv()->m_Place = 0; // Existing reservation; its owner stays outside the landing area.
+        auto factory = make_battle_building(*donor->m_Unit[0].m_Graph->VO(), PLAYER_SIDE, BUILDING_TITAN, 100, 100);
+        g_Config.m_MaintenanceTime = 1000;
+        map.m_Difficulty.k_time_before_maintenance = 1;
+        map.SetMaintenanceTime(0);
+        auto resources = [&] {
+            std::array<int, MAX_RESOURCES> result{};
+            for (int i = 0; i < MAX_RESOURCES; ++i)
+                result[i] = side.GetResourcesAmount(static_cast<ERes>(i));
+            return result;
+        };
+        const auto before = resources();
+        const auto draws = random::draw_count();
+        factory->Maintenance();
+        MG_CHECK(map.m_AD_Obj_cnt == 2 && session.rejected_icon_targets() == 2);
+        MG_CHECK(map.BeforeMaintenanceTime() == 1000 && random::draw_count() == draws + 5);
+        MG_CHECK(resources() == before);
+        struct Cargo {
+            CMatrixFlyer *carrier;
+            CMatrixRobotAI *robot;
+            CoreLease carrier_core;
+            CoreLease robot_core;
+            int place, group;
+            CPoint destination;
+            int release = -1, landing = -1, retired = -1, falling_samples = 0;
+            D3DXVECTOR3 released{};
+            float previous_z = 0;
+            explicit Cargo(CMatrixFlyer *flyer) : carrier(flyer), robot(static_cast<CMatrixRobotAI *>(flyer->GetCarryingRobot())),
+                carrier_core(flyer->GetCore(DEBUG_CALL_INFO)), robot_core(robot->GetCore(DEBUG_CALL_INFO)),
+                place(robot->GetEnv()->m_Place), group(robot->GetGroupLogic()),
+                destination(g_MatrixMap->m_RN.m_Place[place].m_Pos) {}
+        };
+        std::vector<Cargo> cargo;
+        cargo.reserve(2);
+        std::set<int> places;
+        for (int i = 0; i < 2; ++i) {
+            auto *carrier = static_cast<CMatrixFlyer *>(map.m_AD_Obj[i]);
+            MG_CHECK(carrier->CarryingRobot());
+            auto *robot = static_cast<CMatrixRobotAI *>(carrier->GetCarryingRobot());
+            MG_CHECK(robot->GetEnv()->m_Place > 0 && robot->GetEnv()->m_Place < road.m_PlaceCnt);
+            cargo.emplace_back(carrier);
+            const auto &item = cargo.back();
+            MG_CHECK(item.place > 0 && item.place < 4 && places.insert(item.place).second);
+            MG_CHECK(variant == 0 || item.place != 1);
+            MG_CHECK(item.robot->m_CurrState == ROBOT_CARRYING);
+            MG_CHECK(item.group >= 0 && item.group < MAX_LOGIC_GROUP);
+            MG_CHECK(side.m_PlayerGroup[item.group].Order() == mpo_Attack);
+            MG_CHECK(side.m_PlayerGroup[item.group].m_To == item.destination);
+        }
+        MG_CHECK(places == (variant == 0 ? std::set<int>({1, 2}) : std::set<int>({2, 3})));
+        const auto after_request = random::draw_count();
+        factory->Maintenance();
+        MG_CHECK(map.m_AD_Obj_cnt == 2 && random::draw_count() == after_request);
+        std::cout << session.metadata("neighboring-delivery-landings-v1") << " variant=" << variant << std::endl;
+        while (session.time() < 30000) {
+            session.advance();
+            MG_CHECK(resources() == before);
+            MG_CHECK(session.robot(1).x == 100 && session.robot(1).y == 200);
+            MG_CHECK(session.robot(3).x == 540 && session.robot(3).y == 100);
+            for (auto &item : cargo) {
+                MG_CHECK(item.robot_core->m_Object == item.robot);
+                MG_CHECK(!item.robot->IsMustDie());
+                finite(*item.robot);
+                MG_CHECK(side.m_PlayerGroup[item.group].Order() == mpo_Attack);
+                MG_CHECK(side.m_PlayerGroup[item.group].m_To == item.destination);
+                if (item.carrier_core->m_Object) finite(item.carrier->GetPos());
+                else if (item.retired < 0) item.retired = session.time();
+                if (item.release < 0 && item.robot->m_CurrState != ROBOT_CARRYING) {
+                    item.release = session.time();
+                    MG_CHECK(item.robot->m_CurrState == ROBOT_FALLING);
+                    MG_CHECK(item.carrier_core->m_Object && !item.carrier->CarryingRobot());
+                    item.released = D3DXVECTOR3(item.robot->m_PosX, item.robot->m_PosY, item.robot->GetMatrix()._43);
+                    item.previous_z = item.released.z;
+                    MG_CHECK(item.released.z > map.GetZ(item.released.x, item.released.y));
+                }
+                if (item.release >= 0 && item.robot->m_CurrState == ROBOT_FALLING) {
+                    ++item.falling_samples;
+                    MG_CHECK(item.robot->m_PosX == item.released.x && item.robot->m_PosY == item.released.y);
+                    MG_CHECK(item.robot->GetMatrix()._43 <= item.previous_z);
+                    item.previous_z = item.robot->GetMatrix()._43;
+                }
+                if (item.landing < 0 && item.release >= 0 && item.robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) {
+                    item.landing = session.time();
+                    MG_CHECK(std::abs(item.robot->GetMatrix()._43 - (200 + slope * item.robot->m_PosX)) < 0.001f);
+                }
+            }
+        }
+        MG_CHECK(map.m_AD_Obj_cnt == 0);
+        for (const auto &item : cargo) {
+            std::cout << "place=" << item.place << " release=" << item.release << " landing=" << item.landing
+                      << " retirement=" << item.retired << " final=" << item.robot->m_PosX << ',' << item.robot->m_PosY
+                      << " core=" << item.robot->GetMatrix()._41 << ',' << item.robot->GetMatrix()._42
+                      << ',' << item.robot->GetMatrix()._43 << std::endl;
+            MG_CHECK(item.release > 0 && item.landing > item.release && item.retired > item.landing && item.falling_samples > 1);
+            MG_CHECK(!item.carrier_core->m_Object && item.robot_core->m_Object == item.robot);
+            MG_CHECK(item.robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD && item.robot->PLIsInPlace());
+            MG_CHECK(item.robot->m_PosX == (item.destination.x + 2) * GLOBAL_SCALE_MOVE);
+            MG_CHECK(item.robot->m_PosY == (item.destination.y + 2) * GLOBAL_SCALE_MOVE);
+            // Logic may snap the last sub-step to the destination before the
+            // next transform refresh. Compare height with that cached pose.
+            const auto &pose = item.robot->GetMatrix();
+            MG_CHECK(std::abs(pose._43 - (200 + slope * pose._41)) < 0.001f);
+            MG_CHECK(std::abs(pose._41 - item.robot->m_PosX) < 1);
+            MG_CHECK(std::abs(pose._42 - item.robot->m_PosY) < 1);
+        }
+        const float separation = std::hypot(cargo[0].robot->m_PosX - cargo[1].robot->m_PosX,
+                                            cargo[0].robot->m_PosY - cargo[1].robot->m_PosY);
+        MG_CHECK(separation >= 40 && separation <= 57);
+    }
+}
+
 }

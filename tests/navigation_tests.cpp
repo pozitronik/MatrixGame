@@ -436,7 +436,7 @@ void disconnected() {
         group_run(NavigationLayout::Disconnected, mode, 10);
 }
 }
-namespace tests::navigation { void delivery_flights(); void delivery_carrier_damage(); }
+namespace tests::navigation { void neighboring_delivery_landings(); void delivery_flights(); void delivery_carrier_damage(); }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();
@@ -447,6 +447,7 @@ int main(int argc, char **argv) {
         {"game.navigation.dying_route_blocker", tests::navigation::dying_route_blocker},
         {"game.navigation.shorted_movement_recovery", tests::navigation::shorted_movement_recovery},
         {"game.navigation.drowning_retirement", tests::navigation::drowning_retirement},
+        {"game.navigation.neighboring_delivery_landings", tests::navigation::neighboring_delivery_landings},
         {"game.navigation.delivery_flights", tests::navigation::delivery_flights},
         {"game.navigation.delivery_carrier_damage", tests::navigation::delivery_carrier_damage},
         {"game.navigation.local_routes", local_routes},
