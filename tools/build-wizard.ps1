@@ -399,6 +399,30 @@ function Use-SevenZip {
     $env:PATH = (Split-Path -Parent $result.Value) + ';' + $env:PATH
 }
 
+# The wizard resolves CMake before the compiler, so the toolchain setup must not prepare,
+# and possibly download, its own pinned CMake.
+function Install-PinnedToolchain([string]$ArchivePath = '') {
+    Use-SevenZip
+    $arguments = @{ SkipCMake = $true }
+    if ($ArchivePath) { $arguments['ArchivePath'] = $ArchivePath }
+    Invoke-Setup 'setup-toolchain.ps1' $arguments
+}
+
+# The setup script also checks an already prepared DLL against the pinned hash, so it runs
+# before every copy; 7-Zip is needed only when the DLL has to be extracted.
+function Copy-DirectXRuntime([string]$GameRoot) {
+    $cached = Test-Path -LiteralPath $preparedRuntime
+    if (-not $cached) { Use-SevenZip }
+    try {
+        Invoke-Setup 'setup-directx-runtime.ps1'
+    } catch {
+        if (-not $cached) { throw }
+        throw "$($_.Exception.Message) Delete $preparedRuntime and run build.bat again to prepare it from the verified download."
+    }
+    Copy-Item -LiteralPath $preparedRuntime -Destination (Join-Path $GameRoot 'd3dx9_43.dll') -Force
+    Write-Host '[COPY] d3dx9_43.dll beside the game'
+}
+
 function Get-StagedResource([string]$Name) {
     $path = Join-Path $repoRoot $Name
     if (Test-Path -LiteralPath $path -PathType Leaf) { return $path }
@@ -557,6 +581,24 @@ function Invoke-Wizard {
                 if (-not $Check) { throw 'MSVC builds need Visual Studio 2022 with the x86/x64 C++ tools.' }
             }
         }
+    }
+    # CMake comes before the compiler, so preparing the compiler never has to fetch it.
+    $cmakeActions = $null
+    if ($prepare) {
+        $cmakeActions = [ordered]@{
+            download = { Invoke-Setup 'setup-cmake.ps1'; $pinnedCMake }
+            archive = { $archive = Read-ArchivePath '  Path to cmake-4.4.4-windows-i386.zip'; Invoke-Setup 'setup-cmake.ps1' @{ ArchivePath = $archive }; $pinnedCMake }
+        }
+    }
+    $cmakeCommand = Get-Command cmake -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+    $cmakeCandidates = @($pinnedCMake)
+    if ($cmakeCommand) { $cmakeCandidates += Split-Path -Parent (Split-Path -Parent $cmakeCommand.Source) }
+    if (-not $script:Interactive -and $prepare -and -not (@($script:Settings['CMakeRoot']) + $cmakeCandidates | Where-Object { $_ -and (Test-CMake $_).Ok })) {
+        Invoke-Setup 'setup-cmake.ps1'
+    }
+    $cmake = Resolve-Component 'CMake' $script:Settings['CMakeRoot'] $cmakeCandidates ${function:Test-CMake} $cmakeActions 'CMake installation directory (contains bin\cmake.exe)' -Ask:$ask
+    if ($cmake.Ok) { $script:Settings['CMakeRoot'] = $cmake.Value }
+    if ($useMsvc) {
         $sdkActions = $null
         if ($prepare) {
             $sdkActions = [ordered]@{
@@ -577,8 +619,8 @@ function Invoke-Wizard {
         $toolchainActions = $null
         if ($prepare) {
             $toolchainActions = [ordered]@{
-                download = { Use-SevenZip; Invoke-Setup 'setup-toolchain.ps1'; $pinnedToolchain }
-                archive = { $archive = Read-ArchivePath '  Path to the WinLibs archive'; Use-SevenZip; Invoke-Setup 'setup-toolchain.ps1' @{ ArchivePath = $archive }; $pinnedToolchain }
+                download = { Install-PinnedToolchain; $pinnedToolchain }
+                archive = { Install-PinnedToolchain (Read-ArchivePath '  Path to the WinLibs archive'); $pinnedToolchain }
             }
         }
         $gcc = Get-Command gcc -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
@@ -586,27 +628,11 @@ function Invoke-Wizard {
         if ($gcc) { $toolchainCandidates += Split-Path -Parent (Split-Path -Parent $gcc.Source) }
         if (-not $script:Interactive -and $prepare -and -not (@($script:Settings['ToolchainRoot']) + $toolchainCandidates | Where-Object { $_ -and (Test-MinGW $_).Ok })) {
             Write-Host 'Preparing the pinned MinGW toolchain (about 95 MB to download)...'
-            Use-SevenZip
-            Invoke-Setup 'setup-toolchain.ps1'
+            Install-PinnedToolchain
         }
         $toolchain = Resolve-Component 'MinGW x86 compiler' $script:Settings['ToolchainRoot'] $toolchainCandidates ${function:Test-MinGW} $toolchainActions 'Compiler installation directory (contains bin\gcc.exe)' -Ask:$ask
         if ($toolchain.Ok) { $script:Settings['ToolchainRoot'] = $toolchain.Value }
     }
-    $cmakeActions = $null
-    if ($prepare) {
-        $cmakeActions = [ordered]@{
-            download = { Invoke-Setup 'setup-cmake.ps1'; $pinnedCMake }
-            archive = { $archive = Read-ArchivePath '  Path to cmake-4.4.4-windows-i386.zip'; Invoke-Setup 'setup-cmake.ps1' @{ ArchivePath = $archive }; $pinnedCMake }
-        }
-    }
-    $cmakeCommand = Get-Command cmake -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-    $cmakeCandidates = @($pinnedCMake)
-    if ($cmakeCommand) { $cmakeCandidates += Split-Path -Parent (Split-Path -Parent $cmakeCommand.Source) }
-    if (-not $script:Interactive -and $prepare -and -not (@($script:Settings['CMakeRoot']) + $cmakeCandidates | Where-Object { $_ -and (Test-CMake $_).Ok })) {
-        Invoke-Setup 'setup-cmake.ps1'
-    }
-    $cmake = Resolve-Component 'CMake' $script:Settings['CMakeRoot'] $cmakeCandidates ${function:Test-CMake} $cmakeActions 'CMake installation directory (contains bin\cmake.exe)' -Ask:$ask
-    if ($cmake.Ok) { $script:Settings['CMakeRoot'] = $cmake.Value }
 
     $runtimeNeeded = -not $isDll -and -not (Get-RuntimeInstalled)
     if ($isDll) {
@@ -691,12 +717,7 @@ function Invoke-Wizard {
     if ($runtimeNeeded -and $script:Settings['DirectXRuntime'] -eq 'yes') {
         Write-Host ''
         Write-Host 'DirectX runtime'
-        if (-not (Test-Path -LiteralPath $preparedRuntime)) {
-            Use-SevenZip
-            Invoke-Setup 'setup-directx-runtime.ps1'
-        }
-        Copy-Item -LiteralPath $preparedRuntime -Destination (Join-Path $gameRoot 'd3dx9_43.dll') -Force
-        Write-Host '[COPY] d3dx9_43.dll beside the game'
+        Copy-DirectXRuntime $gameRoot
     }
 
     Write-Host ''
@@ -714,6 +735,9 @@ function Invoke-Wizard {
     }
     return 0
 }
+
+# Dot-sourcing defines the functions without running the wizard, for the helper tests.
+if ($MyInvocation.InvocationName -eq '.') { return }
 
 $pauseAtEnd = $script:Interactive -and (Test-StartedFromExplorer)
 $status = 1

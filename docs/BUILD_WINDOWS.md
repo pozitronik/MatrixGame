@@ -7,7 +7,7 @@ x86 and uses C++20 and DirectX 9.
 
 `build.bat` in the repository root starts the interactive build wizard `tools/build-wizard.ps1` with Windows PowerShell. It can be run from Explorer, cmd.exe or PowerShell; when started from Explorer, it keeps its window open at the end. The wizard asks for the configuration, compiler, EXE or DLL output, cheats, music decoder, tests and number of parallel jobs. It then runs `tools/build.ps1` with those options.
 
-For each tool, the wizard shows what it found and offers three choices: use it, enter another installation path, or prepare the pinned version from a verified download or a supplied archive. The pinned versions are prepared with the setup scripts described below: MinGW with `setup-toolchain.ps1`, CMake with `setup-cmake.ps1` and the DirectX SDK subset with `setup-directx-sdk.ps1`. It validates a supplied installation before using it:
+For each tool, the wizard shows what it found and offers three choices: use it, enter another installation path, or prepare the pinned version from a verified download or a supplied archive. The pinned versions are prepared with the setup scripts described below: MinGW with `setup-toolchain.ps1`, CMake with `setup-cmake.ps1` and the DirectX SDK subset with `setup-directx-sdk.ps1`. CMake is resolved before the compiler, and the compiler is then prepared with `-SkipCMake`, so a supplied WinLibs archive never triggers a CMake download. It validates a supplied installation before using it:
 - The compiler must target `i686-w64-mingw32` and provide Ninja and objdump.
 - CMake must be version 3.27 or newer and include CTest.
 - The DirectX SDK must contain the D3DX9 headers and x86 libraries.
@@ -24,7 +24,7 @@ For a standalone build, the wizard can import resources from an owned Space Rang
 - `music.pkg`;
 - the chosen language's `Lang.dat`.
 
-Files that already match are left alone, and a different existing file is replaced only after confirmation. The installation itself is never modified. When the x86 `d3dx9_43.dll` is not installed, the wizard can prepare the pinned runtime with `setup-directx-runtime.ps1` and copy it beside the built executable.
+Files that already match are left alone, and a different existing file is replaced only after confirmation. The installation itself is never modified. When the x86 `d3dx9_43.dll` is not installed, the wizard can prepare the pinned runtime with `setup-directx-runtime.ps1` and copy it beside the built executable. That script runs before every copy, so a previously prepared DLL that does not match the pinned SHA256 is rejected rather than copied.
 
 Answers are saved in the ignored `.local/build-wizard.env`, and later runs offer to build with them directly. The wizard accepts these options:
 
@@ -51,7 +51,7 @@ Install 7-Zip and make `7z.exe` available on PATH. The setup script downloads an
 An existing copy of the bundle can be passed to `setup-toolchain.ps1 -ArchivePath <path>`.
 Use the supplied x86 compiler rather than an x64 installation on PATH.
 
-For offline setup, also pass `-CMakeArchivePath <cmake-4.4.4-windows-i386.zip>`, or run `setup-cmake.ps1 -ArchivePath <path>` separately. Setup verifies the upstream archive SHA256 before extraction and checks the installed CMake/CTest versions. Downloads are cached under `.tools/downloads/`. A download is written to a separate partial file and kept only after its SHA256 matches the pin. A failed, interrupted or mismatching attempt is discarded; setup makes at most three attempts, waiting 5 and then 10 seconds, and then reports the last error. A cached file with a different SHA256 is discarded and downloaded again. An archive supplied with `-ArchivePath` is verified but never modified or deleted. Existing compiler installations are retained; the older CMake bundled with WinLibs is not selected by default.
+For offline setup, also pass `-CMakeArchivePath <cmake-4.4.4-windows-i386.zip>`, or run `setup-cmake.ps1 -ArchivePath <path>` separately. `-SkipCMake` prepares only the compiler, for a CMake installation that is prepared or chosen separately. Setup verifies the upstream archive SHA256 before extraction and checks the installed CMake/CTest versions. Downloads are cached under `.tools/downloads/`. A download is written to a separate partial file and kept only after its SHA256 matches the pin. A failed, interrupted or mismatching attempt is discarded; setup makes at most three attempts, waiting 5 and then 10 seconds, and then reports the last error. A cached file with a different SHA256 is discarded and downloaded again. An archive supplied with `-ArchivePath` is verified but never modified or deleted. Existing compiler installations are retained; the older CMake bundled with WinLibs is not selected by default.
 
 Both build/test helpers accept `-CMakeRoot <installation-directory>` independently of `-ToolchainRoot`. The project's minimum is CMake 3.27, with policies tested through 4.4; use the pinned 4.4.4 for normal work. Relative installation paths are resolved from the PowerShell working directory. CMake's own executable path is propagated to the dependency builds.
 
