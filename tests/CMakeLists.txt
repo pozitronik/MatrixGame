@@ -696,14 +696,14 @@ foreach(contract camera_wheel_limits camera_drag_release camera_input_interrupti
 endforeach()
 
 add_matrix_test_executable(matrixgame_settings_window_integration_tests settings_window_integration_tests.cpp
-    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    settings_display_host.cpp battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_settings_window_integration_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_settings_window_integration_tests matrixgame_scenario_identity)
 target_include_directories(matrixgame_settings_window_integration_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(matrixgame_settings_window_integration_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract settings_input_pause_cancel settings_apply_save_failure)
+foreach(contract settings_input_pause_cancel settings_apply_save_failure settings_display_rollback)
     add_matrix_test(game.presentation.${contract} matrixgame_settings_window_integration_tests gameplay ui input settings)
 endforeach()
 
