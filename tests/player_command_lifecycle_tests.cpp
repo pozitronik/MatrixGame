@@ -223,6 +223,15 @@ void nonready_commands(bool carried) {
             MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_To == before_stop);
             if (carried) MG_CHECK(before_stop == CPoint(0, 0));
         }
+        const auto canceled_order_stays_canceled = [&] {
+            intent(*robot, mpo_Stop);
+            MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_To == before_stop);
+            // Use the actual canceled destination cell, not a broad quadrant:
+            // legitimate movement toward the Stop place can cross that quadrant.
+            MG_CHECK(CPoint(robot->GetMapPosX(), robot->GetMapPosY()) != CPoint(48, 8));
+            CPoint unit_destination;
+            if (robot->GetMoveToCoords(unit_destination)) MG_CHECK(unit_destination != CPoint(48, 8));
+        };
         int ready = -1, intermediate = -1;
         while (session.time() < (cancel ? 30000 : 18000)) {
             session.advance();
@@ -230,6 +239,7 @@ void nonready_commands(bool carried) {
                 intermediate = session.time();
             if (ready < 0 && robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) ready = session.time();
             intent(*robot, cancel ? mpo_Stop : mpo_MoveTo);
+            if (cancel && ready >= 0) canceled_order_stays_canceled();
         }
         MG_CHECK(intermediate > 0 && ready > intermediate);
         MG_CHECK(robot->GetBase() == nullptr);
@@ -243,8 +253,12 @@ void nonready_commands(bool carried) {
             // the old Move must not resume once the unit can move independently.
             MG_CHECK(robot->m_PosX < 400 || robot->m_PosY > 200);
             const float stopped_x = robot->m_PosX, stopped_y = robot->m_PosY;
-            advance(session, 1000);
-            MG_CHECK(robot->m_PosX == stopped_x && robot->m_PosY == stopped_y);
+            const int stationary_until = session.time() + 1000;
+            while (session.time() < stationary_until) {
+                session.advance();
+                canceled_order_stays_canceled();
+                MG_CHECK(robot->m_PosX == stopped_x && robot->m_PosY == stopped_y);
+            }
             intent(*robot, mpo_Stop);
             MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_To == before_stop);
             if (carried) {
