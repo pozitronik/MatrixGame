@@ -559,6 +559,19 @@ if(MATRIXGAME_BUILD_DLL)
     endforeach()
 endif()
 
+# Exercise the actual EXE entry point with synthetic failure inputs on an invisible desktop.
+if(NOT MATRIXGAME_BUILD_DLL)
+    add_matrix_test_executable(matrixgame_standalone_startup_tests standalone_startup_tests.cpp)
+    add_dependencies(matrixgame_standalone_startup_tests MatrixGame)
+    foreach(contract missing_resources rejected_packed missing_text invalid_random damaged_optional)
+        add_test(NAME game.startup.native_${contract}
+            COMMAND matrixgame_standalone_startup_tests game.startup.native_${contract}
+                "$<TARGET_FILE:MatrixGame>" "${CMAKE_CXX_COMPILER}")
+        set_tests_properties(game.startup.native_${contract} PROPERTIES
+            LABELS "engine;asset-free;startup;ui" TIMEOUT 90)
+    endforeach()
+endif()
+
 add_matrix_test_executable(matrixgame_production_queue_tests production_queue_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_production_queue_tests PRIVATE MatrixGameInternal)
 foreach(contract reinforcement_gates reinforcement_disabled reinforcement_scaling)
