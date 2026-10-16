@@ -437,10 +437,10 @@ void group_add_cap() {
     for (int i = 0; i < 9; ++i) MG_CHECK(selected(i)->GetGroupLogic() == group);
     MG_CHECK(additional.back()->GetGroupLogic() == -1);
 }
-CPoint screen_center(CMatrixRobotAI &robot) {
+CPoint screen_center(CMatrixMapStatic &object) {
     D3DXMATRIX identity;
     D3DXMatrixIdentity(&identity);
-    const auto p = g_MatrixMap->m_Camera.Project(robot.GetGeoCenter(), identity);
+    const auto p = g_MatrixMap->m_Camera.Project(object.GetGeoCenter(), identity);
     return CPoint(static_cast<int>(p.x), static_cast<int>(p.y));
 }
 void drag(CFormMatrixGame &form, CPoint from, CPoint to) {
@@ -1277,6 +1277,92 @@ void control_group_combat_death() {
     }
 }
 
+void mixed_selection_lifecycle() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        for (int step_ms : {10, 16}) {
+            for (bool building_first : {false, true}) {
+                for (bool click : {false, true}) {
+                    tests::BattleCombatAssets assets;
+                    PlayerCraterAssets crater;
+                    Session session({mode, 80, step_ms, 1000, false, true});
+                    assets.install();
+                    crater.install();
+                    CFormMatrixGame form;
+                    auto *robot = selected(0);
+                    // The building borrows the surviving robot's geometry, not the dying one's.
+                    auto building = tests::make_battle_building(*selected(1)->m_Unit[0].m_Graph->VO(),
+                        PLAYER_SIDE, BUILDING_TITAN, 100, 200);
+                    auto &props = g_Config.m_CannonsProps[0];
+                    props = {};
+                    props.weapon = WEAPON_CANNON2;
+                    props.m_Hitpoint = 1000;
+                    props.seek_radius = 1;
+                    auto *cannon = tests::create_battle_cannon(PLAYER_SIDE, 100, 200);
+                    const auto point = screen_center(*robot);
+                    const CRect area = click ? CRect(point.x, point.y, point.x + 1, point.y + 1)
+                                             : CRect(point.x - 30, point.y - 30, point.x + 30, point.y + 30);
+                    MG_CHECK(robot->InRect(area) && building->InRect(area));
+                    MG_CHECK(cannon->InRect(CRect(point.x - 60, point.y - 60, point.x + 60, point.y + 60)));
+                    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
+                        [](SObjectCore *value) { value->Release(); });
+                    const auto select_scene = [&](bool include_robot) {
+                        SelectionFixture visible{};
+                        if (building_first) {
+                            visible.append(cannon);
+                            visible.append(building.get());
+                        }
+                        if (include_robot) visible.append(robot);
+                        if (!building_first) {
+                            visible.append(building.get());
+                            visible.append(cannon);
+                        }
+                        drag(form, CPoint(area.left, area.top), CPoint(area.right, area.bottom));
+                        MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
+                        MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(cannon));
+                    };
+                    side().Select(NOTHING, nullptr);
+                    side().ResetSystemSelection();
+                    {
+                        SelectionFixture visible{cannon};
+                        const auto center = screen_center(*cannon);
+                        const CRect cannon_area(center.x - 20, center.y - 20, center.x + 20, center.y + 20);
+                        MG_CHECK(cannon->InRect(cannon_area));
+                        drag(form, CPoint(cannon_area.left, cannon_area.top),
+                                   CPoint(cannon_area.right, cannon_area.bottom));
+                        MG_CHECK(side().m_CurrSel == NOTHING_SELECTED);
+                        MG_CHECK(!side().GetCurGroup());
+                        MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
+                    }
+                    select_scene(true);
+                    MG_CHECK(side().m_CurrSel == ROBOT_SELECTED);
+                    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == robot);
+                    MG_CHECK(side().GetCurSelObject() == robot);
+                    MG_CHECK(!side().GetCurGroup()->FindObject(building.get()));
+
+                    g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {10000, 10000, 0};
+                    MG_CHECK(robot->Damage(WEAPON_GUN, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+                    MG_CHECK(robot->m_CurrState == ROBOT_DIP && core->m_Object == robot);
+                    MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(robot));
+                    select_scene(true); // The dying object is still visible, but no longer selectable.
+                    MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
+                    MG_CHECK(side().m_ActiveObject == building.get());
+                    // Selection uses supplied visibility; leave no cached pointer across map retirement.
+                    for (int elapsed = 0; elapsed < 6000; elapsed += step_ms) session.advance();
+                    MG_CHECK(core->m_Object == nullptr);
+                    MG_CHECK(!session.robot(1).alive);
+                    select_scene(false);
+                    MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
+                    MG_CHECK(side().m_ActiveObject == building.get());
+                    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+                    side().Select(NOTHING, nullptr);
+                    std::cout << session.metadata("mixed-selection-lifecycle-v1")
+                              << " building_first=" << building_first << " click=" << click << '\n';
+                }
+            }
+        }
+    }
+}
+
 void manual_exit_keys() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         for (uint8_t key : {uint8_t(VK_RETURN), uint8_t(VK_SPACE), uint8_t(VK_ESCAPE)}) {
@@ -1512,6 +1598,7 @@ void manual_control() {
 constexpr tests::Case cases[] = {
     {"game.player.control_group_reassignment", control_group_reassignment},
     {"game.player.control_group_combat_death", control_group_combat_death},
+    {"game.player.mixed_selection_lifecycle", mixed_selection_lifecycle},
     {"game.player.manual_bomb_key", manual_bomb_key},
     {"game.player.manual_combat_death", manual_combat_death},
     {"game.player.manual_exit_keys", manual_exit_keys},
