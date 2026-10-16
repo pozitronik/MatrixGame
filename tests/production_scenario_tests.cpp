@@ -13,6 +13,7 @@
 #include "Interface/CHistory.h"
 #include "MatrixGame.h"
 #include "MatrixSkinManager.hpp"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <memory>
@@ -39,24 +40,28 @@ bool in_logic(CMatrixMapStatic *expected) {
     return false;
 }
 
-void constructor_assets(bool repair = false) {
+void constructor_assets(bool repair = false, int repair_slots = 1) {
+    MG_CHECK(repair_slots >= 1 && repair_slots <= 2);
     tests::install_battle_texture(OBJECT_PATH_ROBOT_CHASSIS L"2");
     tests::install_battle_texture(OBJECT_PATH_ROBOT_ARMOR L"1");
     const tests::MeshAttachment link{1, L"armor", 0, 0, 20};
     tests::load_battle_material_mesh(std::span(&link, 1), OBJECT_PATH_ROBOT_CHASSIS L"2.vo",
                                      OBJECT_PATH_ROBOT_CHASSIS L"2");
-    const tests::MeshAttachment links[] = {{1, L"head", 0, 0, 20}, {2, L"weapon", 0, 0, 0}};
-    tests::load_battle_material_mesh(std::span(links, repair ? 2u : 1u), OBJECT_PATH_ROBOT_ARMOR L"1.vo",
+    const tests::MeshAttachment links[] = {{1, L"head", 0, 0, 20}, {2, L"weapon", 0, 0, 0},
+                                         {3, L"weapon", 5, 0, 0}};
+    tests::load_battle_material_mesh(std::span(links, repair ? 1u + repair_slots : 1u), OBJECT_PATH_ROBOT_ARMOR L"1.vo",
                                      OBJECT_PATH_ROBOT_ARMOR L"1");
     if (repair) {
         tests::install_battle_texture(OBJECT_PATH_ROBOT_WEAPON L"10");
-        const tests::MeshAttachment muzzle{1, L"muzzle", 0, 15, 0};
-        tests::load_battle_material_mesh(std::span(&muzzle, 1), OBJECT_PATH_ROBOT_WEAPON L"10.vo",
+        const tests::MeshAttachment muzzles[] = {{1, L"muzzle", 0, 15, 0}, {2, L"repair-end", 0, 25, 0}};
+        tests::load_battle_material_mesh(muzzles, OBJECT_PATH_ROBOT_WEAPON L"10.vo",
                                          OBJECT_PATH_ROBOT_WEAPON L"10");
         auto &slots = g_MatrixMap->m_RobotWeaponMatrix[RUK_ARMOR_BIREX - 1];
-        slots.cnt = slots.common = 1;
-        slots.list[0].id = 2;
-        slots.list[0].access_invert = 1 << (RUK_WEAPON_REPAIR - 1);
+        slots.cnt = slots.common = repair_slots;
+        for (int i = 0; i < repair_slots; ++i) {
+            slots.list[i].id = 2 + i;
+            slots.list[i].access_invert = 1 << (RUK_WEAPON_REPAIR - 1);
+        }
         for (int i = 0; i < MAX_RESOURCES; ++i)
             g_Config.m_Price[WEAPON1_TITAN + (RUK_WEAPON_REPAIR - 1) * MAX_RESOURCES + i] = 31 + i;
     }
@@ -160,6 +165,164 @@ void ai_production_purchase(PurchaseEnd end = PurchaseEnd::Queued) {
 void ai_purchase() { ai_production_purchase(); }
 void ai_purchase_neutralized() { ai_production_purchase(PurchaseEnd::Neutralized); }
 void ai_purchase_deleted() { ai_production_purchase(PurchaseEnd::Deleted); }
+
+enum class StrategicEnd { Deploy, RemoveWaitingBase, RemovePaidBase };
+void strategic_purchase(StrategicEnd ending) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+      for (int step : {10, 16}) {
+        tests::BattleMaterialProfile materials;
+        Session session({mode, 83, step, 2000, false, false, true});
+        constructor_assets(true, 2);
+        auto owned = tests::make_battle_building(*source_robot()->m_Unit[0].m_Graph->VO(),
+            PLAYER_SIDE, BUILDING_BASE, 100, 100);
+        auto *factory = owned.get();
+        factory->m_TopPoint = D3DXVECTOR3(100, 100, 40);
+        g_MatrixMap->AddObject(owned.release(), true);
+        const auto release_core = [](SObjectCore *core) { core->Release(); };
+        std::unique_ptr<SObjectCore, decltype(release_core)> base_core(factory->GetCore(DEBUG_CALL_INFO), release_core);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        side.m_Constructor->SetSide(PLAYER_SIDE);
+        side.PGCalcStat();
+        side.SetResourceForceUp(100);
+        side.m_WaitResMul = 1;
+        std::fill(std::begin(g_Config.m_Price), std::end(g_Config.m_Price), 0);
+        g_Config.m_WeaponStrengthAI[RUK_WEAPON_REPAIR] = 50;
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            g_Config.m_Price[WEAPON1_TITAN + (RUK_WEAPON_REPAIR - 1) * MAX_RESOURCES + r] = 60;
+            g_Config.m_Timings[r] = 100;
+            side.SetResourceAmount(static_cast<ERes>(r), 90);
+        }
+        g_Config.m_Timings[RESOURCE_BASE] = 100;
+        g_Config.m_Timings[UNIT_ROBOT] = 100;
+        struct DefinitionsGuard { ~DefinitionsGuard() { SSpecialBot::ClearAIRobotType(); } } definitions_guard;
+        MG_CHECK(!SSpecialBot::m_AIRobotTypeList && SSpecialBot::m_AIRobotTypeCnt == 0);
+        CBlockPar definitions;
+        definitions.ParAdd(L"1", L"W,1S,RR");
+        definitions.ParAdd(L"1", L"W,1S,R");
+        SSpecialBot::LoadAIRobotType(definitions, g_MatrixMap->m_RobotWeaponMatrix);
+        MG_CHECK(SSpecialBot::m_AIRobotTypeCnt == 2);
+        MG_CHECK(SSpecialBot::m_AIRobotTypeList[0].m_Strength == 100);
+        MG_CHECK(SSpecialBot::m_AIRobotTypeList[1].m_Strength == 50);
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            MG_CHECK(SSpecialBot::m_AIRobotTypeList[0].m_Resources[r] == 120);
+            MG_CHECK(SSpecialBot::m_AIRobotTypeList[1].m_Resources[r] == 60);
+        }
+        const auto draws = random::draw_count();
+        const auto build_stat = side.GetStatValue(STAT_ROBOT_BUILD);
+        side.BuildRobot();
+        MG_CHECK(side.m_WaitResForBuildRobot == 0 && side.m_BuildRobotLast == -1);
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && resources() == (Cost{90, 90, 90, 90}));
+        MG_CHECK(random::draw_count() == draws + 1);
+        std::cout << "strategic ending=" << int(ending) << ' '
+                  << session.metadata("synthetic-strategic-purchase-v1") << '\n';
+        if (ending == StrategicEnd::RemoveWaitingBase) {
+            g_MatrixMap->StaticDelete(factory);
+            MG_CHECK(!base_core->m_Object && side.GetMaxSideRobots() == 0);
+            const auto before = resources();
+            for (int frame = 0; frame < 100; ++frame) {
+                session.advance();
+                side.BuildRobot();
+                MG_CHECK(resources() == before && side.m_WaitResForBuildRobot == 0);
+                MG_CHECK(side.m_BuildRobotLast == -1 && side.GetStatValue(STAT_ROBOT_BUILD) == build_stat);
+            }
+            // Losing the only base removes capacity; this guard precedes wait cancellation.
+            MG_CHECK(random::draw_count() == draws + 1);
+            continue;
+        }
+        int payouts = 0;
+        while (factory->m_BS.GetItemsCnt() == 0 && session.time() < 2000) {
+            const auto before = resources();
+            session.advance();
+            const auto earned = resources();
+            const int change = earned[0] - before[0];
+            MG_CHECK(change == 0 || change == 3);
+            for (int r = 0; r < MAX_RESOURCES; ++r) MG_CHECK(earned[r] == before[r] + change);
+            payouts += change / 3;
+            side.BuildRobot();
+            if (payouts < 10) {
+                MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && resources() == earned);
+                MG_CHECK(side.m_WaitResForBuildRobot == 0 && side.m_BuildRobotLast == -1);
+            }
+        }
+        MG_CHECK(payouts == 10 && factory->m_BS.GetItemsCnt() == 1);
+        // Sixteen-millisecond frames contain 10+6 ms object ticks. Income
+        // discards overshoot, yielding two payouts per thirteen such frames.
+        MG_CHECK(session.time() == (step == 10 ? 1000 : 1040));
+        MG_CHECK(resources() == Cost{} && side.m_WaitResForBuildRobot == -1 && side.m_BuildRobotLast == 0);
+        MG_CHECK(random::draw_count() == draws + 1); // The retained plan needs no new lottery.
+        auto *built = factory->m_BS.GetTopItem()->AsRobot();
+        std::unique_ptr<SObjectCore, decltype(release_core)> robot_core(built->GetCore(DEBUG_CALL_INFO), release_core);
+        MG_CHECK(!in_logic(built) && built->GetBase() == factory && built->GetSide() == PLAYER_SIDE);
+        MG_CHECK(built->m_UnitCnt == 4);
+        for (int unit = 2; unit < 4; ++unit)
+            MG_CHECK(built->m_Unit[unit].m_Type == MRT_WEAPON &&
+                     built->m_Unit[unit].u1.s1.m_Kind == RUK_WEAPON_REPAIR);
+        Cost constructor_price{};
+        side.m_Constructor->GetConstructionPrice(constructor_price.data());
+        MG_CHECK(constructor_price == (Cost{120, 120, 120, 120}));
+        side.BuildRobot();
+        MG_CHECK(factory->m_BS.GetItemsCnt() == 1 && factory->m_BS.GetTopItem() == built);
+        MG_CHECK(resources() == Cost{} && random::draw_count() == draws + 1);
+        if (ending == StrategicEnd::RemovePaidBase) {
+            g_MatrixMap->StaticDelete(factory);
+            MG_CHECK(!base_core->m_Object && !robot_core->m_Object);
+            MG_CHECK(resources() == constructor_price);
+            MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == build_stat);
+            for (int frame = 0; frame < 100; ++frame) {
+                session.advance();
+                side.BuildRobot();
+                MG_CHECK(!base_core->m_Object && !robot_core->m_Object);
+                MG_CHECK(resources() == constructor_price);
+                MG_CHECK(side.m_WaitResForBuildRobot == -1 && side.m_BuildRobotLast == 0);
+                MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == build_stat);
+            }
+            MG_CHECK(random::draw_count() == draws + 1);
+            continue;
+        }
+        const int purchased = session.time();
+        int spawned = -1, opened = -1, detached = -1, closed = -1;
+        while (session.time() < purchased + 8000 && closed < 0) {
+            const auto before = resources();
+            session.advance();
+            const auto after = resources();
+            const int change = after[0] - before[0];
+            MG_CHECK(change == 0 || change == 3);
+            for (int r = 0; r < MAX_RESOURCES; ++r) MG_CHECK(after[r] == before[r] + change);
+            if (spawned < 0 && in_logic(built)) {
+                spawned = session.time();
+                MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && factory->IsSpawningBot());
+                MG_CHECK(built->m_CurrState == ROBOT_IN_SPAWN && built->IsDisableManual());
+                MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == build_stat + 1);
+            }
+            if (opened < 0 && factory->m_State == BASE_OPENED) opened = session.time();
+            if (spawned >= 0 && detached < 0 && built->GetBase() == nullptr) {
+                detached = session.time();
+                const D3DXVECTOR2 delta(built->m_PosX - factory->m_Pos.x, built->m_PosY - factory->m_Pos.y);
+                MG_CHECK(D3DXVec2LengthSq(&delta) >= BASE_DIST * BASE_DIST);
+                MG_CHECK(built->m_CurrState == ROBOT_SUCCESSFULLY_BUILD && !built->IsDisableManual());
+                MG_CHECK(factory->m_State == BASE_CLOSING && !factory->IsSpawningBot());
+            }
+            if (detached >= 0 && factory->m_State == BASE_CLOSED) closed = session.time();
+        }
+        std::cout << "purchase=" << purchased << " spawned=" << spawned << " opened=" << opened
+                  << " detached=" << detached << " closed=" << closed << '\n';
+        MG_CHECK(spawned >= purchased + 100 && spawned < purchased + 100 + step);
+        MG_CHECK(opened > spawned && detached > opened && closed > detached);
+        MG_CHECK(opened == (step == 10 ? 2340 : 2400));
+        MG_CHECK(detached == (step == 10 ? 4590 : 4656));
+        MG_CHECK(closed == (step == 10 ? 5840 : 5904));
+        MG_CHECK(base_core->m_Object == factory && robot_core->m_Object == built);
+        MG_CHECK(in_logic(built) && built->IsLiveRobot() && built->GetSide() == PLAYER_SIDE);
+        MG_CHECK(built->GetBase() == nullptr && factory->m_BS.GetItemsCnt() == 0);
+        MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == build_stat + 1);
+        const int final_balance = step == 10 ? 144 : 138;
+        MG_CHECK(resources() == (Cost{final_balance, final_balance, final_balance, final_balance}));
+        MG_CHECK(random::draw_count() == draws + 4);
+    }
+}
+void strategic_deployment() { strategic_purchase(StrategicEnd::Deploy); }
+void strategic_wait_base_removed() { strategic_purchase(StrategicEnd::RemoveWaitingBase); }
+void strategic_paid_base_removed() { strategic_purchase(StrategicEnd::RemovePaidBase); }
 
 void player_constructor_purchase() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
@@ -778,6 +941,9 @@ void reinforcement_incompatible() { reinforcement_landing_rejection(LandingRejec
 void reinforcement_over_budget() { reinforcement_landing_rejection(LandingRejection::OverBudget); }
 
 const tests::Case cases[] = {{"game.production.ai_purchase", ai_purchase},
+                           {"game.production.strategic_deployment", strategic_deployment},
+                           {"game.production.strategic_wait_base_removed", strategic_wait_base_removed},
+                           {"game.production.strategic_paid_base_removed", strategic_paid_base_removed},
                            {"game.production.player_purchase", player_constructor_purchase},
                            {"game.production.ai_purchase_neutralized", ai_purchase_neutralized},
                            {"game.production.ai_purchase_deleted", ai_purchase_deleted},
