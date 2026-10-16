@@ -832,3 +832,16 @@ if(MATRIXGAME_BUILD_DLL)
         add_matrix_test(game.session.held_input_retirement matrixgame_native_session_fixture gameplay startup input native native-process)
     endif()
 endif()
+
+add_matrix_test_executable(matrixgame_native_special_fixture native_special_fixture.cpp
+    native_special_assets.cpp native_session_assets.cpp native_packed_config.cpp battle_geometry.cpp)
+target_link_libraries(matrixgame_native_special_fixture PRIVATE MatrixGameInternal shell32)
+target_compile_definitions(matrixgame_native_special_fixture PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}"
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>)
+foreach(contract layout ownership)
+    add_matrix_test(game.session.special_export_${contract} matrixgame_native_special_fixture startup storage)
+endforeach()
+if(MATRIXGAME_BUILD_DLL AND MATRIXGAME_NATIVE_SESSION_TESTS)
+    add_matrix_test(game.session.native_special_scenes matrixgame_native_special_fixture gameplay startup native native-process)
+    set_tests_properties(game.session.native_special_scenes PROPERTIES TIMEOUT 90)
+endif()
