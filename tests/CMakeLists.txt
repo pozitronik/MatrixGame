@@ -655,7 +655,7 @@ foreach(contract control_group_reassignment control_group_combat_death move_rout
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
 
-foreach(contract mixed_selection_lifecycle mixed_building_selection inactive_selection manual_armed_fire repair_command_routes bomb_command_routes
+foreach(contract mixed_selection_lifecycle manual_track_lifecycle manual_hovercraft_lifecycle mixed_building_selection inactive_selection manual_armed_fire repair_command_routes bomb_command_routes
                  manual_bomb_key manual_combat_death manual_exit_keys)
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
@@ -680,6 +680,18 @@ add_matrix_test(game.presentation.manual_fire_interface_focus matrixgame_present
 
 foreach(contract camera_wheel_limits camera_drag_release camera_input_interruption)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui input rendering)
+endforeach()
+
+add_matrix_test_executable(matrixgame_settings_window_integration_tests settings_window_integration_tests.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_settings_window_integration_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_settings_window_integration_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_settings_window_integration_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_settings_window_integration_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract settings_input_pause_cancel settings_apply_save_failure)
+    add_matrix_test(game.presentation.${contract} matrixgame_settings_window_integration_tests gameplay ui input settings)
 endforeach()
 
 # Manual correctness probes for catalog defect candidates, intentionally outside
