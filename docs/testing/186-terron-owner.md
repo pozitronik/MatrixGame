@@ -8,7 +8,7 @@ The former Debug attacker check treated absence from the logic list as an invali
 
 `game.outcome.terron_blast_after_conversion` replaces the unregistered defect probe. It runs the synthetic Terron at (400, 100), final-blast radius 150, cooldown 100, seed 85, both RNG modes and independent 10 ms and 16 ms schedules. Each profile keeps or removes the player's two robots before the countdown. The two enemy robots remain subject to normal map logic. The ordinary `terron_destruction` case retains its noncollateral radius 20 and position (600, 100).
 
-The collateral profiles use explicit normal damage of 600 or 1,200 internal health units and friendly damage 7. These are fixture values, not changes to the game's damage tables. They distinguish a surviving hit from a lethal hit and make an accidental friendly-side attribution observable. The Terron is neutral, and its blast must not award either side a robot kill. The separate building kill remains credited to the player.
+The collateral profiles use explicit normal damage of 600 or 1,200 internal health units with friendly damage 0 and minimum-health threshold 7. These are fixture values, not changes to the game's damage tables. They distinguish a surviving hit from a lethal hit and make an accidental friendly-side attribution observable. The Terron is neutral, and its blast must not award either side a robot kill. The separate building kill remains credited to the player.
 
 ## Characterized result
 
