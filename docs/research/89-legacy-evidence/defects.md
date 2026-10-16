@@ -1,0 +1,72 @@
+# Defects and unresolved behavior notes
+
+Source reference: `fad309b43e6051862af732a912ea5f7bb6c7f113`. This is a source and existing-evidence investigation; no new gameplay run, benchmark or compiler experiment is claimed. Unmerged prerequisites are identified explicitly.
+
+## D1: interface clear-rectangle vertical offset
+
+`CIFaceElement::BeforeRender` (`MatrixGame/src/Interface/CIFaceElement.cpp:148`) still sets `r.y1 = m_ClearRect.left + y`. The parser accepts separate left/top values. Opt-in `probe.presentation.clear_rectangle` in `tests/presentation_defect_probes.cpp` exercises the production calculation with position (100,200) and rectangle (3,11,20,30): current top is 203, geometrically required top is 211. The fixture texture supports PreLoad and rejects unrelated operations. `docs/testing/87-presentation.md` records exit 1 on the reference implementation; it is not registered as a passing CTest golden. This is a demonstrated component inconsistency, not demonstrated visible corruption in supplied assets. Tracked configuration reachability and rendered impact remain separate questions. Existing ownership: #89 reproduction, #87 disposition, #63 scaling overlap. A bounded correction must register this existing correct-result assertion and retain asymmetric offsets; do not remove the assertion or accept 203 as intended behavior.
+
+## D2: missing-folder package search
+
+The old inventory is superseded. Commit `3b53dda8a01ad9f8ddd67034bd3acaad33f6656e` (Issue #66, `Storage: List packaged folders and end searches in missing folders`) added root/folder guards in `CPackFile::FindFirst`. Missing folders, a filename used as a folder, and a closed archive now end search with result 1 and null folder rather than dereferencing null or reporting success. `base.layout.package_tree` checks those boundaries; `base.layout.package_listing` checks package enumeration, case-insensitive folder paths, duplicates and skipped subfolders. `CFile::PackedFileNames` now calls FindFirst in production. Therefore the inventory's unused-API deletion suggestion no longer applies. Keep this implementation and its registered tests; no new defect issue is warranted.
+
+## D3: place horizontal bound
+
+The defect is already corrected under #139, with explicitly selectable original semantics under #158. `MatrixLogic.cpp::FindPlace` dispatches through `PlaceContainment::original()`. `PlaceContainment.cpp` defaults the standalone build to corrected containment and the DLL to original containment. `tests/ai_cleanup_tests.cpp` registers `game.ai.place_axis` and `game.ai.bomb_escape_reservation`: they cover asymmetric places, half-open bounds, the original x/y spill and missing ownership, and reservation consequences in both RNG modes. The reservation test checks orders at time zero, not physical travel. Do not call D3 unresolved or propose silently removing the compatibility branch. Physical bomb escape/return belongs to the remaining #84 A5 behavioral increment.
+
+## D4: wide formatting capacity
+
+`MatrixLib/Base/utils.hpp:29` passes `sizeof(buf)` to `std::swprintf` for `wchar_t buf[10240]`. The API count is in wide elements; on the Windows target this advertises 20480 elements for 10240-element storage. This is a source-proven capacity error, but this audit found no focused boundary regression or recorded reproduction proving a current gameplay input reaches the overflow. Do not report an observed crash. A bounded next experiment should run isolated processes with outputs around 10239/10240/10241 characters and a deliberate much-longer width, retaining exit/guard evidence, under pinned MinGW and MSVC Debug/Release. Avoid corrupting the main contract runner's stack. A minimal correction would supply the element count; a formatting-library migration is unnecessary for this defect. Existing terminology/quality scope #97 overlaps, but reproduction and exact correction still require explicit ownership and separate review. This is the highest-priority uncovered memory-safety candidate in this selected inventory.
+
+## D5: configuration-button sound matching
+
+`CIFaceButton.cpp` still uses `if (m_strName.find(L"conf"))`: a prefix at offset zero chooses bclick; an internal occurrence or no occurrence chooses preset_click. `game.presentation.preset_matching` is registered and uses real button and sound routing with synthetic WAV/backend evidence. The documented six presentation button cases include action ordering, disabled behavior and RNG draw accounting. This is demonstrated observable legacy behavior, not a newly established crash or safety defect. Rewriting the condition to an intuitive prefix/containment test changes audible behavior and needs a product decision. Reuse #87 disposition rather than creating a duplicate claim that tests already fix it.
+
+## D6: removing a package loses ownership
+
+`CPackCollection::DelPacketFile` in `MatrixLib/Base/Pack.cpp` erases a matching raw pointer without destroying the owned package; `Clear()` destroys only pointers still in the collection. A current call-site search found only declaration and definition, with no game/library/test call. This establishes an unused internal API with a source-supported leak if called, not an observed leak during ordinary gameplay. A deletion candidate is its exact declaration and definition, subject to checking external C++ consumers and all supported build profiles; do not combine it with FindFirst removal (D2 is now live). If retained, add a tracked-allocation remove/open/close regression before fixing ownership. #90 cleanup and #93 ownership provide existing scope; #86 being closed does not create a fresh storage blocker.
+
+## D7: plane representation mismatch
+
+`SPlane` in `MatrixLib/3G/Math3D.hpp` has separate `dxplane`, `norm` and `dist` members after historical union removal (inventory identifies commit a2dcad3). Builders populate dxplane; distance/intersection read norm/dist. Existing opt-in `probe.presentation.plane_normal` and `probe.presentation.plane_points` initialize the latter fields to zero, build z=2 and query from z=10 downward: current distance is 0 and intersection fails instead of magnitude/parameter 8. `docs/testing/87-presentation.md` records failing exit 1. These are deterministic mathematical reproductions, not uninitialized-data goldens. CalcVis and Debug picking are relevant callers; ordinary camera planes can assign norm/dist directly, so a claim that all frustum culling fails would be false. Native CalcVis output impact is unproven. Correct storage synchronization or representation in a bounded reviewed change, checking layout/aliasing and all construction paths; do not blindly reinstate a union. Register the correct-result probes after correction. Existing owners: #89 evidence, #97 disposition and #87 P5 acceptance.
+
+## M2: BUILDCFG and text configuration
+
+`DevConsole.cpp::hBuildCFG` still carries the crash TODO. It loads IF_PATH, copies current g_MatrixData, deletes Replaces, stores if/da and saves FILE_CONFIGURATION. `manual.storage.buildcfg` in `tests/storage_tests.cpp` separately loads tracked data/iface text, conditionally deletes Replaces, packs to an in-memory CBuf, restores both trees and compares them. It is opt-in and not a live console invocation: it does not establish console dispatch, live copied-tree state, unconditional BlockDelete, output-file permissions/path or successful reload of that file. This distinction must remain in the conclusion.
+
+Current `CGame::Init` loads both data and interface from text when packed configuration is absent, without an EXE-only guard around those branches. The inventory's implication that DLL text support necessarily requires a new contract is stale. Pending #227 native DLL fixture work supplies stronger initialization evidence, but do not cite pending branches as merged acceptance. A bounded remaining experiment can invoke real BUILDCFG in the synthetic hidden native session, inspect the exact generated file and reopen it through CGame::Init, while retaining original supplied files unchanged. First establish the command's output directory and whether Replaces is guaranteed in the live tree. No current segfault has been reproduced by this audit; do not preserve the comment as proof.
+
+## M3: point-light crash note
+
+`CMatrixEffectPointLight::UpdateData` clears previous color contributions, updates optional billboard state, rebuilds terrain entries using BuildLand or BuildLandV, adds contributions and marks terrain color dirty. Entries retain terrain-point pointers. The constructor calls UpdateData, and the destructor calls Clear/RemoveColorData. The rare-crash TODO is diagnostic history, not an identified cause. Map teardown currently removes effects before UnitClear, so do not assert a teardown-after-terrain-use defect merely from the retained pointers. No focused point-light regression was found in the inspected tests. Indirect explosions are not evidence that every rebuild/lifetime path ran.
+
+Bounded unresolved work: synthetic terrain with a point light; both vertex-light modes; position/radius/color updates that rebuild its coverage; overlapping lights and exact add/remove balance; expiry, explicit removal and map teardown. Record source positions and heap/resource lifetime with native or faithfully supported graphics contracts; do not introduce broad graphics no-ops. If a crash appears, capture the earliest invalid transition rather than assuming UpdateData is its origin. Existing #93 ownership research and #87 presentation scope are preferable to an unproved duplicate crash issue.
+
+## M4: reservation collector capacity
+
+The 200-entry arrays in `CMatrixMapLogic::PlaceFindNear` and `PlaceFindNearReturn` have guards before each insertion. The historical assertion-to-return hotfix is still present. These count reservations, not robots. PlaceFindNear can add a return coordinate plus destination/current position for one robot. PlaceFindNearReturn adds bad coordinates first, current position for every live robot, the return coordinate twice (two consecutive GetReturnCoords branches), then destination/current position. Thus one robot can occupy four entries; this duplicate also changes the point at which the wrapper rejects the scene. Do not simplify it without characterization and a compatibility decision.
+
+`navigation_tests.cpp` exercises the explicit-array overload with zero/one occupied reservation, not the collectors' 199/200/201 boundaries. #136 bomb-escape queue capacity is a different function. A bounded follow-up should compare each wrapper near capacity, robot/return/move combinations, bad coordinates, live/dead/skip filters and cannons, checking return value and unchanged output coordinates on early rejection. The guards establish current bounds protection by source, not measured crowd scalability. Allocation replacement or throttling needs #98 measurements and the baseline gate; #81 already owns navigation coverage. The repeated return reservation is a concrete unexplained source finding, not a newly demonstrated gameplay defect.
+
+## M6: weapon and interface cadence notes
+
+The robot `fire while capture` TODO is followed by live target aiming code which explicitly checks ROT_CAPTURE_FACTORY and suppresses whole-body rotation while capturing. Existing/pending armed capture fixtures exercise real capture/combat paths, so the comment cannot be interpreted as proof that capture combat is wholly absent. Establish a narrow target-angle/fire-order counterexample before proposing a new feature; coordinate #82/#84/#85 scope.
+
+The flyer's commented weapon Takt at the end of its movement routine is redundant with an active route: `CMatrixFlyer::LogicTakt` iterates `m_Units[i].Takt(this,fms)`, and `SMatrixFlyerUnit::Takt` advances each live weapon. Uncommenting the old call would risk double advancement. This is a good exact obsolete-comment deletion candidate after confirming applicable unit types and existing flyer-weapon timing tests; do not add a second tick.
+
+The `10 time per second` TODO precedes `g_IFaceList->LogicTakt(step)` in map Takt. Current interface traversal advances elements and sliding; `CInterface::SlideStep` is called per invocation rather than from an independent elapsed-time accumulator. Throttling can alter UI animation and event timing, not merely performance. Keep the current call. Before reconsideration, measure cost with #78 tooling and record observable timing at the proposed cadence; #98 is the existing optimization scope. No measurement here supports changing it.
+
+## Reproduction commands and limits
+
+Use the pinned helpers to build the required configurations; commands below are for a later authorized run, not evidence that they ran in this audit. Run each profile separately and retain actual results.
+
+```powershell
+.\tools\test.ps1 -Configuration Debug -Filter '^(base\.layout\.(package_tree|package_listing)|game\.ai\.(place_axis|bomb_escape_reservation)|game\.presentation\.preset_matching)$'
+.\tools\test.ps1 -Configuration Release -Filter '^(base\.layout\.(package_tree|package_listing)|game\.ai\.(place_axis|bomb_escape_reservation)|game\.presentation\.preset_matching)$'
+& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.clear_rectangle
+& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_normal
+& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_points
+& .\build\mingw-debug-exe\tests\matrixgame_storage_tests.exe manual.storage.buildcfg
+```
+
+Repeat opt-in commands with mingw-release-exe. The storage smoke command runs from the repository root because it loads tracked relative paths. The D1/D7 probes are expected to fail on this reference and must not be counted as green baseline coverage. D4/M3/M4 have no executable reproducer established by this audit; acceptance requires creating the bounded fixtures described above, rather than citing these commands as coverage for them. The Filter parameter was checked against tools/test.ps1. Prior probe evidence is committed in 00a278d (Tests: preserve presentation defect reproducers); this audit inspected that evidence without rerunning it.
