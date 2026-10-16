@@ -18,11 +18,14 @@ struct BattleDeviceStats {
     std::uint64_t textures_created{};
     std::uint64_t texture_locks{};
     std::uint64_t rejected_icon_targets{};
+    std::uint64_t texture_memory_queries{};
 };
 
 // A storage/state-only device for the explicitly no-render scenario profile.
 // Creates no window or native device and never changes floating-point precision.
 // Textures support one A8R8G8B8 mip level in managed CPU storage, without drawing.
+// The loop's memory telemetry reports a fixed 64 MiB and counts queries; this
+// is not a model of native texture-memory availability.
 // Opt-in IconTargets::Unavailable rejects only the 256x256 icon render target
 // with D3DERR_NOTAVAILABLE; it never simulates successful drawing.
 // Unknown calls (including rendering, other texture profiles and Reset) terminate the test

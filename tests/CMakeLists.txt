@@ -718,3 +718,9 @@ add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_suppor
 target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
+
+add_matrix_test_executable(matrixgame_loop_scheduler_tests loop_scheduler_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_loop_scheduler_tests PRIVATE MatrixGameInternal)
+foreach(contract timing activation exit_boundaries missing_form native_exit)
+    add_matrix_test(game.loop.${contract} matrixgame_loop_scheduler_tests startup input)
+endforeach()
