@@ -898,31 +898,39 @@ void capture_candidate_lifetime() {
     }
 }
 void base_survival() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true}) {
-        Session session({mode, 79, 10, 1000, false});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true})
+    for (int step : {10, 16}) {
+        Session session({mode, 79, step, 1000, false});
         DialogData dialog;
+        std::cout << "player=" << player << ' ' << session.metadata("synthetic-base-survival-v2") << '\n';
         auto *building = register_building(player ? PLAYER_SIDE : 2, BUILDING_BASE, 100, 100);
         MG_CHECK(session.remove(player ? 1 : 3) && session.remove(player ? 2 : 4));
-        advance_to(session, 2020);
+        advance_to(session, step == 10 ? 2020 : 2032);
         MG_CHECK(g_MatrixMap->GetSideById(player ? PLAYER_SIDE : 2)->GetStatus() == SS_ACTIVE);
         MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
         MG_CHECK(!g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeName == nullptr);
         g_MatrixMap->StaticDelete(building);
         // The next status scan eliminates the side; the following one opens the result.
-        advance_to(session, 4030);
+        advance_to(session, (step == 10 ? 4030 : 4048) - step);
+        MG_CHECK(g_MatrixMap->GetSideById(player ? PLAYER_SIDE : 2)->GetStatus() == SS_ACTIVE);
+        session.advance();
         MG_CHECK(g_MatrixMap->GetSideById(player ? PLAYER_SIDE : 2)->GetStatus() == SS_NONE);
         MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player);
         MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
-        advance_to(session, 6040);
+        advance_to(session, (step == 10 ? 6040 : 6064) - step);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        session.advance();
         MG_CHECK(g_MatrixMap->IsPaused());
         MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
                  (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
     }
 }
 void factory_does_not_prevent_elimination() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true}) {
-        Session session({mode, 79, 10, 1000, false});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true})
+    for (int step : {10, 16}) {
+        Session session({mode, 79, step, 1000, false});
         DialogData dialog;
+        std::cout << "player=" << player << ' ' << session.metadata("synthetic-factory-elimination-v2") << '\n';
         auto *building = register_building(player ? PLAYER_SIDE : 2, BUILDING_TITAN, 400, 100);
         MG_CHECK(session.remove(player ? 1 : 3) && session.remove(player ? 2 : 4));
         session.advance();
@@ -930,7 +938,9 @@ void factory_does_not_prevent_elimination() {
         MG_CHECK(building->GetSide() == 0 && building->m_TrueColor.m_ColoredCnt == 0);
         MG_CHECK(building->m_TrueColor.m_Color == 0);
         MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player);
-        advance_to(session, 2020);
+        advance_to(session, (step == 10 ? 2020 : 2032) - step);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        session.advance();
         MG_CHECK(g_MatrixMap->IsPaused());
         MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
                  (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
@@ -1055,11 +1065,13 @@ void base_capture_interruption() {
 }
 void turret_does_not_prevent_elimination() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true})
-    for (bool constructing : {false, true}) {
+    for (bool constructing : {false, true}) for (int step : {10, 16}) {
         tests::BattleCombatAssets assets;
-        Session session({mode, 85, 10, 1000, false});
+        Session session({mode, 85, step, 1000, false});
         assets.install();
         DialogData dialog;
+        std::cout << "player=" << player << " constructing=" << constructing << ' '
+                  << session.metadata("synthetic-turret-elimination-v2") << '\n';
         auto &props = g_Config.m_CannonsProps[0];
         props = {};
         props.m_Hitpoint = 100;
@@ -1072,16 +1084,19 @@ void turret_does_not_prevent_elimination() {
         MG_CHECK(g_MatrixMap->GetSideById(player ? PLAYER_SIDE : 2)->GetStatus() == SS_NONE);
         MG_CHECK(cannon->IsLiveCannon() && cannon->GetSide() == (player ? PLAYER_SIDE : 2));
         MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player);
-        advance_to(session, 2020);
+        advance_to(session, (step == 10 ? 2020 : 2032) - step);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        session.advance();
         MG_CHECK(g_MatrixMap->IsPaused());
         MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
                  (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
     }
 }
-Profile transport_outcome_profile(random::Mode mode) {
+Profile transport_outcome_profile(random::Mode mode, int step) {
     Profile profile;
     profile.mode = mode;
     profile.seed = 85;
+    profile.step_ms = step;
     profile.audio = false;
     profile.initially_selected = false;
     profile.unavailable_icon_targets = true;
@@ -1102,11 +1117,12 @@ CMatrixFlyer *order_outcome_transport(int owner) {
     return carrier;
 }
 void flyer_does_not_prevent_elimination() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true}) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool player : {false, true})
+    for (int step : {10, 16}) {
         tests::BattleMaterialProfile materials;
-        Session session(transport_outcome_profile(mode));
+        Session session(transport_outcome_profile(mode, step));
         DialogData dialog;
-        std::cout << session.metadata("synthetic-empty-carrier-outcome-v1") << '\n';
+        std::cout << session.metadata("synthetic-empty-carrier-outcome-v2") << '\n';
         const int owner = player ? PLAYER_SIDE : 2;
         auto *carrier = order_outcome_transport(owner);
         auto core = retain_core(*carrier);
@@ -1118,7 +1134,7 @@ void flyer_does_not_prevent_elimination() {
         MG_CHECK(g_MatrixMap->GetSideById(owner)->GetStatus() == SS_NONE);
         MG_CHECK(core->m_Object == carrier && carrier->GetSide() == owner);
         MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == !player);
-        advance_to(session, 2010);
+        advance_to(session, step == 10 ? 2010 : 2016);
         MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
         session.advance();
         MG_CHECK(core->m_Object == carrier && !carrier->CarryingRobot());
@@ -1128,11 +1144,11 @@ void flyer_does_not_prevent_elimination() {
     }
 }
 void transported_robot_prevents_elimination() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         tests::BattleMaterialProfile materials;
-        Session session(transport_outcome_profile(mode));
+        Session session(transport_outcome_profile(mode, step));
         DialogData dialog;
-        std::cout << session.metadata("synthetic-last-transported-robot-v1") << '\n';
+        std::cout << session.metadata("synthetic-last-transported-robot-v2") << '\n';
         auto *carrier = order_outcome_transport(PLAYER_SIDE);
         auto carrier_core = retain_core(*carrier);
         auto *robot = carrier->GetCarryingRobot()->AsRobot();
@@ -1149,40 +1165,45 @@ void transported_robot_prevents_elimination() {
                 MG_CHECK(robot->m_CurrState == ROBOT_FALLING);
             }
             if (!landed && released && robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) landed = session.time();
+            MG_CHECK(robot->m_CurrState == (!released ? ROBOT_CARRYING :
+                !landed ? ROBOT_FALLING : ROBOT_SUCCESSFULLY_BUILD));
+            if (carrier_core->m_Object) MG_CHECK(carrier->CarryingRobot() == !released);
             if (!retired && !carrier_core->m_Object) retired = session.time();
         }
         std::cout << "Last robot release=" << released << " landing=" << landed << " retirement=" << retired << '\n';
-        MG_CHECK(released == (mode == random::Mode::ParkMiller ? 6100 : 4940));
-        MG_CHECK(landed == (mode == random::Mode::ParkMiller ? 6420 : 5260));
-        MG_CHECK(retired == (mode == random::Mode::ParkMiller ? 11960 : 9670));
+        MG_CHECK(released == (mode == random::Mode::ParkMiller ? (step == 10 ? 6100 : 6112) : (step == 10 ? 4940 : 4944)));
+        MG_CHECK(landed == (mode == random::Mode::ParkMiller ? (step == 10 ? 6420 : 6432) : (step == 10 ? 5260 : 5264)));
+        MG_CHECK(retired == (mode == random::Mode::ParkMiller ? (step == 10 ? 11960 : 11968) : (step == 10 ? 9670 : 9664)));
         MG_CHECK(carrier_core->m_Object == nullptr && g_MatrixMap->m_AD_Obj_cnt == 0);
+        MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
     }
 }
 void transported_robot_removal_outcome() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000}) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000})
+    for (int step : {10, 16}) {
         tests::BattleMaterialProfile materials;
-        Session session(transport_outcome_profile(mode));
+        Session session(transport_outcome_profile(mode, step));
         DialogData dialog;
-        std::cout << "remove_at=" << remove_at << ' ' << session.metadata("synthetic-transport-cargo-removal-v1") << '\n';
+        std::cout << "remove_at=" << remove_at << ' ' << session.metadata("synthetic-transport-cargo-removal-v2") << '\n';
         auto *carrier = order_outcome_transport(PLAYER_SIDE);
         auto carrier_core = retain_core(*carrier);
         auto *robot = carrier->GetCarryingRobot()->AsRobot();
         auto robot_core = retain_core(*robot);
         MG_CHECK(session.remove(1) && session.remove(2));
-        advance_to(session, remove_at);
+        advance_to(session, ((remove_at + step - 1) / step) * step);
         MG_CHECK(robot_core->m_Object == robot && carrier_core->m_Object == carrier);
         MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->m_DialogModeName);
         MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
         MG_CHECK(carrier_core->m_Object == carrier && carrier->CarryingRobot() == (remove_at == 1000));
         g_MatrixMap->StaticDelete(robot);
         MG_CHECK(robot_core->m_Object == nullptr && !carrier->CarryingRobot());
-        const int eliminated_at = remove_at == 1000 ? 2020 : 8050;
-        advance_to(session, eliminated_at - 10);
+        const int eliminated_at = remove_at == 1000 ? (step == 10 ? 2020 : 2032) : (step == 10 ? 8050 : 8080);
+        advance_to(session, eliminated_at - step);
         MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->IsPaused());
         session.advance();
         MG_CHECK(side().GetStatus() == SS_NONE && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
         MG_CHECK(carrier_core->m_Object == carrier);
-        advance_to(session, eliminated_at + 2000);
+        advance_to(session, eliminated_at + (step == 10 ? 2010 : 2016) - step);
         MG_CHECK(!g_MatrixMap->m_DialogModeName);
         session.advance();
         MG_CHECK(g_MatrixMap->IsPaused());
@@ -1191,21 +1212,22 @@ void transported_robot_removal_outcome() {
     }
 }
 void transported_robot_damage_outcome() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int hit_at : {1000, 7000}) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int hit_at : {1000, 7000})
+    for (int step : {10, 16}) {
         tests::BattleMaterialProfile materials;
         tests::BattleCombatAssets assets;
         CaptureCraterAssets crater;
-        Session session(transport_outcome_profile(mode));
+        Session session(transport_outcome_profile(mode, step));
         assets.install();
         crater.install();
         DialogData dialog;
-        std::cout << "hit_at=" << hit_at << ' ' << session.metadata("synthetic-transport-cargo-damage-v1") << '\n';
+        std::cout << "hit_at=" << hit_at << ' ' << session.metadata("synthetic-transport-cargo-damage-v2") << '\n';
         auto *carrier = order_outcome_transport(PLAYER_SIDE);
         auto carrier_core = retain_core(*carrier);
         auto *robot = carrier->GetCarryingRobot()->AsRobot();
         auto robot_core = retain_core(*robot);
         MG_CHECK(session.remove(1) && session.remove(2));
-        advance_to(session, hit_at);
+        advance_to(session, ((hit_at + step - 1) / step) * step);
         MG_CHECK(robot_core->m_Object == robot && carrier_core->m_Object == carrier);
         MG_CHECK(robot->m_CurrState == (hit_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
         MG_CHECK(carrier->CarryingRobot() == (hit_at == 1000));
@@ -1216,13 +1238,13 @@ void transported_robot_damage_outcome() {
         MG_CHECK(carrier_core->m_Object == carrier && !carrier->CarryingRobot());
         MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
         MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
-        const int eliminated_at = hit_at == 1000 ? 2020 : 8050;
-        advance_to(session, eliminated_at - 10);
+        const int eliminated_at = hit_at == 1000 ? (step == 10 ? 2020 : 2032) : (step == 10 ? 8050 : 8080);
+        advance_to(session, eliminated_at - step);
         MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->IsPaused());
         session.advance();
         MG_CHECK(side().GetStatus() == SS_NONE && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
         MG_CHECK(!g_MatrixMap->m_DialogModeName);
-        advance_to(session, eliminated_at + 2000);
+        advance_to(session, eliminated_at + (step == 10 ? 2010 : 2016) - step);
         MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
         session.advance();
         MG_CHECK(g_MatrixMap->IsPaused());
@@ -1231,21 +1253,22 @@ void transported_robot_damage_outcome() {
     }
 }
 void carrier_loss_outcome(bool damage) {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000}) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000})
+    for (int step : {10, 16}) {
         tests::BattleMaterialProfile materials;
         tests::BattleCombatAssets assets;
         CaptureCraterAssets crater;
-        Session session(transport_outcome_profile(mode));
+        Session session(transport_outcome_profile(mode, step));
         assets.install();
         crater.install();
         DialogData dialog;
-        std::cout << (damage ? "hit_at=" : "remove_at=") << remove_at << ' ' << session.metadata(damage ? "synthetic-carrier-damage-outcome-v1" : "synthetic-carrier-removal-outcome-v1") << '\n';
+        std::cout << (damage ? "hit_at=" : "remove_at=") << remove_at << ' ' << session.metadata(damage ? "synthetic-carrier-damage-outcome-v2" : "synthetic-carrier-removal-outcome-v2") << '\n';
         auto *carrier = order_outcome_transport(PLAYER_SIDE);
         auto carrier_core = retain_core(*carrier);
         auto *robot = carrier->GetCarryingRobot()->AsRobot();
         auto robot_core = retain_core(*robot);
         MG_CHECK(session.remove(1) && session.remove(2));
-        advance_to(session, remove_at);
+        advance_to(session, ((remove_at + step - 1) / step) * step);
         MG_CHECK(robot_core->m_Object == robot && carrier_core->m_Object == carrier);
         MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_CARRYING : ROBOT_SUCCESSFULLY_BUILD));
         if (damage) {
@@ -1267,11 +1290,13 @@ void carrier_loss_outcome(bool damage) {
         MG_CHECK(robot_core->m_Object == robot);
         MG_CHECK(robot->m_CurrState == (remove_at == 1000 ? ROBOT_DIP : ROBOT_SUCCESSFULLY_BUILD));
         if (remove_at == 1000) {
-            advance_to(session, 2010);
+            advance_to(session, step == 10 ? 2010 : 2016);
             MG_CHECK(side().GetStatus() == SS_ACTIVE);
             session.advance();
             MG_CHECK(side().GetStatus() == SS_NONE && !g_MatrixMap->m_DialogModeName);
-            advance_to(session, 4030);
+            advance_to(session, (step == 10 ? 4030 : 4048) - step);
+            MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+            session.advance();
             MG_CHECK(g_MatrixMap->IsPaused());
             MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
         } else {

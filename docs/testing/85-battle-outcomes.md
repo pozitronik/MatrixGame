@@ -130,6 +130,8 @@ The dialog callback cases below supply generated hint pixels and copy anchors th
 
 ## Transport and cargo outcome boundaries
 
+The transport timing prose below describes the original 10 ms profile. The [survival and transport schedule guide](85-survival-profiles.md) records the independent 10/16 ms assertions in both RNG modes, including the base, factory and turret survival cases.
+
 Six contracts use the shared synthetic transport body and robot assembly through real `OrderFlyer` and `ApplyOrder`. The fixture selects the existing unavailable-icon-target path; no artwork is loaded and no native rendering claim is made. Seed 85, a 10 ms map step and both RNG modes define these profiles. Empty result templates retain the same confirmation limitation as the other outcome contracts.
 
 `flyer_does_not_prevent_elimination` schedules removal of the delivered robot before the first map tick, then removes the carrier owner's ordinary robots. Both player and enemy carriers continue flying, but neither keeps its side active: the first scan eliminates the side and the result appears at 2,020 ms. A call to the enemy side's `OrderFlyer` still constructs player-owned cargo because `ApplyOrder(FO_GIVE_BOT)` supplies `PLAYER_SIDE` explicitly. The test records that ownership and removes the cargo before checking empty-carrier survival; it does not claim enemy reinforcement delivery.
