@@ -9,6 +9,7 @@
 #include "MatrixObjectCannon.hpp"
 #include "Logic/MatrixEnvironment.h"
 #include "zero_x_mode.hpp"
+#include <cmath>
 
 namespace tests::ai {
 namespace {
@@ -656,5 +657,157 @@ void repair_competing_run(bool replace_order, bool competitor_in_range = false) 
 }
 void repair_competing_retirement() { repair_competing_run(false); }
 void repair_replacement_move() { repair_competing_run(true); repair_competing_run(true, true); }
+
+namespace {
+enum class CombatJourney { Move, Patrol, RetireTarget, ReplaceMove };
+
+void combat_continuation(CombatJourney journey) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        BattleCombatAssets assets;
+        battle::Profile profile{mode, 84, step, 1600, false};
+        profile.layout = NavigationLayout::Open;
+        battle::Session session(profile);
+        assets.install();
+        MG_CHECK(session.remove(2));
+        auto *observer = owner();
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 160;
+        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {2, 0, 0};
+        g_Config.m_Overheat[WEAPON_LASER_HEAT] = 10;
+        g_Config.m_Overheat[WEAPON_LASER_COOL] = 10;
+        g_Config.m_Overheat[WCP_LASER] = 100;
+        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        CMatrixRobotAI *target = nullptr, *sentinel = nullptr;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+            if (!object->IsLiveRobot()) continue;
+            if (session.matches(3, object->AsRobot())) target = object->AsRobot();
+            if (session.matches(4, object->AsRobot())) sentinel = object->AsRobot();
+        }
+        MG_CHECK(target && sentinel);
+        const auto position = [&](CMatrixRobotAI *robot, float x, float y) {
+            robot->m_PosX = x; robot->m_PosY = y;
+            robot->SetMaxSpeed(0); robot->m_GroupSpeed = 0;
+            robot->MapPosCalc(); robot->RChange(MR_Matrix); robot->RNeed(MR_Matrix);
+            robot->m_CalcBoundsLastTime = g_MatrixMap->GetTime() - 100;
+            robot->JoinToGroup();
+        };
+        position(target, 240, 100);
+        // Keep a live opponent outside this journey so killing the target cannot end the battle.
+        position(sentinel, 600, 600);
+        target->InitMaxHitpoint(40);
+        const float sentinel_health = sentinel->GetHitPoint();
+        const auto release = [](SObjectCore *core) { core->Release(); };
+        std::unique_ptr<SObjectCore, decltype(release)> core(target->GetCore(DEBUG_CALL_INFO), release);
+        auto &side = *g_MatrixMap->GetPlayerSide();
+        if (journey == CombatJourney::Move) session.ground_command(500, 100);
+        else {
+            g_MatrixData->BlockGet(L"Chars")->BlockGet(L"ChassisSounds")->BlockGet(L"2")
+                ->ParSetAdd(L"Patrol", L"Sound.Synthetic");
+            side.PGOrderPatrol(side.RobotToLogicGroup(observer), CPoint(48, 8));
+        }
+        auto intent = session.robot(1);
+        MG_CHECK(intent.order == (journey == CombatJourney::Move ? mpo_MoveTo : mpo_Patrol));
+        MG_CHECK(intent.destination_x == 48 && intent.destination_y == 8);
+        MG_CHECK(observer->GetEnv()->GetEnemyCnt() == 0);
+        MG_CHECK(!observer->GetEnv()->m_TargetAttack && !observer->FindOrderLikeThat(ROT_FIRE));
+        CPoint initial_move;
+        MG_CHECK(observer->GetMoveToCoords(initial_move));
+        MG_CHECK(initial_move == (journey == CombatJourney::Move ? CPoint(48, 8) : CPoint(8, 8)));
+        int acquisition = -1, first_war = -1, first_hit = -1, terminal = -1, changed = -1, arrival = -1;
+        int redirected = -1, pulses = 0;
+        float health = 4;
+        bool resumed = false;
+        while (session.time() < 15000) {
+            const auto *firing_target = observer->GetEnv()->m_Target;
+            session.advance();
+            const auto state = session.robot(1);
+            MG_CHECK(state.alive);
+            MG_CHECK(state.order == intent.order);
+            MG_CHECK(state.destination_x == intent.destination_x && state.destination_y == intent.destination_y);
+            MG_CHECK(sentinel->IsLiveRobot() && sentinel->GetHitPoint() == sentinel_health);
+            MG_CHECK(sentinel->m_PosX == 600 && sentinel->m_PosY == 600);
+            const auto &group = side.m_PlayerGroup[observer->GetGroupLogic()];
+            if (journey == CombatJourney::Move || (changed >= 0 && journey == CombatJourney::ReplaceMove))
+                MG_CHECK(!group.IsWar());
+            if (group.IsWar() && first_war < 0) first_war = session.time();
+            if (observer->GetEnv()->m_TargetAttack == target && acquisition < 0) acquisition = session.time();
+            if (core->m_Object && target->GetHitPoint() < health) {
+                MG_CHECK(acquisition > 0 && firing_target == target);
+                MG_CHECK(target->m_PosX == 240 && target->m_PosY == 100);
+                ++pulses;
+                health = target->GetHitPoint();
+                MG_CHECK(std::fabs(health - float(40 - pulses * 2) / 10.0f) < 0.00001f);
+                if (first_hit < 0) {
+                    first_hit = session.time();
+                    MG_CHECK(observer->m_PosX != 100 || observer->m_PosY != 200);
+                }
+            }
+            if ((!core->m_Object || !target->IsLiveRobot()) && terminal < 0) terminal = session.time();
+            if (terminal >= 0 && session.time() > terminal + step) {
+                MG_CHECK(!observer->GetEnv()->m_Target && !observer->GetEnv()->m_TargetAttack);
+                MG_CHECK(observer->GetEnv()->GetEnemyCnt() == 0 && !observer->FindOrderLikeThat(ROT_FIRE));
+                if (session.time() > terminal + 200) MG_CHECK(!group.IsWar());
+            }
+            if (changed < 0 && pulses == 2 && (journey == CombatJourney::RetireTarget || journey == CombatJourney::ReplaceMove)) {
+                MG_CHECK(group.IsWar() && observer->GetEnv()->m_TargetAttack == target);
+                CPoint previous_move;
+                MG_CHECK(observer->GetMoveToCoords(previous_move) && previous_move == CPoint(8, 8));
+                changed = session.time();
+                if (journey == CombatJourney::RetireTarget) {
+                    MG_CHECK(session.remove(3));
+                    MG_CHECK(!core->m_Object && !observer->GetEnv()->m_Target && !observer->GetEnv()->m_TargetAttack);
+                    MG_CHECK(observer->GetEnv()->GetEnemyCnt() == 0);
+                } else {
+                    session.ground_command(500, 400);
+                    intent = session.robot(1);
+                    MG_CHECK(intent.order == mpo_MoveTo && intent.destination_x == 48 && intent.destination_y == 38);
+                    // Group intent changes synchronously; the current physical leg remains pending.
+                    CPoint after_command;
+                    MG_CHECK(observer->GetMoveToCoords(after_command) && after_command == previous_move);
+                    MG_CHECK(!side.m_PlayerGroup[observer->GetGroupLogic()].IsWar());
+                }
+            }
+            CPoint move;
+            if (observer->GetMoveToCoords(move)) {
+                if (journey == CombatJourney::Move) MG_CHECK(move == CPoint(48, 8));
+                if (terminal >= 0 && move == CPoint(48, 8)) resumed = true;
+                if (journey == CombatJourney::ReplaceMove && changed >= 0 && move == CPoint(48, 38) && redirected < 0)
+                    redirected = session.time();
+            }
+            const int destination_y = journey == CombatJourney::ReplaceMove ? 400 : 100;
+            // Patrol may start its return before stopping exactly at the outbound point.
+            const bool moving = journey == CombatJourney::Move || journey == CombatJourney::ReplaceMove;
+            const bool arrived = moving ? state.in_place && observer->m_PosX == 500 && observer->m_PosY == destination_y
+                : observer->m_PosX > 490 && std::fabs(observer->m_PosY - destination_y) < 5;
+            if (arrived) {
+                arrival = session.time();
+                break;
+            }
+        }
+        MG_CHECK(acquisition > 0 && first_hit >= acquisition && terminal > first_hit && arrival > terminal);
+        MG_CHECK(!observer->GetEnv()->m_Target && !observer->GetEnv()->m_TargetAttack);
+        MG_CHECK(!observer->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(first_war == -1 || journey != CombatJourney::Move);
+        if (journey != CombatJourney::Move) MG_CHECK(first_war > 0 && first_war < first_hit);
+        if (journey == CombatJourney::RetireTarget) {
+            MG_CHECK(pulses == 2 && changed > first_hit && terminal == changed + step && !core->m_Object);
+        } else MG_CHECK(pulses == 20 && health == 0);
+        if (journey == CombatJourney::ReplaceMove) MG_CHECK(redirected > changed && redirected < arrival);
+        else MG_CHECK(resumed);
+        const char *name = journey == CombatJourney::Move ? "move" : journey == CombatJourney::Patrol ? "patrol"
+            : journey == CombatJourney::RetireTarget ? "retire-target" : "replace-move";
+        std::cout << session.metadata("combat-journey-v1") << " journey=" << name
+                  << " acquisition=" << acquisition << " first_war=" << first_war << " first_hit=" << first_hit << " terminal=" << terminal
+                  << " changed=" << changed << " redirected=" << redirected << " arrival=" << arrival
+                  << " pulses=" << pulses << " final=" << observer->m_PosX << ',' << observer->m_PosY
+                  << " rng_draws=" << random::draw_count() << '\n';
+    }
+}
+}
+void moving_combat_continuation() { combat_continuation(CombatJourney::Move); }
+void patrol_combat_continuation() { combat_continuation(CombatJourney::Patrol); }
+void patrol_combat_retirement() { combat_continuation(CombatJourney::RetireTarget); }
+void patrol_combat_replacement() { combat_continuation(CombatJourney::ReplaceMove); }
 
 }
