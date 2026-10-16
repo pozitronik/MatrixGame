@@ -104,9 +104,14 @@ void write_map() {
         append(DWORD{1}); append(DWORD{0}); append(DWORD{12});
         for (WORD index : {0, 1, 2, 1, 3, 2}) append(index);
         append(DWORD{4 * sizeof(SCompileBottomVert)});
-        for (const auto &point : {CPoint(x,y), CPoint(x+MAP_GROUP_SIZE,y),
-             CPoint(x,y+MAP_GROUP_SIZE), CPoint(x+MAP_GROUP_SIZE,y+MAP_GROUP_SIZE)})
+        // The last terrain group can be smaller than MAP_GROUP_SIZE.
+        const int right = std::min(x + MAP_GROUP_SIZE, 32);
+        const int bottom = std::min(y + MAP_GROUP_SIZE, 32);
+        for (const auto &point : {CPoint(x,y), CPoint(right,y),
+             CPoint(x,bottom), CPoint(right,bottom)}) {
+            MG_CHECK(point.x >= 0 && point.x <= 32 && point.y >= 0 && point.y <= 32);
             append(SCompileBottomVert{static_cast<uint16_t>(point.x),static_cast<uint16_t>(point.y),0,0});
+        }
         auto *groups = map.GetBuf(DATA_GROUPS, DATA_GROUPS_DATA, ST_BYTE);
         const auto index = groups->AddArray();
         groups->AddToArray<BYTE>(index, bytes.data(), bytes.size());
