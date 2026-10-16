@@ -664,7 +664,7 @@ add_test(NAME game.cheats.intentional_crash
     COMMAND "${CMAKE_COMMAND}" "-DTEST_EXECUTABLE=$<TARGET_FILE:matrixgame_player_order_scenarios>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/check_intentional_cheat_abort.cmake")
 set_tests_properties(game.cheats.intentional_crash PROPERTIES LABELS "engine;asset-free;cheats;parser" TIMEOUT 15)
-add_matrix_test_executable(matrixgame_presentation_integration_tests presentation_integration_tests.cpp
+add_matrix_test_executable(matrixgame_presentation_integration_tests presentation_integration_tests.cpp battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_presentation_integration_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_presentation_integration_tests matrixgame_scenario_identity)
@@ -675,6 +675,8 @@ target_compile_definitions(matrixgame_presentation_integration_tests PRIVATE
 foreach(contract positional_attenuation_boundaries positional_loop_reentry push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech textured_button_hit_testing)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
 endforeach()
+
+add_matrix_test(game.presentation.manual_fire_interface_focus matrixgame_presentation_integration_tests gameplay ui input)
 
 foreach(contract camera_wheel_limits camera_drag_release camera_input_interruption)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui input rendering)
