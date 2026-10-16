@@ -1,6 +1,6 @@
 # Survival and transport outcome schedules
 
-This extends the existing O3 schedule inventory in the [outcome completion plan](85-outcome-completion.md#existing-schedule-extensions). The nine cases below run independent 10 ms and 16 ms map schedules in both ParkMiller and LegacyCRT modes. Their source is [battle_outcome_scenarios.cpp](../../tests/battle_outcome_scenarios.cpp); the existing [outcome guide](85-battle-outcomes.md) describes their synthetic building, cannon and delivery fixtures. Production gameplay is unchanged.
+This implements the existing O3 schedule inventory in the [outcome completion plan](85-outcome-completion.md#existing-schedule-extensions). The nine cases below run independent 10 ms and 16 ms map schedules in both ParkMiller and LegacyCRT modes. Their source is [battle_outcome_scenarios.cpp](../../tests/battle_outcome_scenarios.cpp); the existing [outcome guide](85-battle-outcomes.md) describes their synthetic building, cannon and delivery fixtures. Production gameplay is unchanged.
 
 ## Reproduce
 
@@ -26,11 +26,11 @@ Each case retains its original 10 ms assertions and adds the 16 ms profile to th
 | Side eliminated after base deletion | 4030 ms | 4048 ms |
 | Result after base deletion | 6040 ms | 6064 ms |
 
-The tests check the last tick before the delayed dialog and the first paused tick. The base case also checks that the side is still active immediately before its post-deletion elimination scan. These times describe production status scanning for this fixture, rather than a prescribed new timer rule.
+The tests check the last tick before the delayed dialog and the first paused tick. The base case also checks that the side is still active immediately before its post-deletion elimination scan. These times follow the status scheduler in [MatrixLogic.cpp](../../MatrixGame/src/MatrixLogic.cpp): the previous-scan value starts at -1500, a scan requires `now - previous > 1001`, and a completed scan stores `previous = now + 1001`. This produces 10/2020/4030/6040/8050/10060 ms at a 10 ms step, and 16/2032/4048/6064/8080/10096 ms at 16 ms. Elimination sets the pending result; the following scan opens its dialog.
 
 ## Delivery and loss
 
-`transported_robot_prevents_elimination` leaves the delivery cargo as the player's only robot and advances through 20000 ms. It records the first release, landing and carrier-retirement tick, verifies carrying/falling/landed states and the carrier's cargo reference, and requires the side to remain active throughout. The surviving cargo remains live; the retired carrier's retained core has a null object and the active-delivery list is empty. Neither side receives robot kill credit.
+`transported_robot_prevents_elimination` leaves the delivery cargo as the player's only robot and advances through 20000 ms. It records the first release, landing and carrier-retirement tick, verifies carrying/falling/landed states and the carrier's cargo reference, and requires the side to remain active throughout. Status scans sample the carried and landed phases. None falls inside the 320 ms falling interval in these four profiles, so retaining active status throughout the journey does not prove that a falling-only robot is counted at a scan. The surviving cargo remains live; the retired carrier's retained core has a null object and the active-delivery list is empty. Neither side receives robot kill credit.
 
 | RNG / timestep | Cargo released | Cargo landed | Carrier retired |
 | --- | ---: | ---: | ---: |
@@ -39,7 +39,7 @@ The tests check the last tick before the delayed dialog and the first paused tic
 | LegacyCRT / 10 ms | 4940 ms | 5260 ms | 9670 ms |
 | LegacyCRT / 16 ms | 4944 ms | 5264 ms | 9664 ms |
 
-The 16 ms values were observed from the production flight and falling paths, independently of the 10 ms expectations. In particular, the LegacyCRT carrier retires earlier in the 16 ms run; rounding its 10 ms retirement upward would specify the wrong behavior.
+The 16 ms values were observed from the production flight and falling paths, independently of the 10 ms expectations. [Map logic](../../MatrixGame/src/MatrixLogic.cpp) splits a 16 ms step into 10 ms and 6 ms portions. [Carrier logic](../../MatrixGame/src/MatrixFlyer.cpp) advances its trajectory at 0.09 units per millisecond when its turn allows progress, releases cargo after normalized path position 0.5, and retires after 0.98. The table records the end of the first map step whose logic portions pass each threshold. Robot falling integrates each portion separately, so it also needs its own measured schedule. In particular, the LegacyCRT carrier retires earlier in the 16 ms run; rounding its 10 ms retirement upward would specify the wrong behavior.
 
 The remaining four cases act once before release and once after landing. Nominal 1000/7000 ms interventions run on the first scheduled tick at or after that time: 1000/7000 ms for the 10 ms profile and 1008/7008 ms for the 16 ms profile. The test explicitly verifies the cargo's carrying versus landed state at each intervention. It does not round a measured result deadline to fit a profile.
 
