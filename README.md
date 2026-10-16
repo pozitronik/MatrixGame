@@ -7,8 +7,9 @@ as a standalone game for Windows.
 
 ## Building and running
 
-The game targets Windows x86 and uses C++20 and DirectX 9. Install 7-Zip and make
-`7z.exe` available on PATH, then run these commands from the repository root:
+The game targets Windows x86 and uses C++20 and DirectX 9. The simplest way to build it is to run `build.bat` from the repository root, from Explorer, cmd.exe or PowerShell. This guided build finds or downloads the pinned tools and asks for any paths it cannot discover. It can also import game resources from an owned Space Rangers 2 installation, and then it builds the game. See [Guided build](docs/BUILD_WINDOWS.md#guided-build).
+
+To build manually, install 7-Zip and make `7z.exe` available on PATH, then run these commands from the repository root:
 
 ```powershell
 .\tools\setup-toolchain.ps1

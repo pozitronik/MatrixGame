@@ -2,7 +2,8 @@
 [CmdletBinding()]
 param(
     [string]$ArchivePath = '',
-    [string]$CMakeArchivePath = ''
+    [string]$CMakeArchivePath = '',
+    [switch]$SkipCMake
 )
 
 $ErrorActionPreference = 'Stop'
@@ -15,7 +16,9 @@ $archiveName = 'winlibs-i686-mcf-dwarf-gcc-13.2.0-mingw-w64ucrt-11.0.1-r3.7z'
 $archiveUrl = "https://github.com/brechtsanders/winlibs_mingw/releases/download/13.2.0mcf-11.0.1-ucrt-r3/$archiveName"
 $archiveHash = 'D4D50D6F1BFAF3309007F197DBBB82E3F968F6208363C1BE2A180E9C914A6511'
 
-& (Join-Path $PSScriptRoot 'setup-cmake.ps1') -ArchivePath $CMakeArchivePath
+if (-not $SkipCMake) {
+    & (Join-Path $PSScriptRoot 'setup-cmake.ps1') -ArchivePath $CMakeArchivePath
+}
 
 if (Test-Path -LiteralPath (Join-Path $compilerRoot 'bin/g++.exe')) {
     $installedVersion = & (Join-Path $compilerRoot 'bin/g++.exe') -dumpfullversion

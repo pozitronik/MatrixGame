@@ -148,7 +148,8 @@ if (-not $DLL) {
             @{Name = 'sound.pkg'; Destination = $dataRoot},
             @{Name = 'voices.pkg'; Destination = $dataRoot},
             @{Name = 'music.pkg'; Destination = $dataRoot},
-            @{Name = 'sounds.txt'; Destination = $configRoot}
+            @{Name = 'sounds.txt'; Destination = $configRoot},
+            @{Name = 'Lang.dat'; Destination = $configRoot}
         )) {
             $source = Join-Path $repoRoot $resource.Name
             if (Test-Path -LiteralPath $source) {
