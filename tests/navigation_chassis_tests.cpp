@@ -52,6 +52,10 @@ void journey(ERobotUnitKind chassis, random::Mode mode, int step) {
     PneumaticCatalog pneumatic;
     assets.install();
     effects.install();
+    // Other chassis must not supply the candidate's movement characteristic.
+    // Existing sentinel robots have already cached their own characteristics.
+    for (int kind = RUK_CHASSIS_PNEUMATIC; kind <= RUK_CHASSIS_ANTIGRAVITY; ++kind)
+        g_Config.m_ItemChars[CHASSIS1_MOVE_SPEED + 6 * (kind - 1)] = 0;
     const int config = CHASSIS1_STRUCTURE + 6 * (static_cast<int>(chassis) - 1);
     g_Config.m_ItemChars[config] = 1000;
     g_Config.m_ItemChars[config + 1] = 0.04f;
@@ -112,6 +116,10 @@ void journey(ERobotUnitKind chassis, random::Mode mode, int step) {
     MG_CHECK(robot->m_PosX == 500 && robot->m_PosY == 200);
     MG_CHECK(robot->GetOrdersInPool() == 0);
     if (chassis == RUK_CHASSIS_PNEUMATIC) MG_CHECK(gait_frames == 15 && planted_samples > 0 && stride_samples > 0);
+    // This no-draw profile refreshes the pneumatic foot's cached transform
+    // through the 100 ms bounds cache, not once per rendered frame.
+    const int expected_arrival = chassis == RUK_CHASSIS_PNEUMATIC ? (step == 10 ? 14220 : 15712) : 7520;
+    MG_CHECK(session.time() == expected_arrival);
     // Arrival must remain stable after the scheduler and movement effects tick.
     for (int frame = 0; frame < 20; ++frame) {
         session.advance();
