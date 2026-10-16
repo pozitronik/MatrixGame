@@ -157,6 +157,11 @@ void disabled_blocker_run(bool lethal, bool apply_hit = true) {
                         MG_CHECK(session.time() - hit_time >= 500 && session.time() - hit_time < 500 + step);
                         MG_CHECK(blocker->m_PosX != x || blocker->m_PosY != y);
                         MG_CHECK(follower->m_PosX > follower_at_hit && follower->m_PosX < blocker->m_PosX);
+                        // The distant live leader throttles the follower before contact.
+                        // Without robot collision handling it advances over 10 units here.
+                        const float progress = follower->m_PosX - follower_at_hit;
+                        std::cout << "follower_progress_during_short=" << progress << " step=" << step << std::endl;
+                        MG_CHECK(progress < 10.0f);
                         MG_CHECK(blocker->FindOrderLikeThat(ROT_MOVE_TO));
                     }
                     recovered = true;
