@@ -576,7 +576,7 @@ target_include_directories(matrixgame_ai_decision_tests PRIVATE "${CMAKE_CURRENT
 target_compile_definitions(matrixgame_ai_decision_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildings automatic_reinforcement_choices automatic_reinforcement_delivery capture_guard_interruption capture_guard_filters turret_visual_obstruction turret_acquisition_range turret_retirement_range turret_acquisition_filters visual_acquisition_range visual_enemy_range visual_filters visual_obstruction visual_retirement_range armed_friendly_line ineffective_fire_decisions blocked_fire_decisions moving_fire_decisions moving_combat_continuation patrol_combat_continuation patrol_combat_retirement patrol_combat_replacement armed_target_retention repair_competing_retirement repair_replacement_move repair_movement_completion repair_movement_retirement repair_acquisition_range repair_target_retention repair_explicit_priority memory_cleanup memory_clear_reuse memory_position_eviction memory_ignore_eviction place_bounds bomb_escape_planning enemy_memory memory_target_retirement ignore_expiry bad_positions regroup_thresholds
+foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildings automatic_reinforcement_choices automatic_reinforcement_delivery capture_guard_interruption capture_guard_filters turret_acquisition_equality turret_retirement_equality turret_elevated_terrain turret_visual_obstruction turret_acquisition_range turret_retirement_range turret_acquisition_filters visual_acquisition_range visual_enemy_range visual_filters visual_obstruction visual_retirement_range armed_friendly_line ineffective_fire_decisions blocked_fire_decisions moving_fire_decisions moving_combat_continuation patrol_combat_continuation patrol_combat_retirement patrol_combat_replacement armed_target_retention repair_competing_retirement repair_replacement_move repair_movement_completion repair_movement_retirement repair_acquisition_range repair_target_retention repair_explicit_priority memory_cleanup memory_clear_reuse memory_position_eviction memory_ignore_eviction place_bounds bomb_escape_planning enemy_memory memory_target_retirement ignore_expiry bad_positions regroup_thresholds
                  regroup_teams_and_actions action_priorities action_ties interruptibility automatic_reinforcement_gate strategic_tick tactical_target_choice tactical_blocked_line
                  strategic_member_loss strategic_base_loss strategic_forward
                  strategic_objective_replacement strategic_objective_ties strategic_empty_team_split uneven_team_redistribution
@@ -655,7 +655,7 @@ foreach(contract control_group_reassignment control_group_combat_death move_rout
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
 
-foreach(contract mixed_building_selection inactive_selection manual_armed_fire repair_command_routes bomb_command_routes
+foreach(contract manual_track_lifecycle manual_hovercraft_lifecycle mixed_building_selection inactive_selection manual_armed_fire repair_command_routes bomb_command_routes
                  manual_bomb_key manual_combat_death manual_exit_keys)
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
@@ -680,6 +680,18 @@ add_matrix_test(game.presentation.manual_fire_interface_focus matrixgame_present
 
 foreach(contract camera_wheel_limits camera_drag_release camera_input_interruption)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui input rendering)
+endforeach()
+
+add_matrix_test_executable(matrixgame_settings_window_integration_tests settings_window_integration_tests.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_settings_window_integration_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_settings_window_integration_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_settings_window_integration_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_settings_window_integration_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract settings_input_pause_cancel settings_apply_save_failure)
+    add_matrix_test(game.presentation.${contract} matrixgame_settings_window_integration_tests gameplay ui input settings)
 endforeach()
 
 # Manual correctness probes for catalog defect candidates, intentionally outside
