@@ -718,3 +718,7 @@ add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_suppor
 target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
+
+foreach(contract capture_income_continuity capture_turret_refund capture_move_reassignment)
+    add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
+endforeach()
