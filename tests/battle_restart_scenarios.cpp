@@ -14,8 +14,13 @@
 #include "Interface/CIFaceButton.h"
 #include "Interface/MatrixHint.hpp"
 #include "input.hpp"
+#include "loop_script.hpp"
 #include <cstring>
+#include <cmath>
+#include <bit>
+#include <float.h>
 #include <filesystem>
+#include <sstream>
 #include <vector>
 
 // Supply visibility, as the existing selection fixtures do; geometry picking
@@ -332,7 +337,204 @@ void restart_movement() { restart_profile(Origin::Moving); }
 void restart_pending_win() { restart_profile(Origin::PendingWin); }
 void restart_pending_loss() { restart_profile(Origin::PendingLoss); }
 void restart_retired_group() { restart_profile(Origin::Moving, true); }
+struct RestartLoopForm : CFormMatrixGame {
+    Session &session;
+    CForm *previous = g_FormCur;
+    std::vector<int> ticks;
+    std::vector<std::string> trace;
+    unsigned draws{}, paused_ticks{};
+    uint64_t last_rng_draws{};
+    explicit RestartLoopForm(Session &value) : session(value) {
+        g_FormCur = this;
+        SETFLAG(g_Flags, GFLAG_APPACTIVE);
+        SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+    }
+    ~RestartLoopForm() { g_FormCur = previous; }
+    std::string snapshot() const {
+        std::ostringstream state;
+        auto &player = *g_MatrixMap->GetPlayerSide();
+        state << session.time() << ':' << random::draw_count() << ':' << g_MatrixMap->IsPaused()
+              << ':' << bool(FLAG(g_Flags, GFLAG_4SPEED)) << ':' << bool(FLAG(g_Flags, GFLAG_KEEPALIVE))
+              << ':' << Input::isVKeyPressed(VK_UP) << ':' << player.m_CurrSel
+              << ':' << player.GetCurSelGroup()->GetObjectsCnt();
+        for (auto *robot : robots()) {
+            state << '|' << robot->GetSide() << ':' << std::bit_cast<uint32_t>(robot->m_PosX)
+                  << ',' << std::bit_cast<uint32_t>(robot->m_PosY);
+            if (robot->GetSide() == PLAYER_SIDE) {
+                const int group = robot->GetGroupLogic();
+                MG_CHECK(group >= -1 && group < MAX_LOGIC_GROUP);
+                if (group >= 0) {
+                    const auto &order = player.m_PlayerGroup[group];
+                    state << ':' << order.Order() << ':' << order.m_To.x << ',' << order.m_To.y
+                          << ':' << (order.m_Obj == nullptr);
+                }
+            }
+        }
+        for (int side = 1; side <= 2; ++side)
+            for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+                state << ':' << g_MatrixMap->GetSideById(side)->GetResourcesAmount(static_cast<ERes>(resource));
+        return state.str();
+    }
+    void Takt(int delta) override {
+        MG_CHECK(draws == ticks.size());
+#if defined(__MINGW32__)
+        MG_CHECK((_controlfp(0, 0) & _MCW_PC) == _PC_24);
+#endif
+        const int before = session.time();
+        const bool paused = g_MatrixMap->IsPaused();
+        const auto before_rng = random::draw_count();
+        ticks.push_back(delta);
+        CFormMatrixGame::Takt(delta);
+        MG_CHECK(session.time() == before + (paused ? 0 : delta));
+        if (paused) {
+            ++paused_ticks;
+            MG_CHECK(random::draw_count() == before_rng);
+        }
+        for (auto *robot : robots()) MG_CHECK(std::isfinite(robot->m_PosX) && std::isfinite(robot->m_PosY));
+#if defined(__MINGW32__)
+        MG_CHECK((_controlfp(0, 0) & _MCW_PC) == _PC_24);
+#endif
+    }
+    void Draw() override {
+        MG_CHECK(draws + 1 == ticks.size() && !FLAG(g_Flags, GFLAG_APPCLOSE));
+        ++draws;
+        g_MatrixMap->m_Camera.BeforeDraw();
+        last_rng_draws = random::draw_count();
+        trace.push_back(snapshot());
+    }
+};
+void loop_key(tests::loop::Round &round, uint8_t key) {
+    round.messages.emplace_back(WM_KEYDOWN, key);
+    round.messages.emplace_back(WM_KEYUP, key);
+}
+void loop_word(tests::loop::Round &round, const char *word) {
+    for (; *word; ++word) loop_key(round, static_cast<uint8_t>(*word));
+}
+void loop_restart_toggles() {
+    constexpr bool cheats = MATRIXGAME_SCENARIO_CHEATS != 0;
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        std::vector<std::string> reference;
+        for (int repeat = 0; repeat < 2; ++repeat) {
+            Profile profile{mode, 85, step, 1000, false, false, true};
+            Session session(profile);
+            ReloadScene scene;
+            RestartLoopForm form(session);
+            auto *const map = g_MatrixMap;
+            auto *const terrain = map->m_Unit;
+            std::cout << session.metadata("loop-restart-toggles-v1") << " repeat=" << repeat << '\n';
+            tests::loop::Script script;
+            // Give each fresh order time to pass the robot's normal planning cadence.
+            for (int index = 1; index <= 99; ++index) script.rounds.push_back({step * index * 1000LL, {}});
+            loop_word(script.rounds[0], "NEED4SPEED");
+            loop_word(script.rounds[0], "KEEPALIVE");
+            const auto player_robot = [&] {
+                const auto live = robots(PLAYER_SIDE);
+                MG_CHECK(!live.empty());
+                return live.front();
+            };
+            auto move = [&] {
+                auto *robot = player_robot();
+                select(robot);
+                session.ground_command(500, 300);
+                const int group = robot->GetGroupLogic();
+                MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+                MG_CHECK(map->GetPlayerSide()->m_PlayerGroup[group].Order() == mpo_MoveTo);
+                map->GetPlayerSide()->PLDropAllActions();
+            };
+            script.rounds[0].after_messages = move;
+            int restarts = 0, old_time = 0;
+            size_t old_uid = 0;
+            uint64_t paused_draws = 0;
+            std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> old_core(nullptr,
+                [](SObjectCore *core) { core->Release(); });
+            for (int index : {29, 61}) script.rounds[index].after_messages = [&] {
+                auto *robot = player_robot();
+                std::cout << "before restart=" << restarts << " time=" << session.time() << " position="
+                          << robot->m_PosX << ',' << robot->m_PosY << " ticks=" << form.ticks.size()
+                          << " paused=" << map->IsPaused() << '\n';
+                MG_CHECK(std::abs(robot->m_PosX - 100) + std::abs(robot->m_PosY - 200) > 5);
+                old_uid = robot->UID;
+                old_core.reset(robot->GetCore(DEBUG_CALL_INFO));
+                auto &player = *map->GetPlayerSide();
+                player.SetStatValue(STAT_TIME, 1234);
+                player.SetStatValue(STAT_ROBOT_KILL, 7);
+                for (int side = 1; side <= 2; ++side)
+                    for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+                        map->GetSideById(side)->SetResourceAmount(static_cast<ERes>(resource), 777 + resource);
+                // This iteration ticks once before the following restart messages.
+                old_time = session.time() + step * (cheats ? 4 : 1);
+            };
+            for (int index : {30, 62}) {
+                script.rounds[index].messages.emplace_back(WM_KEYDOWN, VK_UP);
+                loop_key(script.rounds[index], VK_ESCAPE);
+                loop_key(script.rounds[index], 'R');
+                loop_key(script.rounds[index], VK_RETURN);
+                script.rounds[index].after_messages = [&] {
+                    ++restarts;
+                    MG_CHECK(g_MatrixMap == map && map->m_Unit == terrain && session.time() == old_time);
+                    MG_CHECK(map->IsPaused() && map->m_DialogModeName &&
+                        std::wstring(map->m_DialogModeName) == TEMPLATE_DIALOG_BEGIN);
+                    MG_CHECK(robots().size() == 2 && robots(PLAYER_SIDE).size() == 1);
+                    auto *robot = player_robot();
+                    MG_CHECK(robot->UID != old_uid && old_core->m_Object == nullptr && old_core->m_Ref == 1);
+                    MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 200);
+                    auto &player = *map->GetPlayerSide();
+                    MG_CHECK(player.GetCurSelGroup()->GetObjectsCnt() == 0 && player.GetCurGroup() == nullptr);
+                    MG_CHECK(player.GetFirstGroup() == nullptr && player.m_CurrSel == NOTHING_SELECTED);
+                    MG_CHECK(player.GetStatValue(STAT_TIME) == 0 && player.GetStatValue(STAT_ROBOT_KILL) == 0);
+                    const int group = robot->GetGroupLogic();
+                    MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP && player.m_PlayerGroup[group].Order() == mpo_Stop);
+                    for (int side = 1; side <= 2; ++side)
+                        for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+                            MG_CHECK(map->GetSideById(side)->GetResourcesAmount(static_cast<ERes>(resource)) ==
+                                100 * side + 1 + resource);
+                    MG_CHECK(bool(FLAG(g_Flags, GFLAG_4SPEED)) == cheats && bool(FLAG(g_Flags, GFLAG_KEEPALIVE)) == cheats);
+                    MG_CHECK(Input::isVKeyPressed(VK_UP));
+                    MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP) && g_ExitState == 0);
+                    MG_CHECK(random::mode() == mode && form.last_rng_draws > 0 &&
+                        random::draw_count() == form.last_rng_draws);
+                    paused_draws = random::draw_count();
+                };
+            }
+            for (int index : {31, 63}) {
+                loop_key(script.rounds[index], VK_RETURN);
+                script.rounds[index].messages.emplace_back(WM_KEYUP, VK_UP);
+                script.rounds[index].after_messages = [&] {
+                    MG_CHECK(!map->IsPaused() && map->m_DialogModeName == nullptr && session.time() == old_time);
+                    MG_CHECK(random::mode() == mode && random::draw_count() == paused_draws);
+                    MG_CHECK(!Input::isVKeyPressed(VK_UP));
+                    move();
+                };
+            }
+            loop_word(script.rounds[93], "NEED4SPEED");
+            loop_word(script.rounds[93], "KEEPALIVE");
+            script.rounds[93].after_messages = move;
+            script.rounds[98].messages.emplace_back(WM_CLOSE, 0);
+            std::string close_state;
+            script.rounds[98].after_messages = [&] {
+                MG_CHECK(FLAG(g_Flags, GFLAG_APPCLOSE));
+                close_state = form.snapshot();
+            };
+            MG_CHECK(L3GRun(script.platform()) == 1);
+            MG_CHECK(!close_state.empty() && close_state == form.snapshot());
+            MG_CHECK(restarts == 2 && form.draws == 98 && form.ticks.size() == 98);
+            MG_CHECK(form.paused_ticks == 2 && script.clock_reads == 99);
+            for (int index = 0; index < 93; ++index) MG_CHECK(form.ticks[index] == step * (cheats ? 4 : 1));
+            for (int index = 93; index < 98; ++index) MG_CHECK(form.ticks[index] == step);
+            MG_CHECK(session.time() == step * (cheats ? 369 : 96));
+            MG_CHECK(!FLAG(g_Flags, GFLAG_4SPEED) && !FLAG(g_Flags, GFLAG_KEEPALIVE));
+            MG_CHECK(FLAG(g_Flags, GFLAG_APPCLOSE) && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            MG_CHECK(!map->IsPaused());
+            const auto *last_robot = player_robot();
+            MG_CHECK(std::abs(last_robot->m_PosX - 100) + std::abs(last_robot->m_PosY - 200) > 5);
+            MG_CHECK(script.waits == 0 && script.round == script.rounds.size());
+            if (repeat == 0) reference = form.trace;
+            else MG_CHECK(form.trace == reference);
+        }
+    }
+}
 constexpr tests::Case cases[] = {
+    {"game.loop.restart_toggles", loop_restart_toggles},
     {"game.restart.retired_group", restart_retired_group},
     {"game.restart.movement", restart_movement},
     {"game.restart.pending_win", restart_pending_win},

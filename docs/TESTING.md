@@ -132,6 +132,8 @@ The [owned-session cleanup and Restart failure guide](testing/85-restart-failure
 
 The [loop scheduler contracts](testing/85-loop-scheduler.md) run production `L3GRun` with a scripted platform and a recording form, freezing speed scaling, timestep capping, inactive waits and quit boundaries. They are separate from fixed-map-tick scenarios and do not establish full initialization, robot movement through the loop or native focus delivery.
 
+The [Restart-after-toggles case](testing/85-loop-restart.md) connects typed speed/background settings, moving robots, paused introductions and two storage-backed reloads within the production loop. Full initialization, game-owned cleanup and native delivery retain separate coverage.
+
 The [strategic and tactical AI guide](testing/84-ai-decisions.md) describes decision fixtures, declared initial state and separately tracked correctness probes.
 
 ### Extending the fixture

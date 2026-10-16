@@ -88,7 +88,7 @@ Saved versus effective settings need a path-specific check shared with #87 P4: a
 
 ## Timing, automatic mode and native handoff
 
-The [loop scheduler contracts](85-loop-scheduler.md) execute the production loop with a controlled clock/message source and a recording form. They cover timestep multiplication/truncation/capping, inactive waits, KEEPALIVE event dispatch, missing forms and close/exit boundaries. This narrow platform seam does not yet connect real robot movement, cheat input, restart or cleanup to the loop; O8's combined scenarios and native handoff remain required.
+The [loop scheduler contracts](85-loop-scheduler.md) execute the production loop with a controlled clock/message source and a recording form. They cover timestep multiplication/truncation/capping, inactive waits, KEEPALIVE event dispatch, missing forms and close/exit boundaries. The [Restart-after-toggles case](85-loop-restart.md) adds real form/map ticks, typed speed/background settings, two storage reloads, paused introductions and fresh orders. Game-owned cleanup after these transitions and native delivery remain separate O7/O10 obligations.
 
 | ID / owner | Selected missing scenarios | Required observations and limits |
 | --- | --- | --- |
