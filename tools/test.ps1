@@ -5,6 +5,7 @@ param(
     [ValidateSet('MinGW', 'MSVC')][string]$Compiler = 'MinGW',
     [switch]$DLL,
     [switch]$Cheats,
+    [switch]$Trace,
     [switch]$NoBuild,
     [switch]$Coverage,
     [switch]$WithoutMusic,
@@ -33,6 +34,7 @@ if (-not $NoBuild) {
         Compiler = $Compiler
         DLL = $DLL
         Cheats = $Cheats
+        Trace = $Trace
         WithoutResources = $true
         TestsOnly = $true
         Coverage = $Coverage
@@ -47,11 +49,15 @@ if (-not $NoBuild) {
 $kind = if ($DLL) { 'dll' } else { 'exe' }
 $buildName = '{0}-{1}-{2}' -f $Compiler.ToLowerInvariant(), $Configuration.ToLowerInvariant(), $kind
 if ($Coverage) { $buildName += '-coverage' }
+if ($Trace) { $buildName += '-trace' }
 $buildRoot = Join-Path $repoRoot "build/$buildName"
 $cache = Join-Path $buildRoot 'CMakeCache.txt'
 if (-not (Test-Path -LiteralPath $cache) -or
     -not (Select-String -LiteralPath $cache -Pattern '^BUILD_TESTING:BOOL=ON$' -Quiet)) {
     throw 'Tests are not configured. Run tools/test.ps1 without -NoBuild.'
+}
+if ($Trace -and -not (Select-String -LiteralPath $cache -Pattern '^MATRIXGAME_TRACE:BOOL=ON$' -Quiet)) {
+    throw 'Trace is not configured. Run tools/test.ps1 -Trace without -NoBuild.'
 }
 
 $testBinaryRoot = Join-Path $buildRoot 'tests'
