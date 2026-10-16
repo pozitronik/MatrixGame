@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <chrono>
 #include <float.h>
+#include <utility>
 
 namespace tests::battle {
 
@@ -257,6 +258,9 @@ int Session::frame() const { return impl_->frames; }
 std::uint64_t Session::rejected_icon_targets() const { return impl_->device.stats().rejected_icon_targets; }
 int Session::time() const { return impl_->map->GetTime(); }
 void Session::device_lost(bool lost) { impl_->device.cooperative_level(lost ? D3DERR_DEVICELOST : D3D_OK); }
+void Session::device_reset(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler) {
+    impl_->device.reset_handler(std::move(handler));
+}
 bool Session::matches(EntityId id, const CMatrixRobotAI *candidate) const {
     return candidate != nullptr && impl_->lookup(id) == candidate;
 }
