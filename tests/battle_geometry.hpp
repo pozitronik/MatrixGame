@@ -37,6 +37,8 @@ public:
     static void configure(CMatrixMapLogic &map, NavigationLayout layout = NavigationLayout::CentralObstacle);
     // Coordinates are world units. Returned units belong to map.StaticClear().
     static CMatrixRobotAI *create_robot(CMatrixMapLogic &map, int side, float x, float y);
+    // Non-wheel movement needs its synthetic effect catalog. Pneumatic callers
+    // must build and own the production gait catalog before the first tick.
     static CMatrixRobotAI *create_robot(CMatrixMapLogic &map, int side, float x, float y, ERobotUnitKind chassis);
 };
 
