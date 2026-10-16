@@ -707,6 +707,8 @@ foreach(contract settings_input_pause_cancel settings_apply_save_failure)
     add_matrix_test(game.presentation.${contract} matrixgame_settings_window_integration_tests gameplay ui input settings)
 endforeach()
 
+add_matrix_test(game.outcome.falling_cargo_status_scan matrixgame_battle_outcome_scenarios gameplay)
+
 # Manual correctness probes for catalog defect candidates, intentionally outside
 # CTest until separately reviewed fixes establish the expected invariants.
 add_matrix_test_executable(matrixgame_presentation_defect_probes presentation_defect_probes.cpp diagnostic_overlay_stub.cpp)

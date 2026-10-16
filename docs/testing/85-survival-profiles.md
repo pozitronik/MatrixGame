@@ -57,6 +57,21 @@ The remaining four cases act once before release and once after landing. Nominal
 
 The cargo-loss checks assert an active side on the preceding tick, elimination at the recorded boundary, no dialog on the tick before its deadline, and a paused loss dialog at the deadline. Destroying the carrier after delivery has no loss dialog: the landed robot keeps the side alive.
 
+## Survival scan during the fall
+
+`game.outcome.falling_cargo_status_scan` adds a delayed delivery request so that the production side-status scan occurs inside the cargo's 320 ms fall. The original immediate-request profiles above observe falling state but their periodic survival checks occur outside that interval. This case reads the existing protected scan timestamp through a derived member-pointer observer; it does not change the timer or force a scan.
+
+The player has no base or other robot. In the live-cargo variant, the scan must retain the active side, the robot must land, and no result may appear through 12000 ms. A separate control deletes the cargo immediately after release; the same scan must eliminate the player and the next scan must open the paused loss dialog. Both paths award no robot kill credit. Both RNG modes and 10/16 ms schedules repeat in fresh sessions and compare complete recorded map states, cargo state and scan timestamps.
+
+| RNG / step | Delivery request | Release | Live-cargo survival scan / deleted-cargo elimination | Landing if retained | Loss dialog if deleted |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ParkMiller / 10 ms | 1800 | 7900 | 8050 | 8220 | 10060 |
+| ParkMiller / 16 ms | 1808 | 7920 | 8080 | 8240 | 10096 |
+| LegacyCRT / 10 ms | 3000 | 7940 | 8050 | 8260 | 10060 |
+| LegacyCRT / 16 ms | 3008 | 7952 | 8080 | 8272 | 10096 |
+
+Run `tools/test.ps1 -Configuration Debug -Filter '^game\.outcome\.falling_cargo_status_scan$'` and repeat with `Release`. This extends the survival predicate evidence; it does not add a weapon or projectile to the delivery model.
+
 ## Limits
 
 This completes the nine existing survival/transport cases' schedule extension, not all O3 implementation. Last-base destruction through a weapon, a weapon-attached carrier, and projectile/targeting collisions with the carrier or cargo remain selected work. The current carrier has only a synthetic body mesh, and lethal damage is supplied directly to the production damage receiver. Direct deletion is a separate lifetime control. Neither path establishes target eligibility or weapon collision.
