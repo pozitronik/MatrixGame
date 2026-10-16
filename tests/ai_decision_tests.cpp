@@ -32,6 +32,10 @@ void visual_axis_aligned();
 void visual_retirement_range();
 void armed_friendly_line();
 void armed_target_retention();
+void moving_combat_continuation();
+void patrol_combat_continuation();
+void patrol_combat_retirement();
+void patrol_combat_replacement();
 void ineffective_fire_decisions();
 void blocked_fire_decisions();
 void moving_fire_decisions();
@@ -441,6 +445,10 @@ int main(int argc, char **argv) {
         {"game.ai.visual_axis_aligned", tests::ai::visual_axis_aligned},
         {"game.ai.visual_retirement_range", tests::ai::visual_retirement_range},
         {"game.ai.armed_friendly_line", tests::ai::armed_friendly_line},
+        {"game.ai.moving_combat_continuation", tests::ai::moving_combat_continuation},
+        {"game.ai.patrol_combat_continuation", tests::ai::patrol_combat_continuation},
+        {"game.ai.patrol_combat_retirement", tests::ai::patrol_combat_retirement},
+        {"game.ai.patrol_combat_replacement", tests::ai::patrol_combat_replacement},
         {"game.ai.armed_target_retention", tests::ai::armed_target_retention},
         {"game.ai.ineffective_fire_decisions", tests::ai::ineffective_fire_decisions},
         {"game.ai.blocked_fire_decisions", tests::ai::blocked_fire_decisions},
