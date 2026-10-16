@@ -720,7 +720,7 @@ add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_native_session_fixture native_session_fixture.cpp
-        battle_geometry.cpp)
+        native_session_assets.cpp battle_geometry.cpp)
     target_link_libraries(matrixgame_native_session_fixture PRIVATE MatrixGameInternal)
     target_compile_definitions(matrixgame_native_session_fixture PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
     option(MATRIXGAME_NATIVE_SESSION_TESTS "Run native Direct3D 9 synthetic session checks" OFF)
