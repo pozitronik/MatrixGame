@@ -390,7 +390,7 @@ CMatrixRobotAI *BattleGeometry::create_robot(CMatrixMapLogic &map, int side, flo
 }
 
 CMatrixRobotAI *BattleGeometry::create_robot(CMatrixMapLogic &map, int side, float x, float y, ERobotUnitKind chassis) {
-    MG_CHECK(chassis == RUK_CHASSIS_WHEEL || chassis == RUK_CHASSIS_TRACK);
+    MG_CHECK(chassis == RUK_CHASSIS_WHEEL || chassis == RUK_CHASSIS_TRACK || chassis == RUK_CHASSIS_HOVERCRAFT);
     const MeshAttachment attachment{1, L"chassis-link", 0, 0, 20};
     auto *geometry = load_battle_mesh(std::span(&attachment, 1));
     auto *robot = map.StaticAdd<CMatrixRobotAI>();

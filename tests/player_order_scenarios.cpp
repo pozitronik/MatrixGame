@@ -17,6 +17,7 @@
 #include "input.hpp"
 #include "cheats.hpp"
 #include <algorithm>
+#include <cmath>
 #include <initializer_list>
 #include <csignal>
 #include <cstdlib>
@@ -877,6 +878,160 @@ void manual_aim_and_fire_input() {
     press(form, VK_RETURN);
     MG_CHECK(!side().IsArcadeMode());
 }
+// The track tread uses the same synthetic texture as the wheel tread. Keep the
+// borrowed property alive until Session has retired all movement effects.
+struct ManualTrackEffectAccess : CMatrixEffect {
+    static SSpotProperties install() {
+        const auto previous = m_SpotProperties[SPOT_SOLE_TRACK];
+        m_SpotProperties[SPOT_SOLE_TRACK] = m_SpotProperties[SPOT_SOLE_WHEEL];
+        return previous;
+    }
+    static void restore(SSpotProperties previous) { m_SpotProperties[SPOT_SOLE_TRACK] = previous; }
+};
+struct ManualTrackEffects {
+    SSpotProperties previous{};
+    bool installed = false;
+    void install() { previous = ManualTrackEffectAccess::install(); installed = true; }
+    ~ManualTrackEffects() { if (installed) ManualTrackEffectAccess::restore(previous); }
+};
+void manual_chassis_lifecycle(ERobotUnitKind chassis) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (int step : {10, 16}) for (bool moving_target : {false, true}) {
+        tests::BattleCombatAssets assets;
+        ManualTrackEffects tracks;
+        Profile profile{mode, 80, step, 3000, false, false};
+        profile.layout = tests::NavigationLayout::Open;
+        Session session(profile);
+        assets.install();
+        tracks.install();
+        const bool tracked = chassis == RUK_CHASSIS_TRACK;
+        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SPEED : CHASSIS4_MOVE_SPEED] = tracked ? .5f : .7f;
+        g_Config.m_ItemChars[tracked ? CHASSIS3_ROTATION_SPEED : CHASSIS4_ROTATION_SPEED] = .04f;
+        g_Config.m_ItemChars[tracked ? CHASSIS3_STRUCTURE : CHASSIS4_STRUCTURE] = 1000;
+        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_WATER_CORR : CHASSIS4_MOVE_WATER_CORR] = .5f;
+        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SLOPE_CORR_DOWN : CHASSIS4_MOVE_SLOPE_CORR_DOWN] = 2.5f;
+        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SLOPE_CORR_UP : CHASSIS4_MOVE_SLOPE_CORR_UP] = .7f;
+        auto *robot = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200, chassis);
+        MG_CHECK(session.remove(1) && session.remove(2));
+        CMatrixRobotAI *distant_enemy = nullptr;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+            if (object->IsLiveRobot() && session.matches(4, object->AsRobot())) distant_enemy = object->AsRobot();
+        MG_CHECK(distant_enemy);
+        distant_enemy->m_PosX = 540; distant_enemy->m_PosY = 540;
+        distant_enemy->MapPosCalc(); distant_enemy->RChange(MR_Matrix);
+        distant_enemy->RNeed(MR_Matrix); distant_enemy->JoinToGroup();
+        distant_enemy->SetMaxSpeed(0);
+        distant_enemy->m_GroupSpeed = 0;
+        CMatrixRobotAI *target = nullptr;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+            if (object->IsLiveRobot() && session.matches(3, object->AsRobot())) target = object->AsRobot();
+        MG_CHECK(target && session.matches(3, target));
+        target->m_PosX = 300; target->m_PosY = 250;
+        target->MapPosCalc(); target->RChange(MR_Matrix);
+        target->RNeed(MR_Matrix); target->JoinToGroup();
+        target->SetMaxSpeed(moving_target ? .15f : 0);
+        target->m_GroupSpeed = target->GetMaxSpeed();
+        target->InitMaxHitpoint(1000);
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 250;
+        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {2, 0, 10};
+        g_Config.m_Overheat[WEAPON_LASER_HEAT] = 10;
+        g_Config.m_Overheat[WEAPON_LASER_COOL] = 10;
+        g_Config.m_Overheat[WCP_LASER] = 100;
+        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = .04f;
+        tests::arm_battle_robot(*robot, RUK_WEAPON_LASER);
+        side().CreateGroupFromCurrent(robot);
+        side().Select(ROBOT, nullptr);
+        CFormMatrixGame form;
+        const float speed = robot->GetMaxSpeed();
+        MG_CHECK(speed == (tracked ? .5f : .7f));
+        press(form, VK_RETURN);
+        MG_CHECK(side().GetArcadedObject() == robot && side().IsRobotMode());
+        MG_CHECK(robot->m_Unit[0].u1.s1.m_Kind == chassis && robot->GetMaxSpeed() == speed * 1.1f);
+        std::cout << session.metadata("manual-chassis-lifecycle-v1") << " chassis=" << int(chassis)
+                  << " moving_target=" << moving_target << std::endl;
+        auto advance = [&](int duration) {
+            const int until = session.time() + duration;
+            while (session.time() < until) {
+                // World picking is supplied; moving targets get a fresh aim point each tick.
+                if (target) {
+                    g_MatrixMap->m_TraceStopObj = target;
+                    g_MatrixMap->m_TraceStopPos = target->GetGeoCenter();
+                }
+                session.advance();
+                MG_CHECK(robot->IsLiveRobot());
+                if (target) MG_CHECK(target->IsLiveRobot());
+                MG_CHECK(distant_enemy->m_PosX == 540 && distant_enemy->m_PosY == 540);
+                MG_CHECK(std::isfinite(robot->m_PosX) && std::isfinite(robot->m_PosY));
+            }
+        };
+        const uint8_t forward = g_Config.m_KeyActions[KA_UNIT_FORWARD];
+        const uint8_t right = g_Config.m_KeyActions[KA_UNIT_RIGHT];
+        const float start_x = robot->m_PosX;
+        form.Keyboard(true, forward);
+        advance(200);
+        MG_CHECK(robot->m_PosX > start_x + 5);
+        form.Keyboard(false, forward);
+        advance(100);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_MOVE_TO));
+        const auto direction = robot->m_Forward;
+        form.Keyboard(true, right);
+        advance(100);
+        form.Keyboard(false, right);
+        MG_CHECK(direction.x * robot->m_Forward.y - direction.y * robot->m_Forward.x > 0);
+        const float target_x = target->m_PosX, target_y = target->m_PosY;
+        const float health = target->GetHitPoint();
+        form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+        advance(1000);
+        MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(target->GetHitPoint() < health);
+        MG_CHECK((target->m_PosX != target_x || target->m_PosY != target_y) == moving_target);
+        form.MouseKey(B_UP, VK_LBUTTON, 640, 360);
+        const float stopped_health = target->GetHitPoint();
+        advance(200);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() == stopped_health);
+        form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+        advance(200);
+        MG_CHECK(target->GetHitPoint() < stopped_health);
+        form.SystemEvent(SYSEV_INPUT_RESET);
+        const float reset_health = target->GetHitPoint();
+        advance(200);
+        MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON) && !robot->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(target->GetHitPoint() == reset_health);
+        const float driving_x = robot->m_PosX;
+        form.Keyboard(true, forward);
+        advance(100);
+        MG_CHECK(robot->m_PosX > driving_x + 1);
+        press(form, VK_RETURN);
+        MG_CHECK(!side().IsArcadeMode() && !side().GetArcadedObject());
+        MG_CHECK(Input::isVKeyPressed(forward) && robot->GetMaxSpeed() == speed);
+        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_Attack);
+        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
+        // Remove the nearby enemy before testing arrival, so autonomous combat
+        // cannot replace the movement with a firing position after manual exit.
+        MG_CHECK(session.remove(3));
+        target = nullptr;
+        const float exit_y = robot->m_PosY;
+        session.ground_command(100, 100);
+        const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
+        MG_CHECK(group.Order() == mpo_MoveTo);
+        const auto destination = group.m_To;
+        advance(1000);
+        MG_CHECK(Input::isVKeyPressed(forward));
+        MG_CHECK(robot->m_PosY < exit_y - 10);
+        form.Keyboard(false, forward);
+        MG_CHECK(!Input::isVKeyPressed(forward));
+        advance(12000);
+        MG_CHECK(group.Order() == mpo_MoveTo && group.m_To == destination);
+        MG_CHECK(robot->PLIsInPlace());
+        MG_CHECK(robot->GetEnv()->m_Place == 0);
+        MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 100);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE));
+    }
+}
+void manual_track_lifecycle() { manual_chassis_lifecycle(RUK_CHASSIS_TRACK); }
+void manual_hovercraft_lifecycle() { manual_chassis_lifecycle(RUK_CHASSIS_HOVERCRAFT); }
+
 void manual_armed_fire() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         tests::BattleCombatAssets assets;
@@ -1510,6 +1665,8 @@ void manual_control() {
     MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
 }
 constexpr tests::Case cases[] = {
+    {"game.player.manual_track_lifecycle", manual_track_lifecycle},
+    {"game.player.manual_hovercraft_lifecycle", manual_hovercraft_lifecycle},
     {"game.player.control_group_reassignment", control_group_reassignment},
     {"game.player.control_group_combat_death", control_group_combat_death},
     {"game.player.manual_bomb_key", manual_bomb_key},
