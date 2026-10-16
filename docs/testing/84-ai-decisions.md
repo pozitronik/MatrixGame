@@ -66,6 +66,8 @@ The capture-priority cases create an enemy base and cannon through the shared ge
 
 Initial logic-list order matters. The production map loader registers buildings, robots and cannons in that order. The shared session already contains robots, so the capture fixture re-registers those robots through `DelLT`/`AddLT` during initial setup to put its base first, before adding the cannon. No scenario command has run at this point, and no ordering changes occur during the tested decisions. This follows the existing loader contract: the capture validator in `MatrixSide.cpp`, `CMatrixSideUnit::TaktPL` (the `mpo_Capture` branch around lines 7103-7117), stops scanning when it finds an existing capturer, so a synthetic base placed after that robot would not yet have been counted as a live objective. Runtime creation of buildings after existing capturers is outside this scenario.
 
+The separate [guarded-base journeys](84-guarded-base.md) advance natural guard detection, real weapon damage and death, resumed capture, ownership transfer and objective destruction. Their shared A3/#85 O1 evidence includes income recipients, side/color semantics and released orders. They retain these earlier decision tests and do not claim completion of the remaining AI scenarios.
+
 ## Cleanup and bomb-escape decision boundaries
 
 Four additional registered cases exercise independent production logic without assembled weapon or building models:
