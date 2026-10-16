@@ -4,6 +4,7 @@
 #include <d3d9.h>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 namespace tests {
 
@@ -25,7 +26,7 @@ struct BattleDeviceStats {
 // Textures support one A8R8G8B8 mip level in managed CPU storage, without drawing.
 // Opt-in IconTargets::Unavailable rejects only the 256x256 icon render target
 // with D3DERR_NOTAVAILABLE; it never simulates successful drawing.
-// Unknown calls (including rendering, other texture profiles and Reset) terminate the test
+// Unknown calls (including rendering, other texture profiles and unscripted Reset) terminate the test
 // with the method name, even if the production caller ignores its HRESULT.
 // cooperative_level can report a lost device, which needs no Reset while it lasts.
 class BattleDevice {
@@ -40,6 +41,8 @@ public:
     BattleDevice &operator=(const BattleDevice &) = delete;
     IDirect3DDevice9 *get() const;
     void cooperative_level(HRESULT status);
+    // Explicit CPU-only device boundary for display-controller tests; no native reset/rendering.
+    void reset_handler(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler);
     const BattleDeviceStats &stats() const;
 };
 

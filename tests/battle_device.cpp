@@ -7,6 +7,7 @@
 #include <map>
 #include <new>
 #include <vector>
+#include <utility>
 
 extern IDirect3DDevice9 *g_D3DD;
 
@@ -229,6 +230,7 @@ class BattleDevice::Device final : public IDirect3DDevice9 {
     DWORD fvf_{};
     BOOL cursor_visible_{};
 public:
+    std::function<HRESULT(D3DPRESENT_PARAMETERS *)> reset_handler;
     BattleDeviceStats statistics;
     IconTargets icon_targets_;
     explicit Device(IconTargets icon_targets) : icon_targets_(icon_targets) {
@@ -304,8 +306,9 @@ public:
     UINT STDMETHODCALLTYPE GetNumberOfSwapChains() override {
         unsupported("GetNumberOfSwapChains");
     }
-    HRESULT STDMETHODCALLTYPE Reset(D3DPRESENT_PARAMETERS*) override {
-        unsupported("Reset");
+    HRESULT STDMETHODCALLTYPE Reset(D3DPRESENT_PARAMETERS *parameters) override {
+        if (!reset_handler) unsupported("Reset");
+        return reset_handler(parameters);
     }
     HRESULT STDMETHODCALLTYPE Present(const RECT *, const RECT *, HWND, const RGNDATA *) override {
         unsupported("Present");
@@ -711,5 +714,8 @@ void BattleDevice::cooperative_level(HRESULT status) {
     device_->cooperative_level = status;
 }
 const BattleDeviceStats &BattleDevice::stats() const { return device_->statistics; }
+void BattleDevice::reset_handler(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler) {
+    device_->reset_handler = std::move(handler);
+}
 
 } // namespace tests
