@@ -762,6 +762,9 @@ endforeach()
 add_matrix_test(game.presentation.settings_display_rollback matrixgame_settings_window_integration_tests gameplay ui input settings current-desktop)
 
 
+add_matrix_test(game.outcome.armed_transport_survival matrixgame_battle_outcome_scenarios gameplay)
+add_matrix_test(game.outcome.armed_flyer_does_not_prevent_elimination matrixgame_battle_outcome_scenarios gameplay)
+add_matrix_test(game.outcome.transport_projectile_outcomes matrixgame_battle_outcome_scenarios gameplay)
 
 # Manual correctness probes for catalog defect candidates, intentionally outside
 # CTest until separately reviewed fixes establish the expected invariants.

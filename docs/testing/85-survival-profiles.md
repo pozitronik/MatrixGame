@@ -74,6 +74,6 @@ Run `tools/test.ps1 -Configuration Debug -Filter '^game\.outcome\.falling_cargo_
 
 ## Limits
 
-This completes the nine existing survival/transport cases' schedule extension, not all O3 implementation. Last-base destruction through a weapon, a weapon-attached carrier, and projectile/targeting collisions with the carrier or cargo remain selected work. The current carrier has only a synthetic body mesh, and lethal damage is supplied directly to the production damage receiver. Direct deletion is a separate lifetime control. Neither path establishes target eligibility or weapon collision.
+This completes the nine existing survival/transport cases' schedule extension, not all O3 implementation. The [weapon-attached transport cases](85-transport-collisions.md) add the selected carrier variant and projectile collision continuations. The older direct receiver/deletion cases remain separate controls. Last-base destruction through a weapon requires its own encounter evidence.
 
 These fixtures execute map logic and retained-core cleanup, not loaded-map restart, successful initialization/reentry, real rendering or native result interaction. Full-baseline recording, comparison, compiler/DLL integration and acceptance retain their existing owners and gates.
