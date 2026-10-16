@@ -905,7 +905,7 @@ void manual_chassis_lifecycle(ERobotUnitKind chassis) {
         assets.install();
         tracks.install();
         const bool tracked = chassis == RUK_CHASSIS_TRACK;
-        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SPEED : CHASSIS4_MOVE_SPEED] = .6f;
+        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SPEED : CHASSIS4_MOVE_SPEED] = tracked ? .5f : .7f;
         g_Config.m_ItemChars[tracked ? CHASSIS3_ROTATION_SPEED : CHASSIS4_ROTATION_SPEED] = .04f;
         g_Config.m_ItemChars[tracked ? CHASSIS3_STRUCTURE : CHASSIS4_STRUCTURE] = 1000;
         g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_WATER_CORR : CHASSIS4_MOVE_WATER_CORR] = .5f;
@@ -944,6 +944,7 @@ void manual_chassis_lifecycle(ERobotUnitKind chassis) {
         side().Select(ROBOT, nullptr);
         CFormMatrixGame form;
         const float speed = robot->GetMaxSpeed();
+        MG_CHECK(speed == (tracked ? .5f : .7f));
         press(form, VK_RETURN);
         MG_CHECK(side().GetArcadedObject() == robot && side().IsRobotMode());
         MG_CHECK(robot->m_Unit[0].u1.s1.m_Kind == chassis && robot->GetMaxSpeed() == speed * 1.1f);
@@ -977,7 +978,7 @@ void manual_chassis_lifecycle(ERobotUnitKind chassis) {
         form.Keyboard(true, right);
         advance(100);
         form.Keyboard(false, right);
-        MG_CHECK(robot->m_Forward != direction);
+        MG_CHECK(direction.x * robot->m_Forward.y - direction.y * robot->m_Forward.x > 0);
         const float target_x = target->m_PosX, target_y = target->m_PosY;
         const float health = target->GetHitPoint();
         form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
@@ -997,8 +998,10 @@ void manual_chassis_lifecycle(ERobotUnitKind chassis) {
         advance(200);
         MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON) && !robot->FindOrderLikeThat(ROT_FIRE));
         MG_CHECK(target->GetHitPoint() == reset_health);
+        const float driving_x = robot->m_PosX;
         form.Keyboard(true, forward);
         advance(100);
+        MG_CHECK(robot->m_PosX > driving_x + 1);
         press(form, VK_RETURN);
         MG_CHECK(!side().IsArcadeMode() && !side().GetArcadedObject());
         MG_CHECK(Input::isVKeyPressed(forward) && robot->GetMaxSpeed() == speed);
