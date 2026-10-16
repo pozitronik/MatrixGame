@@ -767,9 +767,9 @@ void registered_capture_profile(int owner, CaptureRoute route = CaptureRoute::Co
 void registered_capture() { registered_capture_profile(0); }
 void registered_enemy_capture() { registered_capture_profile(2); }
 void registered_base_capture_profile(CaptureRoute route) {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int owner : {0, 2}) {
-        Session session({mode, 79, 10, 3000, false});
-        std::cout << session.metadata("capture-route-completion-v1") << " route=" << int(route) << '\n';
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) for (int owner : {0, 2}) {
+        Session session({mode, 79, step, 3000, false});
+        std::cout << session.metadata("base-capture-route-completion-v2") << " route=" << int(route) << '\n';
         auto *building = register_building(owner, BUILDING_BASE, 100, 100);
         auto &enemy = *g_MatrixMap->GetSideById(2);
         g_Config.m_Timings[UNIT_ROBOT] = 100000;
@@ -798,9 +798,14 @@ void registered_base_capture_profile(CaptureRoute route) {
             }
         }
         MG_CHECK(capturer != 0);
+        const int closing_at = step == 10 ? 4330 : 4336;
+        const int captured_at = step == 10 ? 5580 : 5600;
         int opened = 0, closing = 0, captured = 0;
         for (int i = 0; i < 2000 && !captured; ++i) {
             session.advance();
+            if (session.time() == 1280 - step) MG_CHECK(building->m_State == BASE_OPENING);
+            if (session.time() == closing_at - step) MG_CHECK(building->m_State == BASE_OPENED);
+            if (session.time() == captured_at - step) MG_CHECK(building->m_State == BASE_CLOSING);
             if (!opened && building->m_State == BASE_OPENED) opened = session.time();
             if (!closing && opened && building->m_State == BASE_CLOSING) closing = session.time();
             if (building->GetSide() == PLAYER_SIDE) captured = session.time();
@@ -811,9 +816,10 @@ void registered_base_capture_profile(CaptureRoute route) {
                     MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(resource)) == 100);
             }
         }
-        std::cout << "base capture mode=" << int(mode) << " route=" << int(route) << " owner=" << owner
+        std::cout << "base capture mode=" << int(mode) << " step=" << step << " route=" << int(route) << " owner=" << owner
                   << " opened=" << opened << " closing=" << closing << " captured=" << captured << '\n';
-        MG_CHECK(opened == 1280 && closing == 4330 && captured == 5580);
+        MG_CHECK(opened == 1280);
+        MG_CHECK(closing == closing_at && captured == captured_at);
         MG_CHECK(building->GetSide() == PLAYER_SIDE && building->m_State == BASE_CLOSED);
         MG_CHECK(!session.robot(capturer).alive);
         MG_CHECK(session.robot(capturer == 1 ? 2 : 1).alive);
@@ -840,13 +846,14 @@ void capture_button_completion() {
     registered_base_capture_profile(CaptureRoute::Button);
 }
 void capture_target_removal() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        Session session({mode, 79, 10, 1000, false});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step, 1000, false});
+        std::cout << session.metadata("capture-target-removal-v2") << '\n';
         auto *building = register_building(0, BUILDING_TITAN, 160, 200);
         auto *robot = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
         g_MatrixMap->m_TraceStopObj = building;
         side().OnRButtonDown(CPoint(0, 0));
-        advance_to(session, 200);
+        advance_to(session, step == 10 ? 200 : 208);
         MG_CHECK(robot->GetCaptureFactory() == building);
         MG_CHECK(building->m_Capturer == robot && building->GetSide() == 0);
         g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
@@ -861,8 +868,9 @@ void capture_target_removal() {
     }
 }
 void capture_candidate_lifetime() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        Session session({mode, 79, 10, 1000, false});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step, 1000, false});
+        std::cout << session.metadata("capture-candidate-lifetime-v2") << '\n';
         auto *building = register_building(0, BUILDING_TITAN, 100, 200);
         auto *robot = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
         std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(building->GetCore(DEBUG_CALL_INFO),
@@ -872,7 +880,7 @@ void capture_candidate_lifetime() {
         session.advance();
         MG_CHECK(robot->IsCaptureInformed());
         MG_CHECK(core->m_Ref == refs + 3); // Both nearby player robots and one enemy receive candidates.
-        advance_to(session, 1020); // Re-publication must not duplicate candidate references.
+        advance_to(session, step == 10 ? 1020 : 1024); // Re-publication must not duplicate candidate references.
         MG_CHECK(core->m_Ref == refs + 3);
         MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY)); // Manual player robots do not auto-claim candidates.
         MG_CHECK(building->m_TrueColor.m_ColoredCnt > 0 && building->GetSide() == 0);
@@ -933,17 +941,18 @@ struct CaptureCraterAssets {
     }
     ~CaptureCraterAssets() { CaptureEffectAccess::m_SpotProperties[SPOT_VORONKA] = previous; }
 };
-std::vector<std::string> capture_death_run(random::Mode mode) {
+std::vector<std::string> capture_death_run(random::Mode mode, int step) {
     tests::BattleCombatAssets assets;
     CaptureCraterAssets crater;
-    Session session({mode, 85, 10, 1500, false});
+    Session session({mode, 85, step, 1500, false});
+    std::cout << session.metadata("capture-death-v2") << '\n';
     assets.install();
     crater.install();
     auto *building = register_building(0, BUILDING_TITAN, 160, 200);
     auto *capturer = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
     g_MatrixMap->m_TraceStopObj = building;
     side().OnRButtonDown(CPoint(0, 0));
-    advance_to(session, 1000);
+    advance_to(session, step == 10 ? 1000 : 1008);
     MG_CHECK(capturer->GetCaptureFactory() == building && building->m_Capturer == capturer);
     MG_CHECK(building->m_TrueColor.m_ColoredCnt == 1 && building->GetSide() == 0);
     std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(capturer->GetCore(DEBUG_CALL_INFO),
@@ -953,10 +962,16 @@ std::vector<std::string> capture_death_run(random::Mode mode) {
     MG_CHECK(capturer->m_CurrState == ROBOT_DIP);
     MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
     MG_CHECK(building->m_Capturer == nullptr);
+    const int replacement_at = step == 10 ? 1020 : 1040;
+    const int captured_at = step == 10 ? 7530 : 7536;
+    const int removed_at = mode == random::Mode::ParkMiller ? (step == 10 ? 5430 : 5440) : (step == 10 ? 4110 : 4112);
     int replacement = 0, captured = 0, removed = 0;
     std::vector<std::string> trace;
-    for (int i = 0; i < 1000; ++i) {
+    while (session.time() < 11000) {
         session.advance();
+        if (session.time() == replacement_at - step) MG_CHECK(building->m_Capturer == nullptr);
+        if (session.time() == captured_at - step) MG_CHECK(building->GetSide() == 0);
+        if (session.time() == removed_at - step) MG_CHECK(core->m_Object != nullptr);
         if (!replacement && building->m_Capturer) replacement = session.time();
         if (!captured && building->GetSide() == PLAYER_SIDE) captured = session.time();
         if (!removed && !core->m_Object) removed = session.time();
@@ -965,8 +980,7 @@ std::vector<std::string> capture_death_run(random::Mode mode) {
     }
     std::cout << "capture death mode=" << int(mode) << " owner=" << building->GetSide()
               << " paint=" << building->m_TrueColor.m_ColoredCnt << " replacement=" << replacement << " captured=" << captured << " removed=" << removed << " core=" << bool(core->m_Object) << '\n';
-    MG_CHECK(replacement == 1020 && captured == 7530);
-    MG_CHECK(removed == (mode == random::Mode::ParkMiller ? 5430 : 4110));
+    MG_CHECK(replacement == replacement_at && captured == captured_at && removed == removed_at);
     MG_CHECK(building->GetSide() == PLAYER_SIDE && building->m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
     MG_CHECK(building->m_TrueColor.m_Color == 0xff00ff00);
     MG_CHECK(!session.robot(1).alive && session.robot(2).alive);
@@ -976,22 +990,23 @@ std::vector<std::string> capture_death_run(random::Mode mode) {
     return trace;
 }
 void capture_combat_death() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        const auto first = capture_death_run(mode);
-        MG_CHECK(first == capture_death_run(mode));
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = capture_death_run(mode, step);
+        MG_CHECK(first == capture_death_run(mode, step));
     }
 }
-std::vector<std::string> base_interruption_run(random::Mode mode, int interrupt_at) {
+std::vector<std::string> base_interruption_run(random::Mode mode, int step, int interrupt_at) {
     tests::BattleCombatAssets assets;
     CaptureCraterAssets crater;
-    Session session({mode, 85, 10, 1500, false});
+    Session session({mode, 85, step, 1500, false});
+    std::cout << session.metadata("base-interruption-v2") << " interrupt=" << interrupt_at << '\n';
     assets.install();
     crater.install();
     auto *building = register_building(0, BUILDING_BASE, 100, 100);
     auto *capturer = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
     g_MatrixMap->m_TraceStopObj = building;
     side().OnRButtonDown(CPoint(0, 0));
-    advance_to(session, interrupt_at);
+    advance_to(session, ((interrupt_at + step - 1) / step) * step);
     MG_CHECK(building->m_State == (interrupt_at == 200 ? BASE_OPENING : interrupt_at == 2000 ? BASE_OPENED : BASE_CLOSING));
     MG_CHECK(capturer->GetCaptureFactory() == building && building->m_Capturer == capturer);
     MG_CHECK(capturer->IsDisableManual() == (interrupt_at != 200));
@@ -1000,14 +1015,25 @@ std::vector<std::string> base_interruption_run(random::Mode mode, int interrupt_
     MG_CHECK(capturer->GetCaptureFactory() == nullptr && building->m_Capturer == nullptr);
     MG_CHECK(session.robot(1).order == mpo_Stop);
     MG_CHECK(capturer->IsMustDie() == (interrupt_at != 200));
+    const int closed_at = interrupt_at == 200 ? (step == 10 ? 370 : 400) :
+        interrupt_at == 2000 ? (step == 10 ? 3260 : 3264) : (step == 10 ? 5580 : 5600);
+    const int death_at = interrupt_at == 200 ? 0 :
+        interrupt_at == 2000 ? (step == 10 ? 2010 : 2016) : (step == 10 ? 4510 : 4528);
+    MG_CHECK(session.robot(1).alive);
+    int closed = 0, died = 0;
     std::vector<std::string> trace;
     while (session.time() < 10000) {
         session.advance();
+        if (session.time() == closed_at - step) MG_CHECK(building->m_State == BASE_CLOSING);
+        if (!closed && building->m_State == BASE_CLOSED) closed = session.time();
+        if (!died && !session.robot(1).alive) died = session.time();
         MG_CHECK(building->GetSide() == 0);
         trace.push_back(session.snapshot() + ":" + std::to_string(building->m_State) + ":" + std::to_string(building->m_Capturer != nullptr));
     }
     std::cout << "base interruption owner=" << building->GetSide() << " state=" << building->m_State
-              << " robot1=" << session.robot(1).alive << " robot2=" << session.robot(2).alive << '\n';
+              << " robot1=" << session.robot(1).alive << " robot2=" << session.robot(2).alive
+              << " closed=" << closed << " died=" << died << '\n';
+    MG_CHECK(closed == closed_at && died == death_at);
     MG_CHECK(building->m_State == BASE_CLOSED && building->GetSide() == 0);
     MG_CHECK(session.robot(1).alive == (interrupt_at == 200) && session.robot(2).alive);
     MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
@@ -1016,9 +1042,9 @@ std::vector<std::string> base_interruption_run(random::Mode mode, int interrupt_
     return trace;
 }
 void base_capture_interruption() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int interrupt_at : {200, 2000, 4500}) {
-        const auto first = base_interruption_run(mode, interrupt_at);
-        MG_CHECK(first == base_interruption_run(mode, interrupt_at));
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) for (int interrupt_at : {200, 2000, 4500}) {
+        const auto first = base_interruption_run(mode, step, interrupt_at);
+        MG_CHECK(first == base_interruption_run(mode, step, interrupt_at));
     }
 }
 void turret_does_not_prevent_elimination() {
@@ -1252,11 +1278,12 @@ void carrier_loss_outcome(bool damage) {
 }
 void carrier_removal_outcome() { carrier_loss_outcome(false); }
 void carrier_damage_outcome() { carrier_loss_outcome(true); }
-std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base) {
+std::vector<std::string> capture_target_damage_run(random::Mode mode, int step, bool base) {
     tests::BattleMaterialProfile materials;
     tests::BattleCombatAssets assets;
     CaptureCraterAssets crater;
-    Session session({mode, 85, 10, 1500, false});
+    Session session({mode, 85, step, 1500, false});
+    std::cout << session.metadata("capture-target-damage-v2") << '\n';
     assets.install();
     crater.install();
     const auto kind = base ? BUILDING_BASE : BUILDING_TITAN;
@@ -1280,7 +1307,7 @@ std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base)
     const int group = capturer->GetGroupLogic();
     MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
     g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
-    advance_to(session, base ? 2000 : 1000);
+    advance_to(session, base ? 2000 : step == 10 ? 1000 : 1008);
     MG_CHECK(capturer->GetCaptureFactory() == building && building->m_Capturer == capturer);
     if (base) MG_CHECK(building->m_State == BASE_OPENED && capturer->IsDisableManual());
     else MG_CHECK(building->m_TrueColor.m_ColoredCnt == 1);
@@ -1292,10 +1319,15 @@ std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base)
     MG_CHECK(capturer->GetBase() == nullptr && capturer->IsMustDie() == base);
     MG_CHECK(capturer->GetCaptureFactory() == nullptr && !capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
     MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_BUILDING_KILL) == 1);
+    const int removed_at = base ? (step == 10 ? 5010 : 5008) : (step == 10 ? 2010 : 2016);
+    const int cleared_at = base ? (step == 10 ? 2010 : 2032) : (step == 10 ? 1010 : 1024);
+    MG_CHECK(side().m_PlayerGroup[group].m_Obj == building);
     int removed = 0, target_cleared = 0;
     std::vector<std::string> trace;
     while (session.time() < 10000) {
         session.advance();
+        if (session.time() == removed_at - step) MG_CHECK(core->m_Object != nullptr);
+        if (session.time() == cleared_at - step) MG_CHECK(side().m_PlayerGroup[group].m_Obj == building);
         if (!removed && !core->m_Object) removed = session.time();
         if (!target_cleared && side().m_PlayerGroup[group].m_Obj == nullptr) target_cleared = session.time();
         if (core->m_Object) MG_CHECK(building->GetSide() == 0);
@@ -1303,7 +1335,7 @@ std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base)
     }
     std::cout << "capture target base=" << base << " removed=" << removed << " target=" << target_cleared
               << " alive=" << session.robot(1).alive << '\n';
-    MG_CHECK(removed == (base ? 5010 : 2010) && target_cleared == (base ? 2010 : 1010));
+    MG_CHECK(removed == removed_at && target_cleared == cleared_at);
     MG_CHECK(side().m_PlayerGroup[group].m_Obj == nullptr && side().m_PlayerGroup[group].Order() == mpo_Stop);
     MG_CHECK(session.robot(1).alive == !base);
     MG_CHECK(core->m_Object == nullptr);
@@ -1313,9 +1345,9 @@ std::vector<std::string> capture_target_damage_run(random::Mode mode, bool base)
     return trace;
 }
 void capture_target_damage() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool base : {false, true}) {
-        const auto first = capture_target_damage_run(mode, base);
-        MG_CHECK(first == capture_target_damage_run(mode, base));
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) for (bool base : {false, true}) {
+        const auto first = capture_target_damage_run(mode, step, base);
+        MG_CHECK(first == capture_target_damage_run(mode, step, base));
     }
 }
 std::wstring objective_descriptor(const std::wstring &behavior) {
