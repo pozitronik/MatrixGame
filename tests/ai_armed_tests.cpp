@@ -9,6 +9,10 @@
 #include "MatrixObjectCannon.hpp"
 #include "Logic/MatrixEnvironment.h"
 #include "zero_x_mode.hpp"
+#include "CStorage.hpp"
+#include <algorithm>
+#include <cmath>
+#include <vector>
 
 namespace tests::ai {
 namespace {
@@ -435,6 +439,151 @@ CMatrixCannon *awareness_cannon(float distance, float range, int side = 2) {
     return target;
 }
 }
+namespace {
+// Initial terrain data, with real height triangles and rebuilt trace groups.
+// All initial session objects must be removed before rebuilding their groups.
+void turret_terrain(float target_z, bool above, bool ridge) {
+    auto &map = *g_MatrixMap;
+    MG_CHECK(CMatrixMapStatic::GetFirstLogic() == nullptr);
+    for (int y = 0; y <= 32; ++y) for (int x = 0; x <= 32; ++x) {
+        auto &point = *map.PointGet(x, y);
+        // Cannon bounds omit the base, putting this assembly's center 25 units above ground.
+        point.z = point.z_land = x <= 6 ? target_z + (above ? -40 : 0) : target_z - 25;
+        if (ridge && x == 7) point.z = point.z_land = 160;
+        point.n = D3DXVECTOR3(0, 0, 1);
+    }
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
+        auto &unit = *map.UnitGet(x, y);
+        unit.SetType(CELLFLAG_LAND);
+        const float a = map.PointGet(x, y)->z, b = map.PointGet(x + 1, y)->z;
+        unit.a1 = unit.a2 = (b - a) / GLOBAL_SCALE;
+        unit.b1 = unit.b2 = 0;
+        unit.c1 = unit.c2 = a;
+    }
+    CStorage storage;
+    CStorageRecord record(DATA_GROUPS);
+    record.AddItem(CStorageRecordItem(DATA_GROUPS_DATA, ST_BYTE));
+    storage.AddRecord(record);
+    auto *buffer = storage.GetBuf(DATA_GROUPS, DATA_GROUPS_DATA, ST_BYTE);
+    for (int gy = 0; gy < 32; gy += MAP_GROUP_SIZE) for (int gx = 0; gx < 32; gx += MAP_GROUP_SIZE) {
+        const int width = std::min(MAP_GROUP_SIZE, 32 - gx), height = std::min(MAP_GROUP_SIZE, 32 - gy);
+        std::vector<BYTE> raw;
+        const auto append = [&]<class T>(const T &value) {
+            auto *first = reinterpret_cast<const BYTE *>(&value);
+            raw.insert(raw.end(), first, first + sizeof value);
+        };
+        append(WORD(gx)); append(WORD(gy)); append(DWORD(1)); append(DWORD(0));
+        append(DWORD(width * height * 6 * sizeof(WORD)));
+        for (int y = 0; y < height; ++y) for (int x = 0; x < width; ++x) {
+            const WORD a = WORD(y * (width + 1) + x), b = WORD(a + 1);
+            const WORD c = WORD(a + width + 1), d = WORD(c + 1);
+            for (WORD index : {a, b, d, a, d, c}) append(index);
+        }
+        append(DWORD((width + 1) * (height + 1) * sizeof(SCompileBottomVert)));
+        for (int y = 0; y <= height; ++y) for (int x = 0; x <= width; ++x)
+            append(SCompileBottomVert{uint16_t(gx + x), uint16_t(gy + y), 0, 0});
+        const int array = buffer->AddArray();
+        buffer->AddToArray<BYTE>(array, raw.data(), int(raw.size()));
+    }
+    map.GroupBuild(storage);
+}
+
+struct TurretBoundary {
+    float x, y, z, radius, squared_limit;
+};
+void turret_boundary(bool retirement, bool occlusion) {
+    const TurretBoundary acquisition[] = {{60, 70, 60, 50, 12100}, {168, 104, 42, 200, 40804}};
+    const TurretBoundary remembered[] = {{100, 100, 50, 50, 22500}, {220, 200, 40, 200, 90000}};
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (bool above : {false, true}) for (const auto &boundary : std::span(retirement ? remembered : acquisition, 2))
+    for (float offset : {-0.25f, 0.0f, 0.25f}) {
+        if (occlusion && offset != 0) continue;
+        std::cout << "turret boundary mode=" << int(mode) << " retirement=" << retirement
+                  << " occlusion=" << occlusion << " above=" << above << " range=" << boundary.radius
+                  << " offset=" << offset << '\n';
+        BattleCombatAssets assets;
+        battle::Profile profile{mode, 84};
+        profile.layout = NavigationLayout::Open;
+        battle::Session session(profile);
+        assets.install(); configure();
+        for (int id = 1; id <= 4; ++id) MG_CHECK(session.remove(id));
+        turret_terrain(boundary.z, above, occlusion);
+        auto *observer = BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200);
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        auto *target = awareness_cannon(0, boundary.radius);
+        const D3DXVECTOR3 wanted(100 + boundary.x + offset, 200 + boundary.y, boundary.z);
+        target->m_Pos = D3DXVECTOR2(wanted.x, wanted.y);
+        // D3DX bounds can round an identity transform by a few ULP. Adjust the
+        // initial model placement through its real transform, not its cached center.
+        for (int attempt = 0; attempt < 16; ++attempt) {
+            target->RChange(MR_Matrix); target->RNeed(MR_Matrix); target->JoinToGroup();
+            const auto actual = target->GetGeoCenter();
+            if (actual == wanted) break;
+            target->m_Pos.x += wanted.x - actual.x;
+            target->m_Pos.y += wanted.y - actual.y;
+            target->m_AddH += wanted.z - actual.z;
+        }
+        const auto center = target->GetGeoCenter();
+        MG_CHECK(center == wanted);
+        MG_CHECK(std::fabs(target->m_Pos.x - wanted.x) < 0.001f &&
+                 std::fabs(target->m_Pos.y - wanted.y) < 0.001f && std::fabs(target->m_AddH) < 0.001f);
+        MG_CHECK(observer->GetMaxFireDist() == 100);
+        MG_CHECK(std::fabs(observer->GetGeoCenter().z - center.z - (above ? -20 : 20)) < 0.0001f);
+        const D3DXVECTOR3 delta = center - D3DXVECTOR3(observer->m_PosX, observer->m_PosY, 0);
+        const float squared = D3DXVec3LengthSq(&delta);
+        if (offset == 0) MG_CHECK(squared == boundary.squared_limit);
+        else MG_CHECK((squared < boundary.squared_limit) == (offset < 0));
+        const bool visible = g_MatrixMap->IsLogicVisible(observer, target, 0);
+        MG_CHECK(visible == !occlusion);
+        if (occlusion) {
+            MG_CHECK(g_MatrixMap->Trace(nullptr, observer->GetGeoCenter(), center, TRACE_LANDSCAPE, observer) ==
+                     TRACE_STOP_LANDSCAPE);
+        }
+        auto &env = *observer->GetEnv();
+        if (retirement) {
+            env.AddToList(target); // Declared historical sighting and selected target.
+            env.m_Target = env.m_TargetAttack = target;
+        }
+        for (int scan = 1; scan <= 3; ++scan) {
+            observer->GatherInfo(0);
+            auto *entry = env.SearchEnemy(target);
+            const bool retiring = retirement && offset > 0;
+            const bool present = retirement ? !(retiring && scan == 3) : !occlusion && offset <= 0;
+            MG_CHECK(bool(entry) == present && env.GetEnemyCnt() == (present ? 1 : 0));
+            MG_CHECK(!env.IsIgnore(target));
+            if (entry) MG_CHECK(entry->m_DelSlowly == (retiring ? scan : 0));
+            MG_CHECK(env.m_Target == (retirement && present ? target : nullptr));
+            MG_CHECK(env.m_TargetAttack == (retirement && present ? target : nullptr));
+        }
+        if (!retirement) {
+            observer->SetGroupLogic(0);
+            g_MatrixMap->GetPlayerSide()->m_PlayerGroup[0].Order(mpo_Stop);
+            g_MatrixMap->GetPlayerSide()->FirePL(0);
+            MG_CHECK(env.m_TargetAttack == (!occlusion && offset <= 0 ? target : nullptr));
+        }
+        if (occlusion) {
+            // Visibility prevents a new sighting; it does not retire prior in-range memory.
+            env.AddToList(target);
+            env.m_Target = env.m_TargetAttack = target;
+            for (int scan = 1; scan <= 3; ++scan) {
+                observer->GatherInfo(0);
+                auto *entry = env.SearchEnemy(target);
+                MG_CHECK(env.GetEnemyCnt() == 1 && entry && entry->m_DelSlowly == 0);
+                MG_CHECK(env.m_Target == target && env.m_TargetAttack == target);
+            }
+        }
+        MG_CHECK(session.time() == 0 && session.frame() == 0);
+        evidence(session, retirement ? "turret-exact-retirement" : occlusion ? "turret-elevated-terrain" :
+                 "turret-exact-acquisition", observer, "synthetic-turret-heightfield-v1");
+        std::cout << "above=" << above << " turret_range=" << boundary.radius << " offset=" << offset
+                  << " squared_distance=" << squared << " squared_limit=" << boundary.squared_limit << '\n';
+    }
+}
+}
+void turret_acquisition_equality() { turret_boundary(false, false); }
+void turret_retirement_equality() { turret_boundary(true, false); }
+void turret_elevated_terrain() { turret_boundary(false, true); }
+
 void turret_acquisition_range() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
     for (bool longer_turret : {false, true}) for (bool inside : {false, true}) {
