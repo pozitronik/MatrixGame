@@ -107,19 +107,39 @@ struct Desktop {
 };
 struct Child {
     PROCESS_INFORMATION process{};
+    HANDLE job = nullptr;
     Child(const Deployment &deployment, Desktop &desktop) {
         const auto executable = deployment.app / "MatrixGame.exe";
         std::wstring command = L"\"" + executable.wstring() + L"\"";
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         startup.lpDesktop = desktop.name.data();
-        // The private desktop provides isolation; the dialog must finish showing there.
-        check_win32(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, 0, nullptr,
-                                   deployment.caller.c_str(), &startup, &process), "CreateProcessW");
-        CloseHandle(process.hThread);
-        process.hThread = nullptr;
+        try {
+            job = CreateJobObjectW(nullptr, nullptr);
+            check_win32(job != nullptr, "CreateJobObjectW");
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};
+            limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+            check_win32(SetInformationJobObject(job, JobObjectExtendedLimitInformation, &limits, sizeof(limits)),
+                        "SetInformationJobObject");
+            // Assign before any child code runs. The non-inherited job handle
+            // makes abnormal harness termination kill the hidden child too.
+            // Inherit the harness error mode to suppress loader/fault popups.
+            check_win32(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_SUSPENDED,
+                                      nullptr, deployment.caller.c_str(), &startup, &process), "CreateProcessW");
+            check_win32(AssignProcessToJobObject(job, process.hProcess), "AssignProcessToJobObject");
+            check_win32(ResumeThread(process.hThread) != DWORD(-1), "ResumeThread");
+            CloseHandle(process.hThread);
+            process.hThread = nullptr;
+        } catch (...) {
+            cleanup();
+            throw;
+        }
     }
-    ~Child() {
+    Child(const Child &) = delete;
+    Child &operator=(const Child &) = delete;
+    ~Child() { cleanup(); }
+    void cleanup() noexcept {
+        if (process.hThread) CloseHandle(process.hThread);
         if (process.hProcess) {
             if (WaitForSingleObject(process.hProcess, 0) == WAIT_TIMEOUT) {
                 TerminateProcess(process.hProcess, 99);
@@ -127,6 +147,7 @@ struct Child {
             }
             CloseHandle(process.hProcess);
         }
+        if (job) CloseHandle(job);
     }
 };
 struct Dialog {
@@ -202,6 +223,7 @@ Result run(const Deployment &deployment) {
     // The logger is constructed before WinMain changes the resource working directory.
     auto log = bytes(deployment.caller / "test.log");
     std::cout << "Startup process exit=" << status << "\n" << log << std::flush;
+    MG_CHECK(log.find("Standalone session cleanup failed") == std::string::npos);
     return {dialog.title, dialog.text, std::move(log), status};
 }
 void missing_resources() {
@@ -210,7 +232,8 @@ void missing_resources() {
     empty_package(deployment.caller / "DATA/robots.pkg");
     rejected_configuration(deployment.caller);
     const auto result = run(deployment);
-    MG_CHECK(result.exit == 1 && result.title == L"Game resources required");
+    MG_CHECK(result.exit == 1);
+    MG_CHECK(result.title == L"Game resources required");
     MG_CHECK(result.text.find(L"Place robots.pkg at DATA/robots.pkg.") != std::wstring::npos);
     MG_CHECK(result.log.find("Missing DATA/robots.pkg") != std::string::npos);
     MG_CHECK(result.log.find("Battle random generator:") == std::string::npos);
@@ -220,7 +243,8 @@ void rejected_packed_configuration() {
     empty_package(deployment.app / "DATA/robots.pkg");
     rejected_configuration(deployment.app);
     const auto result = run(deployment);
-    MG_CHECK(result.exit == 1 && result.title == L"Exception:");
+    MG_CHECK(result.exit == 1);
+    MG_CHECK(result.title == L"Exception:");
     MG_CHECK(result.text.find(L"Invalid packed configuration: cfg\\robots.dat") != std::wstring::npos);
     MG_CHECK(result.log.find("Missing DATA/robots.pkg") == std::string::npos);
 }
@@ -228,7 +252,8 @@ void missing_text_configuration() {
     Deployment deployment;
     empty_package(deployment.app / "DATA/robots.pkg");
     const auto result = run(deployment);
-    MG_CHECK(result.exit == 1 && result.title == L"Exception:");
+    MG_CHECK(result.exit == 1);
+    MG_CHECK(result.title == L"Exception:");
     MG_CHECK(result.text.find(L"Error open file: cfg\\robots\\data.txt") != std::wstring::npos);
     MG_CHECK(result.log.find("Invalid packed configuration") == std::string::npos);
 }
@@ -238,7 +263,8 @@ void invalid_random_configuration() {
     rejected_configuration(deployment.app);
     write(deployment.app / "CFG/standalone.txt", "RandomGenerator=Invalid\n");
     const auto result = run(deployment);
-    MG_CHECK(result.exit == 1 && result.title == L"Exception:");
+    MG_CHECK(result.exit == 1);
+    MG_CHECK(result.title == L"Exception:");
     MG_CHECK(result.text.find(L"Invalid packed configuration") != std::wstring::npos);
     MG_CHECK(result.log.find("Invalid RandomGenerator in CFG/standalone.txt; using ParkMiller") != std::string::npos);
     MG_CHECK(result.log.find("Battle random generator: ParkMiller") != std::string::npos);
@@ -252,7 +278,8 @@ void damaged_optional_packages() {
         if (mask & 1) write(deployment.app / "DATA/sound.pkg", "x");
         if (mask & 2) write(deployment.app / "DATA/voices.pkg", "x");
         const auto result = run(deployment);
-        MG_CHECK(result.exit == 1 && result.title == L"Exception:");
+        MG_CHECK(result.exit == 1);
+        MG_CHECK(result.title == L"Exception:");
         MG_CHECK(result.text.find(L"Invalid packed configuration") != std::wstring::npos);
         MG_CHECK((result.log.find("Cannot open package DATA\\sound.pkg") != std::string::npos) == bool(mask & 1));
         MG_CHECK((result.log.find("Cannot open package DATA\\voices.pkg") != std::string::npos) == bool(mask & 2));

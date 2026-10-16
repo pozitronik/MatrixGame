@@ -568,7 +568,7 @@ if(NOT MATRIXGAME_BUILD_DLL)
             COMMAND matrixgame_standalone_startup_tests game.startup.native_${contract}
                 "$<TARGET_FILE:MatrixGame>" "${CMAKE_CXX_COMPILER}")
         set_tests_properties(game.startup.native_${contract} PROPERTIES
-            LABELS "engine;asset-free;startup;ui" TIMEOUT 90)
+            LABELS "engine;asset-free;startup;ui;native-process" TIMEOUT 90)
     endforeach()
 endif()
 
