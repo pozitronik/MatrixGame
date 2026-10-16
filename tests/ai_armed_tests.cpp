@@ -572,4 +572,89 @@ void repair_movement(bool retire) {
 }
 void repair_movement_completion() { repair_movement(false); }
 void repair_movement_retirement() { repair_movement(true); }
+namespace {
+void repair_competing_run(bool replace_order, bool competitor_in_range = false) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        BattleCombatAssets assets;
+        battle::Profile profile{mode, 84, step, 3000, false};
+        profile.layout = NavigationLayout::Open;
+        battle::Session session(profile);
+        assets.install();
+        auto *observer = owner();
+        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+        configure_repair(*observer);
+        g_Config.m_RobotDamages[Weap2Index(WEAPON_REPAIR)] = {8, 4, 0};
+        auto injure = [](float x, float y) {
+            auto *patient = damaged_friendly(x, y);
+            g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {17, 17, 0};
+            MG_CHECK(!patient->Damage(WEAPON_LASER, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+            MG_CHECK(patient->GetHitPoint() == 3.2f);
+            return patient;
+        };
+        // The competitor comes first in logic-list order, so retention differs from rescanning.
+        auto *second = injure(210, 220);
+        auto *first = injure(160, 140);
+        const auto release = [](SObjectCore *core) { core->Release(); };
+        std::unique_ptr<SObjectCore, decltype(release)> first_core(first->GetCore(DEBUG_CALL_INFO), release);
+        session.ground_command(500, 200);
+        MG_CHECK(observer->GetEnv()->m_Target == first);
+        auto intent = session.robot(1);
+        int first_pulses = 0, second_pulses = 0;
+        float first_health = first->GetHitPoint(), second_health = second->GetHitPoint();
+        bool changed = false;
+        while (session.time() < 25000) {
+            const auto *target_before = observer->GetEnv()->m_Target;
+            session.advance();
+            const auto state = session.robot(1);
+            MG_CHECK(state.order == mpo_MoveTo);
+            MG_CHECK(state.destination_x == intent.destination_x && state.destination_y == intent.destination_y);
+            if (first && first->GetHitPoint() != first_health) {
+                if (changed && competitor_in_range) MG_CHECK(second_pulses == 5);
+                MG_CHECK(target_before == first);
+                ++first_pulses;
+                first_health = first->GetHitPoint();
+                MG_CHECK(first_health == float(std::min(50, 32 + first_pulses * 4)) / 10.0f);
+            }
+            if (second->GetHitPoint() != second_health) {
+                MG_CHECK(target_before == second);
+                MG_CHECK(changed && (!replace_order || competitor_in_range || first_pulses == 5));
+                ++second_pulses;
+                second_health = second->GetHitPoint();
+                MG_CHECK(second_health == float(std::min(50, 32 + second_pulses * 4)) / 10.0f);
+            }
+            if (!changed && first_pulses == (competitor_in_range ? 3 : 2)) {
+                MG_CHECK(observer->m_PosX > 100 && observer->GetEnv()->m_Target == first);
+                MG_CHECK(second_pulses == 0);
+                if (replace_order) {
+                    const float dx = observer->m_PosX - second->m_PosX;
+                    const float dy = observer->m_PosY - second->m_PosY;
+                    MG_CHECK((dx * dx + dy * dy < 10000) == competitor_in_range);
+                    session.ground_command(300, 500);
+                    intent = session.robot(1);
+                    MG_CHECK(intent.destination_x == 28 && intent.destination_y == 48);
+                    MG_CHECK(observer->GetEnv()->m_Target == (competitor_in_range ? second : first));
+                } else {
+                    g_MatrixMap->StaticDelete(first);
+                    first = nullptr;
+                    MG_CHECK(!first_core->m_Object && !observer->GetEnv()->m_Target);
+                }
+                changed = true;
+            }
+            if (changed && !replace_order) MG_CHECK(!first_core->m_Object);
+        }
+        MG_CHECK(changed && first_pulses == (replace_order ? 5 : 2) && second_pulses == 5);
+        MG_CHECK(second->GetHitPoint() == 5 && !second->NeedRepair());
+        if (replace_order) MG_CHECK(first_core->m_Object == first && first->GetHitPoint() == 5 && !first->NeedRepair());
+        MG_CHECK(session.robot(1).in_place && session.robot(2).in_place);
+        MG_CHECK(observer->m_PosX == (replace_order ? 300 : 500));
+        MG_CHECK(observer->m_PosY == (replace_order ? 500 : 200));
+        MG_CHECK(!observer->GetEnv()->m_Target && !observer->FindOrderLikeThat(ROT_FIRE));
+        std::cout << session.metadata("competing-moving-repair-v2") << " replace=" << replace_order << " competitor_in_range=" << competitor_in_range
+                  << " first_pulses=" << first_pulses << " second_pulses=" << second_pulses << '\n';
+    }
+}
+}
+void repair_competing_retirement() { repair_competing_run(false); }
+void repair_replacement_move() { repair_competing_run(true); repair_competing_run(true, true); }
+
 }

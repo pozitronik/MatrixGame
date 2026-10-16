@@ -32,6 +32,8 @@ void armed_target_retention();
 void ineffective_fire_decisions();
 void blocked_fire_decisions();
 void moving_fire_decisions();
+void repair_competing_retirement();
+void repair_replacement_move();
 void repair_movement_completion();
 void repair_movement_retirement();
 void repair_acquisition_range();
@@ -437,6 +439,8 @@ int main(int argc, char **argv) {
         {"game.ai.ineffective_fire_decisions", tests::ai::ineffective_fire_decisions},
         {"game.ai.blocked_fire_decisions", tests::ai::blocked_fire_decisions},
         {"game.ai.moving_fire_decisions", tests::ai::moving_fire_decisions},
+        {"game.ai.repair_competing_retirement", tests::ai::repair_competing_retirement},
+        {"game.ai.repair_replacement_move", tests::ai::repair_replacement_move},
         {"game.ai.repair_movement_completion", tests::ai::repair_movement_completion},
         {"game.ai.repair_movement_retirement", tests::ai::repair_movement_retirement},
         {"game.ai.repair_acquisition_range", tests::ai::repair_acquisition_range},
