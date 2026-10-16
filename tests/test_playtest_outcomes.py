@@ -1,6 +1,7 @@
 # MatrixGame - licensed under GPLv2 or any later version.
 """Exercise preparation/restoration with synthetic files and a mocked process only."""
 import json
+import hashlib
 import shutil
 import struct
 import subprocess
@@ -49,6 +50,13 @@ class OutcomePreparation(unittest.TestCase):
         # preference save or a launch failure before the helper restores its backups.
         observe = quote(self.build / "observed.json")
         mock = r"""
+# Keep the ordinary cmdlets available while reproducing unavailable script
+# functions under Windows PowerShell's inherited Core-only module lookup.
+Get-Date | Out-Null
+Get-Item . | Out-Null
+Remove-Item Function:\Get-FileHash -ErrorAction SilentlyContinue
+$env:PSModulePath = 'nonexistent-core-only-modules'
+$PSModuleAutoLoadingPreference = 'None'
 $global:outcomeCalls = 0
 function Get-Process {
     [CmdletBinding()] param([string]$Name)
@@ -89,6 +97,7 @@ function Start-Process {
         result = self.run_helper()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Inspection only", result.stdout)
+        self.assertIn(hashlib.sha256((self.game / "MatrixGame.exe").read_bytes()).hexdigest().upper(), result.stdout)
         self.assertFalse((self.build / "observed.json").exists())
         self.assert_restored()
 

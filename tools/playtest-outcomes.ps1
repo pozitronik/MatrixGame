@@ -27,6 +27,19 @@ $backup = Join-Path $configRoot '.native-outcome-backup'
 $manifest = Join-Path $backup 'state.json'
 $exe = Join-Path $gameRoot 'MatrixGame.exe'
 
+function Get-OutcomeSHA256([string]$Path) {
+    # Windows PowerShell launched by pwsh may not find Get-FileHash's script module.
+    $stream = [IO.File]::OpenRead($Path)
+    $sha = $null
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '')
+    } finally {
+        $stream.Dispose()
+        if ($sha) { $sha.Dispose() }
+    }
+}
+
 function Restore-OutcomeConfiguration {
     if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "No complete restoration record at $manifest" }
     $state = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
@@ -87,7 +100,7 @@ if ($ConfigurationMode -eq 'Text') {
     if ($aliases.Count) { throw 'CFG/robots.dat.* aliases would defeat text fallback; move those output copies aside first.' }
 }
 Write-Output "Executable: $exe"
-Write-Output ('SHA256: ' + (Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash)
+Write-Output ('SHA256: ' + (Get-OutcomeSHA256 $exe))
 Write-Output "Build cache: $Compiler $Configuration x86 EXE; cheats $Cheats"
 Write-Output "Profile: $ConfigurationMode; RNG $RandomGenerator; Windowed 1280x720; bonus None"
 Write-Output 'Map: Matrix\Map\desert1_3e.cmap (must be available in the local resource package)'
