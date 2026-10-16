@@ -9,6 +9,7 @@ param(
     [ValidateSet('ParkMiller', 'LegacyCRT')][string]$RandomGenerator = 'ParkMiller',
     [string]$BuildDirectory = '',
     [string]$AlternateMapFile = '',
+    [ValidateSet('Ordinary', 'Demo')][string]$AlternateMapMode = 'Ordinary',
     [switch]$WatchRelaunches,
     [ValidateRange(1, 8)][int]$ExpectedProcesses = 1,
     [switch]$Launch,
@@ -17,6 +18,9 @@ param(
 $ErrorActionPreference = 'Stop'
 if ($Launch -and $Restore) { throw '-Launch and -Restore cannot be combined.' }
 if ($ExpectedProcesses -ne 1 -and -not $WatchRelaunches) { throw '-ExpectedProcesses requires -WatchRelaunches.' }
+if ($AlternateMapMode -eq 'Demo' -and -not $AlternateMapFile -and -not $Restore) {
+    throw '-AlternateMapMode Demo requires -AlternateMapFile.'
+}
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $BuildDirectory) {
     $BuildDirectory = Join-Path $repoRoot ('build/{0}-{1}-exe' -f $Compiler.ToLowerInvariant(), $Configuration.ToLowerInvariant())
@@ -33,7 +37,8 @@ $manifest = Join-Path $backup 'state.json'
 $exe = Join-Path $gameRoot 'MatrixGame.exe'
 $matrixRoot = Join-Path $gameRoot 'Matrix'
 $mapRoot = Join-Path $matrixRoot 'Map'
-$alternate = Join-Path $mapRoot 'native-outcome-alternate.cmap'
+$alternateName = if ($AlternateMapMode -eq 'Demo') { 'native-outcome-demo' } else { 'native-outcome-alternate' }
+$alternate = Join-Path $mapRoot ($alternateName + '.cmap')
 
 function Wait-OutcomeProcesses($Processes) {
     $known = @{}
@@ -100,10 +105,11 @@ function Get-OutcomeSHA256([string]$Path) {
 function Restore-OutcomeConfiguration {
     if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "No complete restoration record at $manifest" }
     $state = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-    if ($state.Version -notin @(1, 2, 3) -or $state.SettingsPresent -isnot [bool] -or $state.PackedRemoved -isnot [bool] -or
+    if ($state.Version -notin @(1, 2, 3, 4) -or $state.SettingsPresent -isnot [bool] -or $state.PackedRemoved -isnot [bool] -or
         ($state.Version -ge 2 -and ($state.AlternateMapStaged -isnot [bool] -or
             $state.MapDirectoryCreated -isnot [bool] -or $state.MatrixDirectoryCreated -isnot [bool])) -or
-        ($state.Version -eq 3 -and $state.InterfaceRemoved -isnot [bool])) {
+        ($state.Version -ge 3 -and $state.InterfaceRemoved -isnot [bool]) -or
+        ($state.Version -eq 4 -and $state.AlternateMapMode -notin @('Ordinary', 'Demo'))) {
         throw 'Invalid restoration record; inspect the retained backup manually.'
     }
     # Validate every required backup before touching the current configuration.
@@ -111,7 +117,7 @@ function Restore-OutcomeConfiguration {
         $required = switch ($name) {
             'standalone.txt' { $state.SettingsPresent }
             'robots.dat' { $state.PackedRemoved }
-            'iface.txt' { $state.Version -eq 3 -and $state.InterfaceRemoved }
+            'iface.txt' { $state.Version -ge 3 -and $state.InterfaceRemoved }
         }
         if ($required -and -not (Test-Path -LiteralPath (Join-Path $backup $name) -PathType Leaf)) {
             throw "Incomplete backup: $name"
@@ -120,19 +126,22 @@ function Restore-OutcomeConfiguration {
     if ($state.SettingsPresent) { Copy-Item -LiteralPath (Join-Path $backup 'standalone.txt') -Destination $settings -Force }
     elseif (Test-Path -LiteralPath $settings) { Remove-Item -LiteralPath $settings }
     if ($state.PackedRemoved) { Copy-Item -LiteralPath (Join-Path $backup 'robots.dat') -Destination $packed -Force }
-    if ($state.Version -eq 3 -and $state.InterfaceRemoved) {
+    if ($state.Version -ge 3 -and $state.InterfaceRemoved) {
         Copy-Item -LiteralPath (Join-Path $backup 'iface.txt') -Destination $interface -Force
         Write-Output ('Restored interface SHA256: ' + (Get-OutcomeSHA256 $interface))
     }
     if ($state.Version -ge 2 -and $state.AlternateMapStaged) {
-        if (Test-Path -LiteralPath $alternate) { Remove-Item -LiteralPath $alternate }
+        # Restore by the recorded mode, even when -Restore uses its default parameters.
+        $restoreName = if ($state.Version -eq 4 -and $state.AlternateMapMode -eq 'Demo') { 'native-outcome-demo.cmap' } else { 'native-outcome-alternate.cmap' }
+        $restoreMap = Join-Path $mapRoot $restoreName
+        if (Test-Path -LiteralPath $restoreMap) { Remove-Item -LiteralPath $restoreMap }
         if ($state.MapDirectoryCreated -and (Test-Path -LiteralPath $mapRoot) -and
             -not @(Get-ChildItem -LiteralPath $mapRoot -Force).Count) { Remove-Item -LiteralPath $mapRoot }
         if ($state.MatrixDirectoryCreated -and (Test-Path -LiteralPath $matrixRoot) -and
             -not @(Get-ChildItem -LiteralPath $matrixRoot -Force).Count) { Remove-Item -LiteralPath $matrixRoot }
     }
     $backupFiles = @('standalone.txt', 'robots.dat', 'state.json')
-    if ($state.Version -eq 3 -and $state.InterfaceRemoved) { $backupFiles += 'iface.txt' }
+    if ($state.Version -ge 3 -and $state.InterfaceRemoved) { $backupFiles += 'iface.txt' }
     foreach ($name in $backupFiles) {
         $path = Join-Path $backup $name
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
@@ -210,7 +219,10 @@ foreach ($name in @('sound.pkg', 'voices.pkg', 'music.pkg')) {
 Write-Output ('Sound mapping override: ' + (Test-Path -LiteralPath (Join-Path $configRoot 'sounds.txt')))
 if ($AlternateMapFile) {
     Write-Output ('Alternate map SHA256: ' + (Get-OutcomeSHA256 $AlternateMapFile))
-    Write-Output 'Alternate selector entry: native-outcome-alternate (temporary local copy; original file unchanged)'
+    Write-Output "Alternate selector entry: $alternateName (temporary local copy; original file unchanged)"
+    if ($AlternateMapMode -eq 'Demo') {
+        Write-Output 'Demo filename activates production automatic/full-auto/flying-camera startup; it does not provide controlled scene contents.'
+    }
 }
 if ($WatchRelaunches) {
     Write-Output "Relaunch monitor: expected $ExpectedProcesses observed processes from this executable; verify battle readiness yourself."
@@ -218,13 +230,14 @@ if ($WatchRelaunches) {
 if (-not $Launch) { Write-Output 'Inspection only. Add -Launch to stage temporary settings and open the game.'; return }
 if (Get-Process -Name MatrixGame -ErrorAction SilentlyContinue) { throw 'Close all MatrixGame processes before starting this case.' }
 $state = [ordered]@{
-    Version = 3
+    Version = 4
     SettingsPresent = [bool](Test-Path -LiteralPath $settings -PathType Leaf)
     PackedRemoved = [bool]($ConfigurationMode -eq 'Text' -and (Test-Path -LiteralPath $packed -PathType Leaf))
     AlternateMapStaged = [bool]$AlternateMapFile
     MapDirectoryCreated = [bool](-not (Test-Path -LiteralPath $mapRoot))
     MatrixDirectoryCreated = [bool](-not (Test-Path -LiteralPath $matrixRoot))
     InterfaceRemoved = $false
+    AlternateMapMode = $AlternateMapMode
 }
 New-Item -ItemType Directory -Path $backup | Out-Null
 if ($state.SettingsPresent) { Copy-Item -LiteralPath $settings -Destination (Join-Path $backup 'standalone.txt') }

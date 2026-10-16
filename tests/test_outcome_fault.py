@@ -30,9 +30,10 @@ class OutcomeFault(unittest.TestCase):
         (self.cfg / "robots.dat").unlink()
         (self.cfg / "standalone.txt").write_bytes(b"temporary settings")
         self.state = {
-            "Version": 3, "SettingsPresent": True, "PackedRemoved": True,
+            "Version": 4, "SettingsPresent": True, "PackedRemoved": True,
             "AlternateMapStaged": True, "MapDirectoryCreated": True,
             "MatrixDirectoryCreated": True, "InterfaceRemoved": False,
+            "AlternateMapMode": "Ordinary",
         }
         self.save_state()
 
@@ -332,6 +333,13 @@ function Get-Process {
         self.assertTrue(observation["BackupPresent"])
         self.restore()
         self.assertEqual(interface.read_bytes(), original)
+    def test_demo_staging_is_not_an_ordinary_restart_fault_target(self):
+        self.state["AlternateMapMode"] = "Demo"
+        self.save_state()
+        result = self.run_fault()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no fault already applied", result.stderr)
+        self.assertEqual(self.target.read_bytes(), self.original_map)
 
 
 if __name__ == "__main__":

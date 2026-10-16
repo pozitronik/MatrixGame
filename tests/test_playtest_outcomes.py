@@ -90,6 +90,7 @@ function Start-Process {
         AlternateBytes = $(if (Test-Path -LiteralPath (Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-alternate.cmap')) {
             [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-alternate.cmap')))
         })
+        Demo = Test-Path -LiteralPath (Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-demo.cmap')
     }
     $observation | ConvertTo-Json | Set-Content -LiteralPath OBSERVE -Encoding UTF8
     if (FAIL_START) { throw 'synthetic launch failure' }
@@ -450,6 +451,68 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(shadow.read_bytes(), b"independent map not used by this run")
         self.assert_restored()
+    def test_demo_alias_uses_real_filename_path_and_preserves_source(self):
+        source = self.build / "ordinary-map.cmap"
+        source.write_bytes(b"synthetic ordinary payload")
+        result = self.run_helper("-Launch", "-AlternateMapMode Demo", "-AlternateMapFile " + quote(source))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observed = json.loads((self.build / "observed.json").read_text(encoding="utf-8-sig"))
+        self.assertTrue(observed["Demo"])
+        self.assertFalse(observed["Alternate"])
+        self.assertIn("Alternate selector entry: native-outcome-demo", result.stdout)
+        self.assertEqual(source.read_bytes(), b"synthetic ordinary payload")
+        self.assertFalse((self.game / "Matrix").exists())
+        self.assert_restored()
+
+    def test_demo_requires_an_explicit_source(self):
+        result = self.run_helper("-AlternateMapMode Demo")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("requires -AlternateMapFile", result.stderr)
+        self.assert_restored()
+
+    def test_existing_demo_alias_is_not_replaced(self):
+        source = self.build / "ordinary-map.cmap"
+        source.write_bytes(b"synthetic ordinary payload")
+        target = self.game / "Matrix" / "Map" / "native-outcome-demo.cmap"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"existing demo")
+        result = self.run_helper("-Launch", "-AlternateMapMode Demo", "-AlternateMapFile " + quote(source))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(target.read_bytes(), b"existing demo")
+        self.assert_restored()
+
+    def test_abandoned_demo_restore_uses_record_not_default_ordinary_mode(self):
+        source = self.build / "ordinary-map.cmap"
+        source.write_bytes(b"synthetic ordinary payload")
+        ordinary = self.game / "Matrix" / "Map" / "native-outcome-alternate.cmap"
+        ordinary.parent.mkdir(parents=True)
+        ordinary.write_bytes(b"unrelated ordinary map")
+        result = self.run_helper("-Launch", "-AlternateMapMode Demo", "-AlternateMapFile " + quote(source), leftover=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        demo = ordinary.with_name("native-outcome-demo.cmap")
+        self.assertTrue(demo.exists())
+        self.assertTrue((self.cfg / ".native-outcome-backup").exists())
+        result = self.run_helper("-Restore")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(demo.exists())
+        self.assertEqual(ordinary.read_bytes(), b"unrelated ordinary map")
+        self.assert_restored()
+
+    def test_invalid_recorded_demo_mode_blocks_restoration_before_changes(self):
+        source = self.build / "ordinary-map.cmap"
+        source.write_bytes(b"synthetic ordinary payload")
+        result = self.run_helper("-Launch", "-AlternateMapMode Demo", "-AlternateMapFile " + quote(source), leftover=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        manifest = self.cfg / ".native-outcome-backup" / "state.json"
+        state = json.loads(manifest.read_text(encoding="utf-8-sig"))
+        state["AlternateMapMode"] = "../unrelated"
+        manifest.write_text(json.dumps(state))
+        settings = (self.cfg / "standalone.txt").read_bytes()
+        result = self.run_helper("-Restore")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Invalid restoration record", result.stderr)
+        self.assertEqual((self.cfg / "standalone.txt").read_bytes(), settings)
+        self.assertTrue((self.game / "Matrix" / "Map" / "native-outcome-demo.cmap").exists())
 
     def test_alternate_launch_failure_keeps_existing_map_directory(self):
         source = self.build / "owned-map.cmap"
