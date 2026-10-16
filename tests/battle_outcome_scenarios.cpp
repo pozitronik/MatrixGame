@@ -16,6 +16,10 @@
 #include "MatrixObjectCannon.hpp"
 #include "MatrixRobot.hpp"
 #include "Interface/CInterface.h"
+#include "Interface/CIFaceButton.h"
+#include "Interface/MatrixHint.hpp"
+#include "WindowDisplay.hpp"
+#include <cstring>
 #include "Interface/CIFaceElement.h"
 #include "input.hpp"
 #include "cheats.hpp"
@@ -48,6 +52,46 @@ struct DialogData {
         g_ExitState = 0;
     }
     ~DialogData() { g_ExitState = previous_exit; }
+};
+// Real hint construction and callback binding, with generated pixels instead of text/art.
+struct CallbackDialogs : DialogData {
+    CBitmap bitmap, reset_bitmap, surrender_bitmap;
+    CallbackDialogs() {
+        MG_CHECK(!Display::enabled()); // Native standalone display/map-selection continuation is a separate profile.
+        bitmap.CreateRGBA(2, 2);
+        std::memset(bitmap.Data(), 255, bitmap.Pitch() * bitmap.SizeY());
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-pixel", &bitmap);
+        reset_bitmap.CreateRGBA(3, 3);
+        surrender_bitmap.CreateRGBA(4, 4);
+        std::memset(reset_bitmap.Data(), 255, reset_bitmap.Pitch() * reset_bitmap.SizeY());
+        std::memset(surrender_bitmap.Data(), 255, surrender_bitmap.Pitch() * surrender_bitmap.SizeY());
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-reset", &reset_bitmap);
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-surrender", &surrender_bitmap);
+        g_MatrixData->BlockGetAdd(PAR_REPLACE);
+        g_MatrixData->BlockGetAdd(L"Side")->ParSetAdd(L"2", L"Enemy");
+        for (const auto *name : {IF_HINTS_OK, IF_HINTS_CANCEL, IF_HINTS_CANCEL_MENU,
+             IF_HINTS_CONTINUE, IF_HINTS_SURRENDER, IF_HINTS_RESET, IF_HINTS_EXIT, IF_HINTS_HELP}) {
+            auto *button = HNew(g_MatrixHeap) CIFaceButton;
+            button->m_Type = IFACE_PUSH_BUTTON;
+            button->m_strName = name;
+            MG_CHECK(g_IFaceList->m_Hints->AddElement(button));
+        }
+        for (const auto *name : {TEMPLATE_DIALOG_WIN, TEMPLATE_DIALOG_LOOSE, TEMPLATE_DIALOG_STATISTICS,
+             TEMPLATE_DIALOG_MENU, TEMPLATE_DIALOG_EXIT, TEMPLATE_DIALOG_RESET, TEMPLATE_DIALOG_SURRENDER}) {
+            const auto *image = wcscmp(name, TEMPLATE_DIALOG_RESET) == 0 ? L"outcome-callback-reset" :
+                wcscmp(name, TEMPLATE_DIALOG_SURRENDER) == 0 ? L"outcome-callback-surrender" : L"outcome-callback-pixel";
+            std::wstring markup = std::wstring(L"-1|_BITMAP:") + image + L":";
+            const int copies = wcscmp(name, TEMPLATE_DIALOG_MENU) == 0 ? 6 : 2;
+            for (int i = 0; i < copies; ++i) markup += L"|_MOD:COPY|_BITMAP:outcome-callback-pixel:";
+            g_MatrixData->BlockGet(PAR_TEMPLATES)->ParSetAdd(name, markup);
+        }
+    }
+    ~CallbackDialogs() {
+        g_MatrixMap->LeaveDialogMode();
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-pixel", nullptr);
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-reset", nullptr);
+        CMatrixHint::SetRuntimeBitmap(L"outcome-callback-surrender", nullptr);
+    }
 };
 struct CaptureData {
     tests::EnginePtr<CMatrixBuilding> building = tests::make_engine_object<CMatrixBuilding>();
@@ -1476,7 +1520,133 @@ void repeated_sessions() {
         MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP));
     }
 }
+void result_confirmation_callbacks() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (int step : {10, 16}) for (bool loss : {false, true}) {
+        Session session({mode, 85, step, 1000, false});
+        CallbackDialogs dialogs;
+        CFormMatrixGame form;
+        MG_CHECK(session.remove(loss ? 1 : 3) && session.remove(loss ? 2 : 4));
+        advance_to(session, step == 10 ? 2020 : 2032);
+        MG_CHECK(g_MatrixMap->IsPaused());
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == (loss ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+        MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 1);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints[0]->GetCopyPosCnt() == 2);
+        const int time = session.time();
+        const int score_time = side().GetStatValue(STAT_TIME);
+        press(form, VK_ESCAPE); // Escape cannot dismiss a battle result.
+        MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) ==
+            (loss ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+        MG_CHECK(g_ExitState == 0);
+        MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeHints.size() == 1);
+        press(form, VK_RETURN);
+        MG_CHECK(g_ExitState == (loss ? 2 : 3));
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG));
+        MG_CHECK(!g_MatrixMap->m_DialogModeName && g_MatrixMap->m_DialogModeHints.empty());
+        MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP));
+        session.advance();
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_STATISTICS);
+        MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeHints.size() == 1);
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG));
+        MG_CHECK(side().GetStatValue(STAT_TIME) == score_time);
+        press(form, VK_RETURN);
+        MG_CHECK(g_ExitState == (loss ? 2 : 3) && FLAG(g_Flags, GFLAG_EXITLOOP));
+        MG_CHECK(!g_MatrixMap->m_DialogModeName && g_MatrixMap->m_DialogModeHints.empty());
+        MG_CHECK(!g_MatrixMap->IsPaused());
+        std::cout << session.metadata("synthetic-dialog-callbacks-v1") << " loss=" << loss << " result_ms=" << time << '\n';
+    }
+}
+void menu_confirmation_cancel() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (uint8_t key : {'E', 'R', 'S'}) {
+        Session session({mode, 85, 10, 1000, false});
+        CallbackDialogs dialogs;
+        CFormMatrixGame form;
+        session.ground_command(500, 300);
+        press(form, VK_ESCAPE);
+        MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeHints.size() == 1);
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_MENU);
+        auto *menu = g_MatrixMap->m_DialogModeHints[0];
+        press(form, key);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 2 && g_MatrixMap->m_DialogModeHints[0] == menu);
+        const int confirmation_height = key == 'E' ? 2 : key == 'R' ? 3 : 4;
+        MG_CHECK(g_MatrixMap->m_DialogModeHints[1]->m_Height == confirmation_height);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints[1]->m_Width == confirmation_height + 4);
+        const auto first = session.robot(1), second = session.robot(2);
+        const int paused_time = session.time();
+        const auto draws = random::draw_count();
+        for (int i = 0; i < 10; ++i) session.advance();
+        MG_CHECK(session.time() == paused_time && random::draw_count() == draws);
+        for (const auto before : {first, second}) {
+            const auto after = session.robot(before.id);
+            MG_CHECK(after.alive && after.x == before.x && after.y == before.y);
+            MG_CHECK(after.order == before.order && after.group == before.group);
+            MG_CHECK(after.destination_x == before.destination_x && after.destination_y == before.destination_y);
+        }
+        press(form, VK_ESCAPE);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 1 && g_MatrixMap->m_DialogModeHints[0] == menu);
+        MG_CHECK(g_MatrixMap->IsPaused() && g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG));
+        press(form, VK_ESCAPE);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName && g_MatrixMap->m_DialogModeHints.empty());
+        MG_CHECK(session.robot(1).alive && session.robot(2).alive);
+        std::cout << session.metadata("synthetic-menu-confirmation-v1") << " canceled_key=" << int(key) << '\n';
+    }
+}
+void menu_exit_surrender_callbacks() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool surrender : {false, true}) {
+        Session session({mode, 85, 10, 1000, false});
+        CallbackDialogs dialogs;
+        CFormMatrixGame form;
+        side().SetStatValue(STAT_TIME, 1000);
+        auto &enemy = *g_MatrixMap->GetSideById(2);
+        enemy.SetStatValue(STAT_TIME, 2000);
+        press(form, VK_ESCAPE);
+        press(form, surrender ? 'S' : 'E');
+        MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 2);
+        press(form, VK_RETURN);
+        MG_CHECK(g_ExitState == (surrender ? 4 : 1));
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG));
+        MG_CHECK(enemy.GetStatValue(STAT_TIME) == (surrender ? -2000 : 2000));
+        MG_CHECK(side().GetStatValue(STAT_TIME) == 1000);
+        MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP) && g_MatrixMap->m_DialogModeHints.empty());
+        session.advance();
+        MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeHints.size() == 1);
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_STATISTICS);
+        press(form, VK_RETURN);
+        MG_CHECK(g_ExitState == (surrender ? 4 : 1) && FLAG(g_Flags, GFLAG_EXITLOOP));
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints.empty());
+        std::cout << session.metadata("synthetic-menu-result-callbacks-v1") << " surrender=" << surrender << '\n';
+    }
+}
+void statistics_cheat_dismissal() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        Session session({mode, 85, 10, 1000, false});
+        CallbackDialogs dialogs;
+        CFormMatrixGame form;
+        session.ground_command(500, 300);
+        bool handled = false;
+        for (char key : std::string("STATS")) handled = Cheats::processInput(key);
+        MG_CHECK(handled && FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG_D));
+        session.advance();
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_STATISTICS_D);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 1 && g_MatrixMap->IsPaused());
+        press(form, VK_RETURN);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints.empty());
+        MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+        session.ground_command(500, 300);
+        const auto before = session.robot(1);
+        for (int i = 0; i < 50; ++i) session.advance();
+        MG_CHECK(session.robot(1).order == mpo_MoveTo && session.robot(1).x > before.x);
+        std::cout << session.metadata("synthetic-statistics-dismissal-v1") << '\n';
+    }
+}
 constexpr tests::Case cases[] = {
+    {"game.outcome.menu_exit_surrender_callbacks", menu_exit_surrender_callbacks},
+    {"game.outcome.statistics_cheat_dismissal", statistics_cheat_dismissal},
+    {"game.outcome.result_confirmation_callbacks", result_confirmation_callbacks},
+    {"game.outcome.menu_confirmation_cancel", menu_confirmation_cancel},
     {"game.player.capture_keyboard_completion", capture_keyboard_completion},
     {"game.player.capture_button_completion", capture_button_completion},
     {"game.outcome.flyer_does_not_prevent_elimination", flyer_does_not_prevent_elimination},
