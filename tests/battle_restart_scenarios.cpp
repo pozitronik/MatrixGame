@@ -8,6 +8,7 @@
 #include "test_support.hpp"
 #include "CStorage.hpp"
 #include "MatrixRobot.hpp"
+#include "MatrixObject.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixMultiSelection.hpp"
 #include "Interface/CInterface.h"
@@ -17,6 +18,9 @@
 #include <cstring>
 #include <filesystem>
 #include <vector>
+#include <algorithm>
+#include <array>
+#include <bit>
 
 // Supply visibility, as the existing selection fixtures do; geometry picking
 // and form dispatch remain production implementations.
@@ -332,7 +336,201 @@ void restart_movement() { restart_profile(Origin::Moving); }
 void restart_pending_win() { restart_profile(Origin::PendingWin); }
 void restart_pending_loss() { restart_profile(Origin::PendingLoss); }
 void restart_retired_group() { restart_profile(Origin::Moving, true); }
+std::wstring reload_object_descriptor(const wchar_t *behavior) {
+    std::array<std::wstring, OTP_COUNT> fields{};
+    fields[OTP_PATH] = L"restart-object/";
+    fields[OTP_VO] = L"box";
+    fields[OTP_TEXTURE] = L"surface";
+    fields[OTP_TEXTURE_SCROLL] = L"0,0";
+    fields[OTP_SHADOW] = L"Off";
+    fields[OTP_BEHAVIOUR] = behavior;
+    fields[OTP_BIAS] = fields[OTP_INVLOGIC] = L"0";
+    std::wstring result;
+    for (size_t i = 0; i < fields.size(); ++i) {
+        if (i) result += L"*";
+        result += fields[i];
+    }
+    return result;
+}
+
+// Restart keeps the map's ID catalog and cache. Only the dynamics come from this file.
+void populate_objects_and_spawners(ReloadScene &scene) {
+    MG_CHECK(g_MatrixMap->m_IdsCnt == 1);
+    const std::array<std::wstring, 5> ids{
+        reload_object_descriptor(L"Static"), reload_object_descriptor(L"Break,0,10,None"),
+        L"1,100,100,400,200,50,false,1,ff406080", L"2,100,100,400,200,50,false,1,2", scene.path.wstring()};
+    g_MatrixMap->m_Ids[0].~basic_string();
+    HFree(g_MatrixMap->m_Ids, g_MatrixHeap);
+    g_MatrixMap->m_Ids = static_cast<std::wstring *>(HAlloc(ids.size() * sizeof(std::wstring), g_MatrixHeap));
+    g_MatrixMap->m_IdsCnt = 0;
+    for (const auto &id : ids) {
+        new(g_MatrixMap->m_Ids + g_MatrixMap->m_IdsCnt) std::wstring(id);
+        ++g_MatrixMap->m_IdsCnt;
+    }
+    tests::install_battle_texture(L"restart-object/surface");
+    tests::load_battle_material_mesh({}, L"restart-object/box.vo", L"restart-object/surface");
+
+    CStorage storage;
+    MG_CHECK(storage.Load(scene.path.c_str()));
+    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_X, ST_FLOAT, {300, 450});
+    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_Y, ST_FLOAT, {100, 100});
+    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_Z, ST_FLOAT, {0, 0});
+    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_ANGLE_Z, ST_FLOAT, {0, 0});
+    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_SCALE, ST_FLOAT, {1, 1.5f});
+    values<DWORD>(storage, DATA_OBJECTS, DATA_OBJECTS_TYPE, ST_DWORD, {0, 1});
+    schema(storage, DATA_EFFECTS, {{DATA_EFFECTS_X, ST_FLOAT}, {DATA_EFFECTS_Y, ST_FLOAT},
+        {DATA_EFFECTS_Z, ST_FLOAT}, {DATA_EFFECTS_TYPE, ST_INT32}});
+    values<float>(storage, DATA_EFFECTS, DATA_EFFECTS_X, ST_FLOAT, {300, 450});
+    values<float>(storage, DATA_EFFECTS, DATA_EFFECTS_Y, ST_FLOAT, {100, 100});
+    values<float>(storage, DATA_EFFECTS, DATA_EFFECTS_Z, ST_FLOAT, {10, 10});
+    values<INT32>(storage, DATA_EFFECTS, DATA_EFFECTS_TYPE, ST_INT32, {2, 3});
+    storage.Save(scene.path.c_str());
+}
+
+std::vector<CMatrixMapObject *> loaded_objects() {
+    std::vector<CMatrixMapObject *> objects;
+    g_MatrixMap->FindObjects(D3DXVECTOR3(320, 320, 0), 1000, 1, TRACE_OBJECT, nullptr,
+        [](const D3DXVECTOR3 &, CMatrixMapStatic *object, uintptr_t context) {
+            auto &result = *reinterpret_cast<std::vector<CMatrixMapObject *> *>(context);
+            MG_CHECK(object->GetObjectType() == OBJECT_TYPE_MAPOBJECT);
+            result.push_back(static_cast<CMatrixMapObject *>(object));
+            return true;
+        }, reinterpret_cast<uintptr_t>(&objects));
+    std::sort(objects.begin(), objects.end(), [](auto *a, auto *b) { return a->m_Type < b->m_Type; });
+    return objects;
+}
+
+void confirm_restart(CFormMatrixGame &form) {
+    press(form, VK_ESCAPE);
+    press(form, 'R');
+    MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 2);
+    press(form, VK_RETURN);
+    MG_CHECK(g_MatrixMap->IsPaused());
+    MG_CHECK(g_MatrixMap->m_DialogModeName && wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
+}
+
+using ReloadCore = std::unique_ptr<SObjectCore, void (*)(SObjectCore *)>;
+ReloadCore retain(CMatrixMapStatic *object) {
+    return ReloadCore(object->GetCore(DEBUG_CALL_INFO), [](SObjectCore *core) { core->Release(); });
+}
+
+std::vector<uint64_t> populated_restart_run(random::Mode mode, int step) {
+    Profile profile{mode};
+    profile.step_ms = step;
+    profile.unavailable_icon_targets = true;
+    profile.initially_selected = false;
+    Session session(profile);
+    ReloadScene scene;
+    populate_objects_and_spawners(scene);
+    CFormMatrixGame form;
+    auto *const map = g_MatrixMap;
+    auto *const terrain = map->m_Unit;
+    std::cout << session.metadata("storage-objects-spawners-v1") << '\n';
+    confirm_restart(form); // Bootstrap the saved population through the same loader.
+    press(form, VK_RETURN);
+    session.advance(); // Resolve each emitter's object owner before deletion.
+    std::vector<uint64_t> trace;
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        auto objects = loaded_objects();
+        MG_CHECK(objects.size() == 2);
+        auto static_core = retain(objects[0]);
+        auto break_core = retain(objects[1]);
+        MG_CHECK(robots(PLAYER_SIDE).size() == 1);
+        auto old_robot = retain(robots(PLAYER_SIDE).front());
+        MG_CHECK(objects[0]->m_BehFlag == BEHF_STATIC && objects[1]->m_BehFlag == BEHF_BREAK);
+        g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)].damage = 10;
+        g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)].mindamage = 0;
+        objects[1]->Damage(WEAPON_LASER, objects[1]->GetGeoCenter(), D3DXVECTOR3(0, 0, 1), PLAYER_SIDE, nullptr);
+        MG_CHECK(objects[1]->m_BehFlag == BEHF_STATIC && objects[1]->m_Type == 0);
+        // Remove the converted object; its former emitter was retired by the real damage receiver.
+        map->StaticDelete(objects[1]);
+        MG_CHECK(break_core->m_Object == nullptr);
+        MG_CHECK(map->m_EffectSpawnersCnt == 1); // The deleted object's emitter is removed with its owner.
+        auto *robot = robots(PLAYER_SIDE).front();
+        select(robot);
+        session.ground_command(500, 300);
+        for (int i = 0; i < 25; ++i) session.advance();
+        MG_CHECK(robot->m_PosX != 100 || robot->m_PosY != 200);
+        MG_CHECK(map->m_EffectsFirst != nullptr);
+        map->GetPlayerSide()->SetResourceAmount(TITAN, 777);
+        map->m_EffectSpawners[0].Props()->m_Pos.x = 999;
+        const auto before_time = session.time();
+        const auto before_draws = random::draw_count();
+        SEffectHandler transient;
+        CMatrixEffect::CreateSmoke(&transient, D3DXVECTOR3(100, 100, 20), 10000, 1000, 100, 0xffffffff);
+        MG_CHECK(transient.effect != nullptr);
+        confirm_restart(form);
+        MG_CHECK(map == g_MatrixMap && terrain == map->m_Unit && session.time() == before_time);
+        MG_CHECK(static_core->m_Object == nullptr && break_core->m_Object == nullptr && old_robot->m_Object == nullptr);
+        MG_CHECK(transient.effect == nullptr && map->m_EffectsFirst == nullptr);
+        MG_CHECK(map->m_BeforeWinCount == 0 && !FLAG(map->m_Flags, MMFLAG_WIN));
+        objects = loaded_objects();
+        MG_CHECK(objects.size() == 2 && robots().size() == 2);
+        for (int i = 0; i < 2; ++i) {
+            const auto &matrix = objects[i]->GetMatrix();
+            MG_CHECK(objects[i]->m_Type == i && objects[i]->m_UID == i && objects[i]->m_Scale == 1 + 0.5f * i);
+            MG_CHECK(matrix._41 == 300 + 150 * i && matrix._42 == 100 && matrix._43 == 0);
+            MG_CHECK(objects[i]->m_Graph != nullptr);
+        }
+        MG_CHECK(objects[0]->m_BehFlag == BEHF_STATIC && objects[1]->m_BehFlag == BEHF_BREAK);
+        MG_CHECK(objects[1]->m_BreakHitPoint == 10 && objects[1]->m_BreakHitPointMax == 10);
+        MG_CHECK(map->m_EffectSpawnersCnt == 2);
+        for (int i = 0; i < 2; ++i) {
+            const auto *props = map->m_EffectSpawners[i].Props();
+            MG_CHECK(props->m_Type == (i == 0 ? EFFECT_SMOKE : EFFECT_FIRE));
+            MG_CHECK(props->m_Pos.x == 300 + 150 * i && props->m_Pos.y == 100 && props->m_Pos.z == 10);
+        }
+        const auto *smoke = static_cast<SpawnEffectSmoke *>(map->m_EffectSpawners[0].Props());
+        const auto *fire = static_cast<SpawnEffectFire *>(map->m_EffectSpawners[1].Props());
+        MG_CHECK(smoke->m_ttl == 400 && smoke->m_puffttl == 200 && smoke->m_spawntime == 50);
+        MG_CHECK(smoke->m_color == 0xff406080 && smoke->m_speed == 1 && !smoke->m_intense);
+        MG_CHECK(fire->m_ttl == 400 && fire->m_puffttl == 200 && fire->m_spawntime == 50);
+        MG_CHECK(fire->m_dispfactor == 2 && fire->m_speed == 1 && !fire->m_intense);
+        MG_CHECK(map->GetPlayerSide()->GetCurGroup() == nullptr);
+        MG_CHECK(map->GetPlayerSide()->GetCurSelGroup()->GetObjectsCnt() == 0);
+        for (int side = 1; side <= 2; ++side) {
+            MG_CHECK(map->GetSideById(side)->GetStatus() == SS_ACTIVE);
+            MG_CHECK(robots(side).size() == 1);
+            for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+                MG_CHECK(map->GetSideById(side)->GetResourcesAmount(static_cast<ERes>(resource)) == 100 * side + 1 + resource);
+        }
+        MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_APPCLOSE));
+        MG_CHECK(random::mode() == mode && random::draw_count() - before_draws == 2);
+        trace.push_back(random::draw_count() - before_draws);
+        press(form, VK_RETURN);
+        robot = robots(PLAYER_SIDE).front();
+        MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 200);
+        select(robot);
+        session.ground_command(500, 300);
+        for (int i = 0; i < 25; ++i) session.advance();
+        MG_CHECK(robot->m_PosX != 100 || robot->m_PosY != 200);
+        MG_CHECK(robot->GetGroupLogic() >= 0 && robot->GetGroupLogic() < MAX_LOGIC_GROUP);
+        MG_CHECK(map->GetPlayerSide()->m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_MoveTo);
+        MG_CHECK(map->m_EffectsFirst != nullptr);
+        for (int i = 0; i < 2; ++i) MG_CHECK(map->m_EffectSpawners[i].GetUnder() == objects[i]);
+        int smoke_count = 0, fire_count = 0;
+        for (auto *effect = map->m_EffectsFirst; effect; effect = effect->m_Next) {
+            smoke_count += effect->GetType() == EFFECT_SMOKE;
+            fire_count += effect->GetType() == EFFECT_FIRE;
+        }
+        MG_CHECK(smoke_count == (step == 10 ? 2 : 3));
+        MG_CHECK(fire_count == smoke_count);
+        trace.push_back(random::draw_count());
+        trace.push_back(std::bit_cast<uint32_t>(robot->m_PosX));
+        trace.push_back(std::bit_cast<uint32_t>(robot->m_PosY));
+        std::cout << "populated restart=" << attempt << " time=" << before_time << " draws=" << trace[trace.size() - 4]
+                  << " active-spawners=" << map->m_EffectSpawnersCnt << '\n';
+    }
+    return trace;
+}
+void restart_objects_spawners() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = populated_restart_run(mode, step);
+        MG_CHECK(first == populated_restart_run(mode, step));
+    }
+}
 constexpr tests::Case cases[] = {
+    {"game.restart.objects_spawners", restart_objects_spawners},
     {"game.restart.retired_group", restart_retired_group},
     {"game.restart.movement", restart_movement},
     {"game.restart.pending_win", restart_pending_win},

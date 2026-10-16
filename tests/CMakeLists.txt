@@ -783,7 +783,7 @@ target_include_directories(matrixgame_battle_restart_scenarios PRIVATE "${CMAKE_
 target_compile_definitions(matrixgame_battle_restart_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract movement pending_win pending_loss retired_group)
+foreach(contract movement pending_win pending_loss retired_group objects_spawners)
     add_matrix_test(game.restart.${contract} matrixgame_battle_restart_scenarios gameplay startup)
 endforeach()
 
