@@ -655,7 +655,7 @@ foreach(contract control_group_reassignment control_group_combat_death move_rout
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
 
-foreach(contract manual_track_lifecycle manual_hovercraft_lifecycle mixed_building_selection inactive_selection manual_armed_fire repair_command_routes bomb_command_routes
+foreach(contract mixed_selection_lifecycle manual_track_lifecycle manual_hovercraft_lifecycle mixed_building_selection inactive_selection manual_armed_fire repair_command_routes bomb_command_routes
                  manual_bomb_key manual_combat_death manual_exit_keys)
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
