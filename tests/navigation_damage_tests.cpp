@@ -148,6 +148,12 @@ void disabled_blocker_run(bool lethal, bool apply_hit = true) {
                 } else if (!retirement) retirement = session.time();
             } else {
                 MG_CHECK(core->m_Object == blocker && blocker->IsLiveRobot());
+                if (apply_hit && !recovered) {
+                    // Keep the slowdown distinguishable from stopping on contact.
+                    const float separation = std::hypot(blocker->m_PosX - follower->m_PosX,
+                                                        blocker->m_PosY - follower->m_PosY);
+                    MG_CHECK(separation > 45.0f);
+                }
                 if (StatusObservation::shorted(*blocker)) {
                     MG_CHECK(blocker->m_PosX == x && blocker->m_PosY == y);
                     MG_CHECK(!recovered && follower->m_PosX < x);
