@@ -376,12 +376,13 @@ void pause_resume() {
     }
 }
 void special_survival_flags() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
     for (DWORD flag : {MMFLAG_TERRON_DEAD, MMFLAG_SPECIAL_BROKEN}) {
-        Session session;
+        Session session({mode, 79, step});
         DialogData dialog;
         SETFLAG(g_MatrixMap->m_Flags, flag);
         MG_CHECK(session.remove(1) && session.remove(2));
-        advance_to(session, 2020);
+        advance_to(session, step == 10 ? 2020 : 2032);
         MG_CHECK(side().GetStatus() == SS_ACTIVE);
         MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
         MG_CHECK(!g_MatrixMap->IsPaused());
@@ -1364,14 +1365,15 @@ CMatrixMapObject *create_objective(float x) {
     MG_CHECK(object->IsSpecial() && object->m_BreakHitPoint == 10);
     return object;
 }
-std::vector<std::string> special_object_run(random::Mode mode, int family) {
+std::vector<std::string> special_object_run(random::Mode mode, int family, int step) {
     tests::BattleMaterialProfile materials;
     tests::BattleCombatAssets assets;
     CaptureCraterAssets crater;
-    Session session({mode, 85, 10, 1500, false});
+    Session session({mode, 85, step, 1500, false});
     assets.install();
     crater.install();
     DialogData dialog;
+    std::cout << session.metadata("synthetic-special-outcome-v2") << " family=" << family << '\n';
     install_objective_catalog(family == 2 ? L"+Anim,0:0:10:1#1:0:0:-1" :
         family == 1 ? L"+Break,1,10,Explode" : L"+Break,1,10,None");
     auto *first = create_objective(400);
@@ -1403,7 +1405,7 @@ std::vector<std::string> special_object_run(random::Mode mode, int family) {
     else MG_CHECK(first->m_Type == 1 && first->m_BehFlag == BEHF_STATIC);
     // Losing the enemy army is insufficient while one objective remains.
     MG_CHECK(session.remove(3) && session.remove(4));
-    advance_to(session, 2020);
+    advance_to(session, step == 10 ? 2020 : 2032);
     MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !g_MatrixMap->IsPaused());
     MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
     damage = {10, 0, 0};
@@ -1417,29 +1419,30 @@ std::vector<std::string> special_object_run(random::Mode mode, int family) {
     MG_CHECK(session.remove(1) && session.remove(2));
     std::vector<std::string> trace;
     while (!g_MatrixMap->IsPaused() && session.time() < 7000) {
+        MG_CHECK(g_MatrixMap->m_DialogModeName == nullptr);
         session.advance();
         trace.push_back(session.snapshot() + ":" + std::to_string(side().GetStatus()) + ":" +
             std::to_string(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN)));
     }
     std::cout << "objective family=" << family << " result=" << session.time() << '\n';
-    MG_CHECK(session.time() == 6040);
+    MG_CHECK(session.time() == (step == 10 ? 6040 : 6064));
     MG_CHECK(g_MatrixMap->IsPaused() && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
     MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
     MG_CHECK(side().GetStatus() == SS_ACTIVE && !FLAG(g_Flags, GFLAG_EXITLOOP));
     return trace;
 }
 template<int Family> void special_object_destruction() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        const auto first = special_object_run(mode, Family);
-        MG_CHECK(first == special_object_run(mode, Family));
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = special_object_run(mode, Family, step);
+        MG_CHECK(first == special_object_run(mode, Family, step));
     }
 }
-void terron_destruction_run(bool collateral) {
+void terron_destruction_run(bool collateral, int step) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool lose_army : {false, true}) {
         tests::BattleMaterialProfile materials;
         tests::BattleCombatAssets assets;
         CaptureCraterAssets crater;
-        Session session({mode, 85, 10, 1500, false});
+        Session session({mode, 85, step, 1500, false});
         assets.install(); crater.install();
         DialogData dialog;
         g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = collateral ? 150 : 20;
@@ -1475,12 +1478,14 @@ void terron_destruction_run(bool collateral) {
         if (lose_army) MG_CHECK(session.remove(1) && session.remove(2));
         advance_to(session, 2000);
         repeated_hit(); // Must not restart the remaining death countdown.
-        advance_to(session, 5000);
+        advance_to(session, step == 10 ? 5000 : 4992);
         MG_CHECK(terron->IsSpecial() && terron->m_BehFlag == BEHF_TERRON);
         MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && side().GetStatValue(STAT_BUILDING_KILL) == 0);
         MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->IsPaused());
         MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
         session.advance();
+        std::cout << "Terron conversion at " << session.time() << " ms\n";
+        MG_CHECK(session.time() == (step == 10 ? 5010 : 5008));
         MG_CHECK(!terron->IsSpecial() && terron->m_Type == 1 && terron->m_BehFlag == BEHF_STATIC);
         MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && side().GetStatValue(STAT_BUILDING_KILL) == 1);
         MG_CHECK(side().GetStatus() == SS_JUST_WIN && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
@@ -1492,9 +1497,11 @@ void terron_destruction_run(bool collateral) {
                 session.advance();
             }
         }
-        advance_to(session, 8040);
+        advance_to(session, step == 10 ? 8040 : 8064);
         MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
         session.advance();
+        std::cout << "Terron dialog at " << session.time() << " ms\n";
+        MG_CHECK(session.time() == (step == 10 ? 8050 : 8080));
         MG_CHECK(g_MatrixMap->IsPaused() && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
         MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
         MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1);
@@ -1502,8 +1509,8 @@ void terron_destruction_run(bool collateral) {
     }
 }
 
-void terron_destruction() { terron_destruction_run(false); }
-void terron_blast_after_conversion() { terron_destruction_run(true); }
+void terron_destruction() { for (int step : {10, 16}) terron_destruction_run(false, step); }
+void terron_blast_after_conversion() { terron_destruction_run(true, 10); }
 
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
