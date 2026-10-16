@@ -442,14 +442,13 @@ CMatrixCannon *awareness_cannon(float distance, float range, int side = 2) {
 namespace {
 // Initial terrain data, with real height triangles and rebuilt trace groups.
 // All initial session objects must be removed before rebuilding their groups.
-void turret_terrain(float target_z, bool above, bool ridge) {
+template<class Height>
+void turret_heightfield(Height height) {
     auto &map = *g_MatrixMap;
     MG_CHECK(CMatrixMapStatic::GetFirstLogic() == nullptr);
     for (int y = 0; y <= 32; ++y) for (int x = 0; x <= 32; ++x) {
         auto &point = *map.PointGet(x, y);
-        // Cannon bounds omit the base, putting this assembly's center 25 units above ground.
-        point.z = point.z_land = x <= 6 ? target_z + (above ? -40 : 0) : target_z - 25;
-        if (ridge && x == 7) point.z = point.z_land = 160;
+        point.z = point.z_land = height(x);
         point.n = D3DXVECTOR3(0, 0, 1);
     }
     for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
@@ -486,6 +485,13 @@ void turret_terrain(float target_z, bool above, bool ridge) {
         buffer->AddToArray<BYTE>(array, raw.data(), int(raw.size()));
     }
     map.GroupBuild(storage);
+}
+
+void turret_terrain(float target_z, bool above, bool ridge) {
+    turret_heightfield([=](int x) {
+        if (ridge && x == 7) return 160.0f;
+        return x <= 6 ? target_z + (above ? -40 : 0) : target_z - 25;
+    });
 }
 
 struct TurretBoundary {
@@ -583,6 +589,94 @@ void turret_boundary(bool retirement, bool occlusion) {
 void turret_acquisition_equality() { turret_boundary(false, false); }
 void turret_retirement_equality() { turret_boundary(true, false); }
 void turret_elevated_terrain() { turret_boundary(false, true); }
+
+void turret_elevation_boundary() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (float sign : {-1.0f, 1.0f}) for (int sample : {-1, 0, 1}) {
+        BattleCombatAssets assets;
+        battle::Profile profile{mode, 84};
+        profile.layout = NavigationLayout::Open;
+        battle::Session session(profile);
+        assets.install(); configure();
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 300;
+        for (int id = 1; id <= 4; ++id) MG_CHECK(session.remove(id));
+        // Fixed binary32 operands: 42.8718719482421875 / 160 equals the engine's float tangent.
+        const float threshold = 0x1.126146p-2f;
+        MG_CHECK(tan(BARREL_TO_SHOT_ANGLE) == threshold);
+        const float boundary_height = 0x1.56f998p+5f;
+        const float height = sample < 0 ? boundary_height - 0.01f :
+                             sample > 0 ? boundary_height + 0.01f : boundary_height;
+        const float wanted_z = 64 + sign * height;
+        const float slope = (wanted_z - 69) / 150;
+        // Two ULP of initial terrain placement compensate the generated robot
+        // bounds, leaving its actual center at 64. No cached center is assigned.
+        turret_heightfield([=](int x) { return (44.0f + 0x1p-17f) + std::max(0, x * 20 - 100) * slope; });
+        auto *observer = BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200);
+        arm_battle_robot(*observer, RUK_WEAPON_LASER);
+        auto *target = awareness_cannon(0, 200);
+        const D3DXVECTOR3 wanted(240, 180, wanted_z);
+        target->m_Pos = D3DXVECTOR2(wanted.x, wanted.y);
+        // As in the range fixtures, adjust initial placement through real matrices.
+        for (int attempt = 0; attempt < 16; ++attempt) {
+            target->RChange(MR_Matrix); target->RNeed(MR_Matrix); target->JoinToGroup();
+            const auto actual = target->GetGeoCenter();
+            if (actual == wanted) break;
+            target->m_Pos.x += wanted.x - actual.x;
+            target->m_Pos.y += wanted.y - actual.y;
+            target->m_AddH += wanted.z - actual.z;
+        }
+        const auto center = target->GetGeoCenter();
+        MG_CHECK(center.x == wanted.x && center.y == wanted.y && std::fabs(center.z - wanted.z) < 0.00001f);
+        MG_CHECK(observer->GetGeoCenter().z == 64);
+        MG_CHECK(std::fabs(target->m_Pos.x - wanted.x) < 0.001f &&
+                 std::fabs(target->m_Pos.y - wanted.y) < 0.001f && std::fabs(target->m_AddH) < 0.001f);
+        MG_CHECK(observer->GetMaxFireDist() == 300);
+        MG_CHECK(observer->GetMapPosX() == 8 && observer->GetMapPosY() == 18);
+        MG_CHECK(Float2Int(target->m_Pos.x / GLOBAL_SCALE_MOVE) == 24 &&
+                 Float2Int(target->m_Pos.y / GLOBAL_SCALE_MOVE) == 18);
+        MG_CHECK(g_MatrixMap->IsLogicVisible(observer, target, 0));
+        const float ratio = std::fabs(center.z - observer->GetGeoCenter().z) / 160.0f;
+        if (sample == 0) {
+            MG_CHECK(std::fabs(center.z - observer->GetGeoCenter().z) == height);
+            MG_CHECK(ratio == threshold);
+        }
+        else MG_CHECK((ratio < threshold) == (sample < 0));
+        // The 140,-20 world displacement is shorter than the 16 movement cells.
+        // Using geometric distance instead would reject even the shallow sample.
+        MG_CHECK(std::fabs(center.z - observer->GetGeoCenter().z) / std::sqrt(20000.0f) > threshold);
+        const D3DXVECTOR3 range_delta = center - D3DXVECTOR3(observer->m_PosX, observer->m_PosY, 0);
+        MG_CHECK(D3DXVec3LengthSq(&range_delta) < 300.0f * 300.0f);
+        auto &env = *observer->GetEnv();
+        const bool acquired = sample < 0;
+        const auto release = [](SObjectCore *core) { core->Release(); };
+        std::unique_ptr<SObjectCore, decltype(release)> core(target->GetCore(DEBUG_CALL_INFO), release);
+        for (int scan = 0; scan < 3; ++scan) {
+            observer->GatherInfo(0);
+            MG_CHECK(core->m_Object == target);
+            MG_CHECK(bool(env.SearchEnemy(target)) == acquired && env.GetEnemyCnt() == (acquired ? 1 : 0));
+            MG_CHECK(env.IsIgnore(target) == !acquired && env.m_IgnoreCnt == (acquired ? 0 : 1));
+            if (!acquired) MG_CHECK(env.m_Ignore[0] == target && env.m_IgnoreTime[0] == 0);
+        }
+        observer->SetGroupLogic(0);
+        g_MatrixMap->GetPlayerSide()->m_PlayerGroup[0].Order(mpo_Stop);
+        g_MatrixMap->GetPlayerSide()->FirePL(0);
+        MG_CHECK(env.m_TargetAttack == (acquired ? target : nullptr));
+        // Declared target removal checks the acquired reference's lifetime;
+        // ignore expiry is covered separately, without advancing this fixed-time scene.
+        if (acquired) {
+            g_MatrixMap->StaticDelete(target);
+            MG_CHECK(core->m_Object == nullptr && env.GetEnemyCnt() == 0);
+            MG_CHECK(!env.m_Target && !env.m_TargetAttack);
+            observer->GatherInfo(0);
+            MG_CHECK(env.GetEnemyCnt() == 0 && !env.m_Target && !env.m_TargetAttack);
+        }
+        MG_CHECK(session.time() == 0 && session.frame() == 0);
+        evidence(session, "turret-elevation-boundary", observer, "synthetic-turret-elevation-v1");
+        std::cout << "sign=" << sign << " sample=" << sample << std::hexfloat
+                  << " center_z=" << center.z << " height_ratio=" << ratio
+                  << " threshold=" << threshold << std::defaultfloat << '\n';
+    }
+}
 
 void turret_acquisition_range() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
