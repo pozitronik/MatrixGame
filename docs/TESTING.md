@@ -124,6 +124,8 @@ The [presentation evidence guide](testing/87-presentation.md) maps PRES-01 throu
 
 The [capture and battle outcome guide](testing/85-battle-outcomes.md) describes capture transitions, survival and objective rules, transport lifetime and result/pause boundaries.
 
+The [standalone selector continuation cases](testing/85-map-window-continuations.md) connect the battle menu and win/loss/surrender statistics to actual selector input, cancellation and persisted same/different-map choices. They stop at the relaunch request; full process startup and the parent/child handshake remain separate lifecycle checks.
+
 The [strategic and tactical AI guide](testing/84-ai-decisions.md) describes decision fixtures, declared initial state and separately tracked correctness probes.
 
 ### Extending the fixture
