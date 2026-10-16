@@ -67,6 +67,8 @@ The other Terron map-name rule in `CMatrixMapLogic::Takt` is a portrait easter e
 
 ## Three different session boundaries
 
+The [storage-backed restart tests](85-restart.md) implement O6's successful menu-confirmed reload during movement and pending victory/defeat, twice per map instance in both RNG modes and 10/16 ms profiles. They measure resource/statistic restoration, fresh robot identity, old queue/effect disposal, retained time/input and fresh commands. O6 remains incomplete: its inactive selection-group retirement probe exposes references to deleted robots, and real failure-boundary cleanup, populated dynamics reconstruction and settings transitions still require work. These tests do not establish O7 initialization/relaunch coverage.
+
 The production paths are materially different:
 
 - **Restart current battle:** `OkResetHandler` in [MatrixMap.cpp](../../MatrixGame/src/MatrixMap.cpp) calls `CMatrixMap::Restart` in [MatrixMapPrepare.cpp](../../MatrixGame/src/MatrixMapPrepare.cpp). It clears and reloads dynamics into the existing map and opens the introduction; it does not call `CGame::Init` again.
