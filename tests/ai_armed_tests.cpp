@@ -811,6 +811,8 @@ enum class CombatJourney { Move, Patrol, RetireTarget, ReplaceMove };
 
 void combat_continuation(CombatJourney journey) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const char *name = journey == CombatJourney::Move ? "move" : journey == CombatJourney::Patrol ? "patrol"
+            : journey == CombatJourney::RetireTarget ? "retire-target" : "replace-move";
         BattleCombatAssets assets;
         battle::Profile profile{mode, 84, step, 1600, false};
         profile.layout = NavigationLayout::Open;
@@ -864,8 +866,19 @@ void combat_continuation(CombatJourney journey) {
         MG_CHECK(initial_move == (journey == CombatJourney::Move ? CPoint(48, 8) : CPoint(8, 8)));
         int acquisition = -1, first_war = -1, first_hit = -1, terminal = -1, changed = -1, arrival = -1;
         int redirected = -1, pulses = 0;
+        int first_failed_search = -1, last_failed_search = -1, failed_searches = 0, resumed_at = -1, idle_at = -1;
         float health = 4;
         bool resumed = false;
+        MG_CHECK(observer->GetEnv()->m_PlaceNotFound < 0);
+        // TaktPL runs at most once per 100 ms; a frame can overshoot that cadence.
+        const int retry_observation_slack = 100 + step;
+        const auto check_retry_window = [&](int event_time) {
+            std::cout << "retry-window journey=" << name << " rng=" << int(mode) << " step_ms=" << step
+                      << " failed_at=" << last_failed_search << " event_at=" << event_time << '\n';
+            MG_CHECK(last_failed_search >= 0);
+            MG_CHECK(event_time - last_failed_search > 2000);
+            MG_CHECK(event_time - last_failed_search <= 2000 + retry_observation_slack);
+        };
         while (session.time() < 15000) {
             const auto *firing_target = observer->GetEnv()->m_Target;
             session.advance();
@@ -876,9 +889,27 @@ void combat_continuation(CombatJourney journey) {
             MG_CHECK(sentinel->IsLiveRobot() && sentinel->GetHitPoint() == sentinel_health);
             MG_CHECK(sentinel->m_PosX == 600 && sentinel->m_PosY == 600);
             const auto &group = side.m_PlayerGroup[observer->GetGroupLogic()];
+            const auto &env = *observer->GetEnv();
             if (journey == CombatJourney::Move || (changed >= 0 && journey == CombatJourney::ReplaceMove))
                 MG_CHECK(!group.IsWar());
             if (group.IsWar() && first_war < 0) first_war = session.time();
+            if (group.IsWar()) {
+                // War never obtains a firing place in this occupied-place fixture.
+                MG_CHECK(env.m_Place < 0);
+                if (session.time() - first_war >= retry_observation_slack) MG_CHECK(env.m_PlaceNotFound >= 0);
+            }
+            if (env.m_PlaceNotFound >= 0 && env.m_PlaceNotFound != last_failed_search) {
+                MG_CHECK(journey != CombatJourney::Move && group.IsWar() && env.m_Place < 0);
+                MG_CHECK(env.m_PlaceNotFound == session.time());
+                MG_CHECK(core->m_Object && target->IsLiveRobot());
+                const int occupied_place = target->GetEnv()->m_Place;
+                MG_CHECK(occupied_place >= 0 && occupied_place < g_MatrixMap->m_RN.m_PlaceCnt);
+                MG_CHECK(g_MatrixMap->m_RN.m_Place[occupied_place].m_Pos == CPoint(8, 8));
+                if (last_failed_search >= 0) check_retry_window(session.time());
+                else first_failed_search = session.time();
+                last_failed_search = env.m_PlaceNotFound;
+                ++failed_searches;
+            }
             if (observer->GetEnv()->m_TargetAttack == target && acquisition < 0) acquisition = session.time();
             if (core->m_Object && target->GetHitPoint() < health) {
                 MG_CHECK(acquisition > 0 && firing_target == target);
@@ -899,6 +930,7 @@ void combat_continuation(CombatJourney journey) {
             }
             if (changed < 0 && pulses == 2 && (journey == CombatJourney::RetireTarget || journey == CombatJourney::ReplaceMove)) {
                 MG_CHECK(group.IsWar() && observer->GetEnv()->m_TargetAttack == target);
+                MG_CHECK(last_failed_search >= 0 && session.time() - last_failed_search <= 2000);
                 CPoint previous_move;
                 MG_CHECK(observer->GetMoveToCoords(previous_move) && previous_move == CPoint(8, 8));
                 changed = session.time();
@@ -910,19 +942,33 @@ void combat_continuation(CombatJourney journey) {
                     session.ground_command(500, 400);
                     intent = session.robot(1);
                     MG_CHECK(intent.order == mpo_MoveTo && intent.destination_x == 48 && intent.destination_y == 38);
-                    // Group intent changes synchronously; the current physical leg remains pending.
+                    // This command lands inside the failed-place-search retry window.
                     CPoint after_command;
                     MG_CHECK(observer->GetMoveToCoords(after_command) && after_command == previous_move);
                     MG_CHECK(!side.m_PlayerGroup[observer->GetGroupLogic()].IsWar());
+                    MG_CHECK(observer->GetEnv()->m_PlaceNotFound == last_failed_search);
+                    MG_CHECK(observer->FindOrderLikeThat(ROT_FIRE));
                 }
             }
             CPoint move;
             if (observer->GetMoveToCoords(move)) {
                 if (journey == CombatJourney::Move) MG_CHECK(move == CPoint(48, 8));
-                if (terminal >= 0 && move == CPoint(48, 8)) resumed = true;
-                if (journey == CombatJourney::ReplaceMove && changed >= 0 && move == CPoint(48, 38) && redirected < 0)
+                if (terminal >= 0 && move == CPoint(48, 8) && !resumed) {
+                    resumed = true;
+                    resumed_at = session.time();
+                    if (journey != CombatJourney::Move) check_retry_window(resumed_at);
+                }
+                if (journey == CombatJourney::ReplaceMove && changed >= 0 && move == CPoint(48, 38) && redirected < 0) {
                     redirected = session.time();
+                    check_retry_window(redirected);
+                }
+                if (journey != CombatJourney::Move && last_failed_search >= 0 &&
+                    session.time() - last_failed_search <= 2000)
+                    MG_CHECK(move == initial_move);
             }
+            if (journey == CombatJourney::Patrol && terminal >= 0 && !resumed &&
+                observer->m_PosX == 100 && observer->m_PosY == 100 && !observer->FindOrderLikeThat(ROT_MOVE_TO) && idle_at < 0)
+                idle_at = session.time();
             const int destination_y = journey == CombatJourney::ReplaceMove ? 400 : 100;
             // Patrol may start its return before stopping exactly at the outbound point.
             const bool moving = journey == CombatJourney::Move || journey == CombatJourney::ReplaceMove;
@@ -943,11 +989,17 @@ void combat_continuation(CombatJourney journey) {
         } else MG_CHECK(pulses == 20 && health == 0);
         if (journey == CombatJourney::ReplaceMove) MG_CHECK(redirected > changed && redirected < arrival);
         else MG_CHECK(resumed);
-        const char *name = journey == CombatJourney::Move ? "move" : journey == CombatJourney::Patrol ? "patrol"
-            : journey == CombatJourney::RetireTarget ? "retire-target" : "replace-move";
-        std::cout << session.metadata("combat-journey-v1") << " journey=" << name
+        if (journey == CombatJourney::Move) MG_CHECK(failed_searches == 0);
+        else {
+            MG_CHECK(first_failed_search > first_war && first_failed_search < first_hit);
+            MG_CHECK(failed_searches == (journey == CombatJourney::Patrol ? 2 : 1));
+            if (journey == CombatJourney::Patrol) MG_CHECK(idle_at > terminal && idle_at < resumed_at);
+        }
+        std::cout << session.metadata("combat-journey-v2") << " journey=" << name
                   << " acquisition=" << acquisition << " first_war=" << first_war << " first_hit=" << first_hit << " terminal=" << terminal
                   << " changed=" << changed << " redirected=" << redirected << " arrival=" << arrival
+                  << " failed_searches=" << failed_searches << " first_failed_search=" << first_failed_search
+                  << " last_failed_search=" << last_failed_search << " idle_at=" << idle_at << " resumed_at=" << resumed_at
                   << " pulses=" << pulses << " final=" << observer->m_PosX << ',' << observer->m_PosY
                   << " rng_draws=" << random::draw_count() << '\n';
     }
