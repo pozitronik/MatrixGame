@@ -188,6 +188,8 @@ add_matrix_test(game.settings.save_utf8 matrixgame_standalone_settings_tests sta
 add_matrix_test(game.settings.save_wide matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.save_creates_file matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.save_failure matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.save_transient_lock matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.save_persistent_lock matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.unreadable_file matrixgame_standalone_settings_tests startup settings)
 
 add_matrix_test_executable(matrixgame_map_metadata_tests map_metadata_tests.cpp ../MatrixGame/src/MapMetadata.cpp)

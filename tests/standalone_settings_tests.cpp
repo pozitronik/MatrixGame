@@ -10,6 +10,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <thread>
 
 logger_type lgr{std::cerr};
 
@@ -251,7 +252,7 @@ void save_utf8() {
     const std::filesystem::path path = L"CFG/standalone.txt";
     write_bytes(path, "// Comment \xd0\x97\r\nUnknownKey=\xd0\xb2\r\nSoundVolume=100\r\n");
     std::string error;
-    MG_CHECK(StandaloneSettings::save(custom(), error, path.c_str()));
+    if (!StandaloneSettings::save(custom(), error, path.c_str())) throw std::runtime_error(error);
     const auto bytes = read_bytes(path);
     MG_CHECK(bytes.starts_with("// Comment \xd0\x97\r\nUnknownKey=\xd0\xb2\r\nSoundVolume=40\r\nRandomGenerator=LegacyCRT\r\n"));
     MG_CHECK(!std::filesystem::exists(L"CFG/standalone.txt.tmp"));
@@ -269,7 +270,7 @@ void save_wide() {
     }
     write_bytes(path, bytes);
     std::string error;
-    MG_CHECK(StandaloneSettings::save(custom(), error, path.c_str()));
+    if (!StandaloneSettings::save(custom(), error, path.c_str())) throw std::runtime_error(error);
     const auto saved = read_bytes(path);
     MG_CHECK(saved.size() % 2 == 0 && saved.starts_with(std::string("\xff\xfe/\0/\0 \0\x17\x04", 10)));
     const auto loaded = StandaloneSettings::load(path.c_str());
@@ -279,7 +280,7 @@ void save_wide() {
 void save_creates_file() {
     TemporaryDirectory directory;
     std::string error;
-    MG_CHECK(StandaloneSettings::save(custom(), error));
+    if (!StandaloneSettings::save(custom(), error)) throw std::runtime_error(error);
     MG_CHECK(std::filesystem::exists(L"CFG\\standalone.txt"));
     MG_CHECK(StandaloneSettings::load().values == custom());
     const auto missing = StandaloneSettings::load(L"CFG\\absent.txt");
@@ -297,6 +298,57 @@ void save_failure_keeps_file() {
     MG_CHECK(!error.empty());
     MG_CHECK(read_bytes(path) == original);
     MG_CHECK(!std::filesystem::exists(L"CFG/standalone.txt.tmp"));
+}
+
+struct FileHandle {
+    HANDLE value = INVALID_HANDLE_VALUE;
+    ~FileHandle() { if (value != INVALID_HANDLE_VALUE && value != nullptr) CloseHandle(value); }
+};
+
+void save_target_lock(bool transient) {
+    TemporaryDirectory directory;
+    const std::filesystem::path path = L"CFG/standalone.txt";
+    const std::string original = "// Keep this comment\r\nSoundVolume=100\r\n";
+    write_bytes(path, original);
+    // Permit save's initial read, but deny deletion/replacement of the target.
+    FileHandle target{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                 nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
+    MG_CHECK(target.value != INVALID_HANDLE_VALUE);
+    FileHandle started;
+    std::jthread release;
+    if (transient) {
+        started.value = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+        MG_CHECK(started.value);
+        const HANDLE held = target.value;
+        // Keep ownership here until the thread exists; its join precedes scope cleanup.
+        release = std::jthread([held, event = started.value] {
+            SetEvent(event);
+            Sleep(150);
+            CloseHandle(held);
+        });
+        target.value = INVALID_HANDLE_VALUE;
+        MG_CHECK(WaitForSingleObject(started.value, 5000) == WAIT_OBJECT_0);
+    }
+    std::string error;
+    const auto before = GetTickCount();
+    const bool saved = StandaloneSettings::save(custom(), error, path.c_str());
+    const auto elapsed = GetTickCount() - before;
+    std::cout << "target_lock=" << (transient ? "transient" : "persistent")
+              << " saved=" << saved << " elapsed_ms=" << elapsed << " error=" << error << '\n';
+    if (release.joinable()) release.join();
+    MG_CHECK(elapsed < 5000);
+    MG_CHECK(saved == transient);
+    MG_CHECK(!std::filesystem::exists(L"CFG/standalone.txt.tmp"));
+    if (transient) {
+        MG_CHECK(error.empty());
+        MG_CHECK(read_bytes(path).starts_with("// Keep this comment\r\nSoundVolume=40\r\n"));
+        MG_CHECK(StandaloneSettings::load(path.c_str()).values == custom());
+    } else {
+        MG_CHECK(elapsed >= 500);
+        MG_CHECK(error.find("Cannot replace the settings file (Windows error ") != std::string::npos);
+        MG_CHECK(error.find("error 5)") != std::string::npos || error.find("error 32)") != std::string::npos);
+        MG_CHECK(read_bytes(path) == original);
+    }
 }
 
 void unreadable_file() {
@@ -319,6 +371,8 @@ constexpr tests::Case cases[] = {
     {"game.settings.save_creates_file", save_creates_file},
     {"game.settings.save_failure", save_failure_keeps_file},
     {"game.settings.unreadable_file", unreadable_file},
+    {"game.settings.save_transient_lock", [] { save_target_lock(true); }},
+    {"game.settings.save_persistent_lock", [] { save_target_lock(false); }},
 };
 
 }  // namespace
