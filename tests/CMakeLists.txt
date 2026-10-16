@@ -909,3 +909,14 @@ target_compile_definitions(matrixgame_loop_battle_scenarios PRIVATE
 foreach(contract speed_movement focus_movement)
     add_matrix_test(game.loop.${contract} matrixgame_loop_battle_scenarios gameplay input)
 endforeach()
+
+add_matrix_test_executable(matrixgame_formation_regulation_tests formation_regulation_tests.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_formation_regulation_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_formation_regulation_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_formation_regulation_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_formation_regulation_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.navigation.mixed_formation_regulation matrixgame_formation_regulation_tests gameplay navigation)
+
