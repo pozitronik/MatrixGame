@@ -1457,7 +1457,7 @@ void mixed_selection_lifecycle() {
                     const CRect area = click ? CRect(point.x, point.y, point.x + 1, point.y + 1)
                                              : CRect(point.x - 30, point.y - 30, point.x + 30, point.y + 30);
                     MG_CHECK(robot->InRect(area) && building->InRect(area));
-                    MG_CHECK(cannon->InRect(CRect(point.x - 60, point.y - 60, point.x + 60, point.y + 60)));
+                    MG_CHECK(cannon->InRect(area));
                     std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
                         [](SObjectCore *value) { value->Release(); });
                     const auto select_scene = [&](bool include_robot) {
@@ -1497,6 +1497,7 @@ void mixed_selection_lifecycle() {
                     g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {10000, 10000, 0};
                     MG_CHECK(robot->Damage(WEAPON_GUN, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
                     MG_CHECK(robot->m_CurrState == ROBOT_DIP && core->m_Object == robot);
+                    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
                     MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(robot));
                     select_scene(true); // The dying object is still visible, but no longer selectable.
                     MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
@@ -1505,6 +1506,9 @@ void mixed_selection_lifecycle() {
                     for (int elapsed = 0; elapsed < 6000; elapsed += step_ms) session.advance();
                     MG_CHECK(core->m_Object == nullptr);
                     MG_CHECK(!session.robot(1).alive);
+                    // Empty hits retain selection, so require a fresh building pick after retirement.
+                    side().Select(NOTHING, nullptr);
+                    MG_CHECK(side().m_CurrSel == NOTHING_SELECTED && side().m_ActiveObject == nullptr);
                     select_scene(false);
                     MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
                     MG_CHECK(side().m_ActiveObject == building.get());
