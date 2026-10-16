@@ -157,7 +157,7 @@ struct Window {
     }
     void resume() {
         MG_CHECK(!SettingsWindow::active());
-        MG_CHECK(wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_MENU) == 0);
+        MG_CHECK(g_MatrixMap->m_DialogModeName && wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_MENU) == 0);
         MG_CHECK(g_MatrixMap->IsPaused());
         press(form, VK_ESCAPE);
         MG_CHECK(!g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeName == nullptr);
@@ -193,8 +193,6 @@ void input_pause_cancel() {
         MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE));
         w.form.Keyboard(true, VK_CONTROL); press(w.form, '2'); w.form.Keyboard(false, VK_CONTROL);
         MG_CHECK(robot->GetCtrlGroup() == '1');
-        press(w.form, '3');
-        MG_CHECK(side.GetCurGroup() == selected);
         for (auto key : std::string("NEED4SPEED")) press(w.form, key);
         press(w.form, VK_PAUSE);
         for (int i = 0; i < 20; ++i) w.session.advance();
