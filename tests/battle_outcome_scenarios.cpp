@@ -1662,7 +1662,7 @@ template<int Family> void special_object_destruction() {
         MG_CHECK(first == special_object_run(mode, Family, step));
     }
 }
-void terron_destruction_run(bool collateral, int step) {
+void terron_destruction_run(bool collateral, int step, int blast_damage = 600) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool lose_army : {false, true}) {
         tests::BattleMaterialProfile materials;
         tests::BattleCombatAssets assets;
@@ -1671,11 +1671,14 @@ void terron_destruction_run(bool collateral, int step) {
         assets.install(); crater.install();
         DialogData dialog;
         g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = collateral ? 150 : 20;
+        if (collateral) g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {blast_damage, 0, 7};
         g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
         install_objective_catalog(L"+Break,1,10,Terron", true);
         auto *terron = create_objective(collateral ? 400 : 600);
+        std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> owner_core(terron->GetCore(DEBUG_CALL_INFO),
+            [](SObjectCore *value) { value->Release(); });
         MG_CHECK(terron->m_BehFlag == BEHF_TERRON && g_MatrixMap->m_BeforeWinCount == 1);
-        std::cout << session.metadata(collateral ? "synthetic-terron-collateral-probe-v1" : "synthetic-terron-outcome-v1") << " lose_army=" << lose_army << '\n';
+        std::cout << session.metadata(collateral ? "synthetic-terron-collateral-v2" : "synthetic-terron-outcome-v1") << " lose_army=" << lose_army << " blast_damage=" << blast_damage << '\n';
         const auto hit = [&](int attacker) {
             terron->Damage(WEAPON_LASER, terron->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), attacker, nullptr);
         };
@@ -1714,13 +1717,49 @@ void terron_destruction_run(bool collateral, int step) {
         MG_CHECK(!terron->IsSpecial() && terron->m_Type == 1 && terron->m_BehFlag == BEHF_STATIC);
         MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && side().GetStatValue(STAT_BUILDING_KILL) == 1);
         MG_CHECK(side().GetStatus() == SS_JUST_WIN && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
-        if (collateral) {
-            // Opt-in defect evidence for #186; never an accepted baseline result.
-            while (session.time() < 5220) {
-                std::cout << "blast probe: before tick at " << session.time()
-                          << " ms; draws=" << random::draw_count() << std::endl;
-                session.advance();
+        // Measured against the pre-fix Release implementation. Counts include the
+        // complete map tick, not just the damage callback. Army removal uses no RNG.
+        const bool park = mode == random::Mode::ParkMiller;
+        const bool lethal = blast_damage == 1200;
+        const std::array<std::uint64_t, 4> expected_draws = step == 10
+            ? (park ? std::array<std::uint64_t, 4>{129201, 131865, lethal ? 132497u : 132031u, lethal ? 186432u : 157146u}
+                    : std::array<std::uint64_t, 4>{152426, 157794, lethal ? 158571u : 158108u, lethal ? 238824u : 210111u})
+            : (park ? std::array<std::uint64_t, 4>{79842, 80998, lethal ? 81602u : 81136u, lethal ? 113529u : 94537u}
+                    : std::array<std::uint64_t, 4>{81944, 84362, lethal ? 85079u : 84616u, lethal ? 127433u : 108444u});
+        const auto observe = [&](unsigned checkpoint) {
+            const bool after_hit = checkpoint >= 2;
+            MG_CHECK(random::draw_count() == expected_draws[checkpoint]);
+            MG_CHECK(terron->GetSide() == 0);
+            MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
+            MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+            for (EntityId id = 1; id <= 4; ++id) {
+                const bool alive = !(lose_army && id <= 2) && !(after_hit && lethal && id == 3);
+                MG_CHECK(session.robot(id).alive == alive);
+                if (!alive) continue;
+                CMatrixRobotAI *robot = nullptr;
+                for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+                    if (object->IsRobot() && session.matches(id, object->AsRobot())) robot = object->AsRobot();
+                MG_CHECK(robot != nullptr);
+                MG_CHECK(robot->GetHitPoint() == (after_hit && id == 3 ? 40.0f : 100.0f));
             }
+            std::cout << "blast checkpoint=" << checkpoint << " time=" << session.time()
+                      << " draws=" << random::draw_count() << " robot_kills=0,0\n";
+        };
+        if (collateral) {
+            observe(0);
+            advance_to(session, step == 10 ? 5200 : 5184);
+            MG_CHECK(!terron->InLT());
+            MG_CHECK(owner_core->m_Object == terron);
+#if defined(_DEBUG) && !defined(_RELDEBUG)
+            MG_CHECK(g_MatrixMap->DebugContainsObject(terron));
+            MG_CHECK(!g_MatrixMap->DebugContainsObject(nullptr));
+            // A valid object not owned by this map must still be rejected.
+            { CMatrixMapObject unregistered; MG_CHECK(!g_MatrixMap->DebugContainsObject(&unregistered)); }
+#endif
+            observe(1);
+            session.advance();
+            MG_CHECK(session.time() == (step == 10 ? 5210 : 5200));
+            observe(2);
         }
         advance_to(session, step == 10 ? 8040 : 8064);
         MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
@@ -1731,11 +1770,14 @@ void terron_destruction_run(bool collateral, int step) {
         MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
         MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1);
         if (!collateral) MG_CHECK(session.robot(3).alive && session.robot(4).alive);
+        else observe(3);
     }
 }
 
 void terron_destruction() { for (int step : {10, 16}) terron_destruction_run(false, step); }
-void terron_blast_after_conversion() { terron_destruction_run(true, 10); }
+void terron_blast_after_conversion() {
+    for (int step : {10, 16}) for (int damage : {600, 1200}) terron_destruction_run(true, step, damage);
+}
 
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
@@ -2012,8 +2054,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.transported_robot_damage", transported_robot_damage_outcome},
     {"game.outcome.capture_target_damage", capture_target_damage},
     {"game.outcome.terron_destruction", terron_destruction},
-    // Deliberately absent from CTest: known Debug failure tracked in #186.
-    {"probe.outcome.terron_blast_after_conversion", terron_blast_after_conversion},
+    {"game.outcome.terron_blast_after_conversion", terron_blast_after_conversion},
     {"game.outcome.special_break", special_object_destruction<0>},
     {"game.outcome.special_explosion", special_object_destruction<1>},
     {"game.outcome.special_animation", special_object_destruction<2>},
