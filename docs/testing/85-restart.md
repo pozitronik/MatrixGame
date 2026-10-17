@@ -1,10 +1,10 @@
 # Storage-backed battle restart tests
 
-The `game.restart.*` cases in [battle_restart_scenarios.cpp](../../tests/battle_restart_scenarios.cpp) exercise the existing battle-menu Restart command. They supplement O6 in the [outcome completion plan](85-outcome-completion.md); they do not initialize another standalone process or enter a second DLL battle.
+The `game.restart.movement`, `game.restart.pending_win` and `game.restart.pending_loss` cases in [battle_restart_scenarios.cpp](../../tests/battle_restart_scenarios.cpp) exercise the existing battle-menu Restart command. They supplement O6 in the [outcome completion plan](85-outcome-completion.md); they do not initialize another standalone process or enter a second DLL battle.
 
 ```powershell
-.\tools\test.ps1 -Configuration Debug -Filter '^game\.restart\.'
-.\tools\test.ps1 -Configuration Release -Filter '^game\.restart\.'
+.\tools\test.ps1 -Configuration Debug -Filter '^game\.restart\.(movement|pending_win|pending_loss)$'
+.\tools\test.ps1 -Configuration Release -Filter '^game\.restart\.(movement|pending_win|pending_loss)$'
 ```
 
 ## Fixture and entry path
