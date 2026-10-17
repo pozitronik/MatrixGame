@@ -1897,6 +1897,7 @@ std::vector<std::string> guarded_base_run(random::Mode mode, int step, bool dest
     // Reposition an initial place without changing the capacity of prepared navigation buffers.
     road.m_Place[3].m_Pos = CPoint(22, 14);
     road.m_Place[3].m_Cannon = 1;
+    road.m_Place[3].m_Move = 1 + 2 + 4 + 8 + 16;
     road.InitPL(g_MatrixMap->m_SizeMove.x, g_MatrixMap->m_SizeMove.y);
     auto *guard = tests::create_battle_cannon(2, 220, 140);
     g_MatrixMap->CalcCannonPlace();
@@ -2048,10 +2049,10 @@ std::vector<std::string> guarded_base_run(random::Mode mode, int step, bool dest
     MG_CHECK(interrupted == (step == 10 ? 310 : 240));
     MG_CHECK(impacts == (step == 10 ? std::vector<int>{530, 630, 730, 830} : std::vector<int>{480, 576, 688, 784}));
     MG_CHECK(killed == (step == 10 ? 830 : 784) && resumed == (step == 10 ? 910 : 800));
-    MG_CHECK(opened == (step == 10 ? 4240 : 3984));
-    MG_CHECK(captured == (destroy ? 0 : step == 10 ? 8800 : 8576));
+    MG_CHECK(opened == (step == 10 ? 4180 : 3936));
+    MG_CHECK(captured == (destroy ? 0 : step == 10 ? 8740 : 8512));
     MG_CHECK(guard_retired == (mode == random::Mode::ParkMiller ? (step == 10 ? 5420 : 4592) : (step == 10 ? 4370 : 5088)));
-    MG_CHECK(released == (destroy ? (step == 10 ? 6010 : 6064) : (step == 10 ? 8810 : 8640)));
+    MG_CHECK(released == (destroy ? (step == 10 ? 6010 : 6064) : (step == 10 ? 8810 : 8528)));
     MG_CHECK(retired == (destroy ? (step == 10 ? 9010 : 9008) : 0));
     MG_CHECK(return_fire == (step == 10 ? std::vector<int>{220, 320, 420, 520, 620, 720, 820}
                                        : std::vector<int>{224, 320, 432, 528, 624, 720}));

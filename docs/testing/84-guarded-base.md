@@ -6,7 +6,7 @@
 
 Each case uses an open synthetic map, an enemy base at (100, 100), its attached active cannon at (220, 140), two selected player robots and two unarmed enemy robots. The first player robot carries a laser with a 400-unit range and 100 ms cooldown. Four five-point laser impacts destroy the cannon's 20 hit points. The cannon has a 300-unit range and 100 ms cooldown; its shots inflict one internal robot-health point, displayed as 0.1. No test directly damages or deletes the guard, injects its enemy-memory entry, or calls a side decision in place of advancing the map.
 
-Before any command, the fourth initial navigation place is positioned at the cannon's movement coordinates (22, 14), retaining the four-place graph capacity and connections. `InitPL` rebuilds its lookup and the production `CalcCannonPlace` binds the cannon; the test checks a valid matching place. This follows the real loader's required binding. A combat-only cannon with the constructor's `m_Place == -1` is not a valid fixture for capture movement, because `PlaceFindNear` inspects active cannon reservations. Cannon construction costs are set to 1000 per resource, above the scene's available income, so the enemy cannot replace the guard during the bounded encounter.
+Before any command, the fourth initial navigation place is positioned at the cannon's movement coordinates (22, 14), retaining the four-place graph capacity and connections. The fixture marks the place as a cannon location and blocks it for all five chassis, matching the loader's `m_Cannon` to `m_Move = 31` conversion. `InitPL` rebuilds its lookup and the production `CalcCannonPlace` binds the cannon; the test checks a valid matching place. Both the blocked place and the cannon binding are required loader effects. A combat-only cannon with the constructor's `m_Place == -1` is not a valid fixture for capture movement, because `PlaceFindNear` inspects active cannon reservations. Cannon construction costs are set to 1000 per resource, above the scene's available income, so the enemy cannot replace the guard during the bounded encounter.
 
 The context Capture command enters through `OnRButtonDown`. Every subsequent frame runs `Session::advance`, including production perception, side decisions, robot movement, firing, object damage, effects and lifetime processing. Buildings are initially registered before robots, matching map loading. Synthetic meshes, weapon parameters, initial positions and cannon parent/slot ownership are fixture inputs. The renderer supplies storage operations without drawing, and audio is unavailable. These are registered-map behavior tests, not a resource loader or native playtest.
 
@@ -22,9 +22,9 @@ The group initially retains Capture with one assigned capturer and no known guar
 | Capture interrupted; War begins | 310 ms | 240 ms |
 | Player laser impacts on the guard | 530, 630, 730, 830 ms | 480, 576, 688, 784 ms |
 | Capture reassigned after guard death | 910 ms | 800 ms |
-| Base fully open for the resumed capture | 4240 ms | 3984 ms |
-| Base transferred to the player | 8800 ms | 8576 ms |
-| Completed group capture intention released | 8810 ms | 8640 ms |
+| Base fully open for the resumed capture | 4180 ms | 3936 ms |
+| Base transferred to the player | 8740 ms | 8512 ms |
+| Completed group capture intention released | 8810 ms | 8528 ms |
 
 The cannon's complete damage sequence is 220, 320, 420, 520, 620, 720 and 820 ms at 10 ms; at 16 ms it is 224, 320, 432, 528, 624 and 720 ms. Every hit affects the second player robot, with the exact health decrement asserted. The guard's final player hit enters `CANNON_DIP`, releases the parent slot, decrements the guard count, removes current enemy-memory/attack references and credits exactly one player turret kill. The debris object remains until 5420/4592 ms under Park–Miller or 4370/5088 ms under the legacy RNG, for 10/16 ms respectively. Retained object cores distinguish combat death from later physical deletion.
 
@@ -32,7 +32,7 @@ Capture resumes with exactly one capturer. The first robot enters the base and i
 
 Bases use their owning side's texture in `CMatrixBuilding::Draw`. Base capture changes `m_Side`; it does not run the factory paint/erase sequence. The tests therefore check the new side's green color and preserve the full red factory-paint fields supplied initially. Those unused fields do not mean that the captured base should render red. Actual rendering remains outside this fixture.
 
-The income interval is 1000 ms with both sides' resource multiplier at 100%. Income is checked after every frame for all four resources. Building logic runs before robot logic, so a payment on a transfer frame would still belong to the previous owner. By 12000 ms, each resource has paid 24 to the enemy and 12 to the player at 10 ms, or 24 and 9 respectively at 16 ms. The 16 ms schedule pays once per 1008 ms because the timer resets when it crosses the threshold.
+The income interval is 1000 ms with both sides' resource multiplier at 100%. Income is checked after every frame for all four resources. The model assigns any payment on a transfer frame to the previous owner, following the buildings-before-robots order; neither profile transfers on a payment frame, so this particular coincidence is not exercised. By 12000 ms, each resource has paid 24 to the enemy and 12 to the player at 10 ms, or 24 and 9 respectively at 16 ms. The 16 ms schedule pays once per 1008 ms because the timer resets when it crosses the threshold.
 
 ## Capture objective destroyed after guard combat
 
@@ -49,4 +49,4 @@ The intervention clears the capturer's objective and marks that robot for destru
 
 The remaining AI and outcome families stay subject to their own completion requirements and the exact-revision baseline acceptance gate. These generated-geometry encounters do not replace native visual/audio checks, host integration, arbitrary terrain, or capture under additional armed opponents.
 
-The focused cases pass MinGW x86 Debug and Release. Temporary negative controls that retain the parent's guard count after cannon death, or bypass the guarded-base capture-priority branch, each fail the corresponding runtime assertion. Restoring those production paths restores passing checks; neither mutation is retained. Release also passed 30 consecutive invocations of each case after the fixture's cannon navigation binding was established. MSVC and DLL coverage are delegated to CI.
+The focused cases pass MinGW x86 Debug and Release with the loader-equivalent blocked cannon place; opening, transfer and group-release times in the table were remeasured in both configurations. Retaining the parent's guard count after cannon death fails both cases at the guard-count/slot assertion. Production source was restored byte-for-byte, rebuilt and both Debug cases passed again. An earlier negative control that bypasses the guarded-base capture-priority branch also fails its runtime assertion; neither mutation is retained. MSVC and DLL coverage are delegated to CI.
