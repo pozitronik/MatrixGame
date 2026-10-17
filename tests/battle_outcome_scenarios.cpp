@@ -1220,7 +1220,8 @@ std::vector<std::string> falling_cargo_scan_run(random::Mode mode, int step, boo
         }
         if (g_MatrixMap->IsPaused()) {
             result = session.time();
-            MG_CHECK(remove && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+            MG_CHECK(remove && g_MatrixMap->m_DialogModeName &&
+                std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
         }
         MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
         trace.push_back(session.snapshot() + ":" + std::to_string(cargo_core->m_Object ? cargo->m_CurrState : -1)
