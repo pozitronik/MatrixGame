@@ -1851,6 +1851,7 @@ void typed_statistics_continuation() {
         MG_CHECK(g_MatrixMap->m_DialogModeName &&
             std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_STATISTICS_D);
         MG_CHECK(g_MatrixMap->IsPaused() && session.time() == 0);
+        MG_CHECK(side().m_CurrSel == NOTHING_SELECTED);
         MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 1);
         const auto draws = random::draw_count();
         for (int i = 0; i < 10; ++i) session.advance();
@@ -1864,7 +1865,7 @@ void typed_statistics_continuation() {
         MG_CHECK(g_MatrixMap->m_DialogModeHints.empty());
         MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
         press(form, 'X'); // Cancel any normal command preordering from the typed letters.
-        press(form, '1'); // Dialog entry cleared selection; recall the saved group.
+        press(form, '1'); // Recall the saved group; only cheats-enabled dialog entry clears selection.
         MG_CHECK(side().GetCurGroup() && side().GetCurGroup()->GetRobotsCnt() == 2);
         session.ground_command(500, 300);
         const auto start = session.robot(1);
@@ -1891,10 +1892,26 @@ void result_command_boundary() {
             form.MouseKey(B_DOWN, VK_RBUTTON, 0, 0);
             form.MouseKey(B_UP, VK_RBUTTON, 0, 0);
         };
+        const std::array enemy_before{session.robot(3), session.robot(4)};
+        const auto selection_before = side().m_CurrSel;
+        const int members_before = side().GetCurGroup() ? side().GetCurGroup()->GetRobotsCnt() : 0;
+        const auto check_loss_command = [&] {
+            if (!loss) return;
+            MG_CHECK(side().m_CurrSel == selection_before);
+            MG_CHECK((side().GetCurGroup() ? side().GetCurGroup()->GetRobotsCnt() : 0) == members_before);
+            for (const auto &robot : enemy_before) {
+                const auto now = session.robot(robot.id);
+                MG_CHECK(now.alive && now.x == robot.x && now.y == robot.y);
+                MG_CHECK(now.order == robot.order && now.group == robot.group);
+                MG_CHECK(now.destination_x == robot.destination_x && now.destination_y == robot.destination_y);
+            }
+        };
         command(500, 300);
         if (!loss) MG_CHECK(session.robot(1).order == mpo_MoveTo && session.robot(1).destination_x == 48);
+        check_loss_command();
         command(120, 500);
         if (!loss) MG_CHECK(session.robot(1).destination_x == 10 && session.robot(1).destination_y == 48);
+        check_loss_command();
         session.advance();
         const int result_time = step == 10 ? 2020 : 2032;
         MG_CHECK(session.time() == result_time && g_MatrixMap->IsPaused());
