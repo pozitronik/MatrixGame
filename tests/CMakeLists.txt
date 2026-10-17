@@ -703,9 +703,10 @@ target_include_directories(matrixgame_settings_window_integration_tests PRIVATE 
 target_compile_definitions(matrixgame_settings_window_integration_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract settings_input_pause_cancel settings_apply_save_failure settings_display_rollback)
+foreach(contract settings_input_pause_cancel settings_apply_save_failure)
     add_matrix_test(game.presentation.${contract} matrixgame_settings_window_integration_tests gameplay ui input settings)
 endforeach()
+add_matrix_test(game.presentation.settings_display_rollback matrixgame_settings_window_integration_tests gameplay ui input settings current-desktop)
 
 # Manual correctness probes for catalog defect candidates, intentionally outside
 # CTest until separately reviewed fixes establish the expected invariants.
