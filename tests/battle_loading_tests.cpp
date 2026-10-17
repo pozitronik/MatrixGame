@@ -217,12 +217,14 @@ void dismiss_window(std::string_view action) {
         MG_CHECK(action == "escape");
         MG_CHECK(PostMessageW(button, WM_KEYDOWN, VK_ESCAPE, 0));
     }
-    const auto result = BattleLoading::wait(ready.value, child.process.hProcess, action == "button" ? 5000 : 2000);
+    const DWORD deadline_ms = action == "button" ? 5000 : 2000;
+    const auto result = BattleLoading::wait(ready.value, child.process.hProcess, deadline_ms);
     if (result != BattleLoading::WaitResult::Dismissed) {
-        const DWORD error = result == BattleLoading::WaitResult::TimedOut ? ERROR_TIMEOUT :
-            (result == BattleLoading::WaitResult::Failed ? GetLastError() : ERROR_SUCCESS);
-        std::cerr << "Loader dismissal failed: action=" << action << " result=" << static_cast<int>(result)
-                  << " Windows error=" << error << '\n';
+        const DWORD error = result == BattleLoading::WaitResult::Failed ? GetLastError() : ERROR_SUCCESS;
+        std::cerr << "Loader dismissal failed: action=" << action << " result=" << static_cast<int>(result);
+        if (result == BattleLoading::WaitResult::TimedOut) std::cerr << " timed out after " << deadline_ms << " ms";
+        else if (result == BattleLoading::WaitResult::Failed) std::cerr << " Windows error=" << error;
+        std::cerr << '\n';
     }
     MG_CHECK(result == BattleLoading::WaitResult::Dismissed);
     BattleLoading::hide();
