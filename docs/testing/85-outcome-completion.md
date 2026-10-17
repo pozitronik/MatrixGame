@@ -67,6 +67,8 @@ The other Terron map-name rule in `CMatrixMapLogic::Takt` is a portrait easter e
 
 ## Three different session boundaries
 
+Partial O6/O7 infrastructure is provided by the [owned-session cleanup and failure guide](85-restart-failures.md). `game.restart.game_owned_cleanup` exercises the real loop and standalone teardown. Its separate missing-map and corrupt-storage Restart probes currently terminate instead of recovering; both remain open correction prerequisites and are not passing baseline expectations or deferred visual checks.
+
 The production paths are materially different:
 
 - **Restart current battle:** `OkResetHandler` in [MatrixMap.cpp](../../MatrixGame/src/MatrixMap.cpp) calls `CMatrixMap::Restart` in [MatrixMapPrepare.cpp](../../MatrixGame/src/MatrixMapPrepare.cpp). It clears and reloads dynamics into the existing map and opens the introduction; it does not call `CGame::Init` again.

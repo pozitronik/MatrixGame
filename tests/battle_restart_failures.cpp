@@ -66,6 +66,9 @@ struct OwnedBattle {
         g_ScreenY = 720;
         Input::onFocusLost();
         CForm::StaticInit();
+        // Mirror CGame::static_init for each owned lifetime; Clear frees the
+        // skin arrays without resetting their pointers.
+        CSkinManager::StaticInit();
         g_MatrixHeap = HNew(nullptr) CHeap;
         g_MatrixData = HNew(g_MatrixHeap) CBlockPar;
         g_MatrixData->BlockGetAdd(L"Chars")->BlockGetAdd(L"Heads");
@@ -123,21 +126,27 @@ struct OwnedBattle {
     void cleanup() {
         CMatrixHint::SetRuntimeBitmap(L"restart-failure-pixel", nullptr);
         bitmap.reset();
-        MG_CHECK(Session::cleanup_standalone(form, timer_active));
+        const bool released = Session::cleanup_standalone(form, timer_active);
+        const bool device_cleared = g_D3DD == nullptr;
+        // Re-arm the fixture-owned alias before any assertion can unwind.
+        g_D3DD = device.get();
         cleaned = true;
+        MG_CHECK(released);
         MG_CHECK(!form && !timer_active && !g_FormCur && !g_FormFirst && !g_FormLast);
         MG_CHECK(!g_MatrixMap && !g_MatrixData && !g_MatrixHeap && !g_IFaceList);
-        MG_CHECK(!g_Cache && !g_CacheHeap && !g_D3DD && !g_D3D && !g_Wnd);
+        MG_CHECK(!g_Cache && !g_CacheHeap && device_cleared && !g_D3D && !g_Wnd);
         MG_CHECK(!CMatrixMapStatic::GetFirstLogic());
         MG_CHECK(device.stats().live_buffers == 0 && device.stats().live_textures == 0);
-        // The surrogate is the fixture-owned host device. Production correctly
-        // released its borrowed alias; restore that alias only for the existing
-        // BattleDevice ownership guard, after checking the actual cleanup result.
-        g_D3DD = device.get();
-        CSkinManager::StaticInit();
     }
     ~OwnedBattle() {
-        if (!cleaned) cleanup();
+        if (!cleaned) {
+            // Preserve an existing assertion during stack unwinding. These
+            // cleanup attempts contain exceptions and perform no assertions.
+            Session::cleanup([&] { CMatrixHint::SetRuntimeBitmap(L"restart-failure-pixel", nullptr); },
+                             [&] { bitmap.reset(); });
+            Session::cleanup_standalone(form, timer_active);
+            g_D3DD = device.get();
+        }
         std::error_code error;
         std::filesystem::remove(path, error);
     }

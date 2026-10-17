@@ -9,11 +9,13 @@
 
 The fixture uses a message-only Win32 window with the real `L3G_WndProc`. `CGame::RunGameLoop` enters the real `CFormMatrixGame`, runs the ordinary `L3GRun` and dispatches a queued WM_CLOSE. `Session::cleanup_standalone` then destroys the form and game, clears the cache and graphics aliases, and completes the base cleanup. Assertions check the empty global owners, logic-object list and surrogate-device resource counts. The sequence repeats twice in each RNG mode, checking Debug allocations after every complete lifetime. No original assets or visible game window are used.
 
-The storage/state device supports the form's directional light and texture-unbinding initialization. It still rejects native rendering and device reset. After checking that production cleanup cleared the borrowed device alias, the fixture restores only that alias so the existing surrogate owner can perform its own final reference check and destruction.
+The storage/state device supports the form's directional light and texture-unbinding initialization. It still rejects native rendering and device reset. The fixture records whether production cleared the borrowed device alias, restores the fixture-owned alias, and only then asserts the recorded cleanup state. This preserves the first assertion's diagnostic during unwinding through the surrogate owner. Destructor fallback cleanup makes no assertions and contains cleanup exceptions. Each setup initializes skin state as production `static_init` does.
 
 This establishes real game-owned teardown, not successful `CGame::Init`, native rendering, a fresh standalone process or a second host DLL session. The two failure probes below are intentionally unregistered and must not be counted as passing baseline contracts.
 
 ## Discovered failure paths
+
+The test suppresses the engine's exception reporter, but production Debug cleanup has a separate modal allocation-leak report inside `BaseDeInit`. A leak regression can therefore show that report on the current desktop and wait for the CTest timeout. The final test-process allocation guard cannot intercept a leak report already raised inside a lifetime. This limitation is distinct from the fixture's no-draw device and message-only window; it does not establish unattended leak diagnostics on a private desktop.
 
 Build `matrixgame_battle_restart_failures`, then run either opt-in case directly from its test output directory:
 
