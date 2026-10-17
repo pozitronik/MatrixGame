@@ -160,7 +160,12 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
         MG_CHECK(safe_at == 0 && first_return == 0 && maximum_distance < 250);
         MG_CHECK(escaping->GetHitPoint() == (detonate ? 9 : 10));
     }
-    if (observe_rediversion) MG_CHECK(second_escape > first_return && cleared_at == second_escape);
+    if (observe_rediversion) {
+        MG_CHECK(second_escape > first_return && cleared_at == second_escape);
+        // These schedule-specific observations pin the existing 300-unit threat
+        // gate during the return leg, independently of same-profile replay.
+        MG_CHECK(second_escape == (step == 10 ? 8910 : 8976));
+    }
     else MG_CHECK(second_escape == 0);
     MG_CHECK(cover->GetHitPoint() == (detonate ? 9 : 10));
     if (detonate) MG_CHECK(damage_at == cleared_at + (300 / step + 1) * step);

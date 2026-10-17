@@ -25,18 +25,6 @@ function(add_matrix_test name target)
     )
 endfunction()
 
-add_matrix_test_executable(matrixgame_ai_bomb_escape_tests ai_bomb_escape_tests.cpp battle_combat_geometry.cpp
-    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
-target_link_libraries(matrixgame_ai_bomb_escape_tests PRIVATE MatrixGameInternal)
-add_dependencies(matrixgame_ai_bomb_escape_tests matrixgame_scenario_identity)
-target_include_directories(matrixgame_ai_bomb_escape_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-target_compile_definitions(matrixgame_ai_bomb_escape_tests PRIVATE
-    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
-    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract free reserved unreachable)
-    add_matrix_test(game.ai.bomb_escape_${contract}_journey matrixgame_ai_bomb_escape_tests gameplay ai)
-endforeach()
-
 add_matrix_test_executable(matrixgame_audio_tests audio_tests.cpp)
 target_link_libraries(matrixgame_audio_tests PRIVATE MatrixAudio)
 add_matrix_test(game.audio.pcm_formats matrixgame_audio_tests gameplay audio)
@@ -591,6 +579,18 @@ foreach(contract reinforcement_gates reinforcement_disabled reinforcement_scalin
 endforeach()
 foreach(contract queue_order capacity refund_owner neutralization price income turret_progress income_ticks ai_constructor_prices weapon_slots)
     add_matrix_test(game.production.${contract} matrixgame_production_queue_tests gameplay)
+endforeach()
+
+add_matrix_test_executable(matrixgame_ai_bomb_escape_tests ai_bomb_escape_tests.cpp battle_combat_geometry.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_ai_bomb_escape_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_ai_bomb_escape_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_ai_bomb_escape_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_ai_bomb_escape_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract free reserved unreachable)
+    add_matrix_test(game.ai.bomb_escape_${contract}_journey matrixgame_ai_bomb_escape_tests gameplay ai)
 endforeach()
 
 add_matrix_test_executable(matrixgame_ai_decision_tests ai_decision_tests.cpp ai_observation_tests.cpp ai_cleanup_tests.cpp ai_armed_tests.cpp ai_capture_tests.cpp ai_reinforcement_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
