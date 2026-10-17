@@ -111,7 +111,7 @@ Side statistics use `timeGetTime`, independently of the fixed simulation clock. 
 
 `legacy_loss_cheat` feeds IAMLOOSER through the production cheat parser. It preserves exit state 3, the win dialog, paused play, an unchanged statistics time and an unset `MMFLAG_WIN`. It calls the parser directly in either compiled variant; enabled/disabled keyboard dispatch is a different command-suite contract. The `legacy_loss_confirmation` continuation below now follows this parser result through confirmation, statistics and the exit request; it does not establish typed dispatch.
 
-`repeated_sessions` alternates full-auto win/loss outcomes and constructs fresh synthetic sessions in the same process. It asserts cleared engine globals/live objects, fresh clocks, default selection/group membership, active player status and no carried pause or loop-exit flag. This tests the shared fixture's declared ownership and the production objects it owns. It does not exercise `CGame::Init` on a loaded map, the restart menu or arbitrary process-global startup/teardown.
+`repeated_sessions` alternates full-auto win/loss outcomes and constructs fresh synthetic sessions in the same process. It asserts cleared engine globals/live objects, fresh clocks, default selection/group membership, active player status and no carried pause or loop-exit flag. This tests the shared fixture's declared ownership and the production objects it owns. It does not exercise `CGame::Init` on a loaded map, the restart menu or arbitrary process-global startup/teardown. The [audio scheduling and repeated-session supplement](85-audio-schedules.md) records both supplied timesteps and the form audio contracts with their synthetic-device limits.
 
 ## Catalog mapping and remaining blockers
 
