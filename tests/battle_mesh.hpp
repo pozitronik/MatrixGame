@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #pragma once
 #include <span>
+#include <filesystem>
 class CVectorObject;
 namespace tests {
 struct MeshAttachment {
@@ -8,6 +9,9 @@ struct MeshAttachment {
     const wchar_t *name;
     float x, y, z;
 };
+// Persist the same synthetic geometry for tests that let CGame::Init own loading.
+void write_battle_mesh(const std::filesystem::path &path, std::span<const MeshAttachment> attachments,
+    bool pneumatic = false, const wchar_t *texture = nullptr);
 // Eagerly loads synthetic box geometry into the current cache, then removes its
 // temporary storage file. Optional cache identity supports production LoadObject.
 // Height changes only synthetic initial geometry; 20 preserves existing fixtures.
