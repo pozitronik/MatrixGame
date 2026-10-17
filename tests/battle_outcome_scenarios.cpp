@@ -1885,26 +1885,22 @@ void result_command_boundary() {
         advance_to(session, step == 10 ? 2010 : 2016);
         MG_CHECK(!g_MatrixMap->m_DialogModeName && !g_MatrixMap->IsPaused());
         const auto command = [&](float x, float y) {
+            // Enemy RobotObservation omits orders; snapshot includes every raw order queue.
+            const auto before = loss ? session.snapshot() : std::string{};
             // Supply a world hit, as the other headless command cases do; no screen-picking claim.
             g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
             g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(x, y, 0);
             g_IFaceList->m_InFocus = UNKNOWN;
             form.MouseKey(B_DOWN, VK_RBUTTON, 0, 0);
             form.MouseKey(B_UP, VK_RBUTTON, 0, 0);
+            if (loss) MG_CHECK(session.snapshot() == before);
         };
-        const std::array enemy_before{session.robot(3), session.robot(4)};
         const auto selection_before = side().m_CurrSel;
         const int members_before = side().GetCurGroup() ? side().GetCurGroup()->GetRobotsCnt() : 0;
         const auto check_loss_command = [&] {
             if (!loss) return;
             MG_CHECK(side().m_CurrSel == selection_before);
             MG_CHECK((side().GetCurGroup() ? side().GetCurGroup()->GetRobotsCnt() : 0) == members_before);
-            for (const auto &robot : enemy_before) {
-                const auto now = session.robot(robot.id);
-                MG_CHECK(now.alive && now.x == robot.x && now.y == robot.y);
-                MG_CHECK(now.order == robot.order && now.group == robot.group);
-                MG_CHECK(now.destination_x == robot.destination_x && now.destination_y == robot.destination_y);
-            }
         };
         command(500, 300);
         if (!loss) MG_CHECK(session.robot(1).order == mpo_MoveTo && session.robot(1).destination_x == 48);
