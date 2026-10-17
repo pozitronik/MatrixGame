@@ -544,6 +544,9 @@ public:
 
     void StaticClear(void);
     void StaticDelete(CMatrixMapStatic *ms);
+#if defined(_DEBUG) && !defined(_RELDEBUG)
+    bool DebugContainsObject(const CMatrixMapStatic *object) const;
+#endif
 
     // CMatrixMapStatic * StaticAdd(EObjectType type, bool add_to_logic = true);
 

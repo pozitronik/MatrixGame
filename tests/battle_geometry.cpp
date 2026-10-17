@@ -150,6 +150,10 @@ void write_mesh(const std::filesystem::path &path, std::span<const MeshAttachmen
 }
 
 }
+void write_battle_mesh(const std::filesystem::path &path, std::span<const MeshAttachment> attachments,
+                      bool pneumatic, const wchar_t *texture) {
+    write_mesh(path, attachments, true, 20.0f, texture, {}, pneumatic);
+}
 CVectorObject *load_battle_mesh(std::span<const MeshAttachment> attachments, const wchar_t *cache_name, bool combat_animations, float height) {
     MeshFile file;
     MG_CHECK(std::isfinite(height) && height > 0 && height <= 1000);
