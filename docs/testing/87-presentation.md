@@ -123,7 +123,7 @@ D1 is assigned to #89 for reproduction and #87 for correction/disposition by the
 
 D7 is assigned to #89 for reproduction and #97 for correction/disposition by the legacy inventory. Both `SPlane` builders correctly populate `dxplane`, while distance/intersection methods read separate `norm`/`dist` fields. The probes initialize those separate fields explicitly, then build the plane z = 2 and query a ray from z = 10 directed downward. They obtain distance 0 and no intersection instead of distance magnitude 8 and intersection parameter 8. Initialization avoids treating an uninitialized read as a golden value. The test establishes the mathematical inconsistency; it does not establish the visibility output or native impact of the map-argument `CalcVis` path.
 
-Both defects still require a separate correction/disposition before accepting the affected baseline entries. The default test suite does not hide them with inverted assertions or a known-failure success status.
+The [legacy evidence report](../research/89-legacy-evidence/defects.md) reconciles D1/D7 with these existing probes and preserves their unresolved status. Both defects still require a separate correction/disposition before accepting the affected baseline entries. The default test suite does not hide them with inverted assertions or a known-failure success status.
 
 ## Native preparation
 
