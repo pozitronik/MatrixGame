@@ -684,6 +684,7 @@ target_compile_definitions(matrixgame_player_command_lifecycles PRIVATE
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 foreach(contract mixed_command_lifecycle spawning_command_lifecycle carried_command_lifecycle dying_command_lifecycle)
     add_matrix_test(game.player.${contract} matrixgame_player_command_lifecycles gameplay input)
+    set_tests_properties(game.player.${contract} PROPERTIES TIMEOUT 90)
 endforeach()
 
 add_test(NAME game.cheats.intentional_crash
