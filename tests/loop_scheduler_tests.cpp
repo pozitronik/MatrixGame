@@ -152,8 +152,14 @@ constexpr tests::Case cases[] = {
 };
 }
 int main(int argc, char **argv) {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();
+    SetUnhandledExceptionFilter(nullptr);
+    std::set_terminate([] { std::abort(); });
     const int result = tests::run(argc, argv, cases);
+#ifdef MEM_SPY_ENABLE
+    if (Base::SMemHeader::first_mem_block != nullptr) return EXIT_FAILURE;
+#endif
     Base::CMain::BaseDeInit();
     return result;
 }

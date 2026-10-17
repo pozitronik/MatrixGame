@@ -25,7 +25,9 @@ struct BattleDeviceStats {
 // Creates no window or native device and never changes floating-point precision.
 // Textures support one A8R8G8B8 mip level in managed CPU storage, without drawing.
 // The loop's memory telemetry reports a fixed 64 MiB and counts queries; this
-// is not a model of native texture-memory availability.
+// is not a model of native texture-memory availability. This reply also permits
+// production texture loaders to pass their available-memory gate; unsupported
+// texture creation and rendering still fail at the corresponding device call.
 // Opt-in IconTargets::Unavailable rejects only the 256x256 icon render target
 // with D3DERR_NOTAVAILABLE; it never simulates successful drawing.
 // Unknown calls (including rendering, other texture profiles and Reset) terminate the test
