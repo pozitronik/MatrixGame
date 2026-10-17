@@ -1213,6 +1213,79 @@ void transported_robot_prevents_elimination() {
         MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
     }
 }
+struct OutcomeMapObservation : CMatrixMap {
+    static int status_scan(const CMatrixMap &map) { return map.* &OutcomeMapObservation::m_PrevTimeCheckStatus; }
+};
+std::vector<std::string> falling_cargo_scan_run(random::Mode mode, int step, bool remove) {
+    tests::BattleMaterialProfile materials;
+    Session session(transport_outcome_profile(mode, step));
+    DialogData dialog;
+    std::cout << "remove=" << remove << ' ' << session.metadata("falling-cargo-status-scan-v1") << '\n';
+    // Delay the delivery request so a natural side-status scan occurs during
+    // the short falling interval, rather than only before and after landing.
+    const int launch = mode == random::Mode::ParkMiller ? 1800 : 3000;
+    advance_to(session, ((launch + step - 1) / step) * step);
+    auto *carrier = order_outcome_transport(PLAYER_SIDE);
+    auto carrier_core = retain_core(*carrier);
+    auto *cargo = carrier->GetCarryingRobot()->AsRobot();
+    auto cargo_core = retain_core(*cargo);
+    MG_CHECK(session.remove(1) && session.remove(2));
+    int released = 0, landed = 0, falling_scan = 0, eliminated = 0, result = 0;
+    std::vector<std::string> trace;
+    while (session.time() < 12000 && !g_MatrixMap->IsPaused()) {
+        const int previous_scan = OutcomeMapObservation::status_scan(*g_MatrixMap);
+        session.advance();
+        if (cargo_core->m_Object && !released && cargo->m_CurrState == ROBOT_FALLING) {
+            released = session.time();
+            MG_CHECK(!carrier->CarryingRobot());
+            if (remove) g_MatrixMap->StaticDelete(cargo);
+        }
+        const bool scanned = previous_scan != OutcomeMapObservation::status_scan(*g_MatrixMap);
+        if (cargo_core->m_Object) {
+            MG_CHECK(cargo->IsLiveRobot());
+            if (cargo->m_CurrState == ROBOT_FALLING && scanned) {
+                falling_scan = session.time();
+                MG_CHECK(side().GetStatus() == SS_ACTIVE);
+            }
+            if (!landed && released && cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) landed = session.time();
+        }
+        if (side().GetStatus() == SS_NONE && !eliminated) {
+            eliminated = session.time();
+            MG_CHECK(remove && scanned && cargo_core->m_Object == nullptr);
+        }
+        if (g_MatrixMap->IsPaused()) {
+            result = session.time();
+            MG_CHECK(remove && g_MatrixMap->m_DialogModeName &&
+                std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+        }
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        trace.push_back(session.snapshot() + ":" + std::to_string(cargo_core->m_Object ? cargo->m_CurrState : -1)
+            + ":" + std::to_string(OutcomeMapObservation::status_scan(*g_MatrixMap)));
+    }
+    std::cout << "release=" << released << " landed=" << landed << " falling_scan=" << falling_scan
+              << " eliminated=" << eliminated << " result=" << result << '\n';
+    const int expected_release = mode == random::Mode::ParkMiller ? (step == 10 ? 7900 : 7920)
+        : (step == 10 ? 7940 : 7952);
+    const int expected_scan = step == 10 ? 8050 : 8080;
+    MG_CHECK(released == expected_release);
+    if (remove) {
+        MG_CHECK(eliminated == expected_scan && result == (step == 10 ? 10060 : 10096));
+        MG_CHECK(!landed && !falling_scan);
+    } else {
+        MG_CHECK(falling_scan == expected_scan && landed == expected_release + 320);
+        MG_CHECK(!eliminated && !result);
+        MG_CHECK(cargo_core->m_Object == cargo && side().GetStatus() == SS_ACTIVE);
+    }
+    MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    return trace;
+}
+void falling_cargo_status_scan() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool remove : {false, true}) {
+        const auto first = falling_cargo_scan_run(mode, step, remove);
+        MG_CHECK(first == falling_cargo_scan_run(mode, step, remove));
+    }
+}
 void transported_robot_removal_outcome() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000})
     for (int step : {10, 16}) {
@@ -2167,6 +2240,7 @@ constexpr tests::Case cases[] = {
     {"game.player.capture_button_completion", capture_button_completion},
     {"game.outcome.flyer_does_not_prevent_elimination", flyer_does_not_prevent_elimination},
     {"game.outcome.transported_robot_prevents_elimination", transported_robot_prevents_elimination},
+    {"game.outcome.falling_cargo_status_scan", falling_cargo_status_scan},
     {"game.outcome.transported_robot_removal", transported_robot_removal_outcome},
     {"game.outcome.carrier_removal", carrier_removal_outcome},
     {"game.outcome.carrier_damage", carrier_damage_outcome},
