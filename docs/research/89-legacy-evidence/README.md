@@ -48,7 +48,7 @@ The cleanup candidate list describes exact kinds of removable material and prote
 
 Keep explanatory tables, warnings and reachable labels. In particular, the `if (0)` animation block in `MatrixRobot.cpp` contains a `goto` target; treating all constant-false blocks as unreachable would remove live control flow. Keep active Debug, cheats, EXE/DLL and compiler branches. A retired exporter guard may be removable while its non-exporter body remains required.
 
-Do not replace the explicit CMake source list with globbing merely because M16 suggests it. Removing an obsolete file and changing source discovery are separate changes with different validation. An explicit list makes the reviewed compilation boundary visible.
+Do not replace MatrixLib's explicit CMake source list with globbing merely because M16 suggests it. Removing an obsolete file and changing source discovery are separate changes with different validation. An explicit list makes the reviewed compilation boundary visible.
 
 ## Remaining decisions and completion boundary
 

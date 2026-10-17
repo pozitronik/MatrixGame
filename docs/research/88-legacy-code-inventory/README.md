@@ -154,6 +154,8 @@ The complete table is `inventory.csv`. The groups that matter for later decision
 
 ## Bounded follow-up proposals
 
+The [current evidence and disposition report](../89-legacy-evidence/README.md) reconciles these historical proposals with current consumers, corrections and remaining experiments; consult it before using the original D2/U2/P2 cleanup advice.
+
 These are drafts; none have been filed.
 
 For #89 (investigate and measure):
