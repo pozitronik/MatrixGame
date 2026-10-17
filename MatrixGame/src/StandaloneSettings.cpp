@@ -426,6 +426,10 @@ bool save(const Values &values, std::string &error, const wchar_t *path) {
             if (MoveFileExW(temporary.c_str(), target.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) break;
             const DWORD code = GetLastError();
             const DWORD elapsed = GetTickCount() - started;
+            // A read-only destination cannot become replaceable by releasing a scanner's handle.
+            const DWORD attributes = code == ERROR_ACCESS_DENIED ? GetFileAttributesW(target.c_str()) : INVALID_FILE_ATTRIBUTES;
+            if (attributes != INVALID_FILE_ATTRIBUTES && (attributes & FILE_ATTRIBUTE_READONLY))
+                throw std::runtime_error(last_error("Cannot replace the settings file", code));
             if ((code != ERROR_ACCESS_DENIED && code != ERROR_SHARING_VIOLATION) || elapsed >= retry_limit_ms)
                 throw std::runtime_error(last_error("Cannot replace the settings file", code));
             // Indexers and scanners can briefly deny replacement after a write.

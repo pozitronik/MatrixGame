@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
@@ -294,7 +295,11 @@ void save_failure_keeps_file() {
     write_bytes(path, original);
     MG_CHECK(SetFileAttributesW(path.c_str(), FILE_ATTRIBUTE_READONLY));
     std::string error;
+    const auto before = GetTickCount();
     MG_CHECK(!StandaloneSettings::save(custom(), error, path.c_str()));
+    const auto elapsed = GetTickCount() - before;
+    std::cout << "readonly elapsed_ms=" << elapsed << " error=" << error << '\n';
+    MG_CHECK(elapsed < 250);
     MG_CHECK(!error.empty());
     MG_CHECK(read_bytes(path) == original);
     MG_CHECK(!std::filesystem::exists(L"CFG/standalone.txt.tmp"));
@@ -314,20 +319,26 @@ void save_target_lock(bool transient) {
     FileHandle target{CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
                                  nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr)};
     MG_CHECK(target.value != INVALID_HANDLE_VALUE);
-    FileHandle started;
+    std::atomic<bool> saw_temporary = false;
     std::jthread release;
     if (transient) {
-        started.value = CreateEventW(nullptr, TRUE, FALSE, nullptr);
-        MG_CHECK(started.value);
         const HANDLE held = target.value;
         // Keep ownership here until the thread exists; its join precedes scope cleanup.
-        release = std::jthread([held, event = started.value] {
-            SetEvent(event);
-            Sleep(150);
+        release = std::jthread([held, &saw_temporary](std::stop_token stop) {
+            const auto waiting = GetTickCount();
+            // Observe save's real preparation boundary before delaying the unlock.
+            // A bounded, cancellable wait also handles an unexpectedly early save failure.
+            while (!stop.stop_requested() && GetTickCount() - waiting < 5000) {
+                if (GetFileAttributesW(L"CFG/standalone.txt.tmp") != INVALID_FILE_ATTRIBUTES) {
+                    saw_temporary = true;
+                    Sleep(30);
+                    break;
+                }
+                Sleep(1);
+            }
             CloseHandle(held);
         });
         target.value = INVALID_HANDLE_VALUE;
-        MG_CHECK(WaitForSingleObject(started.value, 5000) == WAIT_OBJECT_0);
     }
     std::string error;
     const auto before = GetTickCount();
@@ -335,11 +346,15 @@ void save_target_lock(bool transient) {
     const auto elapsed = GetTickCount() - before;
     std::cout << "target_lock=" << (transient ? "transient" : "persistent")
               << " saved=" << saved << " elapsed_ms=" << elapsed << " error=" << error << '\n';
-    if (release.joinable()) release.join();
+    if (release.joinable()) {
+        release.request_stop();
+        release.join();
+    }
     MG_CHECK(elapsed < 5000);
     MG_CHECK(saved == transient);
     MG_CHECK(!std::filesystem::exists(L"CFG/standalone.txt.tmp"));
     if (transient) {
+        MG_CHECK(saw_temporary);
         MG_CHECK(error.empty());
         MG_CHECK(read_bytes(path).starts_with("// Keep this comment\r\nSoundVolume=40\r\n"));
         MG_CHECK(StandaloneSettings::load(path.c_str()).values == custom());
