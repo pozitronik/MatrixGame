@@ -532,9 +532,11 @@ void statistics_formatting() {
 #ifdef _TRACE
 void trace_result_callbacks() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
-    for (int step : {10, 16}) for (bool loss : {false, true}) {
+    for (int step : {10, 16}) for (uint8_t shift : {VK_SHIFT, VK_LSHIFT, VK_RSHIFT}) {
+        const bool native_key = shift == VK_SHIFT;
+        const bool loss = shift == VK_LSHIFT;
         Session session({mode, 85, step, 1000, false});
-        std::cout << session.metadata("synthetic-trace-result-v1") << " trace_build=1 loss=" << loss << '\n';
+        std::cout << session.metadata("synthetic-trace-result-v2") << " trace_build=1 shift=" << int(shift) << '\n';
         CallbackDialogs dialogs;
         CFormMatrixGame form;
         session.ground_command(500, 300);
@@ -558,11 +560,28 @@ void trace_result_callbacks() {
                 MG_CHECK(now.destination_x == robot.destination_x && now.destination_y == robot.destination_y);
             }
         };
-        const uint8_t shift = loss ? VK_LSHIFT : VK_RSHIFT;
+        // WinProc forwards generic VK_SHIFT. Side-specific codes are synthetic
+        // input to the otherwise unreachable diagnostic result branches.
         form.Keyboard(true, shift);
         press(form, VK_ESCAPE);
         form.Keyboard(false, shift);
         MG_CHECK(!Input::isVKeyPressed(shift) && !Input::isVKeyPressed(VK_ESCAPE));
+        if (native_key) {
+            MG_CHECK(g_ExitState == 0);
+            MG_CHECK(g_MatrixMap->m_DialogModeName &&
+                std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_MENU);
+            MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG | MMFLAG_STAT_DIALOG_D));
+            MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            for (int i = 0; i < 10; ++i) session.advance();
+            check_state();
+            MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            press(form, VK_ESCAPE);
+            MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+            MG_CHECK(g_MatrixMap->m_DialogModeHints.empty());
+            MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            check_state();
+            continue;
+        }
         MG_CHECK(g_ExitState == (loss ? 2 : 3));
         MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) ==
             (loss ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));

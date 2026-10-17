@@ -39,7 +39,7 @@ Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-Trace`, 
 
 Normal game builds also compile the test executables. `tools/build.ps1 -WithoutTests` sets `BUILD_TESTING=OFF` for a game-only build; the test helper enables it again on its next build.
 
-The optional `-Trace` configuration builds all targets with the legacy `_TRACE` definition and registers `game.outcome.trace_result_callbacks`. It uses a separate build directory and does not change normal gameplay builds. [Trace result tests](testing/85-trace-results.md) describe the shortcut contract and focused commands.
+The optional `-Trace` configuration builds all targets with the legacy `_TRACE` definition and registers `game.outcome.trace_result_callbacks`. It uses a separate build directory and does not change normal gameplay builds. [Trace result tests](testing/85-trace-results.md) distinguish the real generic Shift+Escape menu path from synthetic side-specific result injection and give focused commands.
 
 ## Results and direct CTest commands
 
