@@ -18,6 +18,9 @@
 
 namespace {
 using namespace tests::battle;
+struct RestartMapObservation : CMatrixMap {
+    static int result_countdown(const CMatrixMap &map) { return map.* &RestartMapObservation::m_BeforeWinLooseDialogCount; }
+};
 void press(CFormMatrixGame &form, uint8_t key) {
     form.Keyboard(true, key);
     form.Keyboard(false, key);
@@ -194,7 +197,7 @@ void restart_profile(Origin origin, bool check_retired_groups = false) {
                 MG_CHECK(map->m_DialogModeName && wcscmp(map->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
                 MG_CHECK(map->m_DialogModeHints.size() == 1);
                 MG_CHECK(session.time() == old_time);
-                MG_CHECK(map->m_BeforeWinCount == 0);
+                MG_CHECK(RestartMapObservation::result_countdown(*map) == 0);
                 MG_CHECK(!FLAG(map->m_Flags, MMFLAG_WIN));
                 MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
                 MG_CHECK(player.GetStatValue(STAT_TIME) == 0 && player.GetStatValue(STAT_ROBOT_KILL) == 0);
