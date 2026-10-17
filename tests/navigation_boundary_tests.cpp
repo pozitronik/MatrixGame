@@ -3,6 +3,7 @@
 #include "command_world.hpp"
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
@@ -462,6 +463,148 @@ void sloped_terrain_journeys() {
     }
 }
 
+// Terrain data is supplied once; the complete production map tick derives the
+// chassis height, tilt, water state and movement through each boundary.
+int terrain_transition(random::Mode mode, int step, float gradient, bool lateral, bool water, bool reverse = false) {
+    Profile profile{mode, 81, step, 5000, false};
+    profile.layout = NavigationLayout::Open;
+    Session session(profile);
+    MG_CHECK(session.remove(2));
+    auto *robot = g_MatrixMap->GetPlayerSide()->GetCurGroup()->GetObjectByN(0)->AsRobot();
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+        if (object->IsRobot() && object->GetSide() != PLAYER_SIDE) {
+            object->AsRobot()->SetMaxSpeed(0);
+            object->AsRobot()->m_GroupSpeed = 0;
+        }
+    }
+    const float base = water ? -5.0f : 20.0f;
+    const auto height = [&](float coordinate) {
+        return base + gradient * std::clamp(coordinate - 180.0f, 0.0f, 200.0f);
+    };
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
+        auto &unit = *g_MatrixMap->UnitGet(x, y);
+        const float coordinate = (lateral ? y : x) * GLOBAL_SCALE;
+        const float rise = coordinate >= 180 && coordinate < 380 ? gradient : 0;
+        unit.SetType(CELLFLAG_LAND);
+        unit.a1 = unit.a2 = lateral ? 0 : rise;
+        unit.b1 = unit.b2 = lateral ? rise : 0;
+        unit.c1 = unit.c2 = height(coordinate);
+    }
+    for (int y = 0; y <= 32; ++y) for (int x = 0; x <= 32; ++x) {
+        auto &point = *g_MatrixMap->PointGet(x, y);
+        const float coordinate = (lateral ? y : x) * GLOBAL_SCALE;
+        const float rise = (height(coordinate + GLOBAL_SCALE) - height(coordinate - GLOBAL_SCALE)) /
+                           (2 * GLOBAL_SCALE);
+        point.z = point.z_land = height(coordinate);
+        point.n = D3DXVECTOR3(lateral ? 0 : -rise, lateral ? -rise : 0, 1);
+        D3DXVec3Normalize(&point.n, &point.n);
+    }
+    robot->m_PosX = 60;
+    if (lateral) robot->m_PosY = 300;
+    if (reverse) {
+        robot->m_PosX = 540;
+        robot->m_Forward = robot->m_HullForward = D3DXVECTOR3(-1, 0, 0);
+    }
+    robot->MapPosCalc();
+    robot->RChange(MR_Matrix);
+    robot->RNeed(MR_Matrix);
+    robot->JoinToGroup();
+    g_Config.m_ItemChars[CHASSIS2_MOVE_SPEED] = 0.6f;
+    g_Config.m_ItemChars[CHASSIS2_MOVE_WATER_CORR] = 0.5f;
+    g_Config.m_ItemChars[CHASSIS2_MOVE_SLOPE_CORR_UP] = 0.5f;
+    g_Config.m_ItemChars[CHASSIS2_MOVE_SLOPE_CORR_DOWN] = 3;
+    robot->CalcRobotMass();
+    const auto release_core = [](SObjectCore *core) { core->Release(); };
+    std::unique_ptr<SObjectCore, decltype(release_core)> core(robot->GetCore(DEBUG_CALL_INFO), release_core);
+    const float target_y = lateral ? 300.0f : 200.0f;
+    const float target_x = reverse ? 60.0f : 540.0f;
+    session.ground_command(target_x, target_y);
+    const float slope = gradient / std::sqrt(1 + gradient * gradient) * (reverse ? -1 : 1);
+    int first_band = 0, middle = 0, last_band = 0, emerged = 0, dry_level_samples = 0;
+    std::cout << session.metadata("terrain-transition-journey-v1") << " gradient=" << gradient
+              << " lateral=" << lateral << " water=" << water << " reverse=" << reverse << std::endl;
+    while (session.frame() < profile.max_frames) {
+        const float previous_forward_slope = core->m_Matrix._23;
+        session.advance();
+        const auto state = session.robot(1);
+        MG_CHECK(state.alive && !robot->IsMustDie() && core->m_Object == robot);
+        MG_CHECK(state.order == mpo_MoveTo && state.destination_x == (reverse ? 4 : 52));
+        MG_CHECK(state.destination_y == (lateral ? 28 : 18));
+        MG_CHECK(std::isfinite(state.x) && std::isfinite(state.y) && std::isfinite(robot->m_Speed));
+        MG_CHECK(state.x >= 60 && state.x <= 540 && std::abs(state.y - target_y) < 0.001f);
+        MG_CHECK(robot->m_Speed >= 0 && robot->m_Speed < 1.0f);
+        MG_CHECK(session.robot(3).x == 500 && session.robot(3).y == 500);
+        MG_CHECK(session.robot(4).x == 540 && session.robot(4).y == 540);
+        const float expected_height = height(lateral ? core->m_Matrix._42 : core->m_Matrix._41);
+        MG_CHECK(std::abs(core->m_Matrix._43 - expected_height) < 0.001f);
+        // Stay away from interpolation/tilt convergence and arrival slowdown.
+        const bool before = reverse ? state.x > 470 && state.x < 500 : state.x > 100 && state.x < 130;
+        const bool on_ramp = water ? state.x > 220 && state.x < 230 :
+                            reverse ? state.x > 220 && state.x < 240 : state.x > 260 && state.x < 280;
+        const bool after = reverse ? state.x > 80 && state.x < 100 : state.x > 470 && state.x < 500;
+        const bool dry_ramp = water && state.x > 340 && state.x < 360;
+        const bool dry_level = water && state.x > 260 && state.x < 270;
+        if (before || on_ramp || after || dry_ramp || dry_level) {
+            // GetNormal(..., check_water=true) supplies a level normal while any
+            // surrounding terrain vertex is below zero, even on a submerged ramp.
+            const float forward_slope = lateral || before || after || (water && on_ramp) || dry_level ? 0 : slope;
+            const float expected_speed = 0.6f * (forward_slope >= 0 ? 1 - forward_slope / 0.5f
+                                                                  : 1 - 2 * forward_slope) *
+                                         (water && (before || on_ramp) ? 0.5f : 1.0f);
+            MG_CHECK(std::abs(core->m_Matrix._23) <= std::abs(slope) + 0.001f);
+            // Select converged samples by orientation alone; a wrong speed must
+            // fail rather than quietly exclude that frame from the observation.
+            // Seek runs before JoinToGroup can refresh the cached matrix. Its
+            // forward tilt may therefore precede the matrix observed after this
+            // tick; require convergence on both sides of that update.
+            const bool settled = std::abs(core->m_Matrix._23 - forward_slope) < 0.001f &&
+                                 std::abs(previous_forward_slope - forward_slope) < 0.001f;
+            // Both dry correction slopes multiply tilt error by 1.2; the extra
+            // 0.0001 covers floating-point rounding, not a gameplay tolerance.
+            if (settled && std::abs(robot->m_Speed - expected_speed) >= 0.0013f)
+                std::cout << "speed mismatch frame=" << session.frame() << " x=" << state.x
+                          << " tilt=" << core->m_Matrix._23 << " speed=" << robot->m_Speed
+                          << " expected=" << expected_speed << std::endl;
+            if (settled) MG_CHECK(std::abs(robot->m_Speed - expected_speed) < 0.0013f);
+            if (lateral && (on_ramp || after)) {
+                MG_CHECK(std::abs(core->m_Matrix._32 + slope) < 0.001f);
+                MG_CHECK(std::abs(std::abs(core->m_Matrix._13) - std::abs(slope)) < 0.001f);
+            }
+            first_band += before && settled; middle += on_ramp && settled;
+            last_band += after && settled; emerged += dry_ramp && settled;
+            dry_level_samples += dry_level && settled;
+        }
+        if (state.in_place) break;
+    }
+    std::cout << "final position=" << robot->m_PosX << ',' << robot->m_PosY << " in_place="
+              << robot->PLIsInPlace() << " frame=" << session.frame() << std::endl;
+    MG_CHECK(robot->PLIsInPlace() && robot->m_PosX == target_x && robot->m_PosY == target_y);
+    std::cout << "arrival_ms=" << session.time() << " samples=" << first_band << ',' << middle << ','
+              << last_band << ',' << emerged << ',' << dry_level_samples << '\n';
+    MG_CHECK(first_band > 0 && middle > 0 && last_band > 0 &&
+             (!water || (emerged > 0 && dry_level_samples > 0)));
+    return session.time();
+}
+void terrain_ramp_transitions() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const int flat = terrain_transition(mode, step, 0, false, false);
+        const int uphill = terrain_transition(mode, step, 0.2f, false, false);
+        const int downhill = terrain_transition(mode, step, 0.2f, false, false, true);
+        MG_CHECK(uphill > flat && flat > downhill);
+    }
+}
+void terrain_lateral_slope() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        terrain_transition(mode, step, 0.2f, true, false);
+}
+void terrain_water_slope() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const int dry = terrain_transition(mode, step, 0.05f, false, false);
+        const int wet = terrain_transition(mode, step, 0.05f, false, true);
+        MG_CHECK(wet > dry);
+    }
+}
+
 int shallow_water_run(random::Mode mode, int step, bool water) {
     Profile profile{mode, 81, step, 3000, false};
     profile.layout = NavigationLayout::Open;
@@ -520,6 +663,9 @@ void water_depth() {
     }
 }
 const Case cases[] = {
+    {"game.navigation.terrain_ramp_transitions", terrain_ramp_transitions},
+    {"game.navigation.terrain_lateral_slope", terrain_lateral_slope},
+    {"game.navigation.terrain_water_slope", terrain_water_slope},
     {"game.navigation.sloped_terrain_journeys", sloped_terrain_journeys},
     {"game.navigation.zone_routes", zone_routes},
     {"game.navigation.chassis_traversal", chassis_traversal},
