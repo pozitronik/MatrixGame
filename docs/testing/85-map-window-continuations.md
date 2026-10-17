@@ -16,11 +16,11 @@ The synthetic battlefield contains two robots on each side. A normal context Mov
 
 Every route runs with both supported RNG modes and 10/16 ms map steps. Additional paused map ticks verify that an open selector freezes simulation time and RNG draws. The menu-Cancel case also checks robot position/order retention and resumed movement. Initial camera speed and sound volume differ from defaults so the saved-value assertions detect accidental loss of unrelated settings. The runtime settings of the retiring battle remain unchanged when a new choice is saved for the following process.
 
-The relaunch request intentionally has process lifetime. Each acceptance profile is therefore registered as its own CTest invocation; no test-only reset is added to production. There are 49 registered cases, including a menu-Cancel case that runs all four RNG/step profiles.
+The relaunch request intentionally has process lifetime. Each acceptance profile is therefore registered as its own CTest invocation; no test-only reset is added to production. There are 49 registered cases, including a menu-Cancel case that runs all four RNG/step profiles. Cancel never raises that process-lifetime request, so those four menu-Cancel profiles can safely share one process.
 
 ## Fixture boundaries
 
-Two synthetic `.cmap` files contain only the property-table schema required by the production catalog's readability check. They are catalog fixtures and cannot initialize a battlefield. Their purpose is to distinguish same-map and different-map selection and persisted paths. Full map loading uses separate complete synthetic resources.
+Two synthetic `.cmap` files contain only the property-table schema required by the production catalog's readability check. They are catalog fixtures and cannot initialize a battlefield. Their purpose is to distinguish same-map and different-map selection and persisted paths. Setup directly installs the synthetic current-map identity in the map's ID array; it does not derive that identity through battlefield loading. Full map loading uses separate complete synthetic resources.
 
 Generated pixels replace hint artwork and text. A test-link font adapter provides bounded, fixed text metrics and rejects native font drawing; the production selector layout, hint composition, input and callbacks still execute. No preview image is supplied. These cases establish no native font quality, preview decoding, GPU presentation, cursor behavior or OS input delivery. The loading-screen code follows its normal hidden/null-window path. No interactive game window is opened.
 

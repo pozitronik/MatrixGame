@@ -232,4 +232,12 @@ constexpr tests::Case cases[] = {
 };
 #undef SELECTOR_CASES
 }
-int main(int argc, char **argv) { return tests::run(argc, argv, cases); }
+int main(int argc, char **argv) {
+    SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
+    std::set_terminate([] { std::abort(); });
+    const int result = tests::run(argc, argv, cases);
+#ifdef MEM_SPY_ENABLE
+    if (Base::SMemHeader::first_mem_block != nullptr) return EXIT_FAILURE;
+#endif
+    return result;
+}
