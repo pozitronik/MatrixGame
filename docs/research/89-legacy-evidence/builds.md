@@ -1,0 +1,40 @@
+# Build variants and deletion boundaries
+
+Source reference: `fad309b43e6051862af732a912ea5f7bb6c7f113`. This is a source and existing-evidence investigation; no new gameplay run, benchmark or compiler experiment is claimed. Unmerged prerequisites are identified explicitly.
+
+## Findings that change the old inventory
+
+1. **P2 is no longer a deletion candidate.** Although ordinary dev still leaves `_TRACE` undefined, #220 adds `MATRIXGAME_TRACE`, propagates `_TRACE` consistently across libraries/game/tests and implements the explicitly selected O5 diagnostic result continuations. Its revised test preserves generic `VK_SHIFT` plus Escape opening the menu; only synthetic `VK_LSHIFT`/`VK_RSHIFT` injection reaches the result branches, because the window procedure does not supply those codes. Its CMake option is OFF by default; the opt-in build relaxes only the terminate warning caused by legacy throwing diagnostic assertions. Preserve the trace-only result routes, tracing signatures and mixed `_DEBUG || _TRACE` blocks. Label current status 'reviewed scope, implementation pending integration', not 'dead in every intended configuration'.
+2. **P7's file-local BUILD_EXE inventory has expanded.** MatrixGame/CMakeLists.txt now applies BUILD_EXE to MatrixGame.cpp, MatrixFormGame.cpp, DelayedDamage.cpp, GroupCounts.cpp, PlaceContainment.cpp and ZeroXTrace.cpp. The extra four select protected standalone/DLL compatibility defaults. CHEATS_ON is still scoped to MatrixFormGame.cpp. Deleting or broadening either definition changes behavior; a search must compare actual per-source definitions, not assume a target-wide define.
+3. **P6's projected-shadow branch must preserve the newer independent switches.** MatrixMap.cpp:1842 renders projected shadows inside the stencil pass only when `passes.projected`;2224's never-selected alternate calls DrawShadowsProjFast and clears projected before the combined pass. The local RENDER_PROJ_SHADOWS_IN_STENCIL_PASS definition remains unconditional, but the chosen branch contains live settings semantics. Unwrapping that chosen branch may be cleanup; removing its runtime `passes.projected` or stencil/projected separation is not. Existing shadow runtime/pass tests are the regression boundary.
+4. **C11 is not equivalent to 'remove all hardware fallbacks'.** Pipeline setup still has live MaxSimultaneousTextures>=4 decisions around MatrixRenderPipeline.cpp:2368 and later. The constant `if(true)` applies only to one macro-textured terrain-bottom selection. Several other capability branches remain active. Preserve each live dispatch assignment and its callable target.
+5. **U4's 177-entry list cannot serve as a deletion manifest.** It is an overload-specific old relocation scan, predating extensive tests. Current tests still call CalcCRC32 and CStorage::CalcUniqID, while similarly named overloads have different callers. Examples: the vector3 IsIntersectSphere is used throughout tracing/AI/tests, but the old row is vector2; CreateMoveto(pos) has live MatrixSide.cpp:9639/9648 calls, while the zero-argument overload is a separate candidate. Name-only filtering would remove protected behavior.
+
+## Per-group disposition and retained contract
+
+The canonical [disposition table](disposition.md) owns the full per-group findings and recommendations for P1-P8, M5, C11, U1 and U4. This guide adds the cross-group build conclusions and bounded experiment procedures without duplicating those rows.
+
+## Bounded M5 experiment proposal
+
+Use an isolated owned branch only after current work is committed; keep the exact base and production fixture revision recorded. Prepare two source variants differing solely by the surrounding optimization pragma pair. Do not rewrite FindNearPlace. Compile the full affected MatrixGameInternal target and EXE/DLL linking with the supported MSVC2022 x86 toolset, Debug and Release; record cl version and exact compile options. The release compiler invocation is essential to reproduce an optimization-related C1001. A second local compiler can add evidence but cannot replace that matrix.
+
+Compare the baseline and no-pragma variants using the existing navigation/AI place and bomb-escape fixtures, including unreachable-zone/no-place returns and nearest-place ordering. Check both RNG modes where the enclosing scenario uses them, retaining its 10/16 ms profiles. A focused performance sample can check that the workaround's removal does not cause a material navigation regression; do not attach fabricated expected speedups. If the compiler fails, retain the smallest compiler diagnostic/preprocessed reproduction privately and leave the pragma. If all supported builds and contracts pass, propose removal as its own reviewed mechanical leaf after the baseline gate/disposition permits it. This audit performed none of those compiles.
+
+## Bounded P5 build experiment proposal
+
+Begin with an unchanged Debug EXE build and record its complete definitions. Test one switch at a time in a private build directory, no game launch. Apply each definition uniformly to all affected targets; never mix alternate-layout object files with ordinary ones. Build MatrixLib and MatrixGameInternal, then link the standalone target and relevant tests. Repeat only a successfully retained candidate for DLL/Release where it is intended to be supported. A compile failure records exact source/diagnostic and stops that switch; it does not justify repairing a discarded feature under the experiment.
+
+| Switch group | First bounded target | Additional retention question |
+| --- | --- | --- |
+| RAISE_ALL_EXCEPTIONS | Pack/package and malformed-resource tests after complete link | Does the project want package error returns replaced by throwing behavior? Preserve current failure cleanup regardless. |
+| HANDLE_OUT_OF_PACK_FILES | Package/CFile resolution tests | Is this duplicate loose-file route useful given CFile already searches ordinary paths and packages? Verify precedence and virtual-handle retirement if retained. |
+| SUPPORT_IN_MEMORY_STRUCTURES | Pack declarations/implementation and package tests | Are any external tools authorized consumers of its alternate construction APIs? Buildability alone does not establish a tool requirement. |
+| DEAD_PTR_SPY_ENABLE / DEAD_CLASS_SPY_ENABLE | Separate full Debug builds with memory/lifecycle tests | Retain only if they expose useful lifetime diagnostics beyond current MEM_SPY_ENABLE without breaking packing/host assumptions. No intentional crash on the user's desktop. |
+| LANDSCAPE_BOTTOM_USE_NORMALES | Full geometry compile/link; then vertex-layout/static fixtures | Optional FVF/layout changes need real rendering acceptance before revival. Do not combine with color/shadow changes. |
+| SHOW_ASSIGNED_GROUPS=3 or 6, SHOW_PICK_OBJECTS, DRAW_LANDSCAPE_SETKA=1 | Each separate Debug compile/link | Explicit developer utility decision; existing ordinary Debug functionality remains protected. A visible inspection would require a separate authorized playtest. |
+
+For P4, apply the same procedure only to a switch with an identified consumer; do not spend a build matrix reviving removed exporter code or known stale collision-debug syntax. DO_SMART_COLOROPS would change state caching, and USE_SMALL_TEXTURE_IN_ROBOT_ICON would change rendering/resource behavior: retain as proposals requiring measured purpose rather than silently restoring them. The artifact deliberately contains no buildability/pass claims.
+
+## Suggested decisions for the parent report
+
+Keep P1/P3/P7, retain P2 because #85 now depends on it, and leave M5/P5 explicitly 'experiment pending'. U1 and the exact unreachable C11/P8 bodies are scoped cleanup candidates with no current gameplay consumer found, but #90's dependency gate still controls implementation. P6 requires selected-branch preservation and a separate localization choice. U4 must remain a per-overload review queue, not a count of safe removals. No new remote issues are needed to preserve these findings: reference them from #89 and use the existing inventory identifiers.

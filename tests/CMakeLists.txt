@@ -188,6 +188,8 @@ add_matrix_test(game.settings.save_utf8 matrixgame_standalone_settings_tests sta
 add_matrix_test(game.settings.save_wide matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.save_creates_file matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.save_failure matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.save_transient_lock matrixgame_standalone_settings_tests startup settings)
+add_matrix_test(game.settings.save_persistent_lock matrixgame_standalone_settings_tests startup settings)
 add_matrix_test(game.settings.unreadable_file matrixgame_standalone_settings_tests startup settings)
 
 add_matrix_test_executable(matrixgame_map_metadata_tests map_metadata_tests.cpp ../MatrixGame/src/MapMetadata.cpp)
@@ -618,6 +620,16 @@ foreach(contract regroup_split_counts regroup_merge_counts regroup_count_sequenc
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
 
+add_matrix_test_executable(matrixgame_ai_auto_scenarios ai_auto_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_ai_auto_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_ai_auto_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_ai_auto_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_ai_auto_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.ai.auto_activation matrixgame_ai_auto_scenarios gameplay ai)
+
 add_matrix_test_executable(matrixgame_battle_outcome_scenarios battle_outcome_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_outcome_scenarios PRIVATE MatrixGameInternal)
@@ -626,8 +638,13 @@ target_include_directories(matrixgame_battle_outcome_scenarios PRIVATE "${CMAKE_
 target_compile_definitions(matrixgame_battle_outcome_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.outcome.terron_blast_after_conversion matrixgame_battle_outcome_scenarios gameplay combat)
+
 foreach(contract terron_destruction transported_robot_damage carrier_damage carrier_removal flyer_does_not_prevent_elimination transported_robot_prevents_elimination transported_robot_removal capture_target_damage special_break special_explosion special_animation capture_combat_death turret_does_not_prevent_elimination registered_enemy_capture capture_target_removal registered_base_capture capture_candidate_lifetime registered_capture base_survival factory_does_not_prevent_elimination neutral_capture enemy_capture capture_rejection capture_rollback competing_capturers competing_color special_survival_flags music_fade music_form_refill form_audio_device_error statistics_formatting scheduled_capture acquisition_after_removal enemy_capture_rollback capture_queue_refund)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay)
+endforeach()
+foreach(contract guarded_base_journey guarded_base_target_destruction)
+    add_matrix_test(game.ai.${contract} matrixgame_battle_outcome_scenarios gameplay ai)
 endforeach()
 foreach(contract capture_keyboard_completion capture_button_completion)
     add_matrix_test(game.player.${contract} matrixgame_battle_outcome_scenarios gameplay input)
@@ -664,7 +681,7 @@ target_include_directories(matrixgame_navigation_boundary_tests PRIVATE "${CMAKE
 target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract sloped_terrain_journeys zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth shallow_water_traversal)
+foreach(contract terrain_ramp_transitions terrain_lateral_slope terrain_water_slope sloped_terrain_journeys zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth shallow_water_traversal)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
 add_matrix_test(game.navigation.formation_speed_boundaries matrixgame_navigation_boundary_tests gameplay ai navigation)
@@ -730,3 +747,13 @@ add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_suppor
 target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
+if(MATRIXGAME_BUILD_DLL)
+    add_matrix_test_executable(matrixgame_native_session_fixture native_session_fixture.cpp
+        native_session_assets.cpp battle_geometry.cpp)
+    target_link_libraries(matrixgame_native_session_fixture PRIVATE MatrixGameInternal)
+    target_compile_definitions(matrixgame_native_session_fixture PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
+    option(MATRIXGAME_NATIVE_SESSION_TESTS "Run native Direct3D 9 synthetic session checks" OFF)
+    if(MATRIXGAME_NATIVE_SESSION_TESTS)
+        add_matrix_test(game.session.native_run_lifetimes matrixgame_native_session_fixture gameplay startup native native-process)
+    endif()
+endif()

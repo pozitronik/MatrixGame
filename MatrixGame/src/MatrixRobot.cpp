@@ -1864,7 +1864,9 @@ bool CMatrixRobotAI::Damage(
                 break;
             ms = ms->GetNextLogic();
         }
-        if (!ms)
+        // A weapon can outlive its owner's logic updates: Terron becomes static
+        // ruins before the final blast hits. It remains owned by the map.
+        if (!ms && !g_MatrixMap->DebugContainsObject(attaker))
             debugbreak();
     }
 
