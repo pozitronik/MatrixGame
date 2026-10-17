@@ -835,6 +835,12 @@ void CMatrixMap::StaticClear(void) {
 #include "stdio.h"
 #endif
 
+#if defined(_DEBUG) && !defined(_RELDEBUG)
+bool CMatrixMap::DebugContainsObject(const CMatrixMapStatic *object) const {
+    return std::find(m_AllObjects.begin(), m_AllObjects.end(), object) != m_AllObjects.end();
+}
+#endif
+
 void CMatrixMap::StaticDelete(CMatrixMapStatic *ms) {
     DTRACE();
 
