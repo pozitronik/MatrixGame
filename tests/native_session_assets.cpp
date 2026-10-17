@@ -182,7 +182,7 @@ void write_native_session_assets() {
     for (const auto &[prefix, count] : {std::pair{OBJECT_PATH_ROBOT_HEAD, ROBOT_HEAD_CNT},
         {OBJECT_PATH_ROBOT_CHASSIS, ROBOT_CHASSIS_CNT}, {OBJECT_PATH_ROBOT_WEAPON, ROBOT_WEAPON_CNT},
         {OBJECT_PATH_ROBOT_ARMOR, ROBOT_ARMOR_CNT}}) {
-        for (int i = 1; i <= count; ++i) {
+        for (unsigned i = 1; i <= count; ++i) {
             tests::write_battle_mesh(std::wstring(prefix) + std::to_wstring(i) + L".vo", attachments,
                 wcscmp(prefix, OBJECT_PATH_ROBOT_CHASSIS) == 0 && i == RUK_CHASSIS_PNEUMATIC, L"pixel");
             const fs::path texture = std::wstring(prefix) + std::to_wstring(i) + L".png";

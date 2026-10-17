@@ -10,6 +10,7 @@
 #include <fstream>
 #include <cstring>
 #include <ctime>
+#include <iostream>
 
 namespace fs = std::filesystem;
 
@@ -50,7 +51,12 @@ struct Fixture {
     fs::path previous = fs::current_path();
     fs::path root = previous / ("native-session-" + std::to_string(GetCurrentProcessId()));
     Fixture() { MG_CHECK(!fs::exists(root)); fs::create_directories(root); fs::current_path(root); }
-    ~Fixture() { fs::current_path(previous); std::error_code error; fs::remove_all(root, error); }
+    ~Fixture() {
+        fs::current_path(previous);
+        std::error_code error;
+        fs::remove_all(root, error);
+        if (error) std::cerr << "Cannot remove synthetic session directory " << root << ": " << error.message() << '\n';
+    }
 };
 struct HostObservation {
     HWND window{};
@@ -216,6 +222,9 @@ int main(int argc, char **argv) {
         {"game.session.native_run_lifetimes", native_run_lifetimes},
         {"probe.session.held_input", native_held_input_probe}};
     const int result = tests::run(argc, argv, cases);
+#ifdef MEM_SPY_ENABLE
+    if (Base::SMemHeader::first_mem_block != nullptr) return EXIT_FAILURE;
+#endif
     Base::CMain::BaseDeInit();
     return result;
 }
