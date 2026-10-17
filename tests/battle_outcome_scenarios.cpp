@@ -392,8 +392,9 @@ void special_survival_flags() {
 }
 // SetMusicVolume and RestoreMusicVolume are the calls made by the Terron death and the MUSIC console
 // command. Without a host they fade the standalone music, one thousandth of full level per millisecond.
-void music_fade() {
-    Session session;
+void music_fade_profile(random::Mode mode, int step) {
+    Session session({mode, 79, step});
+    std::cout << session.metadata("synthetic-music-fade-v2") << '\n';
     MG_CHECK(SoundBridge::available() && !SoundBridge::music_available());
     g_MatrixMap->SetMusicVolume(0);  // Nothing to fade without music, as before.
     MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING));
@@ -409,21 +410,28 @@ void music_fade() {
         while (FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && session.time() < start + 2000) {
             const float before = SoundBridge::music_level();
             session.advance();
-            MG_CHECK(std::fabs(SoundBridge::music_level() - before) <= 0.0101f);
+            MG_CHECK(std::fabs(SoundBridge::music_level() - before) <= step * 0.001f + 0.0001f);
+            MG_CHECK(target == 0.0f ? SoundBridge::music_level() <= before : SoundBridge::music_level() >= before);
         }
         MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && SoundBridge::music_level() == target);
         const int duration = session.time() - start;
-        MG_CHECK(duration >= 1000 && duration <= 1020);
+        std::cout << "fade target=" << target << " duration=" << duration << '\n';
+        MG_CHECK(duration == (step == 10 ? 1010 : 1024));
     };
     g_MatrixMap->SetMusicVolume(0);
     fade(0.0f);
     g_MatrixMap->RestoreMusicVolume();
     fade(1.0f);
 }
+void music_fade() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        music_fade_profile(mode, step);
+}
 // The game form refills music before anything else in a frame, so a lost device that skips the rest
 // of the frame does not starve it.
-void music_form_refill() {
-    Session session;
+void music_form_refill_profile(random::Mode mode, int step) {
+    Session session({mode, 79, step});
+    std::cout << session.metadata("synthetic-music-refill-v2") << '\n';
     auto audio = std::make_shared<audio_fixture::DeviceState>();
     SoundBridge::install(std::make_unique<Audio::Service>(std::make_unique<audio_fixture::FakeDevice>(audio),
         Audio::Mapping{{L"Sound.Synthetic", L"synthetic.wav"}},
@@ -437,20 +445,33 @@ void music_form_refill() {
     MG_CHECK(audio->streams.empty());  // Nothing plays before the first frame.
     session.device_lost(true);
     const int time = session.time();
-    form.Takt(10);
+    const auto draws = random::draw_count();
+    form.Takt(step);
     MG_CHECK(session.time() == time);  // The lost device skipped the map.
+    MG_CHECK(random::draw_count() == draws);
     MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 4 && audio->streams[0]->plays == 1);
+    // Continued device loss must not starve the already playing stream either.
+    audio->streams[0]->queued = 0;
+    form.Takt(step);
+    MG_CHECK(session.time() == time && random::draw_count() == draws);
+    MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 8);
     session.device_lost(false);
     // Resources count as present, so the recovered device needs nothing recreated.
     SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
     audio->streams[0]->queued = 0;
-    form.Takt(10);
-    MG_CHECK(session.time() == time + 10 && audio->streams[0]->buffers.size() == 8);
+    form.Takt(step);
+    MG_CHECK(session.time() == time + step);
+    MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 12);
+}
+void music_form_refill() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        music_form_refill_profile(mode, step);
 }
 // The game form checks the audio device first in a frame; a directly installed service is released
 // after a device error, even when a lost device skips the rest of the frame.
-void form_audio_device_error() {
-    Session session;
+void form_audio_device_error_profile(random::Mode mode, int step) {
+    Session session({mode, 79, step});
+    std::cout << session.metadata("synthetic-audio-device-error-v2") << '\n';
     auto audio = std::make_shared<audio_fixture::DeviceState>();
     SoundBridge::install(std::make_unique<Audio::Service>(std::make_unique<audio_fixture::FakeDevice>(audio),
         Audio::Mapping{{L"Sound.Synthetic", L"synthetic.wav"}},
@@ -458,12 +479,25 @@ void form_audio_device_error() {
         [](const std::wstring &, const std::string &error) { throw std::runtime_error(error); }));
     CFormMatrixGame form;
     session.device_lost(true);
-    form.Takt(10);
+    const int time = session.time();
+    const auto draws = random::draw_count();
+    form.Takt(step);
     MG_CHECK(SoundBridge::available() && !audio->destroyed);
+    MG_CHECK(session.time() == time && random::draw_count() == draws);
     audio->critical_error = "Synthetic critical error";
-    form.Takt(10);
+    form.Takt(step);
     MG_CHECK(!SoundBridge::available() && audio->destroyed);
+    MG_CHECK(session.time() == time && random::draw_count() == draws);
+    form.Takt(step);
+    MG_CHECK(!SoundBridge::available() && session.time() == time && random::draw_count() == draws);
     session.device_lost(false);
+    SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+    form.Takt(step);
+    MG_CHECK(!SoundBridge::available() && session.time() == time + step);
+}
+void form_audio_device_error() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        form_audio_device_error_profile(mode, step);
 }
 void full_auto_escape() {
     Session session;
@@ -1182,6 +1216,79 @@ void transported_robot_prevents_elimination() {
         MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
     }
 }
+struct OutcomeMapObservation : CMatrixMap {
+    static int status_scan(const CMatrixMap &map) { return map.* &OutcomeMapObservation::m_PrevTimeCheckStatus; }
+};
+std::vector<std::string> falling_cargo_scan_run(random::Mode mode, int step, bool remove) {
+    tests::BattleMaterialProfile materials;
+    Session session(transport_outcome_profile(mode, step));
+    DialogData dialog;
+    std::cout << "remove=" << remove << ' ' << session.metadata("falling-cargo-status-scan-v1") << '\n';
+    // Delay the delivery request so a natural side-status scan occurs during
+    // the short falling interval, rather than only before and after landing.
+    const int launch = mode == random::Mode::ParkMiller ? 1800 : 3000;
+    advance_to(session, ((launch + step - 1) / step) * step);
+    auto *carrier = order_outcome_transport(PLAYER_SIDE);
+    auto carrier_core = retain_core(*carrier);
+    auto *cargo = carrier->GetCarryingRobot()->AsRobot();
+    auto cargo_core = retain_core(*cargo);
+    MG_CHECK(session.remove(1) && session.remove(2));
+    int released = 0, landed = 0, falling_scan = 0, eliminated = 0, result = 0;
+    std::vector<std::string> trace;
+    while (session.time() < 12000 && !g_MatrixMap->IsPaused()) {
+        const int previous_scan = OutcomeMapObservation::status_scan(*g_MatrixMap);
+        session.advance();
+        if (cargo_core->m_Object && !released && cargo->m_CurrState == ROBOT_FALLING) {
+            released = session.time();
+            MG_CHECK(!carrier->CarryingRobot());
+            if (remove) g_MatrixMap->StaticDelete(cargo);
+        }
+        const bool scanned = previous_scan != OutcomeMapObservation::status_scan(*g_MatrixMap);
+        if (cargo_core->m_Object) {
+            MG_CHECK(cargo->IsLiveRobot());
+            if (cargo->m_CurrState == ROBOT_FALLING && scanned) {
+                falling_scan = session.time();
+                MG_CHECK(side().GetStatus() == SS_ACTIVE);
+            }
+            if (!landed && released && cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) landed = session.time();
+        }
+        if (side().GetStatus() == SS_NONE && !eliminated) {
+            eliminated = session.time();
+            MG_CHECK(remove && scanned && cargo_core->m_Object == nullptr);
+        }
+        if (g_MatrixMap->IsPaused()) {
+            result = session.time();
+            MG_CHECK(remove && g_MatrixMap->m_DialogModeName &&
+                std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+        }
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        trace.push_back(session.snapshot() + ":" + std::to_string(cargo_core->m_Object ? cargo->m_CurrState : -1)
+            + ":" + std::to_string(OutcomeMapObservation::status_scan(*g_MatrixMap)));
+    }
+    std::cout << "release=" << released << " landed=" << landed << " falling_scan=" << falling_scan
+              << " eliminated=" << eliminated << " result=" << result << '\n';
+    const int expected_release = mode == random::Mode::ParkMiller ? (step == 10 ? 7900 : 7920)
+        : (step == 10 ? 7940 : 7952);
+    const int expected_scan = step == 10 ? 8050 : 8080;
+    MG_CHECK(released == expected_release);
+    if (remove) {
+        MG_CHECK(eliminated == expected_scan && result == (step == 10 ? 10060 : 10096));
+        MG_CHECK(!landed && !falling_scan);
+    } else {
+        MG_CHECK(falling_scan == expected_scan && landed == expected_release + 320);
+        MG_CHECK(!eliminated && !result);
+        MG_CHECK(cargo_core->m_Object == cargo && side().GetStatus() == SS_ACTIVE);
+    }
+    MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    return trace;
+}
+void falling_cargo_status_scan() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool remove : {false, true}) {
+        const auto first = falling_cargo_scan_run(mode, step, remove);
+        MG_CHECK(first == falling_cargo_scan_run(mode, step, remove));
+    }
+}
 void transported_robot_removal_outcome() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int remove_at : {1000, 7000})
     for (int step : {10, 16}) {
@@ -1621,12 +1728,14 @@ void terron_blast_after_conversion() {
 }
 
 void repeated_sessions() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
     for (int run = 0; run < 3; ++run) {
-        outcome(run % 2 == 0, true);
+        outcome(run % 2 == 0, true, false, step, mode);
         MG_CHECK(g_MatrixMap == nullptr && g_IFaceList == nullptr && g_MatrixHeap == nullptr);
         MG_CHECK(CMatrixMapStatic::GetFirstLogic() == nullptr);
         MG_CHECK(!Input::isVKeyPressed(VK_CONTROL));
-        Session fresh;
+        Session fresh({mode, 79, step});
+        std::cout << fresh.metadata("synthetic-repeated-outcomes-v2") << " run=" << run << '\n';
         MG_CHECK(fresh.time() == 0 && fresh.frame() == 0);
         MG_CHECK(side().GetStatus() == SS_ACTIVE);
         MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 2);
@@ -2243,6 +2352,7 @@ constexpr tests::Case cases[] = {
     {"game.player.capture_button_completion", capture_button_completion},
     {"game.outcome.flyer_does_not_prevent_elimination", flyer_does_not_prevent_elimination},
     {"game.outcome.transported_robot_prevents_elimination", transported_robot_prevents_elimination},
+    {"game.outcome.falling_cargo_status_scan", falling_cargo_status_scan},
     {"game.outcome.transported_robot_removal", transported_robot_removal_outcome},
     {"game.outcome.carrier_removal", carrier_removal_outcome},
     {"game.outcome.carrier_damage", carrier_damage_outcome},

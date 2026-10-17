@@ -204,8 +204,12 @@ void dismiss_window(std::string_view action) {
     MG_CHECK(WaitForSingleObject(child.process.hProcess, 0) == WAIT_TIMEOUT);
 
     if (action == "button") {
-        DWORD_PTR result = 0;
-        MG_CHECK(SendMessageTimeoutW(button, BM_CLICK, 0, 0, SMTO_ABORTIFHUNG, 1000, &result));
+        // Queue the real button action. A synchronous one-second send can fail
+        // under runner load before the separately bounded dismissal wait starts.
+        const bool posted = PostMessageW(button, BM_CLICK, 0, 0) != FALSE;
+        const DWORD error = posted ? ERROR_SUCCESS : GetLastError();
+        if (!posted) std::cerr << "PostMessageW(BM_CLICK) failed: Windows error " << error << '\n';
+        MG_CHECK(posted);
     }
     else if (action == "close") MG_CHECK(PostMessageW(loader, WM_CLOSE, 0, 0));
     else {
@@ -213,7 +217,16 @@ void dismiss_window(std::string_view action) {
         MG_CHECK(action == "escape");
         MG_CHECK(PostMessageW(button, WM_KEYDOWN, VK_ESCAPE, 0));
     }
-    MG_CHECK(BattleLoading::wait(ready.value, child.process.hProcess, 2000) == BattleLoading::WaitResult::Dismissed);
+    const DWORD deadline_ms = action == "button" ? 5000 : 2000;
+    const auto result = BattleLoading::wait(ready.value, child.process.hProcess, deadline_ms);
+    if (result != BattleLoading::WaitResult::Dismissed) {
+        const DWORD error = result == BattleLoading::WaitResult::Failed ? GetLastError() : ERROR_SUCCESS;
+        std::cerr << "Loader dismissal failed: action=" << action << " result=" << static_cast<int>(result);
+        if (result == BattleLoading::WaitResult::TimedOut) std::cerr << " timed out after " << deadline_ms << " ms";
+        else if (result == BattleLoading::WaitResult::Failed) std::cerr << " Windows error=" << error;
+        std::cerr << '\n';
+    }
+    MG_CHECK(result == BattleLoading::WaitResult::Dismissed);
     BattleLoading::hide();
     MG_CHECK(!IsWindow(loader));
     MG_CHECK(WaitForSingleObject(child.process.hProcess, 0) == WAIT_TIMEOUT);
