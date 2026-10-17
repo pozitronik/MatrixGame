@@ -78,13 +78,15 @@ After each blast, wait five seconds, select another surviving friendly robot and
 
 ## Repeated sessions and restart
 
+For the versioned baseline cases, use [native timing and session procedures](testing/85-native-outcomes.md): they provide exact candidate preparation/restoration, NV-05-2's toggles/focus checks and NV-06-1's separate restart/Exit/Surrender/Alt+F4 launches. Native execution remains pending until recorded; the helper opens a game only with `-Launch`.
+
 Use packed configuration and cheats-disabled standalone builds. Run these three launches in Debug, then repeat all three in Release. Dismiss the introductory checkmark after each launch. Select a friendly robot, press `M`, click open ground about ten robot lengths away and wait for movement; this establishes that the battle is running before testing its lifetime. Allow up to 30 seconds for each dialog or restart and record a timeout as a failure rather than waiting indefinitely.
 
 | Launch | Actions | Expected result |
 | --- | --- | --- |
 | 1: normal close | Move a robot, wait five seconds, then close the window with Alt+F4. | No exception; the process exits with status zero and the desktop cursor can move freely. |
 | 2: restart and exit | Move a robot away from its starting point. Press Escape, then `R` to open Restart confirmation. Press Escape to cancel, then Escape again to resume the battle. Open Escape, `R` again and press Enter to confirm. Dismiss the new introduction; verify starting units and positions return, then issue a fresh movement order. Repeat the confirmed restart once more. Finally press Escape, `E`, Enter to confirm exit, and Enter to dismiss statistics. | Cancel leaves the current battle intact. Both confirmed restarts restore the starting situation, clear old selections/orders and leave controls usable. Exit reaches statistics, then terminates with status zero and releases the cursor. |
-| 3: surrender and result exit | Move a robot, then press Escape, `S`, Enter to confirm surrender. Inspect statistics and press Enter to close them. | A result/statistics path appears, no exception is shown, the process exits with status zero and cursor confinement ends. |
+| 3: surrender and result exit | Move a robot, then press Escape, `S`, Enter to confirm surrender. Inspect statistics and press Enter to close them. The map selector should open; press Escape or click Cancel without selecting another battle. | Statistics lead to the selector, then Cancel terminates the process with status zero and releases the cursor. No exception appears. This differs from menu Exit, which closes after statistics without a selector. |
 
 If a confirmation or statistics dialog does not respond to Enter, click its visible checkmark and record that difference. Check that selecting and commanding a robot after restart does not refer to a removed unit. Record results for each launch and configuration, including any exception and the exit status. Surrender validates a result path; it does not establish natural victory detection or completion of an entire battle.
 

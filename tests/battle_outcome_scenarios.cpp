@@ -28,6 +28,7 @@
 #include <climits>
 #include <cmath>
 #include <string>
+#include <sstream>
 
 namespace {
 using namespace tests::battle;
@@ -1502,7 +1503,7 @@ template<int Family> void special_object_destruction() {
         MG_CHECK(first == special_object_run(mode, Family, step));
     }
 }
-void terron_destruction_run(bool collateral, int step) {
+void terron_destruction_run(bool collateral, int step, int blast_damage = 600) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool lose_army : {false, true}) {
         tests::BattleMaterialProfile materials;
         tests::BattleCombatAssets assets;
@@ -1511,11 +1512,14 @@ void terron_destruction_run(bool collateral, int step) {
         assets.install(); crater.install();
         DialogData dialog;
         g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = collateral ? 150 : 20;
+        if (collateral) g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {blast_damage, 0, 7};
         g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
         install_objective_catalog(L"+Break,1,10,Terron", true);
         auto *terron = create_objective(collateral ? 400 : 600);
+        std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> owner_core(terron->GetCore(DEBUG_CALL_INFO),
+            [](SObjectCore *value) { value->Release(); });
         MG_CHECK(terron->m_BehFlag == BEHF_TERRON && g_MatrixMap->m_BeforeWinCount == 1);
-        std::cout << session.metadata(collateral ? "synthetic-terron-collateral-probe-v1" : "synthetic-terron-outcome-v1") << " lose_army=" << lose_army << '\n';
+        std::cout << session.metadata(collateral ? "synthetic-terron-collateral-v2" : "synthetic-terron-outcome-v1") << " lose_army=" << lose_army << " blast_damage=" << blast_damage << '\n';
         const auto hit = [&](int attacker) {
             terron->Damage(WEAPON_LASER, terron->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), attacker, nullptr);
         };
@@ -1554,13 +1558,49 @@ void terron_destruction_run(bool collateral, int step) {
         MG_CHECK(!terron->IsSpecial() && terron->m_Type == 1 && terron->m_BehFlag == BEHF_STATIC);
         MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && side().GetStatValue(STAT_BUILDING_KILL) == 1);
         MG_CHECK(side().GetStatus() == SS_JUST_WIN && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
-        if (collateral) {
-            // Opt-in defect evidence for #186; never an accepted baseline result.
-            while (session.time() < 5220) {
-                std::cout << "blast probe: before tick at " << session.time()
-                          << " ms; draws=" << random::draw_count() << std::endl;
-                session.advance();
+        // Measured against the pre-fix Release implementation. Counts include the
+        // complete map tick, not just the damage callback. Army removal uses no RNG.
+        const bool park = mode == random::Mode::ParkMiller;
+        const bool lethal = blast_damage == 1200;
+        const std::array<std::uint64_t, 4> expected_draws = step == 10
+            ? (park ? std::array<std::uint64_t, 4>{129201, 131865, lethal ? 132497u : 132031u, lethal ? 186432u : 157146u}
+                    : std::array<std::uint64_t, 4>{152426, 157794, lethal ? 158571u : 158108u, lethal ? 238824u : 210111u})
+            : (park ? std::array<std::uint64_t, 4>{79842, 80998, lethal ? 81602u : 81136u, lethal ? 113529u : 94537u}
+                    : std::array<std::uint64_t, 4>{81944, 84362, lethal ? 85079u : 84616u, lethal ? 127433u : 108444u});
+        const auto observe = [&](unsigned checkpoint) {
+            const bool after_hit = checkpoint >= 2;
+            MG_CHECK(random::draw_count() == expected_draws[checkpoint]);
+            MG_CHECK(terron->GetSide() == 0);
+            MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
+            MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+            for (EntityId id = 1; id <= 4; ++id) {
+                const bool alive = !(lose_army && id <= 2) && !(after_hit && lethal && id == 3);
+                MG_CHECK(session.robot(id).alive == alive);
+                if (!alive) continue;
+                CMatrixRobotAI *robot = nullptr;
+                for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+                    if (object->IsRobot() && session.matches(id, object->AsRobot())) robot = object->AsRobot();
+                MG_CHECK(robot != nullptr);
+                MG_CHECK(robot->GetHitPoint() == (after_hit && id == 3 ? 40.0f : 100.0f));
             }
+            std::cout << "blast checkpoint=" << checkpoint << " time=" << session.time()
+                      << " draws=" << random::draw_count() << " robot_kills=0,0\n";
+        };
+        if (collateral) {
+            observe(0);
+            advance_to(session, step == 10 ? 5200 : 5184);
+            MG_CHECK(!terron->InLT());
+            MG_CHECK(owner_core->m_Object == terron);
+#if defined(_DEBUG) && !defined(_RELDEBUG)
+            MG_CHECK(g_MatrixMap->DebugContainsObject(terron));
+            MG_CHECK(!g_MatrixMap->DebugContainsObject(nullptr));
+            // A valid object not owned by this map must still be rejected.
+            { CMatrixMapObject unregistered; MG_CHECK(!g_MatrixMap->DebugContainsObject(&unregistered)); }
+#endif
+            observe(1);
+            session.advance();
+            MG_CHECK(session.time() == (step == 10 ? 5210 : 5200));
+            observe(2);
         }
         advance_to(session, step == 10 ? 8040 : 8064);
         MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
@@ -1571,11 +1611,14 @@ void terron_destruction_run(bool collateral, int step) {
         MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
         MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1);
         if (!collateral) MG_CHECK(session.robot(3).alive && session.robot(4).alive);
+        else observe(3);
     }
 }
 
 void terron_destruction() { for (int step : {10, 16}) terron_destruction_run(false, step); }
-void terron_blast_after_conversion() { terron_destruction_run(true, 10); }
+void terron_blast_after_conversion() {
+    for (int step : {10, 16}) for (int damage : {600, 1200}) terron_destruction_run(true, step, damage);
+}
 
 void repeated_sessions() {
     for (int run = 0; run < 3; ++run) {
@@ -1942,9 +1985,254 @@ void result_command_boundary() {
         MG_CHECK(FLAG(g_Flags, GFLAG_EXITLOOP) && g_ExitState == (loss ? 2 : 3));
     }
 }
+int guarded_base_capturers(CMatrixBuilding *base, int group) {
+    int count = 0;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot() && object->GetSide() == PLAYER_SIDE &&
+            object->AsRobot()->GetGroupLogic() == group && object->AsRobot()->GetCaptureFactory() == base) ++count;
+    return count;
+}
+std::vector<std::string> guarded_base_run(random::Mode mode, int step, bool destroy) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    Session session({mode, 84, step, 1500, false, true, false, tests::NavigationLayout::Open});
+    assets.install();
+    std::cout << session.metadata("guarded-base-journey-v1") << " destroy=" << destroy << std::endl;
+    const auto texture = std::wstring(OBJECT_PATH_BUILDINGS_RUINS) + L"b" + std::to_wstring(int(BUILDING_BASE));
+    tests::install_battle_texture(texture.c_str());
+    tests::load_battle_material_mesh({}, (texture + L".vo").c_str(), texture.c_str());
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 20;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    g_Config.m_BuildingDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    g_Config.m_CannonDamages[Weap2Index(WEAPON_BIGBOOM)] = {};
+    auto *base = register_building(2, BUILDING_BASE, 100, 100);
+    auto &enemy = *g_MatrixMap->GetSideById(2);
+    g_Config.m_Timings[RESOURCE_BASE] = 1000;
+    side().SetResourceForceUp(100);
+    enemy.SetResourceForceUp(100);
+    for (int resource = 0; resource < MAX_RESOURCES; ++resource) {
+        side().SetResourceAmount(static_cast<ERes>(resource), 0);
+        enemy.SetResourceAmount(static_cast<ERes>(resource), 0);
+    }
+    auto *shooter = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+    const int wi = Weap2Index(WEAPON_LASER);
+    g_Config.m_WeaponRadius[wi] = 400;
+    g_Config.m_WeaponCooldown[wi] = 100;
+    g_Config.m_CannonDamages[wi] = {5, 0, 0};
+    g_Config.m_Overheat[WEAPON_LASER_HEAT] = 10;
+    g_Config.m_Overheat[WEAPON_LASER_HEAT + 2] = 10;
+    g_Config.m_Overheat[WEAPON_LASER_HEAT + 1] = 100;
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+    tests::arm_battle_robot(*shooter, RUK_WEAPON_LASER);
+    auto &props = g_Config.m_CannonsProps[0];
+    props = {};
+    props.weapon = WEAPON_CANNON2;
+    props.m_Hitpoint = 20;
+    props.m_Strength = 10;
+    props.seek_radius = 300;
+    props.max_da = 0.1f;
+    props.max_top_angle = 1.5f;
+    props.max_bottom_angle = -1.5f;
+    for (auto &cannon : g_Config.m_CannonsProps)
+        for (int &cost : cannon.m_Resources) cost = 1000;
+    g_Config.m_CannonsLogic = true;
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_CANNON2)] = 300;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_CANNON2)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_CANNON2)] = {1, 0, 10};
+    // Map loading binds every active cannon to a real navigation place. The
+    // shared combat-only helper does not need that binding, but capture movement does.
+    auto &road = g_MatrixMap->m_RN;
+    MG_CHECK(road.m_PlaceCnt == 4 && road.m_ZoneCnt == 1 && road.m_RegionCnt == 1);
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot()) MG_CHECK(object->AsRobot()->GetEnv()->m_Place == -1);
+    // Reposition an initial place without changing the capacity of prepared navigation buffers.
+    road.m_Place[3].m_Pos = CPoint(22, 14);
+    road.m_Place[3].m_Cannon = 1;
+    road.m_Place[3].m_Move = 1 + 2 + 4 + 8 + 16;
+    road.InitPL(g_MatrixMap->m_SizeMove.x, g_MatrixMap->m_SizeMove.y);
+    auto *guard = tests::create_battle_cannon(2, 220, 140);
+    g_MatrixMap->CalcCannonPlace();
+    MG_CHECK(guard->m_Place >= 0 && guard->m_Place < road.m_PlaceCnt);
+    MG_CHECK(road.GetPlace(guard->m_Place)->m_Pos == CPoint(22, 14));
+    guard->m_ParentBuilding = base;
+    base->m_TurretsHave = 1;
+    base->m_TurretsPlacesCnt = 1;
+    base->m_TurretsPlaces[0].m_Coord = CPoint(22, 14);
+    base->m_TurretsPlaces[0].m_CannonType = 1;
+    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> guard_core(guard->GetCore(DEBUG_CALL_INFO),
+        [](SObjectCore *value) { value->Release(); });
+    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> base_core(base->GetCore(DEBUG_CALL_INFO),
+        [](SObjectCore *value) { value->Release(); });
+    auto *partner = side().GetCurGroup()->GetObjectByN(1)->AsRobot();
+    const std::array<CMatrixRobotAI *, 2> members{shooter, partner};
+    MG_CHECK(session.matches(1, shooter) && session.matches(2, partner));
+    MG_CHECK(!partner->GetEnv()->SearchEnemy(guard));
+    MG_CHECK(!shooter->GetEnv()->SearchEnemy(guard));
+    submit_capture(base, CaptureRoute::Context);
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+    const int group_id = shooter->GetGroupLogic();
+    auto &group = side().m_PlayerGroup[group_id];
+    MG_CHECK(group.Order() == mpo_Capture && group.m_Obj == base && !group.IsWar());
+    MG_CHECK(guarded_base_capturers(base, group_id) == 1);
+    std::vector<std::string> trace;
+    auto record = [&] {
+        std::ostringstream out;
+        out << session.snapshot() << ":war=" << group.IsWar() << ":intent=" << group.Order()
+            << ":objective=" << (group.m_Obj == base) << ":guard=" << (guard_core->m_Object != nullptr)
+            << ":base=" << (base_core->m_Object != nullptr);
+        if (guard_core->m_Object) out << ':' << guard->m_CurrState << ':' << guard->GetHitPoint();
+        if (base_core->m_Object) out << ':' << base->m_State << ':' << base->GetSide() << ':' << base->m_TurretsHave
+            << ':' << base->m_TrueColor.m_Color << ':' << base->m_TrueColor.m_ColoredCnt
+            << ':' << guarded_base_capturers(base, group_id);
+        for (unsigned index = 0; index < members.size(); ++index) if (session.robot(index + 1).alive) {
+            auto *robot = members[index];
+            out << ":member=" << index + 1 << ':' << (robot->GetCaptureFactory() == base)
+                << ':' << (robot->GetEnv()->m_TargetAttack == guard) << ':' << (robot->GetEnv()->m_Target == guard)
+                << ':' << (robot->GetEnv()->SearchEnemy(guard) != nullptr);
+        }
+        for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+            out << ':' << side().GetResourcesAmount(static_cast<ERes>(resource))
+                << ':' << enemy.GetResourcesAmount(static_cast<ERes>(resource));
+        out << ':' << side().GetStatValue(STAT_TURRET_KILL) << ':' << side().GetStatValue(STAT_BUILDING_KILL);
+        trace.push_back(out.str());
+    };
+    record();
+    int interrupted = 0, killed = 0, resumed = 0, opened = 0, captured = 0, retired = 0, released = 0;
+    int guard_retired = 0, enemy_income = 0, player_income = 0;
+    float health = 20;
+    std::array<float, 2> robot_health{shooter->GetHitPoint(), partner->GetHitPoint()};
+    std::vector<int> impacts, return_fire;
+
+    while (session.time() < 12000) {
+        const bool live_base = base_core->m_Object && base->IsLiveBuilding();
+        const int owner = live_base ? base->GetSide() : 0;
+        if (live_base && (session.time() + step) % (step == 10 ? 1000 : 1008) == 0) {
+            if (owner == PLAYER_SIDE) player_income += RESOURCES_INCOME_BASE;
+            else if (owner == 2) enemy_income += RESOURCES_INCOME_BASE;
+        }
+        session.advance();
+        if (!interrupted && group.IsWar()) {
+            interrupted = session.time();
+            MG_CHECK(guarded_base_capturers(base, group_id) == 0);
+            int known = 0, targeted = 0;
+            for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+                if (object->IsLiveRobot() && object->GetSide() == PLAYER_SIDE) {
+                    known += object->AsRobot()->GetEnv()->SearchEnemy(guard) != nullptr;
+                    targeted += object->AsRobot()->GetEnv()->m_TargetAttack == guard;
+                }
+            MG_CHECK(known == 1 && targeted == 1);
+        }
+        if (guard_core->m_Object && guard->GetHitPoint() != health) {
+            MG_CHECK(guard->GetHitPoint() == health - 5);
+            health -= 5;
+            impacts.push_back(session.time());
+            MG_CHECK(group.IsWar() && group.Order() == mpo_Capture && group.m_Obj == base);
+        }
+        if (!killed && guard_core->m_Object && guard->GetHitPoint() == 0) {
+            killed = session.time();
+            MG_CHECK(guard->m_CurrState == CANNON_DIP);
+            MG_CHECK(base->m_TurretsHave == 0 && base->m_TurretsPlaces[0].m_CannonType == -1);
+            MG_CHECK(side().GetStatValue(STAT_TURRET_KILL) == 1 && enemy.GetStatValue(STAT_TURRET_KILL) == 0);
+            for (auto *member : members) {
+                MG_CHECK(!member->GetEnv()->SearchEnemy(guard));
+                MG_CHECK(member->GetEnv()->m_TargetAttack != guard && member->GetEnv()->m_Target != guard);
+            }
+        }
+        if (killed && !resumed && !group.IsWar()) {
+            resumed = session.time();
+            MG_CHECK(guarded_base_capturers(base, group_id) == 1);
+            MG_CHECK(group.Order() == mpo_Capture && group.m_Obj == base);
+        }
+        for (unsigned index = 0; index < members.size(); ++index) if (session.robot(index + 1).alive) {
+            const auto actual = members[index]->GetHitPoint();
+            if (actual != robot_health[index]) {
+                MG_CHECK(index == 1);
+                return_fire.push_back(session.time());
+                MG_CHECK(actual == float(1000 - int(return_fire.size())) / 10.0f);
+                robot_health[index] = actual;
+            }
+            if (killed) {
+                MG_CHECK(!members[index]->GetEnv()->SearchEnemy(guard));
+                MG_CHECK(members[index]->GetEnv()->m_TargetAttack != guard);
+            }
+        }
+        if (!guard_retired && !guard_core->m_Object) guard_retired = session.time();
+        if (base_core->m_Object) {
+            if (!opened && base->m_State == BASE_OPENED) opened = session.time();
+            if (!captured && base->GetSide() == PLAYER_SIDE) {
+                captured = session.time();
+                MG_CHECK(base->m_State == BASE_CLOSED && base->m_Capturer == nullptr);
+                MG_CHECK(g_MatrixMap->GetSideColor(base->GetSide()) == 0x0000ff00);
+                MG_CHECK(guarded_base_capturers(base, group_id) == 0);
+            }
+            // Bases use their side for rendering; factory paint fields are not repainted by base capture.
+            MG_CHECK(base->m_TrueColor.m_Color == 0xffff0000 && base->m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+            MG_CHECK(guarded_base_capturers(base, group_id) <= 1);
+            MG_CHECK(base->m_TurretsHave == int(!killed));
+            if (group.IsWar()) MG_CHECK(guarded_base_capturers(base, group_id) == 0);
+        } else if (!retired) retired = session.time();
+        if (!released && group.m_Obj == nullptr) released = session.time();
+        for (int resource = 0; resource < MAX_RESOURCES; ++resource) {
+            MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(resource)) == player_income);
+            MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(resource)) == enemy_income);
+        }
+        if (destroy && session.time() == 6000) {
+            MG_CHECK(base_core->m_Object && resumed && opened && !captured && base->m_State == BASE_OPENED);
+            MG_CHECK(base->m_Capturer != nullptr && base->m_Capturer->AsRobot()->IsDisableManual());
+            record(); // Preserve the production frame before the explicit objective-damage intervention.
+            g_Config.m_BuildingDamages[wi] = {10000, 0, 0};
+            MG_CHECK(base->Damage(WEAPON_LASER, base->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), PLAYER_SIDE, nullptr));
+            MG_CHECK(base->m_State == BUILDING_DIP && base->m_Capturer == nullptr);
+            MG_CHECK(shooter->IsMustDie() && shooter->GetBase() == nullptr && shooter->GetCaptureFactory() == nullptr);
+            MG_CHECK(guarded_base_capturers(base, group_id) == 0);
+            MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1);
+        }
+        record();
+    }
+    std::cout << "guard outcome mode=" << int(mode) << " step=" << step << " destroy=" << destroy
+        << " interrupt=" << interrupted << " kill=" << killed << " resume=" << resumed << " open=" << opened
+        << " capture=" << captured << " guard_retired=" << guard_retired << " base_retired=" << retired
+        << " release=" << released << " income=" << player_income << ',' << enemy_income
+        << " rng=" << random::draw_count() << " robots=" << session.robot(1).alive << ',' << session.robot(2).alive
+        << " health=" << robot_health[0] << ',' << robot_health[1] << " return_fire=";
+    for (int time : return_fire) std::cout << time << ',';
+    std::cout << std::endl;
+    MG_CHECK(interrupted == (step == 10 ? 310 : 240));
+    MG_CHECK(impacts == (step == 10 ? std::vector<int>{530, 630, 730, 830} : std::vector<int>{480, 576, 688, 784}));
+    MG_CHECK(killed == (step == 10 ? 830 : 784) && resumed == (step == 10 ? 910 : 800));
+    MG_CHECK(opened == (step == 10 ? 4180 : 3936));
+    MG_CHECK(captured == (destroy ? 0 : step == 10 ? 8740 : 8512));
+    MG_CHECK(guard_retired == (mode == random::Mode::ParkMiller ? (step == 10 ? 5420 : 4592) : (step == 10 ? 4370 : 5088)));
+    MG_CHECK(released == (destroy ? (step == 10 ? 6010 : 6064) : (step == 10 ? 8810 : 8528)));
+    MG_CHECK(retired == (destroy ? (step == 10 ? 9010 : 9008) : 0));
+    MG_CHECK(return_fire == (step == 10 ? std::vector<int>{220, 320, 420, 520, 620, 720, 820}
+                                       : std::vector<int>{224, 320, 432, 528, 624, 720}));
+    MG_CHECK(group.Order() == mpo_Stop && group.m_Obj == nullptr && !group.IsWar());
+    MG_CHECK(!session.robot(1).alive && session.robot(2).alive);
+    MG_CHECK(partner->GetCaptureFactory() == nullptr && !partner->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    MG_CHECK(session.robot(3).alive && session.robot(4).alive);
+    MG_CHECK(side().GetStatValue(STAT_TURRET_KILL) == 1 && side().GetStatValue(STAT_BUILDING_KILL) == int(destroy));
+    MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && enemy.GetStatValue(STAT_ROBOT_KILL) == 0);
+    MG_CHECK(!g_MatrixMap->IsPaused() && side().GetStatus() == SS_ACTIVE);
+    MG_CHECK((base_core->m_Object == nullptr) == destroy);
+    MG_CHECK(enemy_income == (destroy ? (step == 10 ? 18 : 15) : 24));
+    MG_CHECK(player_income == (destroy ? 0 : step == 10 ? 12 : 9));
+    return trace;
+}
+void guarded_base_profile(bool destroy) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = guarded_base_run(mode, step, destroy);
+        MG_CHECK(first == guarded_base_run(mode, step, destroy));
+    }
+}
+void guarded_base_journey() { guarded_base_profile(false); }
+void guarded_base_target_destruction() { guarded_base_profile(true); }
 constexpr tests::Case cases[] = {
     {"game.outcome.typed_statistics_continuation", typed_statistics_continuation},
     {"game.outcome.result_command_boundary", result_command_boundary},
+    {"game.ai.guarded_base_journey", guarded_base_journey},
+    {"game.ai.guarded_base_target_destruction", guarded_base_target_destruction},
     {"game.outcome.legacy_loss_confirmation", legacy_loss_confirmation},
     {"game.outcome.pending_result_menu", pending_result_menu},
     {"game.outcome.menu_exit_surrender_callbacks", menu_exit_surrender_callbacks},
@@ -1961,8 +2249,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.transported_robot_damage", transported_robot_damage_outcome},
     {"game.outcome.capture_target_damage", capture_target_damage},
     {"game.outcome.terron_destruction", terron_destruction},
-    // Deliberately absent from CTest: known Debug failure tracked in #186.
-    {"probe.outcome.terron_blast_after_conversion", terron_blast_after_conversion},
+    {"game.outcome.terron_blast_after_conversion", terron_blast_after_conversion},
     {"game.outcome.special_break", special_object_destruction<0>},
     {"game.outcome.special_explosion", special_object_destruction<1>},
     {"game.outcome.special_animation", special_object_destruction<2>},
