@@ -45,7 +45,7 @@ class OutcomePreparation(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def run_helper(self, *args, fail_start=False, leftover=False, running=False):
+    def run_helper(self, *args, fail_start=False, leftover=False, running=False, wait_failure=False):
         # No process is created. The mock observes the staged files, then simulates a
         # preference save or a launch failure before the helper restores its backups.
         observe = quote(self.build / "observed.json")
@@ -58,6 +58,19 @@ Remove-Item Function:\Get-FileHash -ErrorAction SilentlyContinue
 $env:PSModulePath = 'nonexistent-core-only-modules'
 $PSModuleAutoLoadingPreference = 'None'
 $global:outcomeCalls = 0
+$global:manifestBeforePacked = $null
+function Remove-Item {
+    [CmdletBinding()] param([string]$LiteralPath, [string]$Path, [switch]$Force)
+    if ($LiteralPath -and (Split-Path -Leaf $LiteralPath) -eq 'robots.dat' -and
+        (Split-Path -Leaf (Split-Path -Parent $LiteralPath)) -eq 'CFG') {
+        $backup = Join-Path (Split-Path -Parent $LiteralPath) '.native-outcome-backup'
+        $global:manifestBeforePacked = (Test-Path -LiteralPath (Join-Path $backup 'state.json')) -and
+            (Test-Path -LiteralPath (Join-Path $backup 'standalone.txt')) -and
+            (Test-Path -LiteralPath (Join-Path $backup 'robots.dat'))
+    }
+    if ($LiteralPath) { Microsoft.PowerShell.Management\Remove-Item -LiteralPath $LiteralPath -Force:$Force }
+    else { Microsoft.PowerShell.Management\Remove-Item -Path $Path -Force:$Force }
+}
 function Get-Process {
     [CmdletBinding()] param([string]$Name)
     ++$global:outcomeCalls
@@ -70,17 +83,34 @@ function Start-Process {
         Settings = [IO.File]::ReadAllText((Join-Path $cfg 'standalone.txt'))
         Packed = Test-Path -LiteralPath (Join-Path $cfg 'robots.dat')
         Executable = $FilePath
+        ManifestBeforePacked = $global:manifestBeforePacked
     }
     $observation | ConvertTo-Json | Set-Content -LiteralPath OBSERVE -Encoding UTF8
     if (FAIL_START) { throw 'synthetic launch failure' }
     [IO.File]::WriteAllText((Join-Path $cfg 'standalone.txt'), 'saved by fake game')
-    $result = [pscustomobject]@{Id = 123; HasExited = $true; ExitCode = 0}
-    $result | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {}
+    $result = [pscustomobject]@{Id = 123; HasExited = -not WAIT_FAILURE; ExitCode = 0; WaitCalls = 0}
+    $result | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {
+        param([int]$Milliseconds)
+        if ($Milliseconds -le 0) { throw 'unbounded wait is forbidden by this test' }
+        ++$this.WaitCalls
+        if ($Milliseconds -eq 250) {
+            if (WAIT_FAILURE) { throw 'synthetic wait interruption' }
+            # Exercise repeated bounded polling, not only an already-exited process.
+            return $this.WaitCalls -gt 1
+        }
+        $this.HasExited = $true
+        return $true
+    }
+    $result | Add-Member -MemberType ScriptMethod -Name CloseMainWindow -Value {
+        [IO.File]::WriteAllText((Join-Path BUILD 'close-requested.txt'), 'closed')
+        return $true
+    }
     $result | Add-Member -MemberType ScriptMethod -Name Dispose -Value {}
     return $result
 }
 """.replace("OBSERVE", observe).replace("FAIL_START", "$true" if fail_start else "$false")
         mock = mock.replace("LEFTOVER", "$true" if leftover else "$false").replace("RUNNING", "$true" if running else "$false")
+        mock = mock.replace("WAIT_FAILURE", "$true" if wait_failure else "$false").replace("BUILD", quote(self.build))
         command = mock + "\n& " + quote(SCRIPT) + " -Configuration Debug -BuildDirectory " + quote(self.build)
         command += " " + " ".join(args)
         return subprocess.run(
@@ -106,6 +136,7 @@ function Start-Process {
         self.assertEqual(result.returncode, 0, result.stderr)
         observed = json.loads((self.build / "observed.json").read_text(encoding="utf-8-sig"))
         self.assertFalse(observed["Packed"])
+        self.assertTrue(observed["ManifestBeforePacked"])
         self.assertIn("RandomGenerator=LegacyCRT", observed["Settings"])
         self.assertIn("WindowMode=Windowed", observed["Settings"])
         self.assertIn("Map=Matrix\\Map\\desert1_3e.cmap", observed["Settings"])
@@ -130,6 +161,39 @@ function Start-Process {
         result = self.run_helper("-Launch", fail_start=True)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("synthetic launch failure", result.stderr)
+        self.assert_restored()
+
+    def test_wait_failure_closes_only_mocked_process_and_restores(self):
+        result = self.run_helper("-Launch", wait_failure=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("synthetic wait interruption", result.stderr)
+        self.assertEqual((self.build / "close-requested.txt").read_text(), "closed")
+        self.assert_restored()
+
+    def test_msvc_multi_config_cache_and_output_layout(self):
+        # tools/build.ps1 supplies this untyped entry to the VS multi-config generator.
+        (self.build / "CMakeCache.txt").write_text(
+            "CMAKE_BUILD_TYPE:UNINITIALIZED=Debug\n"
+            "CMAKE_CONFIGURATION_TYPES:STRING=Debug;Release;MinSizeRel;RelWithDebInfo\n"
+            "MATRIXGAME_BUILD_DLL:BOOL=OFF\nMATRIXGAME_CHEATS:BOOL=OFF\n", encoding="utf-8",
+        )
+        original_game = self.game
+        original_game.rename(self.build / "staged-game")
+        self.game = original_game / "Debug"
+        original_game.mkdir()
+        (self.build / "staged-game").rename(self.game)
+        self.cfg = self.game / "CFG"
+        result = self.run_helper("-Compiler MSVC", "-Launch")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observed = json.loads((self.build / "observed.json").read_text(encoding="utf-8-sig"))
+        self.assertEqual(Path(observed["Executable"]), self.game / "MatrixGame.exe")
+        self.assert_restored()
+        # The accepted cache type must not relax configuration identity.
+        cache = self.build / "CMakeCache.txt"
+        cache.write_text(cache.read_text().replace("UNINITIALIZED=Debug", "UNINITIALIZED=Release"))
+        result = self.run_helper("-Compiler MSVC", "-Launch")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Build configuration mismatch", result.stderr)
         self.assert_restored()
 
     def test_cheats_mismatch_rejected_before_changes(self):
@@ -188,6 +252,32 @@ function Start-Process {
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Expected a Windows x86 executable", result.stderr)
         self.assert_restored()
+
+    def test_incomplete_packed_backup_refuses_before_settings_restore(self):
+        backup = self.cfg / ".native-outcome-backup"
+        backup.mkdir()
+        (backup / "standalone.txt").write_bytes(self.original)
+        (backup / "state.json").write_text(json.dumps({"Version": 1, "SettingsPresent": True, "PackedRemoved": True}))
+        current = b"independent settings must survive incomplete recovery"
+        (self.cfg / "standalone.txt").write_bytes(current)
+        result = self.run_helper("-Restore")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Incomplete backup: robots.dat", result.stderr)
+        self.assertEqual((self.cfg / "standalone.txt").read_bytes(), current)
+        self.assertTrue((backup / "standalone.txt").exists())
+        self.assertTrue((backup / "state.json").exists())
+
+    def test_restore_retains_and_reports_unexpected_backup_file(self):
+        self.assertEqual(self.run_helper("-Launch", leftover=True).returncode, 0)
+        backup = self.cfg / ".native-outcome-backup"
+        extra = backup / "unexpected.bin"
+        extra.write_bytes(b"preserve this independent file")
+        result = self.run_helper("-Restore")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Unexpected files remain", result.stderr)
+        self.assertEqual(extra.read_bytes(), b"preserve this independent file")
+        self.assertEqual((self.cfg / "standalone.txt").read_bytes(), self.original)
+        self.assertEqual((self.cfg / "robots.dat").read_bytes(), b"original packed bytes")
 
 
 if __name__ == "__main__":

@@ -75,7 +75,11 @@ if (Test-Path -LiteralPath $backup) { throw 'A previous backup remains. Close th
 $cachePath = Join-Path $buildRoot 'CMakeCache.txt'
 if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) { throw 'Build the selected candidate with tools/build.ps1 first.' }
 $cache = Get-Content -LiteralPath $cachePath -Raw
-foreach ($entry in @("CMAKE_BUILD_TYPE:STRING=$Configuration", 'MATRIXGAME_BUILD_DLL:BOOL=OFF',
+$buildType = if ($Compiler -eq 'MSVC') { 'CMAKE_BUILD_TYPE:(?:STRING|UNINITIALIZED)=' } else { 'CMAKE_BUILD_TYPE:STRING=' }
+if ($cache -notmatch ('(?m)^' + $buildType + [regex]::Escape($Configuration) + '\r?$')) {
+    throw "Build configuration mismatch: expected CMAKE_BUILD_TYPE for $Compiler $Configuration"
+}
+foreach ($entry in @('MATRIXGAME_BUILD_DLL:BOOL=OFF',
     ('MATRIXGAME_CHEATS:BOOL=' + $(if ($Cheats -eq 'On') { 'ON' } else { 'OFF' })))) {
     if ($cache -notmatch ('(?m)^' + [regex]::Escape($entry) + '\r?$')) { throw "Build configuration mismatch: expected $entry" }
 }
@@ -147,7 +151,8 @@ BattleBonus=None
     # Deliberately no map argument: positional map arguments select CalcVis, not play.
     $process = Start-Process -FilePath $exe -WorkingDirectory $gameRoot -PassThru
     Write-Output "Process ID: $($process.Id)"
-    $process.WaitForExit()
+    # Yield to PowerShell between bounded waits so Ctrl+C can enter finally.
+    while (-not $process.WaitForExit(250)) { }
     Write-Output "Exit code: $($process.ExitCode)"
 } finally {
     if ($process -and -not $process.HasExited) {

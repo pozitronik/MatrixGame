@@ -22,7 +22,7 @@ For the enabled-code checks, finish the disabled candidate's runs, then rebuild 
 .\tools\playtest-outcomes.ps1 -Configuration Release -Cheats On -ConfigurationMode Text
 ```
 
-Both builds reuse the same output directory. Finish a run and wait for configuration restoration before rebuilding, changing profiles or starting another game. For Debug, replace `Release` with `Debug` in both commands. For MSVC, add `-Compiler MSVC` to both. `-ConfigurationMode Packed` requires a locally supplied `robots.dat` staged by the build; `Text` temporarily hides the output copy without touching the source package. `-RandomGenerator LegacyCRT` selects the second RNG profile; the default is ParkMiller. Do not rename a packed backup to `robots.dat.backup`: resource lookup also matches that name, and the helper rejects such aliases in a text run.
+Both builds reuse the same output directory. Finish a run and wait for configuration restoration before rebuilding, changing profiles or starting another game. For Debug, replace `Release` with `Debug` in both commands. For MSVC, add `-Compiler MSVC` to both; the helper accepts its multi-configuration cache and selects the matching `MatrixGame/<Configuration>` executable directory. `-ConfigurationMode Packed` requires a locally supplied `robots.dat` staged by the build; `Text` temporarily hides the output copy without touching the source package. `-RandomGenerator LegacyCRT` selects the second RNG profile; the default is ParkMiller. Do not rename a packed backup to `robots.dat.backup`: resource lookup also matches that name, and the helper rejects such aliases in a text run.
 
 Use the relevant Debug/Packed, Debug/Text, Release/Packed and Release/Text profiles from the ledger, recording each required RNG/audio variant independently. These are prepared variants, not claims that earlier playtests covered them. An unavailable variant stays pending until the maintainer explicitly disposes of it. The helper reports installed audio packages and any `sounds.txt` override; it does not silently remove them to manufacture an audio profile.
 
@@ -97,7 +97,7 @@ Start the common scene and issue a Move. While it remains pending, press Escape,
 
 ## Restoration and evidence
 
-Wait for `Exit code` and `Restored the staged configuration` before the next launch. The helper intentionally discards settings/map preferences saved during this procedure and restores the original output bytes. It does not restore changes made by a concurrent build or another process; keep those stopped. A normal game error still runs restoration. An interrupted helper attempts to close only its launched process; a forced closure is reported as an aborted run.
+Wait for `Exit code` and `Restored the staged configuration` before the next launch. The helper intentionally discards settings/map preferences saved during this procedure and restores the original output bytes. It does not restore changes made by a concurrent build or another process; keep those stopped. A normal game error still runs restoration. The helper checks for exit every 250 ms so that Ctrl+C can interrupt its wait. Its cleanup attempts to close only its launched process; a forced closure is reported as an aborted run.
 
 If the shell itself was terminated or another MatrixGame process remained, close the game and use the same configuration/compiler/build-directory selection with `-Restore`, without `-Launch`:
 
@@ -109,7 +109,7 @@ The backup is under the selected executable's `CFG/.native-outcome-backup`. A la
 
 Record procedure version, case/launch/step, source revision, binary hash, actual build/profile, map/resource identity, compatibility modes, audio availability, Windows/device/scaling, observable result, timeout or exception, process ID and exit code. Capture only the minimal diagnostic/evidence needed; do not publish packages, extracted assets or configuration dumps. The logger appends to `test.log`; identify the latest `Started as EXE` section and preserve the relevant excerpt before another run adds to it. A completed command or code 0 alone does not establish every observation above.
 
-The helper's automated checks use synthetic files and a mocked process. They verify inspection without writes/launch, packed/text selection, exact-byte restoration, absent settings, launch failure, cheats/x86 mismatch, suffix aliases, retained backups with a remaining process and explicit recovery. They launch no game and do not count as native execution.
+The helper's automated checks use synthetic files and a mocked process. They verify inspection without writes/launch, packed/text selection, exact-byte restoration, absent settings, launch failure, cheats/x86 mismatch, suffix aliases, retained backups with a remaining process and explicit recovery. They also cover MSVC multi-configuration cache/output selection, manifest-before-removal ordering, refusal of an incomplete packed backup, preservation of unexpected backup files, repeated bounded waits and cleanup after a simulated wait exception. They launch no game and do not establish delivery of a real Ctrl+C event or native execution.
 
 ## Remaining native preparation
 
