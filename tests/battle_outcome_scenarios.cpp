@@ -117,8 +117,9 @@ struct CaptureData {
     ECaptureStatus capture() { return building->Capture(robot); }
 };
 void neutral_capture() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        Session session({mode});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=neutral_capture" << '\n';
         CaptureData fixture;
         auto &building = *fixture.building;
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
@@ -126,18 +127,18 @@ void neutral_capture() {
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 1);
-        advance_to(session, 500);
+        advance_to(session, 500 / step * step);
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 1);
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 2);
-        while (session.time() < 6500) { session.advance(); fixture.capture(); }
+        while (session.time() < 6500 / step * step) { session.advance(); fixture.capture(); }
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 13 && building.GetSide() == 0);
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 14 && building.GetSide() == 0);
-        advance_to(session, 7000);
+        advance_to(session, 7000 / step * step);
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_DONE);
@@ -153,17 +154,18 @@ void neutral_capture() {
     }
 }
 void enemy_capture() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        Session session({mode});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=enemy_capture" << '\n';
         CaptureData fixture(2);
         auto &building = *fixture.building;
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
-        for (int i = 0; i < 975; ++i) { session.advance(); fixture.capture(); }
+        while (session.time() < 9750 / step * step) { session.advance(); fixture.capture(); }
         MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_ColoredCnt == 1);
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
         MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_ColoredCnt == 0);
-        advance_to(session, 10500);
+        advance_to(session, 10500 / step * step);
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
@@ -180,21 +182,25 @@ void enemy_capture() {
     }
 }
 void capture_rejection() {
-    Session session;
-    CaptureData fixture;
-    MG_CHECK(fixture.capture() == CAPTURE_BUSY);
-    session.advance();
-    auto *farther = side().GetCurGroup()->GetObjectByN(1)->AsRobot();
-    MG_CHECK(fixture.building->Capture(farther) == CAPTURE_TOOFAR);
-    MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 0);
-    MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
-    MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 1);
-    MG_CHECK(fixture.capture() == CAPTURE_BUSY); // A second caller cannot advance the same boundary.
-    MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 1);
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=capture_rejection" << '\n';
+        CaptureData fixture;
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        session.advance();
+        auto *farther = side().GetCurGroup()->GetObjectByN(1)->AsRobot();
+        MG_CHECK(fixture.building->Capture(farther) == CAPTURE_TOOFAR);
+        MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 0);
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 1);
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY); // A second caller cannot advance the same boundary.
+        MG_CHECK(fixture.building->m_TrueColor.m_ColoredCnt == 1);
+    }
 }
 void competing_capturers() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        Session session({mode});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=competing_capturers" << '\n';
         CaptureData fixture;
         fixture.building->m_Pos = D3DXVECTOR2(100, 235);
         auto *closer = side().GetCurGroup()->GetObjectByN(1)->AsRobot();
@@ -208,8 +214,9 @@ void competing_capturers() {
     }
 }
 void competing_color() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        Session session({mode});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=competing_color" << '\n';
         CaptureData fixture;
         auto &building = *fixture.building;
         // A neutral building carries two points painted by the other side.
@@ -219,17 +226,17 @@ void competing_color() {
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 1 && building.m_TrueColor.m_Color == 0xffff0000);
-        advance_to(session, 750);
+        advance_to(session, 750 / step * step);
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 0 && building.m_TrueColor.m_Color == 0xffff0000);
-        advance_to(session, 1500);
+        advance_to(session, 1500 / step * step);
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 0 && building.m_TrueColor.m_Color == 0);
-        advance_to(session, 2250);
+        advance_to(session, 2250 / step * step);
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
         session.advance();
         MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
@@ -280,23 +287,26 @@ void protected_base_command() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) protected_base_profile(mode);
 }
 void capture_rollback() {
-    Session session;
-    CaptureData fixture;
-    auto &building = *fixture.building;
-    MG_CHECK(fixture.capture() == CAPTURE_BUSY);
-    session.advance();
-    MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
-    MG_CHECK(building.m_TrueColor.m_ColoredCnt == 1);
-    // Stop invoking Capture: only production timeout/rollback logic runs next.
-    building.LogicTakt(1249);
-    MG_CHECK(building.m_InCaptureTime == 1 && building.m_TrueColor.m_ColoredCnt == 1);
-    building.LogicTakt(1);
-    MG_CHECK(building.m_InCaptureTime == 0 && building.m_TrueColor.m_ColoredCnt == 1);
-    building.LogicTakt(0); // Strict time comparison: equality is not a rollback step.
-    MG_CHECK(building.m_TrueColor.m_ColoredCnt == 1);
-    session.advance();
-    building.LogicTakt(10);
-    MG_CHECK(building.m_TrueColor.m_ColoredCnt == 0 && building.GetSide() == 0);
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=capture_rollback" << '\n';
+        CaptureData fixture;
+        auto &building = *fixture.building;
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 1);
+        // Stop invoking Capture: only production timeout/rollback logic runs next.
+        building.LogicTakt(1249);
+        MG_CHECK(building.m_InCaptureTime == 1 && building.m_TrueColor.m_ColoredCnt == 1);
+        building.LogicTakt(1);
+        MG_CHECK(building.m_InCaptureTime == 0 && building.m_TrueColor.m_ColoredCnt == 1);
+        building.LogicTakt(0); // Strict time comparison: equality is not a rollback step.
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 1);
+        session.advance();
+        building.LogicTakt(step);
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 0 && building.GetSide() == 0);
+    }
 }
 void outcome(bool player_loses, bool full_auto, bool simultaneous = false, int step = 10,
              random::Mode mode = random::Mode::ParkMiller) {
@@ -392,8 +402,9 @@ void special_survival_flags() {
 }
 // SetMusicVolume and RestoreMusicVolume are the calls made by the Terron death and the MUSIC console
 // command. Without a host they fade the standalone music, one thousandth of full level per millisecond.
-void music_fade() {
-    Session session;
+void music_fade_profile(random::Mode mode, int step) {
+    Session session({mode, 79, step});
+    std::cout << session.metadata("synthetic-music-fade-v2") << '\n';
     MG_CHECK(SoundBridge::available() && !SoundBridge::music_available());
     g_MatrixMap->SetMusicVolume(0);  // Nothing to fade without music, as before.
     MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING));
@@ -409,21 +420,28 @@ void music_fade() {
         while (FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && session.time() < start + 2000) {
             const float before = SoundBridge::music_level();
             session.advance();
-            MG_CHECK(std::fabs(SoundBridge::music_level() - before) <= 0.0101f);
+            MG_CHECK(std::fabs(SoundBridge::music_level() - before) <= step * 0.001f + 0.0001f);
+            MG_CHECK(target == 0.0f ? SoundBridge::music_level() <= before : SoundBridge::music_level() >= before);
         }
         MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_MUSIC_VOL_CHANGING) && SoundBridge::music_level() == target);
         const int duration = session.time() - start;
-        MG_CHECK(duration >= 1000 && duration <= 1020);
+        std::cout << "fade target=" << target << " duration=" << duration << '\n';
+        MG_CHECK(duration == (step == 10 ? 1010 : 1024));
     };
     g_MatrixMap->SetMusicVolume(0);
     fade(0.0f);
     g_MatrixMap->RestoreMusicVolume();
     fade(1.0f);
 }
+void music_fade() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        music_fade_profile(mode, step);
+}
 // The game form refills music before anything else in a frame, so a lost device that skips the rest
 // of the frame does not starve it.
-void music_form_refill() {
-    Session session;
+void music_form_refill_profile(random::Mode mode, int step) {
+    Session session({mode, 79, step});
+    std::cout << session.metadata("synthetic-music-refill-v2") << '\n';
     auto audio = std::make_shared<audio_fixture::DeviceState>();
     SoundBridge::install(std::make_unique<Audio::Service>(std::make_unique<audio_fixture::FakeDevice>(audio),
         Audio::Mapping{{L"Sound.Synthetic", L"synthetic.wav"}},
@@ -437,20 +455,33 @@ void music_form_refill() {
     MG_CHECK(audio->streams.empty());  // Nothing plays before the first frame.
     session.device_lost(true);
     const int time = session.time();
-    form.Takt(10);
+    const auto draws = random::draw_count();
+    form.Takt(step);
     MG_CHECK(session.time() == time);  // The lost device skipped the map.
+    MG_CHECK(random::draw_count() == draws);
     MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 4 && audio->streams[0]->plays == 1);
+    // Continued device loss must not starve the already playing stream either.
+    audio->streams[0]->queued = 0;
+    form.Takt(step);
+    MG_CHECK(session.time() == time && random::draw_count() == draws);
+    MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 8);
     session.device_lost(false);
     // Resources count as present, so the recovered device needs nothing recreated.
     SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
     audio->streams[0]->queued = 0;
-    form.Takt(10);
-    MG_CHECK(session.time() == time + 10 && audio->streams[0]->buffers.size() == 8);
+    form.Takt(step);
+    MG_CHECK(session.time() == time + step);
+    MG_CHECK(audio->streams.size() == 1 && audio->streams[0]->buffers.size() == 12);
+}
+void music_form_refill() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        music_form_refill_profile(mode, step);
 }
 // The game form checks the audio device first in a frame; a directly installed service is released
 // after a device error, even when a lost device skips the rest of the frame.
-void form_audio_device_error() {
-    Session session;
+void form_audio_device_error_profile(random::Mode mode, int step) {
+    Session session({mode, 79, step});
+    std::cout << session.metadata("synthetic-audio-device-error-v2") << '\n';
     auto audio = std::make_shared<audio_fixture::DeviceState>();
     SoundBridge::install(std::make_unique<Audio::Service>(std::make_unique<audio_fixture::FakeDevice>(audio),
         Audio::Mapping{{L"Sound.Synthetic", L"synthetic.wav"}},
@@ -458,12 +489,25 @@ void form_audio_device_error() {
         [](const std::wstring &, const std::string &error) { throw std::runtime_error(error); }));
     CFormMatrixGame form;
     session.device_lost(true);
-    form.Takt(10);
+    const int time = session.time();
+    const auto draws = random::draw_count();
+    form.Takt(step);
     MG_CHECK(SoundBridge::available() && !audio->destroyed);
+    MG_CHECK(session.time() == time && random::draw_count() == draws);
     audio->critical_error = "Synthetic critical error";
-    form.Takt(10);
+    form.Takt(step);
     MG_CHECK(!SoundBridge::available() && audio->destroyed);
+    MG_CHECK(session.time() == time && random::draw_count() == draws);
+    form.Takt(step);
+    MG_CHECK(!SoundBridge::available() && session.time() == time && random::draw_count() == draws);
     session.device_lost(false);
+    SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+    form.Takt(step);
+    MG_CHECK(!SoundBridge::available() && session.time() == time + step);
+}
+void form_audio_device_error() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        form_audio_device_error_profile(mode, step);
 }
 void full_auto_escape() {
     Session session;
@@ -552,41 +596,47 @@ void scheduled_capture() {
     }
 }
 void acquisition_after_removal() {
-    for (bool substitute : {false, true}) {
-        Session session;
+    for (bool substitute : {false, true})
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=acquisition_after_removal" << '\n';
         CaptureData fixture;
         auto &building = *fixture.building;
         building.m_CaptureSeekRobotNextTime = 0;
         if (substitute) building.m_Pos = D3DXVECTOR2(100, 235);
-        for (int i = 0; i < 60; ++i) { session.advance(); building.LogicTakt(10); }
+        while (session.time() < (step == 10 ? 600 : 608)) { session.advance(); building.LogicTakt(step); }
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == 2);
         // Remove the currently nearest robot; the next scan must search the live list again.
         // Preserve that fixture marker on a live object; it is not the scanner's target.
         if (!substitute) building.SetCapturedBy(side().GetCurGroup()->GetObjectByN(1));
         MG_CHECK(session.remove(substitute ? 2 : 1));
-        for (int i = 0; i < 690; ++i) { session.advance(); building.LogicTakt(10); }
+        while (session.time() < (step == 10 ? 7500 : 7504)) { session.advance(); building.LogicTakt(step); }
         MG_CHECK(building.GetSide() == (substitute ? PLAYER_SIDE : 0));
         MG_CHECK(building.m_TrueColor.m_ColoredCnt == (substitute ? MAX_ZAHVAT_POINTS : 0));
     }
 }
 void enemy_capture_rollback() {
-    Session session;
-    CaptureData fixture(2);
-    auto &building = *fixture.building;
-    MG_CHECK(fixture.capture() == CAPTURE_BUSY);
-    session.advance();
-    MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
-    MG_CHECK(building.m_TrueColor.m_ColoredCnt == 13);
-    building.LogicTakt(1250);
-    MG_CHECK(building.m_InCaptureTime == 0 && building.m_TrueColor.m_ColoredCnt == 13);
-    session.advance();
-    building.LogicTakt(10);
-    MG_CHECK(building.m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
-    MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_Color == 0xffff0000);
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=enemy_capture_rollback" << '\n';
+        CaptureData fixture(2);
+        auto &building = *fixture.building;
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == 13);
+        building.LogicTakt(1250);
+        MG_CHECK(building.m_InCaptureTime == 0 && building.m_TrueColor.m_ColoredCnt == 13);
+        session.advance();
+        building.LogicTakt(step);
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+        MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_Color == 0xffff0000);
+    }
 }
 void capture_queue_refund() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
-        Session session({mode});
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-component-v2") << " case=capture_queue_refund" << '\n';
         CaptureData fixture(2);
         auto &building = *fixture.building;
         building.m_Kind = BUILDING_BASE;
@@ -606,7 +656,7 @@ void capture_queue_refund() {
         }
         MG_CHECK(building.m_BS.GetItemsCnt() == 2);
         MG_CHECK(fixture.capture() == CAPTURE_BUSY);
-        while (session.time() < 10500) { session.advance(); fixture.capture(); }
+        while (session.time() < 10500 / step * step) { session.advance(); fixture.capture(); }
         MG_CHECK(building.GetSide() == 2 && building.m_TrueColor.m_ColoredCnt == 0);
         MG_CHECK(building.m_BS.GetItemsCnt() == 2);
         session.advance();
@@ -625,6 +675,102 @@ void capture_queue_refund() {
             MG_CHECK(enemy.GetResourcesAmount(resources[i]) == 100 + 2 * (11 + i));
             MG_CHECK(side().GetResourcesAmount(resources[i]) == 200);
         }
+    }
+}
+void capture_income_continuity() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-income-continuity-v1") << '\n';
+        CaptureData fixture(2);
+        auto &building = *fixture.building;
+        auto &enemy = *g_MatrixMap->GetSideById(2);
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            enemy.SetResourceAmount(static_cast<ERes>(r), 100);
+            side().SetResourceAmount(static_cast<ERes>(r), 200);
+        }
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        const int neutral_at = step == 10 ? 10510 : 10512;
+        const int captured_at = step == 10 ? 18020 : 18016;
+        const int income_at = step == 10 ? 18510 : 18592;
+        int neutral = 0, captured = 0, first_player_income = 0;
+        int previous_enemy = 100, previous_player = 200;
+        while (session.time() < 20000) {
+            const int previous_owner = building.GetSide();
+            if (session.time() == neutral_at - step) MG_CHECK(previous_owner == 2);
+            if (session.time() == captured_at - step) MG_CHECK(previous_owner == 0);
+            if (session.time() == income_at - step) MG_CHECK(side().GetResourcesAmount(TITAN) == 200);
+            session.advance();
+            if (!captured) fixture.capture();
+            if (!neutral && building.GetSide() == 0) neutral = session.time();
+            if (!captured && building.GetSide() == PLAYER_SIDE) captured = session.time();
+            building.LogicTakt(step);
+            const int enemy_now = enemy.GetResourcesAmount(TITAN);
+            const int player_now = side().GetResourcesAmount(TITAN);
+            if (building.GetSide() == 2) MG_CHECK(player_now == 200);
+            if (building.GetSide() == 0) MG_CHECK(enemy_now == previous_enemy && player_now == 200);
+            if (building.GetSide() == PLAYER_SIDE) MG_CHECK(enemy_now == previous_enemy);
+            if (!first_player_income && player_now != 200) first_player_income = session.time();
+            if (previous_owner != building.GetSide())
+                MG_CHECK(enemy_now == previous_enemy && player_now == previous_player);
+            for (int r = 1; r < MAX_RESOURCES; ++r) {
+                MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(r)) == 100);
+                MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 200);
+            }
+            previous_enemy = enemy_now;
+            previous_player = player_now;
+        }
+        std::cout << "income neutral=" << neutral << " captured=" << captured
+                  << " first-player=" << first_player_income << " enemy=" << previous_enemy
+                  << " player=" << previous_player << '\n';
+        MG_CHECK(neutral == neutral_at && captured == captured_at && first_player_income == income_at);
+        MG_CHECK(previous_enemy == 200 && previous_player == 220);
+    }
+}
+void capture_turret_refund() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step});
+        std::cout << session.metadata("capture-turret-refund-v1") << '\n';
+        CaptureData fixture(2);
+        auto &building = *fixture.building;
+        auto &enemy = *g_MatrixMap->GetSideById(2);
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            g_Config.m_CannonsProps[0].m_Resources[r] = 17 + r;
+            enemy.SetResourceAmount(static_cast<ERes>(r), 100);
+            side().SetResourceAmount(static_cast<ERes>(r), 200);
+        }
+        for (int i = 0; i < 2; ++i) {
+            auto *turret = g_MatrixMap->StaticAdd<CMatrixCannon>();
+            turret->m_Num = 1;
+            turret->SetSide(2);
+            turret->m_CurrState = CANNON_UNDER_CONSTRUCTION;
+            turret->InitMaxHitpoint(1000);
+            turret->SetHitPoint(0);
+            turret->m_ParentBuilding = &building;
+            ++building.m_TurretsHave;
+            building.m_BS.AddItem(turret);
+        }
+        MG_CHECK(building.m_BS.GetItemsCnt() == 2 && building.m_BS.GetRobotsCnt() == 0);
+        MG_CHECK(fixture.capture() == CAPTURE_BUSY);
+        while (session.time() < 10500 / step * step) {
+            session.advance();
+            fixture.capture();
+            MG_CHECK(building.m_BS.GetItemsCnt() == 2 && building.m_TurretsHave == 2);
+            for (int r = 0; r < MAX_RESOURCES; ++r)
+                MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(r)) == 100);
+        }
+        session.advance();
+        MG_CHECK(fixture.capture() == CAPTURE_INPROGRESS);
+        MG_CHECK(building.GetSide() == 0 && building.m_TrueColor.m_Color == 0);
+        MG_CHECK(building.m_BS.GetItemsCnt() == 0 && building.m_BS.GetTopItem() == nullptr);
+        MG_CHECK(building.m_TurretsHave == 0);
+        for (int r = 0; r < MAX_RESOURCES; ++r) {
+            MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(r)) == 100 + 2 * (17 + r));
+            MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 200);
+        }
+        while (building.GetSide() != PLAYER_SIDE) { session.advance(); fixture.capture(); }
+        MG_CHECK(building.m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(r)) == 100 + 2 * (17 + r));
     }
 }
 void paused_orders() {
@@ -773,6 +919,49 @@ void registered_capture_profile(int owner, CaptureRoute route = CaptureRoute::Co
 }
 void registered_capture() { registered_capture_profile(0); }
 void registered_enemy_capture() { registered_capture_profile(2); }
+void capture_move_reassignment() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        Session session({mode, 79, step, 6000, false});
+        std::cout << session.metadata("capture-move-reassignment-v1") << '\n';
+        auto *building = register_building(0, BUILDING_TITAN, 160, 200);
+        auto *robot = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+        submit_capture(building, CaptureRoute::Context);
+        advance_to(session, step == 10 ? 1000 : 1008);
+        MG_CHECK(building->m_Capturer == robot && robot->GetCaptureFactory() == building);
+        MG_CHECK(building->m_TrueColor.m_ColoredCnt == 1 && building->GetSide() == 0);
+        session.ground_command(120, 500);
+        MG_CHECK(robot->GetCaptureFactory() == nullptr && building->m_Capturer == nullptr);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_MoveTo);
+        const int cleared_at = step == 10 ? 7810 : 7856;
+        const int completed_at = step == 10 ? 35290 : 35248;
+        int cleared = 0;
+        while (session.time() < 10000) {
+            if (session.time() == cleared_at - step) MG_CHECK(building->m_TrueColor.m_ColoredCnt > 0);
+            session.advance();
+            MG_CHECK(robot->GetCaptureFactory() == nullptr);
+            MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+            if (!cleared && building->m_TrueColor.m_ColoredCnt == 0) cleared = session.time();
+            MG_CHECK(building->GetSide() == 0);
+        }
+        std::cout << "move rollback=" << cleared << " paint=" << building->m_TrueColor.m_ColoredCnt << '\n';
+        MG_CHECK(cleared == cleared_at && building->m_TrueColor.m_ColoredCnt == 0);
+        submit_capture(building, CaptureRoute::Context);
+        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_Capture);
+        int completed = 0;
+        while (session.time() < 50000 && !completed) {
+            if (session.time() == completed_at - step) MG_CHECK(building->GetSide() == 0);
+            session.advance();
+            if (building->GetSide() == PLAYER_SIDE) completed = session.time();
+        }
+        std::cout << "move recaptured=" << completed << '\n';
+        MG_CHECK(completed == completed_at && building->m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+        MG_CHECK(building->m_Capturer == nullptr);
+        for (int i = 0; i < 100; ++i) session.advance();
+        MG_CHECK(session.robot(1).alive && session.robot(2).alive);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    }
+}
 void registered_base_capture_profile(CaptureRoute route) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) for (int owner : {0, 2}) {
         Session session({mode, 79, step, 3000, false});
@@ -867,8 +1056,14 @@ void capture_target_removal() {
         g_MatrixMap->StaticDelete(building);
         MG_CHECK(robot->GetCaptureFactory() == nullptr);
         MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
-        advance_to(session, 400);
         const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
+        const int released_at = step == 10 ? 210 : 240;
+        while (session.time() < released_at) {
+            MG_CHECK(group.Order() == mpo_Capture && group.m_Obj != nullptr);
+            session.advance();
+        }
+        MG_CHECK(group.Order() == mpo_Stop && group.m_Obj == nullptr);
+        advance_to(session, 400);
         MG_CHECK(group.Order() == mpo_Stop && group.m_Obj == nullptr);
         MG_CHECK(session.robot(1).alive && session.robot(2).alive);
         MG_CHECK(!g_MatrixMap->IsPaused());
@@ -1023,7 +1218,8 @@ std::vector<std::string> base_interruption_run(random::Mode mode, int step, int 
     auto *capturer = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
     g_MatrixMap->m_TraceStopObj = building;
     side().OnRButtonDown(CPoint(0, 0));
-    advance_to(session, ((interrupt_at + step - 1) / step) * step);
+    const int command_at = ((interrupt_at + step - 1) / step) * step;
+    advance_to(session, command_at);
     MG_CHECK(building->m_State == (interrupt_at == 200 ? BASE_OPENING : interrupt_at == 2000 ? BASE_OPENED : BASE_CLOSING));
     MG_CHECK(capturer->GetCaptureFactory() == building && building->m_Capturer == capturer);
     MG_CHECK(capturer->IsDisableManual() == (interrupt_at != 200));
@@ -1047,7 +1243,8 @@ std::vector<std::string> base_interruption_run(random::Mode mode, int step, int 
         MG_CHECK(building->GetSide() == 0);
         trace.push_back(session.snapshot() + ":" + std::to_string(building->m_State) + ":" + std::to_string(building->m_Capturer != nullptr));
     }
-    std::cout << "base interruption owner=" << building->GetSide() << " state=" << building->m_State
+    std::cout << "base interruption mode=" << int(mode) << " step=" << step << " command=" << command_at
+              << " owner=" << building->GetSide() << " state=" << building->m_State
               << " robot1=" << session.robot(1).alive << " robot2=" << session.robot(2).alive
               << " closed=" << closed << " died=" << died << '\n';
     MG_CHECK(closed == closed_at && died == death_at);
@@ -1177,6 +1374,79 @@ void transported_robot_prevents_elimination() {
         MG_CHECK(retired == (mode == random::Mode::ParkMiller ? (step == 10 ? 11960 : 11968) : (step == 10 ? 9670 : 9664)));
         MG_CHECK(carrier_core->m_Object == nullptr && g_MatrixMap->m_AD_Obj_cnt == 0);
         MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    }
+}
+struct OutcomeMapObservation : CMatrixMap {
+    static int status_scan(const CMatrixMap &map) { return map.* &OutcomeMapObservation::m_PrevTimeCheckStatus; }
+};
+std::vector<std::string> falling_cargo_scan_run(random::Mode mode, int step, bool remove) {
+    tests::BattleMaterialProfile materials;
+    Session session(transport_outcome_profile(mode, step));
+    DialogData dialog;
+    std::cout << "remove=" << remove << ' ' << session.metadata("falling-cargo-status-scan-v1") << '\n';
+    // Delay the delivery request so a natural side-status scan occurs during
+    // the short falling interval, rather than only before and after landing.
+    const int launch = mode == random::Mode::ParkMiller ? 1800 : 3000;
+    advance_to(session, ((launch + step - 1) / step) * step);
+    auto *carrier = order_outcome_transport(PLAYER_SIDE);
+    auto carrier_core = retain_core(*carrier);
+    auto *cargo = carrier->GetCarryingRobot()->AsRobot();
+    auto cargo_core = retain_core(*cargo);
+    MG_CHECK(session.remove(1) && session.remove(2));
+    int released = 0, landed = 0, falling_scan = 0, eliminated = 0, result = 0;
+    std::vector<std::string> trace;
+    while (session.time() < 12000 && !g_MatrixMap->IsPaused()) {
+        const int previous_scan = OutcomeMapObservation::status_scan(*g_MatrixMap);
+        session.advance();
+        if (cargo_core->m_Object && !released && cargo->m_CurrState == ROBOT_FALLING) {
+            released = session.time();
+            MG_CHECK(!carrier->CarryingRobot());
+            if (remove) g_MatrixMap->StaticDelete(cargo);
+        }
+        const bool scanned = previous_scan != OutcomeMapObservation::status_scan(*g_MatrixMap);
+        if (cargo_core->m_Object) {
+            MG_CHECK(cargo->IsLiveRobot());
+            if (cargo->m_CurrState == ROBOT_FALLING && scanned) {
+                falling_scan = session.time();
+                MG_CHECK(side().GetStatus() == SS_ACTIVE);
+            }
+            if (!landed && released && cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) landed = session.time();
+        }
+        if (side().GetStatus() == SS_NONE && !eliminated) {
+            eliminated = session.time();
+            MG_CHECK(remove && scanned && cargo_core->m_Object == nullptr);
+        }
+        if (g_MatrixMap->IsPaused()) {
+            result = session.time();
+            MG_CHECK(remove && g_MatrixMap->m_DialogModeName &&
+                std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+        }
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        trace.push_back(session.snapshot() + ":" + std::to_string(cargo_core->m_Object ? cargo->m_CurrState : -1)
+            + ":" + std::to_string(OutcomeMapObservation::status_scan(*g_MatrixMap)));
+    }
+    std::cout << "release=" << released << " landed=" << landed << " falling_scan=" << falling_scan
+              << " eliminated=" << eliminated << " result=" << result << '\n';
+    const int expected_release = mode == random::Mode::ParkMiller ? (step == 10 ? 7900 : 7920)
+        : (step == 10 ? 7940 : 7952);
+    const int expected_scan = step == 10 ? 8050 : 8080;
+    MG_CHECK(released == expected_release);
+    if (remove) {
+        MG_CHECK(eliminated == expected_scan && result == (step == 10 ? 10060 : 10096));
+        MG_CHECK(!landed && !falling_scan);
+    } else {
+        MG_CHECK(falling_scan == expected_scan && landed == expected_release + 320);
+        MG_CHECK(!eliminated && !result);
+        MG_CHECK(cargo_core->m_Object == cargo && side().GetStatus() == SS_ACTIVE);
+    }
+    MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    return trace;
+}
+void falling_cargo_status_scan() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool remove : {false, true}) {
+        const auto first = falling_cargo_scan_run(mode, step, remove);
+        MG_CHECK(first == falling_cargo_scan_run(mode, step, remove));
     }
 }
 void transported_robot_removal_outcome() {
@@ -1618,12 +1888,14 @@ void terron_blast_after_conversion() {
 }
 
 void repeated_sessions() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
     for (int run = 0; run < 3; ++run) {
-        outcome(run % 2 == 0, true);
+        outcome(run % 2 == 0, true, false, step, mode);
         MG_CHECK(g_MatrixMap == nullptr && g_IFaceList == nullptr && g_MatrixHeap == nullptr);
         MG_CHECK(CMatrixMapStatic::GetFirstLogic() == nullptr);
         MG_CHECK(!Input::isVKeyPressed(VK_CONTROL));
-        Session fresh;
+        Session fresh({mode, 79, step});
+        std::cout << fresh.metadata("synthetic-repeated-outcomes-v2") << " run=" << run << '\n';
         MG_CHECK(fresh.time() == 0 && fresh.frame() == 0);
         MG_CHECK(side().GetStatus() == SS_ACTIVE);
         MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 2);
@@ -2131,6 +2403,7 @@ constexpr tests::Case cases[] = {
     {"game.player.capture_button_completion", capture_button_completion},
     {"game.outcome.flyer_does_not_prevent_elimination", flyer_does_not_prevent_elimination},
     {"game.outcome.transported_robot_prevents_elimination", transported_robot_prevents_elimination},
+    {"game.outcome.falling_cargo_status_scan", falling_cargo_status_scan},
     {"game.outcome.transported_robot_removal", transported_robot_removal_outcome},
     {"game.outcome.carrier_removal", carrier_removal_outcome},
     {"game.outcome.carrier_damage", carrier_damage_outcome},
@@ -2175,6 +2448,9 @@ constexpr tests::Case cases[] = {
     {"game.outcome.acquisition_after_removal", acquisition_after_removal},
     {"game.outcome.enemy_capture_rollback", enemy_capture_rollback},
     {"game.outcome.capture_queue_refund", capture_queue_refund},
+    {"game.outcome.capture_income_continuity", capture_income_continuity},
+    {"game.outcome.capture_turret_refund", capture_turret_refund},
+    {"game.outcome.capture_move_reassignment", capture_move_reassignment},
     {"game.outcome.paused_orders", paused_orders},
     {"game.outcome.pending_result_pause", pending_result_pause},
     {"game.outcome.pending_result_late_elimination", pending_result_late_elimination},
