@@ -25,7 +25,7 @@ The test checks these transitions and exact draw totals, then compares the compl
 
 ## Boundaries and running
 
-The command boundary is the real cheat parser, below the form's compile-time cheat gate. Calling it in a normal test build does not mean that a cheats-disabled game accepts typed AUTO. `game.player.registered_cheat_effects` separately checks that keyboard gate in enabled and disabled configurations. These scenes do not load a map through `CGame::Init` and do not establish introduction behavior or demo startup. Genuine demo initialization, automatic results and following-session cleanup remain shared A8/O9 work. Flying-camera fight selection is also a separate scene; AUTO alone does not enable it.
+The command boundary is the real cheat parser, below the form's compile-time cheat gate. Calling it in a normal test build does not mean that a cheats-disabled game accepts typed AUTO. `game.player.registered_cheat_effects` separately checks that keyboard gate in enabled and disabled configurations. These scenes do not load a map through `CGame::Init` and do not establish introduction behavior or demo startup. Genuine demo initialization, automatic results and following-session cleanup remain shared A8/O9 work. [Flying-camera fight selection](84-auto-camera.md) has a separate scene; AUTO alone does not enable it.
 
 ```powershell
 .\tools\test.ps1 -Configuration Debug -Filter '^game\.ai\.auto_activation$'
