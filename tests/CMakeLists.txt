@@ -832,3 +832,5 @@ if(MATRIXGAME_BUILD_DLL)
         add_matrix_test(game.session.held_input_retirement matrixgame_native_session_fixture gameplay startup input native native-process)
     endif()
 endif()
+
+add_matrix_test(game.outcome.rival_armed_capture matrixgame_battle_outcome_scenarios gameplay input)
