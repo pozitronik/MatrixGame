@@ -3,7 +3,9 @@
 
 #include "random.hpp"
 #include "battle_geometry.hpp"
+#include <d3d9.h>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -62,6 +64,8 @@ public:
     std::uint64_t rejected_icon_targets() const;
     // Makes the surrogate device report a lost device until called with false.
     void device_lost(bool lost);
+    // Opt-in Reset callback for controller integration; all rendering stays forbidden.
+    void device_reset(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler);
     void check_running() const;
     std::string metadata(std::string_view fixture = "unarmed-chassis-obstacle-v1") const;
 
