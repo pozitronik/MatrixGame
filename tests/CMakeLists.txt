@@ -593,6 +593,7 @@ target_compile_definitions(matrixgame_ai_bomb_escape_tests PRIVATE
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 foreach(contract free reserved unreachable)
     add_matrix_test(game.ai.bomb_escape_${contract}_journey matrixgame_ai_bomb_escape_tests gameplay ai)
+    set_tests_properties(game.ai.bomb_escape_${contract}_journey PROPERTIES TIMEOUT 90)
 endforeach()
 
 add_matrix_test_executable(matrixgame_ai_decision_tests ai_decision_tests.cpp ai_observation_tests.cpp ai_cleanup_tests.cpp ai_armed_tests.cpp ai_capture_tests.cpp ai_reinforcement_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp

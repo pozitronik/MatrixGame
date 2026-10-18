@@ -41,7 +41,7 @@ Normal game builds also compile the test executables. `tools/build.ps1 -WithoutT
 
 ## Results and direct CTest commands
 
-Each named case runs in its own process, normally with a 30-second timeout. The native standalone startup cases have a 90-second timeout because one case can run four bounded child launches. CTest reports the failed case, assertion expression, source location and captured output. The helper writes `test-results.xml` in the selected build directory, replacing the report with the current selection's results; detailed output is in `Testing/Temporary/LastTest.log` below that directory.
+Each named case runs in its own process, normally with a 30-second timeout. The native standalone startup cases, four `game.player.*_command_lifecycle` cases and three `game.ai.bomb_escape_*_journey` cases have a 90-second timeout. Startup cases can run four bounded child launches; the lifecycle and bomb-escape cases execute complete profile matrices in one process. These process limits do not change simulation or per-session bounds. CTest reports the failed case, assertion expression, source location and captured output. The helper writes `test-results.xml` in the selected build directory, replacing the report with the current selection's results; detailed output is in `Testing/Temporary/LastTest.log` below that directory.
 
 MSVC Debug tests retain compiler runtime checks and send fatal CRT reports to standard error instead of waiting for a desktop dialog. Native failures include a best-effort symbolized stack when the executable's PDB is available, then exit with a failure status. This reporting applies to the console tests; interactive game diagnostics are unchanged.
 
