@@ -22,6 +22,8 @@
 #include <fstream>
 #include <chrono>
 #include <thread>
+#include <exception>
+#include <utility>
 
 #include <stdio.h>
 
@@ -39,6 +41,15 @@ IDirect3DDevice9 *g_D3DD = NULL;
 namespace {
 Graphics::Reference<IDirect3D9> owned_direct3d;
 Graphics::Reference<IDirect3DDevice9> owned_device;
+// Window callbacks must return through USER32 without unwinding C++ frames.
+// Keep the original exception until the owning game loop can rethrow it.
+std::exception_ptr callback_failure;
+bool callback_failed = false;
+
+void rethrow_callback_failure() {
+    if (auto failure = std::exchange(callback_failure, {}))
+        std::rethrow_exception(failure);
+}
 }
 D3DCAPS9 g_D3DDCaps;
 ATOM g_WndA = 0;
@@ -342,6 +353,8 @@ void L3GDeinit() {
     g_WndOldProg = 0;
     g_WndExtern = false;
     Display::shutdown();
+    callback_failure = nullptr;
+    callback_failed = false;
 }
 
 bool processInput(UINT message, WPARAM wParam, LPARAM lParam);
@@ -360,6 +373,7 @@ int L3GRun()
 
 int L3GRun(const Loop::Platform &platform)
 {
+    rethrow_callback_failure();
 
     constexpr auto to_milliseconds = [](auto dur) { return std::chrono::duration_cast<std::chrono::milliseconds>(dur); };
 
@@ -376,9 +390,14 @@ int L3GRun(const Loop::Platform &platform)
 
     while (true)
     {
-        while (platform.poll(platform.context, msg))
+        while (true)
         {
-            platform.dispatch(platform.context, msg); // Effectively calls L3GWndProc() handler
+            // The native poll may itself deliver sent (synchronous) messages.
+            const bool available = platform.poll(platform.context, msg);
+            rethrow_callback_failure();
+            if (!available) break;
+            platform.dispatch(platform.context, msg);
+            rethrow_callback_failure();
         }
         if (FLAG(g_Flags, GFLAG_APPCLOSE) || FLAG(g_Flags, GFLAG_EXITLOOP))
         {
@@ -416,13 +435,16 @@ int L3GRun(const Loop::Platform &platform)
 
         lgr.add_ticks(delta);
         SRemindCore::Takt(delta);
+        rethrow_callback_failure();
         g_FormCur->Takt(delta);
 #ifdef _DEBUG
         RESETFLAG(g_Flags, GFLAG_TAKTINPROGRESS);
 #endif
+        rethrow_callback_failure();
 
         // TODO: maybe add back FPS limit?
         g_FormCur->Draw();
+        rethrow_callback_failure();
 #if (defined _DEBUG) && !(defined _RELDEBUG)
         CHelper::AfterDraw();
 #endif
@@ -513,7 +535,7 @@ bool processInput(UINT message, WPARAM wParam, LPARAM lParam)
  *
  * Called either by DispatchMessage() or by other means.
  */
-LRESULT CALLBACK L3G_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
+static LRESULT window_message(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     if (Display::changing()) {
         // Reset and style changes can synchronously dispatch activation messages.
@@ -592,6 +614,19 @@ LRESULT CALLBACK L3G_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lPar
     }
 
     return DefWindowProc(hWnd, message, wParam, lParam);
+}
+
+LRESULT CALLBACK L3G_WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam) {
+    if (callback_failed) return DefWindowProc(hWnd, message, wParam, lParam);
+    try {
+        return window_message(hWnd, message, wParam, lParam);
+    }
+    catch (...) {
+        if (!callback_failure) callback_failure = std::current_exception();
+        callback_failed = true;
+        SETFLAG(g_Flags, GFLAG_EXITLOOP);
+        return 0;
+    }
 }
 
 ////////////////////////////////////////////////////////////////////////////////

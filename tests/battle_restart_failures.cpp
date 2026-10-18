@@ -53,6 +53,7 @@ struct OwnedBattle {
     CFormMatrixGame *form{};
     bool timer_active{};
     std::unique_ptr<CBitmap> bitmap;
+    std::unique_ptr<CTextureManaged> mouse_texture;
     std::filesystem::path path = std::filesystem::current_path() /
         ("restart-failure-" + std::to_string(GetCurrentProcessId()) + ".map");
     bool cleaned{};
@@ -102,6 +103,7 @@ struct OwnedBattle {
         MG_CHECK(map.GetPlayerSide()->m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_MoveTo);
 
         auto *hints = HNew(g_MatrixHeap) CInterface;
+        hints->m_strName = IF_HINTS;
         g_IFaceList->m_Hints = hints;
         g_IFaceList->m_First = g_IFaceList->m_Last = hints;
         bitmap = std::make_unique<CBitmap>();
@@ -123,8 +125,44 @@ struct OwnedBattle {
         }
         form = HNew(nullptr) CFormMatrixGame;
     }
+    void queue_mouse_confirmation() {
+        for (auto key : {VK_ESCAPE, int('R')}) {
+            form->Keyboard(true, static_cast<uint8_t>(key));
+            form->Keyboard(false, static_cast<uint8_t>(key));
+        }
+        MG_CHECK(g_MatrixMap->m_DialogModeName &&
+                 wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_MENU) == 0 &&
+                 g_MatrixMap->m_DialogModeHints.size() == 2);
+        mouse_texture = std::make_unique<CTextureManaged>();
+        mouse_texture->LoadFromBitmap(*bitmap, false, 1);
+        for (auto *element = g_IFaceList->m_Hints->m_FirstElement; element; element = element->m_NextElement) {
+            const bool confirm = element->m_strName == IF_HINTS_OK;
+            element->SetVisibility(confirm);
+            if (!confirm) continue;
+            // Synthetic button geometry and focus; hit testing, alpha lookup,
+            // press/release, the hint callback and Win32 dispatch remain real.
+            element->m_PosElInX = element->m_PosElInY = 100;
+            element->m_xSize = element->m_ySize = 2;
+            for (auto &image : element->m_StateImages) {
+                image.pImage = mouse_texture.get();
+                image.xTexPos = image.yTexPos = 0;
+                for (int i = 0; i < 4; ++i) {
+                    image.m_Geom[i].p.x = 100.f + ((i & 1) ? 2.f : 0.f);
+                    image.m_Geom[i].p.y = 100.f + ((i & 2) ? 2.f : 0.f);
+                }
+            }
+            element->SetState(IFACE_FOCUSED);
+            MG_CHECK(element->ElementCatch(CPoint(101, 101)) && element->ElementAlpha(CPoint(101, 101)));
+        }
+        g_IFaceList->m_Hints->m_VisibleAlpha = 255;
+        g_IFaceList->m_InFocus = INTERFACE;
+        g_MatrixMap->m_Cursor.SetPos(101, 101);
+        MG_CHECK(PostMessageW(window.value, WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(101, 101)));
+        MG_CHECK(PostMessageW(window.value, WM_LBUTTONUP, 0, MAKELPARAM(101, 101)));
+    }
     void cleanup() {
         CMatrixHint::SetRuntimeBitmap(L"restart-failure-pixel", nullptr);
+        mouse_texture.reset();
         bitmap.reset();
         const bool released = Session::cleanup_standalone(form, timer_active);
         const bool device_cleared = g_D3DD == nullptr;
@@ -143,6 +181,7 @@ struct OwnedBattle {
             // Preserve an existing assertion during stack unwinding. These
             // cleanup attempts contain exceptions and perform no assertions.
             Session::cleanup([&] { CMatrixHint::SetRuntimeBitmap(L"restart-failure-pixel", nullptr); },
+                             [&] { mouse_texture.reset(); },
                              [&] { bitmap.reset(); });
             Session::cleanup_standalone(form, timer_active);
             g_D3DD = device.get();
@@ -153,7 +192,7 @@ struct OwnedBattle {
 };
 
 enum class Reload { None, Missing, Corrupt };
-void one_lifetime(Reload reload, random::Mode mode) {
+void one_lifetime(Reload reload, random::Mode mode, bool mouse = false) {
     CMain::BaseInit();
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
@@ -166,7 +205,8 @@ void one_lifetime(Reload reload, random::Mode mode) {
         stream.write(reinterpret_cast<const char *>(invalid_header.data()), invalid_header.size());
         MG_CHECK(stream.good());
     }
-    if (reload != Reload::None) {
+    if (mouse) battle.queue_mouse_confirmation();
+    else if (reload != Reload::None) {
         battle.window.key(VK_ESCAPE);
         battle.window.key('R');
         battle.window.key(VK_RETURN);
@@ -190,10 +230,10 @@ void one_lifetime(Reload reload, random::Mode mode) {
     }
     battle.cleanup();
 }
-void reload_failure(Reload reload) {
+void reload_failure(Reload reload, bool mouse = false) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         for (int attempt = 0; attempt < 2; ++attempt) {
-            one_lifetime(reload, mode);
+            one_lifetime(reload, mode, mouse);
 #ifdef MEM_SPY_ENABLE
             MG_CHECK(Base::SMemHeader::first_mem_block == nullptr);
 #endif
@@ -202,10 +242,96 @@ void reload_failure(Reload reload) {
 }
 void owned_cleanup() { reload_failure(Reload::None); }
 void missing() { reload_failure(Reload::Missing); }
+void missing_mouse() { reload_failure(Reload::Missing, true); }
 void corrupt() { reload_failure(Reload::Corrupt); }
+
+// A bounded callback source for timing and diagnostic contracts. The window
+// procedure, message dispatch, exception transport and loop remain production.
+struct TransportForm : CForm {
+    HWND window;
+    bool fail_in_tick{};
+    int keys{}, ticks{}, draws{};
+    explicit TransportForm(HWND target) : window(target) {}
+    void Enter() override {}
+    void Leave() override {}
+    void Draw() override {
+        ++draws;
+        throw std::runtime_error("draw after failed callback");
+    }
+    void Takt(int) override {
+        ++ticks;
+        if (fail_in_tick) SendMessageW(window, WM_KEYDOWN, 'F', 0);
+    }
+    void MouseMove(int, int) override {}
+    void MouseKey(ButtonStatus, int, int, int) override {}
+    void Keyboard(bool down, uint8_t key) override {
+        if (!down) return;
+        ++keys;
+        if (key == 'F') throw std::runtime_error("original callback diagnostic");
+    }
+    void SystemEvent(ESysEvent) override {}
+};
+
+void callback_transport(bool during_tick, bool abandon = false) {
+    tests::BattleDevice device;
+    MessageWindow window;
+    g_Flags = GFLAG_APPACTIVE;
+    {
+        TransportForm form(window.value);
+        FormChange(&form);
+        form.fail_in_tick = during_tick;
+        if (!during_tick) {
+            // The exception is retained, rather than escaping a synchronous
+            // USER32 call before the main loop has even started.
+            SendMessageW(window.value, WM_KEYDOWN, 'F', 0);
+            MG_CHECK(form.keys == 1);
+            SendMessageW(window.value, WM_KEYDOWN, 'S', 0);
+            MG_CHECK(form.keys == 1);
+        }
+        if (!abandon) {
+            bool caught = false;
+            try { L3GRun(); }
+            catch (const std::runtime_error &error) {
+                caught = true;
+                MG_CHECK(std::string(error.what()) == "original callback diagnostic");
+            }
+            MG_CHECK(caught && FLAG(g_Flags, GFLAG_EXITLOOP));
+        }
+        MG_CHECK(form.draws == 0 && form.keys == 1);
+        MG_CHECK(form.ticks == (during_tick ? 1 : 0));
+        // Consuming the exception must not reopen input on the partial session.
+        SendMessageW(window.value, WM_KEYDOWN, 'S', 0);
+        MG_CHECK(form.keys == 1);
+        FormChange(nullptr);
+    }
+    L3GDeinit();
+    MG_CHECK(!g_D3DD && !g_Wnd);
+    g_D3DD = device.get();
+    g_Wnd = window.value;
+    g_Flags = GFLAG_APPACTIVE;
+    {
+        TransportForm next(window.value);
+        FormChange(&next);
+        window.key('S');
+        MG_CHECK(PostMessageW(window.value, WM_CLOSE, 0, 0));
+        MG_CHECK(L3GRun() == 1);
+        MG_CHECK(next.keys == 1 && next.ticks == 0 && next.draws == 0);
+        FormChange(nullptr);
+    }
+    L3GDeinit();
+    g_D3DD = device.get();
+}
+void callback_before_loop() { callback_transport(false); }
+void callback_during_tick() { callback_transport(true); }
+void callback_abandoned() { callback_transport(false, true); }
+
 constexpr tests::Case cases[] = {
     {"game.restart.game_owned_cleanup", owned_cleanup},
-    {"probe.restart.missing_file_cleanup", missing},
+    {"game.restart.missing_file_cleanup", missing},
+    {"game.restart.missing_file_mouse_cleanup", missing_mouse},
+    {"game.restart.callback_before_loop", callback_before_loop},
+    {"game.restart.callback_during_tick", callback_during_tick},
+    {"game.restart.callback_abandoned", callback_abandoned},
     {"probe.restart.corrupt_file_cleanup", corrupt},
 };
 }
