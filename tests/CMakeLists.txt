@@ -622,7 +622,7 @@ foreach(contract regroup_split_counts regroup_merge_counts regroup_count_sequenc
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
 
-add_matrix_test_executable(matrixgame_ai_auto_scenarios ai_auto_scenarios.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_ai_auto_scenarios ai_auto_scenarios.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_ai_auto_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_ai_auto_scenarios matrixgame_scenario_identity)
@@ -631,6 +631,9 @@ target_compile_definitions(matrixgame_ai_auto_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 add_matrix_test(game.ai.auto_activation matrixgame_ai_auto_scenarios gameplay ai)
+add_matrix_test(game.ai.auto_camera_fights matrixgame_ai_auto_scenarios gameplay ai rendering)
+add_matrix_test(game.ai.auto_camera_replay matrixgame_ai_auto_scenarios gameplay ai rendering)
+add_matrix_test(game.ai.auto_camera_overview_replay matrixgame_ai_auto_scenarios gameplay ai rendering)
 
 add_matrix_test_executable(matrixgame_battle_outcome_scenarios battle_outcome_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)

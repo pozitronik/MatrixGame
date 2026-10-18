@@ -1,11 +1,15 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_building.hpp"
+#include "battle_combat_geometry.hpp"
 #include "battle_flyer.hpp"
 #include "MatrixFlyer.hpp"
 #include "MatrixRobot.hpp"
 #include "cheats.hpp"
 #include "test_support.hpp"
+#include <array>
+#include <bit>
+#include <cmath>
 #include <sstream>
 #include <vector>
 
@@ -139,7 +143,216 @@ void auto_activation() {
         MG_CHECK(first == auto_activation_run(mode, step, eligible));
     }
 }
-constexpr tests::Case cases[] = {{"game.ai.auto_activation", auto_activation}};
+struct AutoCoreRelease { void operator()(SObjectCore *core) const { core->Release(); } };
+using AutoCoreLease = std::unique_ptr<SObjectCore, AutoCoreRelease>;
+struct CameraTrace {
+    std::vector<std::string> state;
+    std::vector<std::array<uint32_t, 2>> angles;
+};
+CameraTrace auto_camera_run(random::Mode mode, int step, bool reenable = false) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    Session session(auto_profile(mode, step));
+    assets.install();
+    std::array<CMatrixRobotAI *, 4> robots{};
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot()) {
+            auto *robot = object->AsRobot();
+            robot->SetMaxSpeed(0);
+            robot->SetTeam(0);
+            for (unsigned id = 1; id <= 4; ++id) if (session.matches(id, robot)) robots[id - 1] = robot;
+        }
+    for (auto *robot : robots) MG_CHECK(robot);
+    g_MatrixMap->SetMaintenanceTime(100000);
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {1, 0, 0};
+    std::array<AutoCoreLease, 4> cores;
+    for (unsigned i = 0; i < cores.size(); ++i) cores[i].reset(robots[i]->GetCore(DEBUG_CALL_INFO));
+    auto &camera = g_MatrixMap->m_Camera;
+    const auto first_midpoint = (robots[0]->GetGeoCenter() + robots[2]->GetGeoCenter()) * 0.5f;
+    const auto second_midpoint = (robots[0]->GetGeoCenter() + robots[3]->GetGeoCenter()) * 0.5f;
+    CameraTrace trace;
+    auto record = [&] {
+        const auto &point = camera.GetLinkPoint();
+        std::ostringstream out;
+        out << session.snapshot() << ":flags=" << (g_MatrixMap->m_Flags & (MMFLAG_AUTOMATIC_MODE | MMFLAG_FULLAUTO | MMFLAG_FLYCAM))
+            << ":camera=" << std::bit_cast<uint32_t>(point.x) << ':' << std::bit_cast<uint32_t>(point.y) << ':' << std::bit_cast<uint32_t>(point.z);
+        for (const auto &core : cores) out << ":core=" << (core->m_Object != nullptr) << ':' << core->m_Ref;
+        trace.state.push_back(out.str());
+        trace.angles.push_back({std::bit_cast<uint32_t>(camera.GetAngleZ()), std::bit_cast<uint32_t>(camera.GetAngleX())});
+        MG_CHECK(std::isfinite(camera.GetAngleZ()) && std::isfinite(camera.GetAngleX()));
+    };
+    std::cout << session.metadata("ordinary-auto-camera-v1") << std::endl;
+    MG_CHECK(!(g_MatrixMap->m_Flags & (MMFLAG_AUTOMATIC_MODE | MMFLAG_FULLAUTO | MMFLAG_FLYCAM)));
+    for (const auto &core : cores) MG_CHECK(core->m_Ref == 2);
+    record();
+    type_command("AUTO");
+    record();
+    type_command("FLYCAM");
+    record();
+    MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_AUTOMATIC_MODE) && !FLAG(g_MatrixMap->m_Flags, MMFLAG_FULLAUTO));
+    session.advance(); record();
+    const auto first_damage_rng = random::draw_count();
+    MG_CHECK(!robots[2]->Damage(WEAPON_LASER, robots[2]->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), PLAYER_SIDE, robots[0]));
+    MG_CHECK(cores[0]->m_Ref == 3 && cores[2]->m_Ref == 3 && cores[3]->m_Ref == 2);
+    MG_CHECK(robots[2]->GetHitPoint() == 99.9f);
+    MG_CHECK(random::draw_count() - first_damage_rng == 28);
+    std::cout << "first damage draws=" << random::draw_count() - first_damage_rng << std::endl;
+    record();
+    while (session.time() < 2000) { session.advance(); record(); }
+    std::cout << "first midpoint=" << first_midpoint.x << ',' << first_midpoint.y << ',' << first_midpoint.z
+        << " camera=" << camera.GetLinkPoint().x << ',' << camera.GetLinkPoint().y << ',' << camera.GetLinkPoint().z
+        << " refs=" << cores[0]->m_Ref << ',' << cores[2]->m_Ref << ',' << cores[3]->m_Ref << std::endl;
+    MG_CHECK(cores[0]->m_Ref == 3 && cores[2]->m_Ref == 3 && cores[3]->m_Ref == 2);
+    // The selected fight outlives the 1000 ms pending-pair TTL.
+    const auto first_distance = camera.GetLinkPoint() - first_midpoint;
+    MG_CHECK(D3DXVec3Length(&first_distance) < 32);
+    const auto second_damage_rng = random::draw_count();
+    MG_CHECK(!robots[3]->Damage(WEAPON_LASER, robots[3]->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), PLAYER_SIDE, robots[0]));
+    MG_CHECK(cores[0]->m_Ref == 4 && cores[2]->m_Ref == 3 && cores[3]->m_Ref == 3);
+    MG_CHECK(robots[3]->GetHitPoint() == 99.9f);
+    MG_CHECK(random::draw_count() - second_damage_rng == 28);
+    std::cout << "second damage draws=" << random::draw_count() - second_damage_rng << std::endl;
+    record();
+    int expired = 0;
+    while (session.time() < 3200) {
+        session.advance(); record();
+        if (!expired && cores[3]->m_Ref == 2) expired = session.time();
+    }
+    MG_CHECK(expired == (step == 10 ? 3010 : 3008));
+    MG_CHECK(cores[0]->m_Ref == 3 && cores[2]->m_Ref == 3 && cores[3]->m_Ref == 2);
+    // A second live pair stays pending while the original pair still exists.
+    const auto before_switch = camera.GetLinkPoint() - first_midpoint;
+    std::cout << "before switch distance=" << D3DXVec3Length(&before_switch) << std::endl;
+    MG_CHECK(D3DXVec3Length(&before_switch) < 10);
+    // Re-register the expired alternative, then retire the current target.
+    const auto third_damage_rng = random::draw_count();
+    MG_CHECK(!robots[3]->Damage(WEAPON_LASER, robots[3]->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), PLAYER_SIDE, robots[0]));
+    MG_CHECK(cores[0]->m_Ref == 4 && cores[3]->m_Ref == 3);
+    MG_CHECK(random::draw_count() - third_damage_rng == 28 && robots[3]->GetHitPoint() == 99.8f);
+    record();
+    MG_CHECK(session.remove(3));
+    MG_CHECK(cores[2]->m_Object == nullptr && cores[2]->m_Ref == 2);
+    record();
+    session.advance(); record();
+    MG_CHECK(cores[2]->m_Ref == 1 && cores[0]->m_Ref == 3 && cores[3]->m_Ref == 3);
+    while (session.time() < 6000) { session.advance(); record(); }
+    std::cout << "second midpoint=" << second_midpoint.x << ',' << second_midpoint.y << ',' << second_midpoint.z
+        << " camera=" << camera.GetLinkPoint().x << ',' << camera.GetLinkPoint().y << ',' << camera.GetLinkPoint().z
+        << " refs=" << cores[0]->m_Ref << ',' << cores[2]->m_Ref << ',' << cores[3]->m_Ref
+        << " angles=" << camera.GetAngleZ() << ',' << camera.GetAngleX() << " rng=" << random::draw_count() << std::endl;
+    const auto second_distance = camera.GetLinkPoint() - second_midpoint;
+    const auto previous_distance = camera.GetLinkPoint() - first_midpoint;
+    MG_CHECK(D3DXVec3Length(&second_distance) < 2 && D3DXVec3Length(&previous_distance) > 26);
+    MG_CHECK(random::draw_count() == 342 && cores[0]->m_Ref == 3 && cores[2]->m_Ref == 1 && cores[3]->m_Ref == 3);
+    MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+    type_command("FLYCAM");
+    session.advance(); record();
+    MG_CHECK(cores[0]->m_Ref == 2 && cores[2]->m_Ref == 1 && cores[3]->m_Ref == 2);
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_FLYCAM) && FLAG(g_MatrixMap->m_Flags, MMFLAG_AUTOMATIC_MODE));
+    std::cout << "disabled refs=" << cores[0]->m_Ref << ',' << cores[2]->m_Ref << ',' << cores[3]->m_Ref << std::endl;
+    if (reenable) {
+        type_command("FLYCAM");
+        for (int i = 0; i < 50; ++i) { session.advance(); record(); }
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_FLYCAM));
+        type_command("FLYCAM");
+        session.advance(); record();
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_FLYCAM));
+        MG_CHECK(cores[0]->m_Ref == 2 && cores[2]->m_Ref == 1 && cores[3]->m_Ref == 2);
+    }
+    return trace;
+}
+void auto_camera_fights() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = auto_camera_run(mode, step);
+        const auto second = auto_camera_run(mode, step);
+        MG_CHECK(first.state == second.state);
+        MG_CHECK(first.angles == second.angles);
+    }
+}
+void auto_camera_replay() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = auto_camera_run(mode, step, true);
+        const auto second = auto_camera_run(mode, step, true);
+        MG_CHECK(first.state == second.state);
+        for (unsigned i = 0; i < first.angles.size(); ++i) if (first.angles[i] != second.angles[i]) {
+            std::cout << "angle replay differs at snapshot=" << i << " first_yaw=" << std::bit_cast<float>(first.angles[i][0])
+                << " repeated_yaw=" << std::bit_cast<float>(second.angles[i][0]) << std::endl;
+            break;
+        }
+        MG_CHECK(first.angles == second.angles);
+    }
+}
+template<random::Mode Mode, int Step> void camera_first_flight_reference() {
+    const auto trace = auto_camera_run(Mode, Step);
+    for (size_t i = 0; i < trace.state.size(); ++i)
+        std::cout << "camera-reference " << i << ' ' << trace.angles[i][0] << ' ' << trace.angles[i][1]
+            << ' ' << trace.state[i] << '\n';
+}
+std::vector<std::array<uint32_t, 5>> camera_overview_run(int step) {
+    Session session(auto_profile(random::Mode::ParkMiller, step));
+    const auto draws = random::draw_count();
+    CMatrixRobotAI *player = nullptr, *enemy = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot()) {
+            if (session.matches(1, object->AsRobot())) player = object->AsRobot();
+            if (session.matches(3, object->AsRobot())) enemy = object->AsRobot();
+        }
+    MG_CHECK(player && enemy);
+    SAutoFlyData flight{};
+    struct ReleaseFlight { SAutoFlyData &flight; ~ReleaseFlight() { flight.Release(); } } release{flight};
+    flight.m_Cur = flight.m_New = D3DXVECTOR3(200, 200, 1000);
+    flight.m_CurDist = flight.m_NewDist = 100;
+    flight.m_CurAngZ = 0.5f; flight.m_NewAngZ = 1.5f;
+    flight.m_CurAngX = 0.4f; flight.m_NewAngX = 0.5f;
+    flight.m_CalcDestAngZTime = 100000;
+    flight.AddWarPair(enemy, player);
+    std::vector<std::array<uint32_t, 5>> trace;
+    const auto advance = [&] {
+        flight.Takt(float(step));
+        g_MatrixMap->m_Camera.BeforeDraw();
+        trace.push_back({std::bit_cast<uint32_t>(flight.m_CurAngZ), std::bit_cast<uint32_t>(flight.m_CurAngX),
+            std::bit_cast<uint32_t>(flight.m_Cur.x), std::bit_cast<uint32_t>(flight.m_Cur.y),
+            std::bit_cast<uint32_t>(flight.m_Cur.z)});
+    };
+    for (int i = 0; i < 20; ++i) advance();
+    MG_CHECK(flight.m_CurAngZ > 0.5f && flight.m_CurAngZ < 1.5f);
+    // Enter the overview component state explicitly, after real smoothing has
+    // accumulated. This does not claim the random 15-second overview trigger.
+    flight.m_ObzorTime = 500;
+    flight.m_BeforeObzorAngX = flight.m_CurAngX;
+    for (int i = 0; i < 20; ++i) {
+        advance();
+        MG_CHECK(flight.m_ObzorTime == 500 - (i + 1) * step);
+    }
+    MG_CHECK(random::draw_count() == draws);
+    return trace;
+}
+void auto_camera_overview_replay() {
+    for (int step : {10, 16}) {
+        const auto first = camera_overview_run(step);
+        MG_CHECK(first == camera_overview_run(step));
+    }
+}
+template<int Step> void camera_first_overview_reference() {
+    const auto trace = camera_overview_run(Step);
+    for (size_t i = 0; i < trace.size(); ++i) {
+        std::cout << "camera-reference " << i;
+        for (auto value : trace[i]) std::cout << ' ' << value;
+        std::cout << '\n';
+    }
+}
+constexpr tests::Case cases[] = {
+    {"game.ai.auto_activation", auto_activation},
+    {"game.ai.auto_camera_fights", auto_camera_fights},
+    {"game.ai.auto_camera_replay", auto_camera_replay},
+    {"game.ai.auto_camera_overview_replay", auto_camera_overview_replay},
+    {"probe.ai.camera_first_pm10", camera_first_flight_reference<random::Mode::ParkMiller, 10>},
+    {"probe.ai.camera_first_pm16", camera_first_flight_reference<random::Mode::ParkMiller, 16>},
+    {"probe.ai.camera_first_legacy10", camera_first_flight_reference<random::Mode::LegacyCRT, 10>},
+    {"probe.ai.camera_first_legacy16", camera_first_flight_reference<random::Mode::LegacyCRT, 16>},
+    {"probe.ai.camera_first_overview10", camera_first_overview_reference<10>},
+    {"probe.ai.camera_first_overview16", camera_first_overview_reference<16>},
+};
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);

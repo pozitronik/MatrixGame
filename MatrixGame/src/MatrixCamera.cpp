@@ -329,10 +329,8 @@ void SAutoFlyData::Takt(float ms) {
     //}
 
     ////float mul = (float)(1.0 - pow(0.9996, double(ms)));
-    static float prev_da = 0;
     float da = (float)AngleDist(m_CurAngZ, m_NewAngZ);
 
-    static float last_da = 0;
     if (m_ObzorTime > 0) {
         CMatrixMapStatic *ts = g_MatrixMap->Trace(
                 NULL, g_MatrixMap->m_Camera.GetFrustumCenter(),
@@ -340,15 +338,15 @@ void SAutoFlyData::Takt(float ms) {
         if (ts != TRACE_STOP_NONE)
             m_ObzorTime = 0;
 
-        da = last_da;
-        last_da *= (float)pow(0.9995f, ms);
+        da = m_LastYawDelta;
+        m_LastYawDelta *= (float)pow(0.9995f, ms);
     }
     else {
-        last_da = da;
+        m_LastYawDelta = da;
     }
 
-    da *= (1.0f - fabs(prev_da - da) / M_PI_MUL(2));
-    prev_da = da;
+    da *= (1.0f - fabs(m_PreviousYawDelta - da) / M_PI_MUL(2));
+    m_PreviousYawDelta = da;
     // if (da > 1) da = 1;
     // if (da < -1) da = -1;
     //

@@ -93,6 +93,10 @@ struct SAutoFlyData {
     float m_RotSpeedZ;
     float m_RotSpeedX;
 
+    // Yaw smoothing belongs to this flight; HAllocClear initializes both values.
+    float m_PreviousYawDelta;
+    float m_LastYawDelta;
+
     float m_Speed;
     // float           m_OnTrajectorySpeedNeed;
     // float           m_OnTrajectorySpeedCurrent;
