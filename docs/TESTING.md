@@ -126,6 +126,8 @@ The [capture and battle outcome guide](testing/85-battle-outcomes.md) describes 
 
 The [standalone selector continuation cases](testing/85-map-window-continuations.md) connect the battle menu and win/loss/surrender statistics to actual selector input, cancellation and persisted same/different-map choices. They stop at the relaunch request; full process startup and the parent/child handshake remain separate lifecycle checks.
 
+The [owned-session cleanup and Restart failure guide](testing/85-restart-failures.md) distinguishes the passing loop/teardown control from two opt-in terminating failure probes. Missing-map callback containment and corrupt-storage recovery remain separate correction prerequisites. Debug leaks during production cleanup can still show the engine's modal leak report, as documented in that guide.
+
 The [loop scheduler contracts](testing/85-loop-scheduler.md) run production `L3GRun` with a scripted platform and a recording form, freezing speed scaling, timestep capping, inactive waits and quit boundaries. They are separate from fixed-map-tick scenarios and do not establish full initialization, robot movement through the loop or native focus delivery.
 
 The [strategic and tactical AI guide](testing/84-ai-decisions.md) describes decision fixtures, declared initial state and separately tracked correctness probes.
