@@ -8,6 +8,7 @@
 #include "GraphicsReferences.hpp"
 #include "MatrixFormGame.hpp"
 #include "SessionCleanup.hpp"
+#include "input.hpp"
 
 #include <memory>
 #include <type_traits>
@@ -74,6 +75,19 @@ void empty_configuration_cleanup() {
     config.Clear();
     config.Clear();
     MG_CHECK(config.m_CursorsCnt == 0);
+}
+
+void held_input_retirement() {
+    Services services;
+    for (int cycle = 0; cycle < 3; ++cycle) {
+        for (int key = 0; key < 256; ++key) Input::onKeyDown(static_cast<uint8_t>(key));
+        Input::onKeyUp(VK_UP);
+        MG_CHECK(!Input::isVKeyPressed(VK_UP) && Input::isVKeyPressed(VK_CONTROL));
+        CGame::Deinit();
+        for (int key = 0; key < 256; ++key) MG_CHECK(!Input::isVKeyPressed(static_cast<uint8_t>(key)));
+        CGame::Deinit();
+        MG_CHECK(!Input::isVKeyPressed(VK_CONTROL));
+    }
 }
 
 struct RecordingForm : CForm {
@@ -412,6 +426,7 @@ void native_graphics_lifetimes() {
 
 constexpr tests::Case cases[] = {
     {"game.lifecycle.configuration_cleanup", configuration_cleanup},
+    {"game.lifecycle.held_input_retirement", held_input_retirement},
     {"game.lifecycle.empty_configuration", empty_configuration_cleanup},
     {"game.lifecycle.form_transitions", form_transitions},
     {"game.lifecycle.form_construction_failure", form_construction_failure},
