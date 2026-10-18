@@ -8,6 +8,7 @@
 #include "Helper.hpp"
 #include "GraphicsReferences.hpp"
 #include "WindowDisplay.hpp"
+#include "LoopPlatform.hpp"
 #include "../../MatrixGame/src/MatrixSampleStateManager.hpp"
 
 #include "CBlockPar.hpp"
@@ -347,7 +348,18 @@ bool processInput(UINT message, WPARAM wParam, LPARAM lParam);
 
 int L3GRun()
 {
-    using clock = std::chrono::high_resolution_clock;
+    const Loop::Platform platform{
+        nullptr,
+        [](void *) { return Loop::Clock::now(); },
+        [](void *, MSG &message) { return PeekMessage(&message, NULL, 0, 0, PM_REMOVE) != FALSE; },
+        [](void *, const MSG &message) { DispatchMessage(&message); },
+        [](void *) { MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT); }
+    };
+    return L3GRun(platform);
+}
+
+int L3GRun(const Loop::Platform &platform)
+{
 
     constexpr auto to_milliseconds = [](auto dur) { return std::chrono::duration_cast<std::chrono::milliseconds>(dur); };
 
@@ -360,13 +372,13 @@ int L3GRun()
     fps_counter<100> fps;
     MSG msg;
 
-    auto prev_takt = clock::now();
+    auto prev_takt = platform.now(platform.context);
 
     while (true)
     {
-        while (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        while (platform.poll(platform.context, msg))
         {
-            DispatchMessage(&msg); // Effectively calls L3GWndProc() handler
+            platform.dispatch(platform.context, msg); // Effectively calls L3GWndProc() handler
         }
         if (FLAG(g_Flags, GFLAG_APPCLOSE) || FLAG(g_Flags, GFLAG_EXITLOOP))
         {
@@ -375,11 +387,11 @@ int L3GRun()
 
         if (!FLAG(g_Flags, GFLAG_APPACTIVE) || !g_FormCur)
         {
-            MsgWaitForMultipleObjects(0, nullptr, FALSE, 50, QS_ALLINPUT);
+            platform.wait(platform.context);
             continue;
         }
 
-        auto cur_takt = clock::now();
+        auto cur_takt = platform.now(platform.context);
         auto delta_time = (cur_takt - prev_takt);
         prev_takt = cur_takt;
 
