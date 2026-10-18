@@ -73,6 +73,10 @@ Game builds compile the CTest executables by default. Run them with `tools/test.
 
 `-Coverage` builds an instrumented MinGW copy in a separate directory ending in `-coverage`, for example `build/mingw-debug-exe-coverage`. See [Coverage and performance measurements](MEASUREMENTS.md).
 
+`-Trace` enables the legacy `_TRACE` diagnostic configuration through `MATRIXGAME_TRACE=ON`. Both build and test helpers use a separate directory ending in `-trace`, for example `build/mingw-debug-exe-trace`; combining coverage adds `-coverage-trace`. Use the same switch for building and testing. The option applies consistently to libraries, game and tests because trace parameters change some C++ signatures. It is off by default and is not a release-package option. Trace builds compile diagnostic result branches, but the window procedure supplies generic Shift codes: Shift+Escape opens the menu. Direct synthetic left/right Shift injection reaches the result branches; see [trace result tests](testing/85-trace-results.md).
+
+The legacy Debug trace assertions throw exceptions. In a `noexcept` destructor a failed assertion still terminates the process; enabling tracing does not make that failure recoverable. MinGW retains the associated `-Wterminate` warning without promoting it to an error in this optional configuration.
+
 ## Game resources and configuration
 
 Place `robots.pkg` and optionally `robots.dat` at the repository root.

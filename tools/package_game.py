@@ -57,6 +57,8 @@ def validate_build(cache, binary):
                 "MATRIXGAME_CHEATS": "OFF", "MATRIXGAME_MUSIC": "ON"}
     if any(values.get(key) != value for key, value in expected.items()):
         raise ValueError("Packaging requires a Release standalone EXE with cheats disabled and music enabled")
+    if values.get("MATRIXGAME_TRACE", "OFF") != "OFF":
+        raise ValueError("Packaging requires diagnostic tracing to be disabled")
     if "winlibs-13.2.0" not in values.get("CMAKE_CXX_COMPILER", "").replace("\\", "/"):
         raise ValueError("Packaging requires the pinned MinGW compiler")
     if len(binary) < 64 or binary[:2] != b"MZ":

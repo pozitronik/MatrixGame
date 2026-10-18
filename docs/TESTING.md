@@ -31,13 +31,15 @@ Use `-NoBuild` when the selected build is already current, such as immediately a
 .\tools\test.ps1 -Configuration Debug -NoBuild
 ```
 
-Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-WithoutMusic`, `-ToolchainRoot`, `-CMakeRoot` and `-Jobs`. Use the same options for building and testing. Relative toolchain/CMake paths are resolved from the current PowerShell working directory. For MSVC, set up Visual Studio and the DirectX SDK as described in the build guide:
+Both helpers accept `-Compiler`, `-Configuration`, `-DLL`, `-Cheats`, `-Trace`, `-WithoutMusic`, `-ToolchainRoot`, `-CMakeRoot` and `-Jobs`. Use the same options for building and testing. Relative toolchain/CMake paths are resolved from the current PowerShell working directory. For MSVC, set up Visual Studio and the DirectX SDK as described in the build guide:
 
 ```powershell
 .\tools\test.ps1 -Compiler MSVC -Configuration Release
 ```
 
 Normal game builds also compile the test executables. `tools/build.ps1 -WithoutTests` sets `BUILD_TESTING=OFF` for a game-only build; the test helper enables it again on its next build.
+
+The optional `-Trace` configuration builds all targets with the legacy `_TRACE` definition and registers `game.outcome.trace_result_callbacks`. It uses a separate build directory and does not change normal gameplay builds. [Trace result tests](testing/85-trace-results.md) distinguish the real generic Shift+Escape menu path from synthetic side-specific result injection and give focused commands.
 
 ## Results and direct CTest commands
 

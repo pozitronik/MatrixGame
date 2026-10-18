@@ -576,6 +576,80 @@ void statistics_formatting() {
         MG_CHECK(session.time() == 0);
     }
 }
+#ifdef _TRACE
+void trace_result_callbacks() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (int step : {10, 16}) for (uint8_t shift : {VK_SHIFT, VK_LSHIFT, VK_RSHIFT}) {
+        const bool native_key = shift == VK_SHIFT;
+        const bool loss = shift == VK_LSHIFT;
+        Session session({mode, 85, step, 1000, false});
+        std::cout << session.metadata("synthetic-trace-result-v2") << " trace_build=1 shift=" << int(shift) << '\n';
+        CallbackDialogs dialogs;
+        CFormMatrixGame form;
+        session.ground_command(500, 300);
+        for (int i = 0; i < 25; ++i) session.advance();
+        const std::array moving{session.robot(1), session.robot(2)};
+        MG_CHECK(moving[0].order == mpo_MoveTo && moving[0].x > 100);
+        side().SetStatValue(STAT_TIME, 1234);
+        g_MatrixMap->GetSideById(2)->SetStatValue(STAT_TIME, 5678);
+        const auto draws = random::draw_count();
+        const int time = session.time();
+        const auto check_state = [&] {
+            MG_CHECK(session.time() == time && random::draw_count() == draws);
+            MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+            MG_CHECK(side().GetStatus() == SS_ACTIVE);
+            MG_CHECK(side().GetStatValue(STAT_TIME) == 1234);
+            MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_TIME) == 5678);
+            for (const auto &robot : moving) {
+                const auto now = session.robot(robot.id);
+                MG_CHECK(now.alive && now.x == robot.x && now.y == robot.y);
+                MG_CHECK(now.order == robot.order && now.group == robot.group);
+                MG_CHECK(now.destination_x == robot.destination_x && now.destination_y == robot.destination_y);
+            }
+        };
+        // WinProc forwards generic VK_SHIFT. Side-specific codes are synthetic
+        // input to the otherwise unreachable diagnostic result branches.
+        form.Keyboard(true, shift);
+        press(form, VK_ESCAPE);
+        form.Keyboard(false, shift);
+        MG_CHECK(!Input::isVKeyPressed(shift) && !Input::isVKeyPressed(VK_ESCAPE));
+        if (native_key) {
+            MG_CHECK(g_ExitState == 0);
+            MG_CHECK(g_MatrixMap->m_DialogModeName &&
+                std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_MENU);
+            MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG | MMFLAG_STAT_DIALOG_D));
+            MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            for (int i = 0; i < 10; ++i) session.advance();
+            check_state();
+            MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            press(form, VK_ESCAPE);
+            MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+            MG_CHECK(g_MatrixMap->m_DialogModeHints.empty());
+            MG_CHECK(g_ExitState == 0 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            check_state();
+            continue;
+        }
+        MG_CHECK(g_ExitState == (loss ? 2 : 3));
+        MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) ==
+            (loss ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
+        MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+        for (int i = 0; i < 10; ++i) session.advance();
+        check_state();
+        press(form, VK_RETURN);
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG));
+        session.advance();
+        MG_CHECK(g_MatrixMap->m_DialogModeName &&
+            std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_STATISTICS);
+        MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+        check_state();
+        press(form, VK_RETURN);
+        MG_CHECK(g_ExitState == (loss ? 2 : 3) && FLAG(g_Flags, GFLAG_EXITLOOP));
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        MG_CHECK(g_MatrixMap->m_DialogModeHints.empty());
+        check_state();
+    }
+}
+#endif
 void scheduled_capture() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         Session session({mode, 79, step});
@@ -2501,6 +2575,9 @@ void guarded_base_profile(bool destroy) {
 void guarded_base_journey() { guarded_base_profile(false); }
 void guarded_base_target_destruction() { guarded_base_profile(true); }
 constexpr tests::Case cases[] = {
+#ifdef _TRACE
+    {"game.outcome.trace_result_callbacks", trace_result_callbacks},
+#endif
     {"game.outcome.typed_statistics_continuation", typed_statistics_continuation},
     {"game.outcome.result_command_boundary", result_command_boundary},
     {"game.ai.guarded_base_journey", guarded_base_journey},

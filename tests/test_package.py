@@ -152,6 +152,9 @@ class PackageTests(unittest.TestCase):
             self.create()
 
     def test_wrong_configuration_and_architecture_rejected(self):
+        with self.assertRaisesRegex(ValueError, "diagnostic tracing"):
+            package.validate_build(self.cache + b"MATRIXGAME_TRACE:BOOL=ON\n", self.binary)
+        package.validate_build(self.cache + b"MATRIXGAME_TRACE:BOOL=OFF\n", self.binary)
         for needle, replacement in [(b"=Release", b"=Debug"), (b"BUILD_DLL:BOOL=OFF", b"BUILD_DLL:BOOL=ON"),
                                     (b"CHEATS:BOOL=OFF", b"CHEATS:BOOL=ON"), (b"MUSIC:BOOL=ON", b"MUSIC:BOOL=OFF"),
                                     (b"winlibs-13.2.0", b"unknown-tools")]:
