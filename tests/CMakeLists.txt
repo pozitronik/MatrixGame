@@ -638,7 +638,7 @@ endforeach()
 foreach(contract capture_keyboard_completion capture_button_completion)
     add_matrix_test(game.player.${contract} matrixgame_battle_outcome_scenarios gameplay input)
 endforeach()
-foreach(contract legacy_loss_confirmation pending_result_menu menu_exit_surrender_callbacks statistics_cheat_dismissal result_confirmation_callbacks menu_confirmation_cancel base_capture_interruption protected_base_command full_auto_escape legacy_loss_cheat paused_orders)
+foreach(contract typed_statistics_continuation result_command_boundary legacy_loss_confirmation pending_result_menu menu_exit_surrender_callbacks statistics_cheat_dismissal result_confirmation_callbacks menu_confirmation_cancel base_capture_interruption protected_base_command full_auto_escape legacy_loss_cheat paused_orders)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
 endforeach()
 foreach(contract victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions pending_result_pause pending_result_late_elimination)
@@ -756,6 +756,12 @@ add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_suppor
 target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
+
+add_matrix_test_executable(matrixgame_battle_restart_failures battle_restart_failures.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_restart_failures PRIVATE MatrixGameInternal)
+add_matrix_test(game.restart.game_owned_cleanup matrixgame_battle_restart_failures gameplay startup)
+
 add_matrix_test_executable(matrixgame_loop_scheduler_tests loop_scheduler_tests.cpp battle_device.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_loop_scheduler_tests PRIVATE MatrixGameInternal)
 foreach(contract timing activation exit_boundaries missing_form native_exit)
