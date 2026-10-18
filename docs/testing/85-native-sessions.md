@@ -24,6 +24,8 @@ After every lifetime the test checks that game/map/configuration/cache/graphics 
 
 The fixture records its version, lifetime number, result, movement observation, tick count and the interval containing the DLL's time-based seed. The DLL contract chooses `ParkMiller` and seeds from `time(nullptr)` inside Run; this test does not replace that clock or claim a fixed-seed golden trace. Movement is checked as a bounded invariant. CTest imposes a 30-second process limit, and the host callback rejects 5,000 ticks without completing the journey.
 
+The [packed-configuration and pneumatic cleanup cases](85-native-packed-sessions.md) extend this fixture with isolated packed loading, invalid-header recovery and repeated animation-data retirement. They retain the same borrowed-host ownership checks.
+
 ## Running
 
 A usable native Windows Direct3D 9 HAL device and the legacy DirectX runtime are required. The executable is compiled with DLL tests, but native execution is opt-in: ordinary asset-free CI does not assume an interactive graphics adapter. A missing adapter is an explicit failure when the native test is selected, never a successful skip.

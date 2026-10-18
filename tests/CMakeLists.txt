@@ -670,10 +670,11 @@ target_include_directories(matrixgame_navigation_tests PRIVATE "${CMAKE_CURRENT_
 target_compile_definitions(matrixgame_navigation_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract chassis_journeys pneumatic_cleanup neighboring_delivery_landings delivery_flights delivery_carrier_damage local_routes passage_width placement region_routes destination_weights group_movement disconnected opposing_flow corridor_movement mixed_chassis removed_blocker carrier_lifetime carrier_cap carrier_drop_landing
+foreach(contract chassis_journeys neighboring_delivery_landings delivery_flights delivery_carrier_damage local_routes passage_width placement region_routes destination_weights group_movement disconnected opposing_flow corridor_movement mixed_chassis removed_blocker carrier_lifetime carrier_cap carrier_drop_landing
                  multiregion_movement multiregion_road_guidance unreachable_replacement)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
+add_matrix_test(game.navigation.pneumatic_cleanup matrixgame_navigation_tests gameplay ai navigation memory)
 add_matrix_test(game.navigation.group_speed_finite matrixgame_navigation_tests gameplay ai navigation)
 foreach(contract shorted_route_blocker dying_route_blocker shorted_movement_recovery drowning_retirement)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
