@@ -38,6 +38,7 @@
 #include "ResourceFiles.hpp"
 #include "WindowDisplay.hpp"
 #include "Text/Font.hpp"
+#include "input.hpp"
 
 #include <new>
 #include <fstream>
@@ -806,6 +807,9 @@ void CGame::ApplyVideoParams(SRobotsSettings &set) {
 
 void CGame::Deinit(void) {
     DTRACE();
+
+    // A hosted battle can end before the matching key-up or focus event arrives.
+    Input::onFocusLost();
 
     SSpecialBot::ClearAIRobotType();
 
