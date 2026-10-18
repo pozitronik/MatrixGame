@@ -1733,6 +1733,13 @@ void CMatrixMap::Restart(void) {
         }
     }
 
+    // Menu entry has already deselected the current group, but inactive groups
+    // can still refer to the old robots until the next unpaused side tick.
+    // Retire those references before deleting or reusing the robot storage.
+    GetPlayerSide()->ResetSelection();
+    GetPlayerSide()->ResetSystemSelection();
+    GetPlayerSide()->PumpGroups();
+
     // removing all objects
     StaticClear();
 
