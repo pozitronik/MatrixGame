@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "battle_geometry.hpp"
 #include "battle_mesh.hpp"
 #include "battle_material.hpp"
 #include "battle_building.hpp"
@@ -187,10 +188,12 @@ void restart_profile(Origin origin, bool check_retired_groups = false) {
             auto *const terrain = map->m_Unit;
             std::cout << session.metadata("storage-restart-v1") << " origin=" << static_cast<int>(origin) << '\n';
             for (int attempt = 0; attempt < 2; ++attempt) {
+                if (check_retired_groups && robots(PLAYER_SIDE).size() == 1)
+                    tests::BattleGeometry::create_robot(*map, PLAYER_SIDE, 140, 260);
+                const auto group_members = robots(PLAYER_SIDE);
                 auto before_robots = robots();
                 std::vector<size_t> previous_ids;
                 for (auto *robot : before_robots) previous_ids.push_back(robot->UID);
-                if (check_retired_groups && attempt == 0) select(robots(PLAYER_SIDE).back());
                 if (origin == Origin::Moving) {
                     auto *robot = robots(PLAYER_SIDE).front();
                     select(robot);
@@ -222,6 +225,15 @@ void restart_profile(Origin origin, bool check_retired_groups = false) {
                     queued.release();
                 }
                 auto &player = *map->GetPlayerSide();
+                if (check_retired_groups) {
+                    MG_CHECK(group_members.size() == 2 && group_members[0] != group_members[1]);
+                    // Finish movement first: an unpaused tick would pump the
+                    // inactive selection that this regression needs to retain.
+                    player.ResetSelection();
+                    player.PumpGroups();
+                    select(group_members[0]);
+                    select(group_members[1]);
+                }
                 player.SetStatValue(STAT_TIME, 1234);
                 player.SetStatValue(STAT_ROBOT_KILL, 7);
                 player.SetResourceAmount(TITAN, 777);
@@ -230,6 +242,15 @@ void restart_profile(Origin origin, bool check_retired_groups = false) {
                 const auto old_draws = random::draw_count();
                 Input::onKeyDown(VK_UP);
                 press(form, VK_ESCAPE);
+                if (check_retired_groups) {
+                    auto *first = player.GetFirstGroup();
+                    MG_CHECK(player.GetCurGroup() == nullptr);
+                    MG_CHECK(first && first->m_NextGroup && first->m_NextGroup->m_NextGroup == nullptr);
+                    auto *second = first->m_NextGroup;
+                    MG_CHECK(first->GetObjectsCnt() == 1 && second->GetObjectsCnt() == 1);
+                    MG_CHECK(first->m_FirstObject->GetObject() == group_members[0]);
+                    MG_CHECK(second->m_FirstObject->GetObject() == group_members[1]);
+                }
                 press(form, 'R');
                 MG_CHECK(map->m_DialogModeHints.size() == 2);
                 for (int i = 0; i < 3; ++i) session.advance();
@@ -261,6 +282,7 @@ void restart_profile(Origin origin, bool check_retired_groups = false) {
                 MG_CHECK(object_count == 2);
                 for (int y = 0; y < map->m_Size.y; ++y)
                     for (int x = 0; x < map->m_Size.x; ++x) MG_CHECK(map->UnitGet(x, y)->m_Base == nullptr);
+                if (check_retired_groups) MG_CHECK(player.GetFirstGroup() == nullptr);
                 if (check_retired_groups)
                     for (auto *group = player.GetFirstGroup(); group; group = group->m_NextGroup) {
                         for (auto *entry = group->m_FirstObject; entry; entry = entry->m_NextObject) {
