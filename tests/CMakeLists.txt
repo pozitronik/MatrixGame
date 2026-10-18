@@ -770,6 +770,18 @@ target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
 
+add_matrix_test_executable(matrixgame_battle_restart_scenarios battle_restart_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_restart_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_battle_restart_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_battle_restart_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_battle_restart_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract movement pending_win pending_loss)
+    add_matrix_test(game.restart.${contract} matrixgame_battle_restart_scenarios gameplay startup)
+endforeach()
+
 add_matrix_test_executable(matrixgame_map_window_scenarios map_window_scenarios.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_map_window_scenarios PRIVATE MatrixGameInternal)
