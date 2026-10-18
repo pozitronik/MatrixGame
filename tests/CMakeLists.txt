@@ -600,6 +600,7 @@ foreach(contract automatic_reinforcement_designs automatic_reinforcement_buildin
                  production_wait_choice production_wait_limits production_unaffordable)
     add_matrix_test(game.ai.${contract} matrixgame_ai_decision_tests gameplay ai)
 endforeach()
+add_matrix_test(game.ai.turret_elevation_boundary matrixgame_ai_decision_tests gameplay ai)
 add_matrix_test(game.ai.bomb_escape_capacity matrixgame_ai_decision_tests gameplay ai)
 add_matrix_test(game.ai.bomb_escape_reservation matrixgame_ai_decision_tests gameplay ai)
 add_matrix_test(game.ai.visual_axis_aligned matrixgame_ai_decision_tests gameplay ai)
