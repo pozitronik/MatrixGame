@@ -102,6 +102,7 @@ void __stdcall tick() {
         MG_CHECK(host->ticks < 5000);
         MG_CHECK(g_FormCur && g_MatrixMap && !IsWindowVisible(host->window));
         if (host->phase == 0) {
+            MG_CHECK(!Input::isVKeyPressed(VK_F12));
             MG_CHECK(random::mode() == random::Mode::ParkMiller);
             MG_CHECK(g_MatrixMap->m_DialogModeName && wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
             auto *form = static_cast<CFormMatrixGame *>(g_FormCur);
@@ -236,7 +237,7 @@ void native_run_lifetimes() { native_run_lifetimes_impl(false); }
 void native_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Packed); }
 void native_packed_header_failure() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader); }
 void pneumatic_retirement() { native_run_lifetimes_impl(false, ConfigurationProfile::RepeatedPneumaticCleanup); }
-void native_held_input_probe() { native_run_lifetimes_impl(true); }
+void native_held_input_retirement() { native_run_lifetimes_impl(true); }
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
@@ -248,7 +249,7 @@ int main(int argc, char **argv) {
         {"game.session.native_packed_lifetimes", native_packed_lifetimes},
         {"game.session.native_packed_header_failure", native_packed_header_failure},
         {"game.session.pneumatic_retirement", pneumatic_retirement},
-        {"probe.session.held_input", native_held_input_probe}};
+        {"game.session.held_input_retirement", native_held_input_retirement}};
     const int result = tests::run(argc, argv, cases);
 #ifdef MEM_SPY_ENABLE
     if (Base::SMemHeader::first_mem_block != nullptr) return EXIT_FAILURE;
