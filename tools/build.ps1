@@ -5,6 +5,7 @@ param(
     [ValidateSet('MinGW', 'MSVC')][string]$Compiler = 'MinGW',
     [switch]$DLL,
     [switch]$Cheats,
+    [switch]$Trace,
     [switch]$WithoutResources,
     [switch]$WithoutTests,
     [switch]$TestsOnly,
@@ -34,6 +35,7 @@ $kind = if ($DLL) { 'dll' } else { 'exe' }
 $buildName = "{0}-{1}-{2}" -f $Compiler.ToLowerInvariant(), $Configuration.ToLowerInvariant(), $kind
 # Instrumented objects stay in their own directory so ordinary builds are unaffected.
 if ($Coverage) { $buildName += '-coverage' }
+if ($Trace) { $buildName += '-trace' }
 $buildRoot = Join-Path $repoRoot "build/$buildName"
 $dllOption = if ($DLL) { 'ON' } else { 'OFF' }
 $cheatsOption = if ($Cheats) { 'ON' } else { 'OFF' }
@@ -45,6 +47,7 @@ $configureArgs = @(
     "-DCMAKE_BUILD_TYPE=$Configuration",
     "-DMATRIXGAME_BUILD_DLL=$dllOption",
     "-DMATRIXGAME_CHEATS=$cheatsOption",
+    "-DMATRIXGAME_TRACE=$(if ($Trace) { 'ON' } else { 'OFF' })",
     "-DMATRIXGAME_MUSIC=$musicOption",
     "-DBUILD_TESTING=$testingOption",
     "-DMATRIXGAME_COVERAGE=$(if ($Coverage) { 'ON' } else { 'OFF' })"

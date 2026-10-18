@@ -565,7 +565,7 @@ endif()
 if(NOT MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_standalone_startup_tests standalone_startup_tests.cpp)
     add_dependencies(matrixgame_standalone_startup_tests MatrixGame)
-    foreach(contract missing_resources rejected_packed missing_text invalid_random damaged_optional)
+    foreach(contract missing_resources rejected_packed missing_text invalid_random damaged_optional diagnostic_readiness)
         add_test(NAME game.startup.native_${contract}
             COMMAND matrixgame_standalone_startup_tests game.startup.native_${contract}
                 "$<TARGET_FILE:MatrixGame>" "${CMAKE_CXX_COMPILER}")
@@ -581,6 +581,19 @@ foreach(contract reinforcement_gates reinforcement_disabled reinforcement_scalin
 endforeach()
 foreach(contract queue_order capacity refund_owner neutralization price income turret_progress income_ticks ai_constructor_prices weapon_slots)
     add_matrix_test(game.production.${contract} matrixgame_production_queue_tests gameplay)
+endforeach()
+
+add_matrix_test_executable(matrixgame_ai_bomb_escape_tests ai_bomb_escape_tests.cpp battle_combat_geometry.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_ai_bomb_escape_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_ai_bomb_escape_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_ai_bomb_escape_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_ai_bomb_escape_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract free reserved unreachable)
+    add_matrix_test(game.ai.bomb_escape_${contract}_journey matrixgame_ai_bomb_escape_tests gameplay ai)
+    set_tests_properties(game.ai.bomb_escape_${contract}_journey PROPERTIES TIMEOUT 90)
 endforeach()
 
 add_matrix_test_executable(matrixgame_ai_decision_tests ai_decision_tests.cpp ai_observation_tests.cpp ai_cleanup_tests.cpp ai_armed_tests.cpp ai_capture_tests.cpp ai_reinforcement_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
@@ -644,6 +657,9 @@ endforeach()
 foreach(contract victory defeat simultaneous_loss automatic_results pause_resume repeated_sessions pending_result_pause pending_result_late_elimination)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay startup)
 endforeach()
+if(MATRIXGAME_TRACE)
+    add_matrix_test(game.outcome.trace_result_callbacks matrixgame_battle_outcome_scenarios gameplay input)
+endif()
 
 add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_chassis_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp navigation_damage_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -764,6 +780,22 @@ target_compile_definitions(matrixgame_battle_restart_scenarios PRIVATE
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 foreach(contract movement pending_win pending_loss)
     add_matrix_test(game.restart.${contract} matrixgame_battle_restart_scenarios gameplay startup)
+endforeach()
+
+add_matrix_test_executable(matrixgame_map_window_scenarios map_window_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_map_window_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_map_window_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_map_window_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_map_window_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.selector.menu_cancel matrixgame_map_window_scenarios gameplay ui startup)
+foreach(contract menu_same menu_different win_cancel win_same win_different loss_cancel loss_same loss_different
+                 surrender_cancel surrender_same surrender_different exit_statistics)
+    foreach(profile park10 park16 legacy10 legacy16)
+        add_matrix_test(game.selector.${contract}.${profile} matrixgame_map_window_scenarios gameplay ui startup)
+    endforeach()
 endforeach()
 
 add_matrix_test_executable(matrixgame_battle_restart_failures battle_restart_failures.cpp

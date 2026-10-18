@@ -96,6 +96,18 @@ jobs:
             target: EXE
             cheats: true
             name: MinGW Debug EXE (cheats)
+          - compiler: MinGW
+            configuration: Debug
+            target: EXE
+            cheats: false
+            trace: true
+            name: MinGW Debug EXE (trace)
+          - compiler: MSVC
+            configuration: Release
+            target: DLL
+            cheats: true
+            trace: true
+            name: MSVC Release DLL (trace)
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -149,6 +161,7 @@ jobs:
           }
           if ('${{ matrix.target }}' -eq 'DLL') { $buildParameters.DLL = $true }
           if ('${{ matrix.cheats }}' -eq 'true') { $buildParameters.Cheats = $true }
+          if ('${{ matrix.trace }}' -eq 'true') { $buildParameters.Trace = $true }
           ./tools/build.ps1 @buildParameters
       - name: Run engine contract tests
         shell: pwsh
@@ -160,23 +173,24 @@ jobs:
           }
           if ('${{ matrix.target }}' -eq 'DLL') { $testParameters.DLL = $true }
           if ('${{ matrix.cheats }}' -eq 'true') { $testParameters.Cheats = $true }
+          if ('${{ matrix.trace }}' -eq 'true') { $testParameters.Trace = $true }
           ./tools/test.ps1 @testParameters
       - name: Upload engine test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: tests-${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}-${{ matrix.cheats && 'cheats' || 'normal' }}
+          name: tests-${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}-${{ matrix.cheats && 'cheats' || 'normal' }}${{ matrix.trace && '-trace' || '' }}
           if-no-files-found: warn
           retention-days: 14
           path: |
             build/**/test-results.xml
             build/**/scenario-traces/*.jsonl
       - name: Prepare the minimal standalone package
-        if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats
+        if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         shell: pwsh
         run: ./tools/package.ps1
       - name: Upload standalone package and corresponding source
-        if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats
+        if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: matrixgame-windows-x86-package
@@ -188,7 +202,7 @@ jobs:
       - name: Upload compiled binaries and text configuration
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: matrixgame-${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}-${{ matrix.cheats && 'cheats' || 'normal' }}
+          name: matrixgame-${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}-${{ matrix.cheats && 'cheats' || 'normal' }}${{ matrix.trace && '-trace' || '' }}
           if-no-files-found: error
           retention-days: 14
           path: |
