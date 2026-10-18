@@ -2,6 +2,7 @@
 #include "battle_device.hpp"
 #include "battle_geometry.hpp"
 #include "test_support.hpp"
+#include "CStorage.hpp"
 #include "MatrixGame.h"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
@@ -118,7 +119,7 @@ struct OwnedBattle {
             button->m_strName = name;
             MG_CHECK(hints->AddElement(button));
         }
-        for (const auto *name : {TEMPLATE_DIALOG_MENU, TEMPLATE_DIALOG_RESET}) {
+        for (const auto *name : {TEMPLATE_DIALOG_MENU, TEMPLATE_DIALOG_RESET, TEMPLATE_DIALOG_BEGIN}) {
             std::wstring markup = L"-1|_BITMAP:restart-failure-pixel:";
             for (int i = 0; i < 6; ++i) markup += L"|_MOD:COPY|_BITMAP:restart-failure-pixel:";
             g_MatrixData->BlockGetAdd(PAR_TEMPLATES)->ParSetAdd(name, markup);
@@ -191,7 +192,51 @@ struct OwnedBattle {
     }
 };
 
-enum class Reload { None, Missing, Corrupt };
+enum class Reload { None, Missing, Corrupt, UnsupportedVersion, NoProperties, MissingColumn, ShortColumn,
+                    PartialRobots, PartialEffects, Empty, EmptyOptional };
+
+void write_empty_scene(const std::filesystem::path &path, Reload kind) {
+    CStorage storage;
+    if (kind == Reload::NoProperties) { storage.Save(path.c_str()); return; }
+    const auto table = [&](const wchar_t *name,
+                           std::initializer_list<std::pair<const wchar_t *, EStorageType>> columns) {
+        CStorageRecord record(name);
+        for (const auto &[column, type] : columns) {
+            if (kind == Reload::MissingColumn && wcscmp(name, DATA_BUILDINGS) == 0 &&
+                wcscmp(column, DATA_BUILDINGS_SIDE) == 0) continue;
+            record.AddItem(CStorageRecordItem(column, type));
+        }
+        storage.AddRecord(record);
+        for (const auto &[column, type] : columns)
+            if (type != ST_WCHAR)
+                if (auto *buffer = storage.GetBuf(name, column, type)) buffer->AddArray();
+    };
+    table(DATA_PROPERTIES, {{DATA_PROPERTIES_NAME, ST_WCHAR}, {DATA_PROPERTIES_VALUE, ST_WCHAR}});
+    table(DATA_OBJECTS, {{DATA_OBJECTS_X, ST_FLOAT}, {DATA_OBJECTS_Y, ST_FLOAT},
+        {DATA_OBJECTS_ANGLE_Z, ST_FLOAT}, {DATA_OBJECTS_SCALE, ST_FLOAT}, {DATA_OBJECTS_TYPE, ST_DWORD}});
+    table(DATA_BUILDINGS, {{DATA_BUILDINGS_X, ST_FLOAT}, {DATA_BUILDINGS_Y, ST_FLOAT},
+        {DATA_BUILDINGS_SIDE, ST_BYTE}, {DATA_BUILDINGS_KIND, ST_BYTE}, {DATA_BUILDINGS_SHADOW, ST_BYTE},
+        {DATA_BUILDINGS_SHADOWSIZE, ST_INT32}, {DATA_BUILDINGS_ANGLE, ST_BYTE}});
+    table(DATA_CANNONS, {{DATA_CANNONS_X, ST_FLOAT}, {DATA_CANNONS_Y, ST_FLOAT},
+        {DATA_CANNONS_SIDE, ST_BYTE}, {DATA_CANNONS_KIND, ST_BYTE}, {DATA_CANNONS_SHADOW, ST_BYTE},
+        {DATA_CANNONS_SHADOWSIZE, ST_INT32}, {DATA_CANNONS_ANGLE, ST_FLOAT}});
+    if (kind == Reload::ShortColumn) {
+        const float x = 100;
+        storage.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_X, ST_FLOAT)->AddToArray<float>(0, &x, 1);
+    }
+    if (kind == Reload::PartialRobots) table(DATA_ROBOTS, {{DATA_ROBOTS_X, ST_FLOAT}});
+    if (kind == Reload::PartialEffects) table(DATA_EFFECTS, {{DATA_EFFECTS_X, ST_FLOAT}});
+    if (kind == Reload::EmptyOptional) {
+        // A zero-row robot table needs no per-robot units strings.
+        table(DATA_ROBOTS, {{DATA_ROBOTS_X, ST_FLOAT}, {DATA_ROBOTS_Y, ST_FLOAT},
+            {DATA_ROBOTS_SIDE, ST_BYTE}, {DATA_ROBOTS_SHADOW, ST_BYTE},
+            {DATA_ROBOTS_SHADOWSIZE, ST_INT32}, {DATA_ROBOTS_GROUP, ST_INT32}});
+        table(DATA_EFFECTS, {{DATA_EFFECTS_X, ST_FLOAT}, {DATA_EFFECTS_Y, ST_FLOAT},
+            {DATA_EFFECTS_Z, ST_FLOAT}, {DATA_EFFECTS_TYPE, ST_INT32}});
+    }
+    storage.Save(path.c_str());
+}
+
 void one_lifetime(Reload reload, random::Mode mode, bool mouse = false) {
     CMain::BaseInit();
     SetUnhandledExceptionFilter(nullptr);
@@ -199,11 +244,14 @@ void one_lifetime(Reload reload, random::Mode mode, bool mouse = false) {
     random::seed(79, mode);
     OwnedBattle battle;
     battle.setup();
-    if (reload == Reload::Corrupt) {
-        const std::array<unsigned char, 12> invalid_header{};
+    if (reload == Reload::Corrupt || reload == Reload::UnsupportedVersion) {
+        const std::array<uint32_t, 3> invalid_header = reload == Reload::Corrupt
+            ? std::array<uint32_t, 3>{} : std::array<uint32_t, 3>{0x47525453u, 2u, 0u};
         std::ofstream stream(battle.path, std::ios::binary);
-        stream.write(reinterpret_cast<const char *>(invalid_header.data()), invalid_header.size());
+        stream.write(reinterpret_cast<const char *>(invalid_header.data()), sizeof(invalid_header));
         MG_CHECK(stream.good());
+    } else if (reload != Reload::None && reload != Reload::Missing) {
+        write_empty_scene(battle.path, reload);
     }
     if (mouse) battle.queue_mouse_confirmation();
     else if (reload != Reload::None) {
@@ -221,12 +269,14 @@ void one_lifetime(Reload reload, random::Mode mode, bool mouse = false) {
     BOOL enabled = FALSE;
     MG_CHECK(battle.device.get()->GetLight(0, &light) == D3D_OK && light.Type == D3DLIGHT_DIRECTIONAL);
     MG_CHECK(battle.device.get()->GetLightEnable(0, &enabled) == D3D_OK && enabled);
-    if (reload != Reload::None) {
+    if (reload != Reload::None && reload != Reload::Empty && reload != Reload::EmptyOptional) {
         MG_CHECK(g_ExitState == 100 && FLAG(g_Flags, GFLAG_EXITLOOP));
         MG_CHECK(!CMatrixMapStatic::GetFirstLogic());
     } else {
         MG_CHECK(g_ExitState == 0 && FLAG(g_Flags, GFLAG_APPCLOSE));
-        MG_CHECK(CMatrixMapStatic::GetFirstLogic());
+        MG_CHECK(bool(CMatrixMapStatic::GetFirstLogic()) == (reload == Reload::None));
+        if (reload == Reload::Empty || reload == Reload::EmptyOptional)
+            MG_CHECK(g_MatrixMap->m_DialogModeName && wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
     }
     battle.cleanup();
 }
@@ -244,6 +294,11 @@ void owned_cleanup() { reload_failure(Reload::None); }
 void missing() { reload_failure(Reload::Missing); }
 void missing_mouse() { reload_failure(Reload::Missing, true); }
 void corrupt() { reload_failure(Reload::Corrupt); }
+void malformed() {
+    for (auto kind : {Reload::UnsupportedVersion, Reload::NoProperties, Reload::MissingColumn, Reload::ShortColumn,
+                      Reload::PartialRobots, Reload::PartialEffects}) reload_failure(kind);
+}
+void empty_storage() { reload_failure(Reload::Empty); reload_failure(Reload::EmptyOptional); }
 
 // A bounded callback source for timing and diagnostic contracts. The window
 // procedure, message dispatch, exception transport and loop remain production.
@@ -332,7 +387,9 @@ constexpr tests::Case cases[] = {
     {"game.restart.callback_before_loop", callback_before_loop},
     {"game.restart.callback_during_tick", callback_during_tick},
     {"game.restart.callback_abandoned", callback_abandoned},
-    {"probe.restart.corrupt_file_cleanup", corrupt},
+    {"game.restart.corrupt_file_cleanup", corrupt},
+    {"game.restart.malformed_storage_cleanup", malformed},
+    {"game.restart.empty_storage", empty_storage},
 };
 }
 int main(int argc, char **argv) {

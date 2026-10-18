@@ -802,7 +802,8 @@ add_matrix_test_executable(matrixgame_battle_restart_failures battle_restart_fai
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_restart_failures PRIVATE MatrixGameInternal)
 add_matrix_test(game.restart.game_owned_cleanup matrixgame_battle_restart_failures gameplay startup)
-foreach(contract missing_file_cleanup missing_file_mouse_cleanup callback_before_loop callback_during_tick callback_abandoned)
+foreach(contract missing_file_cleanup missing_file_mouse_cleanup corrupt_file_cleanup malformed_storage_cleanup empty_storage
+                 callback_before_loop callback_during_tick callback_abandoned)
     add_matrix_test(game.restart.${contract} matrixgame_battle_restart_failures gameplay startup)
 endforeach()
 
