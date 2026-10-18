@@ -129,6 +129,30 @@ void journey(ERobotUnitKind chassis, random::Mode mode, int step) {
     }
 }
 }
+void pneumatic_cleanup() {
+    BattleCombatAssets assets;
+    battle::Session session(battle::Profile{});
+    PneumaticCatalog pneumatic;
+    assets.install();
+    MG_CHECK(PneumaticAccess::m_Pneumaic == nullptr);
+    auto *robot = BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200, RUK_CHASSIS_PNEUMATIC);
+    // Build real gait data twice; each retired catalog must permit both repeated
+    // cleanup and fresh initialization without accessing the released buffer.
+    for (int lifetime = 0; lifetime < 2; ++lifetime) {
+        pneumatic.install(robot->m_Unit[0].m_Graph->VO());
+        MG_CHECK(PneumaticAccess::m_Pneumaic != nullptr && g_fcnt == 4);
+        CMatrixRobot::DestroyPneumaticData();
+        pneumatic.installed = false;
+        const bool retired = PneumaticAccess::m_Pneumaic == nullptr;
+        // Restore the fixture alias even when the original implementation fails
+        // the assertion, so reporting the regression does not itself double-free.
+        PneumaticAccess::m_Pneumaic = pneumatic.previous;
+        g_fcnt = pneumatic.previous_count;
+        MG_CHECK(retired);
+        CMatrixRobot::DestroyPneumaticData();
+        MG_CHECK(PneumaticAccess::m_Pneumaic == nullptr);
+    }
+}
 void chassis_journeys() {
     for (auto chassis : {RUK_CHASSIS_PNEUMATIC, RUK_CHASSIS_WHEEL, RUK_CHASSIS_TRACK,
                          RUK_CHASSIS_HOVERCRAFT, RUK_CHASSIS_ANTIGRAVITY})

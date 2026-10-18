@@ -669,7 +669,7 @@ target_include_directories(matrixgame_navigation_tests PRIVATE "${CMAKE_CURRENT_
 target_compile_definitions(matrixgame_navigation_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract chassis_journeys neighboring_delivery_landings delivery_flights delivery_carrier_damage local_routes passage_width placement region_routes destination_weights group_movement disconnected opposing_flow corridor_movement mixed_chassis removed_blocker carrier_lifetime carrier_cap carrier_drop_landing
+foreach(contract chassis_journeys pneumatic_cleanup neighboring_delivery_landings delivery_flights delivery_carrier_damage local_routes passage_width placement region_routes destination_weights group_movement disconnected opposing_flow corridor_movement mixed_chassis removed_blocker carrier_lifetime carrier_cap carrier_drop_landing
                  multiregion_movement multiregion_road_guidance unreachable_replacement)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
@@ -811,11 +811,14 @@ endforeach()
 
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_native_session_fixture native_session_fixture.cpp
-        native_session_assets.cpp battle_geometry.cpp)
+        native_session_assets.cpp native_packed_config.cpp battle_geometry.cpp)
     target_link_libraries(matrixgame_native_session_fixture PRIVATE MatrixGameInternal)
     target_compile_definitions(matrixgame_native_session_fixture PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
     option(MATRIXGAME_NATIVE_SESSION_TESTS "Run native Direct3D 9 synthetic session checks" OFF)
     if(MATRIXGAME_NATIVE_SESSION_TESTS)
         add_matrix_test(game.session.native_run_lifetimes matrixgame_native_session_fixture gameplay startup native native-process)
+        add_matrix_test(game.session.native_packed_lifetimes matrixgame_native_session_fixture gameplay startup native native-process)
+        add_matrix_test(game.session.native_packed_header_failure matrixgame_native_session_fixture gameplay startup memory native native-process)
+        add_matrix_test(game.session.pneumatic_retirement matrixgame_native_session_fixture gameplay startup memory native native-process)
     endif()
 endif()
