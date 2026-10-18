@@ -770,6 +770,22 @@ target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
 
+add_matrix_test_executable(matrixgame_map_window_scenarios map_window_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_map_window_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_map_window_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_map_window_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_map_window_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.selector.menu_cancel matrixgame_map_window_scenarios gameplay ui startup)
+foreach(contract menu_same menu_different win_cancel win_same win_different loss_cancel loss_same loss_different
+                 surrender_cancel surrender_same surrender_different exit_statistics)
+    foreach(profile park10 park16 legacy10 legacy16)
+        add_matrix_test(game.selector.${contract}.${profile} matrixgame_map_window_scenarios gameplay ui startup)
+    endforeach()
+endforeach()
+
 add_matrix_test_executable(matrixgame_battle_restart_failures battle_restart_failures.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_restart_failures PRIVATE MatrixGameInternal)
