@@ -267,7 +267,8 @@ public:
         return cooperative_level;
     }
     UINT STDMETHODCALLTYPE GetAvailableTextureMem() override {
-        unsupported("GetAvailableTextureMem");
+        ++statistics.texture_memory_queries;
+        return 64u * 1024u * 1024u;
     }
     HRESULT STDMETHODCALLTYPE EvictManagedResources() override {
         unsupported("EvictManagedResources");
