@@ -26,6 +26,7 @@ set(3G_HEADERS
     3G/DisplaySettings.hpp
     3G/WindowDisplay.hpp
     3G/Form.hpp
+    3G/LoopPlatform.hpp
     3G/Helper.hpp
     3G/Math3D.hpp
     3G/ShadowProj.hpp
