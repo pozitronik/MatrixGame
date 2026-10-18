@@ -8,6 +8,7 @@
 #include "CStorage.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFormGame.hpp"
+#include "MatrixMultiSelection.hpp"
 #include "Interface/CInterface.h"
 #include "Interface/CIFaceButton.h"
 #include "Interface/MatrixHint.hpp"
@@ -15,6 +16,26 @@
 #include <cstring>
 #include <filesystem>
 #include <vector>
+
+// Supply visibility, as the existing selection fixtures do; geometry picking
+// and form dispatch remain production implementations.
+struct SelectionFixture {
+    explicit SelectionFixture(CMatrixMapStatic *visible) {
+        MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+        CMatrixMapStatic::objects_left = 0;
+        CMatrixMapStatic::objects_rite = 1;
+        CMatrixMapStatic::objects[0] = visible;
+        g_IFaceList->m_InFocus = UNKNOWN;
+    }
+    ~SelectionFixture() {
+        while (CMultiSelection::m_First) {
+            auto *selection = CMultiSelection::m_First;
+            HDelete(CMultiSelection, selection, g_MatrixHeap);
+        }
+        CMatrixMapStatic::objects[0] = nullptr;
+        CMatrixMapStatic::objects_left = CMatrixMapStatic::objects_rite = 0;
+    }
+};
 
 namespace {
 using namespace tests::battle;
@@ -127,6 +148,30 @@ void select(CMatrixRobotAI *robot) {
     side.CreateGroupFromCurrent(robot);
     side.m_CurrSel = ROBOT_SELECTED;
 }
+void select_building_before_tick(CFormMatrixGame &form) {
+    const auto time = g_MatrixMap->GetTime();
+    auto *geometry = tests::load_battle_mesh({});
+    auto building = tests::make_battle_building(*geometry, PLAYER_SIDE, BUILDING_TITAN, 320, 320);
+    SelectionFixture visible(building.get());
+    D3DXMATRIX identity;
+    D3DXMatrixIdentity(&identity);
+    const auto center = g_MatrixMap->m_Camera.Project(building->GetGeoCenter(), identity);
+    const CPoint from(static_cast<int>(center.x) - 2, static_cast<int>(center.y) - 2);
+    const CPoint to(from.x + 4, from.y + 4);
+    MG_CHECK(building->InRect(CRect(from.x, from.y, to.x, to.y)));
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
+    form.MouseMove(from.x, from.y);
+    form.MouseKey(B_DOWN, VK_LBUTTON, from.x, from.y);
+    MG_CHECK(CMultiSelection::m_GameSelection != nullptr);
+    form.MouseMove(to.x, to.y);
+    form.MouseKey(B_UP, VK_LBUTTON, to.x, to.y);
+    auto &player = *g_MatrixMap->GetPlayerSide();
+    MG_CHECK(CMultiSelection::m_GameSelection == nullptr);
+    MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON));
+    MG_CHECK(player.m_CurrSel == BUILDING_SELECTED && player.m_ActiveObject == building.get());
+    MG_CHECK(g_MatrixMap->GetTime() == time);
+    player.Select(NOTHING, nullptr);
+}
 enum class Origin { Moving, PendingWin, PendingLoss };
 void restart_profile(Origin origin, bool check_retired_groups = false) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
@@ -145,6 +190,7 @@ void restart_profile(Origin origin, bool check_retired_groups = false) {
                 auto before_robots = robots();
                 std::vector<size_t> previous_ids;
                 for (auto *robot : before_robots) previous_ids.push_back(robot->UID);
+                if (check_retired_groups && attempt == 0) select(robots(PLAYER_SIDE).back());
                 if (origin == Origin::Moving) {
                     auto *robot = robots(PLAYER_SIDE).front();
                     select(robot);
@@ -246,6 +292,7 @@ void restart_profile(Origin origin, bool check_retired_groups = false) {
                 Input::onKeyUp(VK_UP);
                 press(form, VK_RETURN);
                 MG_CHECK(!map->IsPaused() && map->m_DialogModeName == nullptr);
+                if (check_retired_groups) select_building_before_tick(form);
                 auto *robot = robots(PLAYER_SIDE).front();
                 select(robot);
                 session.ground_command(500, 300);
@@ -262,9 +309,9 @@ void restart_profile(Origin origin, bool check_retired_groups = false) {
 void restart_movement() { restart_profile(Origin::Moving); }
 void restart_pending_win() { restart_profile(Origin::PendingWin); }
 void restart_pending_loss() { restart_profile(Origin::PendingLoss); }
-void restart_retired_group_probe() { restart_profile(Origin::Moving, true); }
+void restart_retired_group() { restart_profile(Origin::Moving, true); }
 constexpr tests::Case cases[] = {
-    {"probe.restart.retired_group", restart_retired_group_probe},
+    {"game.restart.retired_group", restart_retired_group},
     {"game.restart.movement", restart_movement},
     {"game.restart.pending_win", restart_pending_win},
     {"game.restart.pending_loss", restart_pending_loss},
