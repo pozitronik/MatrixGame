@@ -690,6 +690,20 @@ foreach(contract mixed_selection_lifecycle manual_track_lifecycle manual_hovercr
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
 
+add_matrix_test_executable(matrixgame_player_command_lifecycles player_command_lifecycle_tests.cpp
+    battle_scenario.cpp battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp
+    battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_player_command_lifecycles PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_player_command_lifecycles matrixgame_scenario_identity)
+target_include_directories(matrixgame_player_command_lifecycles PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_player_command_lifecycles PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract mixed_command_lifecycle spawning_command_lifecycle carried_command_lifecycle dying_command_lifecycle)
+    add_matrix_test(game.player.${contract} matrixgame_player_command_lifecycles gameplay input)
+    set_tests_properties(game.player.${contract} PROPERTIES TIMEOUT 90)
+endforeach()
+
 add_test(NAME game.cheats.intentional_crash
     COMMAND "${CMAKE_COMMAND}" "-DTEST_EXECUTABLE=$<TARGET_FILE:matrixgame_player_order_scenarios>"
         -P "${CMAKE_CURRENT_SOURCE_DIR}/check_intentional_cheat_abort.cmake")
