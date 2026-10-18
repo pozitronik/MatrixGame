@@ -38,7 +38,7 @@ The opt-in `probe.restart.retired_group` case is not registered in CTest. Run it
 & '.\build\mingw-release-exe\tests\matrixgame_battle_restart_scenarios.exe' probe.restart.retired_group
 ```
 
-The probe currently fails: an inactive selection group can retain the address of a deleted robot across Restart. It compares group entries against recorded identities without dereferencing deleted objects. Debug allocation reuse can make the old entry alias a new robot; the observed Release run leaves an entry with no live replacement. Current/scratch selection being empty does not establish retirement of this separate group list. A later unpaused `PumpGroups` removes inactive groups, but input-side group consumers can dereference entries before that tick. This lifetime defect requires separate correction and regression coverage; retaining the bad reference is not an accepted compatibility contract.
+The probe currently fails: an inactive selection group can retain the address of a deleted robot across Restart. It compares group entries against recorded identities without dereferencing deleted objects. Allocation reuse can make the old entry alias a new robot in either build. One observed Release run left an entry with no live replacement; that observation does not exclude address reuse in other Release runs. Current/scratch selection being empty does not establish retirement of this separate group list. A later unpaused `PumpGroups` removes inactive groups, but input-side group consumers can dereference entries before that tick. This lifetime defect requires separate correction and regression coverage; retaining the bad reference is not an accepted compatibility contract.
 
 ## Remaining O6 work
 
