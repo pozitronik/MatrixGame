@@ -14,6 +14,11 @@
 namespace {
 std::filesystem::path game_executable, compiler_directory;
 
+struct Handle {
+    HANDLE value = nullptr;
+    ~Handle() { if (value) CloseHandle(value); }
+};
+
 void check_win32(bool result, const char *operation) {
     if (!result) throw std::runtime_error(std::string(operation) + "; Windows error=" + std::to_string(GetLastError()));
 }
@@ -28,6 +33,34 @@ std::wstring window_text(HWND window) {
                              SMTO_ABORTIFHUNG, 1000, &copied)) return {};
     text.resize(copied);
     return text;
+}
+struct Caption {
+    std::wstring text;
+    DWORD error = ERROR_SUCCESS;
+    bool complete = false;
+};
+Caption window_caption(HWND window) {
+    // For a foreign top-level window these APIs read the cached caption without
+    // waiting for its window procedure. Control contents still need WM_GETTEXT.
+    SetLastError(ERROR_SUCCESS);
+    const int length = GetWindowTextLengthW(window);
+    if (!length) return {{}, GetLastError(), false};
+    std::wstring text(length + 1, L'\0');
+    SetLastError(ERROR_SUCCESS);
+    const int copied = GetWindowTextW(window, text.data(), static_cast<int>(text.size()));
+    if (!copied) return {{}, GetLastError(), false};
+    text.resize(copied);
+    return {std::move(text), ERROR_SUCCESS, true};
+}
+std::string utf8(std::wstring_view text) {
+    if (text.empty()) return {};
+    const int length = WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
+                                         nullptr, 0, nullptr, nullptr);
+    if (!length) return "[UTF-8 conversion failed]";
+    std::string result(length, '\0');
+    if (!WideCharToMultiByte(CP_UTF8, 0, text.data(), static_cast<int>(text.size()),
+                             result.data(), length, nullptr, nullptr)) return "[UTF-8 conversion failed]";
+    return result;
 }
 std::string bytes(const std::filesystem::path &path) {
     std::ifstream file(path, std::ios::binary);
@@ -108,9 +141,10 @@ struct Desktop {
 struct Child {
     PROCESS_INFORMATION process{};
     HANDLE job = nullptr;
-    Child(const Deployment &deployment, Desktop &desktop) {
-        const auto executable = deployment.app / "MatrixGame.exe";
-        std::wstring command = L"\"" + executable.wstring() + L"\"";
+    Child(const Deployment &deployment, Desktop &desktop, std::filesystem::path executable = {},
+          std::wstring arguments = {}) {
+        if (executable.empty()) executable = deployment.app / "MatrixGame.exe";
+        std::wstring command = L"\"" + executable.wstring() + L"\" " + arguments;
         STARTUPINFOW startup{};
         startup.cb = sizeof(startup);
         startup.lpDesktop = desktop.name.data();
@@ -155,6 +189,8 @@ struct Dialog {
     HWND window = nullptr;
     std::wstring title, text;
     std::vector<HWND> buttons;
+    bool caption_complete = false;
+    DWORD caption_error = ERROR_SUCCESS;
     static BOOL CALLBACK child(HWND window, LPARAM parameter) {
         auto &dialog = *reinterpret_cast<Dialog *>(parameter);
         std::array<wchar_t, 32> type{};
@@ -175,11 +211,15 @@ struct Dialog {
         GetClassNameW(window, type.data(), type.size());
         if (std::wstring_view(type.data()) != L"#32770") return TRUE;
         dialog.window = window;
-        dialog.title = window_text(window);
+        auto caption = window_caption(window);
+        dialog.title = std::move(caption.text);
+        dialog.caption_complete = caption.complete;
+        dialog.caption_error = caption.error;
         dialog.text.clear();
         dialog.buttons.clear();
         EnumChildWindows(window, child, parameter);
-        if (dialog.text.empty() || dialog.buttons.size() != 1 || !IsWindowEnabled(dialog.buttons.front())) {
+        if (!dialog.caption_complete || dialog.title.empty() || dialog.text.empty() || dialog.buttons.size() != 1 ||
+            !IsWindowEnabled(dialog.buttons.front())) {
             dialog.window = nullptr;
             return TRUE;
         }
@@ -203,8 +243,13 @@ Result run(const Deployment &deployment) {
     if (!dialog.window) {
         DWORD status = 0;
         GetExitCodeProcess(child.process.hProcess, &status);
+        std::cerr << "Last startup caption=[" << utf8(dialog.title) << "]\n";
+        std::cerr << "Caption complete=" << dialog.caption_complete << "; caption Windows error="
+                  << dialog.caption_error << "; body characters=" << dialog.text.size()
+                  << "; buttons=" << dialog.buttons.size() << '\n';
         throw std::runtime_error("No startup diagnostic dialog; process status=" + std::to_string(status));
     }
+    std::cout << "Startup diagnostic caption=[" << utf8(dialog.title) << "]\n" << std::flush;
     std::cout << "Startup diagnostic captured; button ID=" << GetDlgCtrlID(dialog.buttons.front()) << '\n' << std::flush;
     // MB_OK can expose IDOK or IDCANCEL depending on Windows; use the actual sole button.
     // Capture the native dialog text, then dismiss only this owned child's dialog.
@@ -225,6 +270,110 @@ Result run(const Deployment &deployment) {
     std::cout << "Startup process exit=" << status << "\n" << log << std::flush;
     MG_CHECK(log.find("Standalone session cleanup failed") == std::string::npos);
     return {dialog.title, dialog.text, std::move(log), status};
+}
+
+constexpr wchar_t synthetic_caption[] = L"Synthetic startup diagnostic";
+constexpr wchar_t synthetic_body[] = L"Synthetic startup diagnostic body";
+
+INT_PTR CALLBACK readiness_dialog(HWND window, UINT message, WPARAM wp, LPARAM) {
+    if (message == WM_INITDIALOG) {
+        if (!CreateWindowW(L"Static", synthetic_body, WS_CHILD, 0, 0, 100, 30,
+                           window, nullptr, GetModuleHandleW(nullptr), nullptr) ||
+            !CreateWindowW(L"Button", L"OK", WS_CHILD, 0, 35, 50, 20,
+                           window, reinterpret_cast<HMENU>(IDOK), GetModuleHandleW(nullptr), nullptr)) {
+            PostQuitMessage(2);
+        }
+        return TRUE;
+    }
+    if (message == WM_GETTEXTLENGTH || message == WM_GETTEXT) {
+        // Only the dialog procedure refuses text messages. Foreign cached-caption
+        // reads must still work; the Static child handles its normal text messages.
+        SetWindowLongPtrW(window, DWLP_MSGRESULT, 0);
+        return TRUE;
+    }
+    if (message == WM_COMMAND && LOWORD(wp) == IDOK) {
+        DestroyWindow(window);
+        PostQuitMessage(0);
+        return TRUE;
+    }
+    return FALSE;
+}
+
+int readiness_child(const wchar_t *body_name, const wchar_t *allow_name, const wchar_t *caption_name) {
+    Handle body{OpenEventW(EVENT_MODIFY_STATE, FALSE, body_name)};
+    Handle allow{OpenEventW(SYNCHRONIZE, FALSE, allow_name)};
+    Handle caption{OpenEventW(EVENT_MODIFY_STATE, FALSE, caption_name)};
+    check_win32(body.value && allow.value && caption.value, "OpenEventW readiness gates");
+    struct Template {
+        DLGTEMPLATE dialog{};
+        WORD menu = 0, window_class = 0, title = 0;
+    } type;
+    type.dialog.style = WS_POPUP | WS_CAPTION | DS_MODALFRAME;
+    type.dialog.cx = 120;
+    type.dialog.cy = 70;
+    struct Window {
+        HWND value;
+        ~Window() { if (IsWindow(value)) DestroyWindow(value); }
+    } window{CreateDialogIndirectParamW(GetModuleHandleW(nullptr), &type.dialog, nullptr, readiness_dialog, 0)};
+    check_win32(window.value != nullptr, "CreateDialogIndirectParamW");
+    check_win32(SetEvent(body.value), "SetEvent body ready");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    bool caption_set = false;
+    while (std::chrono::steady_clock::now() < deadline) {
+        const DWORD count = caption_set ? 0 : 1;
+        const DWORD result = MsgWaitForMultipleObjects(count, &allow.value, FALSE, 20, QS_ALLINPUT);
+        check_win32(result != WAIT_FAILED, "MsgWaitForMultipleObjects readiness");
+        if (!caption_set && result == WAIT_OBJECT_0) {
+            check_win32(SetWindowTextW(window.value, synthetic_caption), "SetWindowTextW caption");
+            caption_set = true;
+            check_win32(SetEvent(caption.value), "SetEvent caption ready");
+        }
+        MSG message{};
+        while (PeekMessageW(&message, nullptr, 0, 0, PM_REMOVE)) {
+            if (message.message == WM_QUIT) return static_cast<int>(message.wParam);
+            TranslateMessage(&message);
+            DispatchMessageW(&message);
+        }
+    }
+    return 3;
+}
+
+void diagnostic_readiness() {
+    Environment environment;
+    Deployment deployment;
+    Desktop desktop;
+    const auto prefix = L"Local\\MatrixGame-Diagnostic-" + std::to_wstring(GetCurrentProcessId());
+    const auto body_name = prefix + L"-body", allow_name = prefix + L"-allow", caption_name = prefix + L"-caption";
+    Handle body{CreateEventW(nullptr, TRUE, FALSE, body_name.c_str())};
+    Handle allow{CreateEventW(nullptr, TRUE, FALSE, allow_name.c_str())};
+    Handle caption{CreateEventW(nullptr, TRUE, FALSE, caption_name.c_str())};
+    MG_CHECK(body.value && allow.value && caption.value);
+    std::array<wchar_t, 32768> executable{};
+    const auto length = GetModuleFileNameW(nullptr, executable.data(), executable.size());
+    MG_CHECK(length && length < executable.size());
+    Child child(deployment, desktop, executable.data(),
+                L"--diagnostic-readiness-child " + body_name + L" " + allow_name + L" " + caption_name);
+    MG_CHECK(WaitForSingleObject(body.value, 5000) == WAIT_OBJECT_0);
+    Dialog incomplete{child.process.dwProcessId, nullptr, {}, {}, {}};
+    const bool enumerated = EnumDesktopWindows(desktop.value, Dialog::top, reinterpret_cast<LPARAM>(&incomplete));
+    MG_CHECK(incomplete.window == nullptr);
+    MG_CHECK(enumerated);
+    MG_CHECK(incomplete.title.empty() && !incomplete.caption_complete);
+    MG_CHECK(incomplete.text == std::wstring(synthetic_body) + L"\n");
+    MG_CHECK(incomplete.buttons.size() == 1 && IsWindowEnabled(incomplete.buttons.front()));
+    MG_CHECK(WaitForSingleObject(child.process.hProcess, 0) == WAIT_TIMEOUT);
+    MG_CHECK(SetEvent(allow.value));
+    MG_CHECK(WaitForSingleObject(caption.value, 5000) == WAIT_OBJECT_0);
+    Dialog ready{child.process.dwProcessId, nullptr, {}, {}, {}};
+    EnumDesktopWindows(desktop.value, Dialog::top, reinterpret_cast<LPARAM>(&ready));
+    MG_CHECK(ready.window && ready.caption_complete && ready.caption_error == ERROR_SUCCESS);
+    MG_CHECK(ready.title == synthetic_caption && ready.text == std::wstring(synthetic_body) + L"\n");
+    MG_CHECK(ready.buttons.size() == 1 && IsWindowEnabled(ready.buttons.front()));
+    MG_CHECK(PostMessageW(ready.window, WM_COMMAND, MAKEWPARAM(IDOK, BN_CLICKED),
+                          reinterpret_cast<LPARAM>(ready.buttons.front())));
+    MG_CHECK(WaitForSingleObject(child.process.hProcess, 5000) == WAIT_OBJECT_0);
+    DWORD status = 1;
+    MG_CHECK(GetExitCodeProcess(child.process.hProcess, &status) && status == 0);
 }
 void missing_resources() {
     Deployment deployment;
@@ -287,6 +436,7 @@ void damaged_optional_packages() {
     }
 }
 const tests::Case cases[]{
+    {"game.startup.native_diagnostic_readiness", diagnostic_readiness},
     {"game.startup.native_missing_resources", missing_resources},
     {"game.startup.native_rejected_packed", rejected_packed_configuration},
     {"game.startup.native_missing_text", missing_text_configuration},
@@ -296,10 +446,16 @@ const tests::Case cases[]{
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-    if (argc != 4) return 2;
     int count = 0;
     auto arguments = CommandLineToArgvW(GetCommandLineW(), &count);
     if (!arguments) return 2;
+    if (argc == 5 && count == 5 && std::wstring_view(arguments[1]) == L"--diagnostic-readiness-child") {
+        int result = 2;
+        try { result = readiness_child(arguments[2], arguments[3], arguments[4]); }
+        catch (const std::exception &error) { std::cerr << error.what() << '\n'; }
+        LocalFree(arguments);
+        return result;
+    }
     if (count != 4) { LocalFree(arguments); return 2; }
     game_executable = std::filesystem::absolute(arguments[2]);
     compiler_directory = std::filesystem::absolute(arguments[3]).parent_path();
