@@ -14,6 +14,7 @@
 
 namespace tests::navigation {
 void chassis_journeys();
+void pneumatic_cleanup();
 void multiregion_movement();
 void multiregion_road_guidance();
 void group_speed_finite();
@@ -445,6 +446,7 @@ int main(int argc, char **argv) {
     std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
         {"game.navigation.chassis_journeys", tests::navigation::chassis_journeys},
+        {"game.navigation.pneumatic_cleanup", tests::navigation::pneumatic_cleanup},
         {"game.navigation.shorted_route_blocker", tests::navigation::shorted_route_blocker},
         {"game.navigation.dying_route_blocker", tests::navigation::dying_route_blocker},
         {"game.navigation.shorted_movement_recovery", tests::navigation::shorted_movement_recovery},

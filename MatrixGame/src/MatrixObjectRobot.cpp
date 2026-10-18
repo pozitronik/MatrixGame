@@ -1688,8 +1688,10 @@ void CMatrixRobot::BuildPneumaticData(CVectorObject *vo) {
     };
 }
 void CMatrixRobot::DestroyPneumaticData(void) {
-    if (m_Pneumaic)
+    if (m_Pneumaic) {
         HFree(m_Pneumaic, g_MatrixHeap);
+        m_Pneumaic = nullptr;
+    }
 }
 
 bool CMatrixRobot::InRect(const CRect &rect) const {

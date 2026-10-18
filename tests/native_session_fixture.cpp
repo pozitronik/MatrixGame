@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "native_session_assets.hpp"
+#include "native_packed_config.hpp"
 #include "test_support.hpp"
 #include "MatrixGame.h"
 #include "MatrixMap.hpp"
@@ -137,9 +138,12 @@ void __stdcall tick() {
         }
     } catch (const std::exception &error) { host->failure = error.what(); throw; }
 }
-void native_run_lifetimes_impl(bool leave_key_held) {
+enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, RepeatedPneumaticCleanup };
+void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile = ConfigurationProfile::Text) {
+    const bool packed = profile != ConfigurationProfile::Text;
     Fixture fixture;
     tests::write_native_session_assets();
+    if (packed) tests::pack_native_session_configuration();
     Window window;
     MG_CHECK(window.parent && window.child && !IsWindowVisible(window.child));
     const auto original_procedure = GetWindowLongPtrA(window.child, GWLP_WNDPROC);
@@ -161,12 +165,21 @@ void native_run_lifetimes_impl(bool leave_key_held) {
         ~HostGuard() { entry->m_Deinit(); host = nullptr; }
     } guard{entry};
     for (int lifetime = 0; lifetime < 3; ++lifetime) {
+        if (lifetime == 1 && (profile == ConfigurationProfile::Packed ||
+            profile == ConfigurationProfile::RepeatedPneumaticCleanup)) continue;
         const bool failing = lifetime == 1;
         HostObservation observed;
         observed.window = window.child;
         observed.leave_key_held = leave_key_held;
         host = &observed;
-        if (failing) fs::rename(L"CFG/robots/iface.txt", L"CFG/robots/iface.saved");
+        if (failing) {
+            if (packed) {
+                fs::rename(L"CFG/robots.dat", L"parked-valid-config");
+                std::ofstream broken(L"CFG/robots.dat", std::ios::binary);
+                broken.write("BAD!", 4);
+                MG_CHECK(broken.good());
+            } else fs::rename(L"CFG/robots/iface.txt", L"CFG/robots/iface.saved");
+        }
         SRobotGameState result{41,42,43,44,45,46};
         const auto unchanged = result;
         wchar_t map[] = L".\\synthetic.map";
@@ -175,19 +188,28 @@ void native_run_lifetimes_impl(bool leave_key_held) {
             nullptr, nullptr, nullptr, nullptr, nullptr, &result);
         SetUnhandledExceptionFilter(nullptr);
         std::set_terminate([] { std::abort(); });
-        if (failing) fs::rename(L"CFG/robots/iface.saved", L"CFG/robots/iface.txt");
-        std::cout << "fixture=synthetic-session-v1 lifetime=" << lifetime << " result=" << exit
+        if (!failing && profile == ConfigurationProfile::RepeatedPneumaticCleanup)
+            CMatrixRobot::DestroyPneumaticData();
+        if (failing) {
+            if (packed) {
+                fs::remove(L"CFG/robots.dat");
+                fs::rename(L"parked-valid-config", L"CFG/robots.dat");
+            } else fs::rename(L"CFG/robots/iface.saved", L"CFG/robots/iface.txt");
+        }
+        std::cout << "fixture=synthetic-session-v1 packed=" << packed << " lifetime=" << lifetime << " result=" << exit
             << " seed_interval=[" << observed.entry_time << ',' << observed.first_progress_time
             << "] ticks=" << observed.ticks << " moved=" << observed.moved << '\n';
         MG_CHECK(observed.failure.empty());
         MG_CHECK(exit == (failing ? 100 : 0));
-        MG_CHECK(observed.progress > 0 && observed.map_observed);
+        if (failing && packed) MG_CHECK(observed.progress == 0 && !observed.map_observed && observed.ticks == 0);
+        else MG_CHECK(observed.progress > 0 && observed.map_observed);
         MG_CHECK(observed.begins == (failing ? 0 : 1));
         if (failing) {
             MG_CHECK(std::memcmp(&result, &unchanged, sizeof(result)) == 0);
             std::ifstream errors("matrixgame-dll-errors.log", std::ios::binary);
             const std::string diagnostic((std::istreambuf_iterator<char>(errors)), {});
-            MG_CHECK(diagnostic.find("Error open file: cfg\\robots\\iface.txt") != std::string::npos);
+            MG_CHECK(diagnostic.find(packed ? "Invalid packed configuration: cfg\\robots.dat" :
+                "Error open file: cfg\\robots\\iface.txt") != std::string::npos);
         }
         else {
             MG_CHECK(observed.ticks >= 2 && observed.moved && observed.phase == 2);
@@ -212,6 +234,9 @@ void native_run_lifetimes_impl(bool leave_key_held) {
     }
 }
 void native_run_lifetimes() { native_run_lifetimes_impl(false); }
+void native_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Packed); }
+void native_packed_header_failure() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader); }
+void pneumatic_retirement() { native_run_lifetimes_impl(false, ConfigurationProfile::RepeatedPneumaticCleanup); }
 void native_held_input_retirement() { native_run_lifetimes_impl(true); }
 }
 int main(int argc, char **argv) {
@@ -221,6 +246,9 @@ int main(int argc, char **argv) {
     std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
         {"game.session.native_run_lifetimes", native_run_lifetimes},
+        {"game.session.native_packed_lifetimes", native_packed_lifetimes},
+        {"game.session.native_packed_header_failure", native_packed_header_failure},
+        {"game.session.pneumatic_retirement", pneumatic_retirement},
         {"game.session.held_input_retirement", native_held_input_retirement}};
     const int result = tests::run(argc, argv, cases);
 #ifdef MEM_SPY_ENABLE
