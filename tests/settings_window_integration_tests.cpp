@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "test_support.hpp"
+#include "settings_display_host.hpp"
 #include "battle_scenario.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixRobot.hpp"
@@ -63,7 +64,10 @@ public:
     HRESULT STDMETHODCALLTYPE CheckDepthStencilMatch(UINT, D3DDEVTYPE, D3DFORMAT, D3DFORMAT, D3DFORMAT) override { unsupported(__func__); }
     HRESULT STDMETHODCALLTYPE CheckDeviceFormatConversion(UINT, D3DDEVTYPE, D3DFORMAT, D3DFORMAT) override { unsupported(__func__); }
     HRESULT STDMETHODCALLTYPE GetDeviceCaps(UINT, D3DDEVTYPE, D3DCAPS9 *) override { unsupported(__func__); }
-    HMONITOR STDMETHODCALLTYPE GetAdapterMonitor(UINT) override { unsupported(__func__); }
+    HMONITOR STDMETHODCALLTYPE GetAdapterMonitor(UINT adapter) override {
+        MG_CHECK(adapter == D3DADAPTER_DEFAULT);
+        return MonitorFromWindow(g_Wnd, MONITOR_DEFAULTTOPRIMARY);
+    }
     HRESULT STDMETHODCALLTYPE CreateDevice(UINT, D3DDEVTYPE, HWND, DWORD, D3DPRESENT_PARAMETERS *, IDirect3DDevice9 **) override { unsupported(__func__); }
 };
 struct Directory {
@@ -103,7 +107,7 @@ struct Window {
     CBitmap hole;
     CFormMatrixGame form;
     StandaloneSettings::Values initial;
-    explicit Window(random::Mode mode) : session({mode, 87, 10, 1000, false, true}) {
+    explicit Window(random::Mode mode, int step_ms = 10) : session({mode, 87, step_ms, 1000, false, true}) {
         g_D3D = &adapter;
         Text::rendered_text.clear();
         initial.random = mode;
@@ -270,9 +274,125 @@ void apply_and_save_failure_profile(random::Mode mode) {
 void apply_and_save_failure() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) apply_and_save_failure_profile(mode);
 }
+
+std::vector<char> display_events;
+void release_display() { display_events.push_back('L'); }
+void restore_display() { display_events.push_back('S'); }
+std::string settings_bytes() {
+    std::ifstream file("CFG/standalone.txt", std::ios::binary);
+    MG_CHECK(file.good());
+    return {std::istreambuf_iterator<char>(file), {}};
+}
+void display_rollback_profile(random::Mode mode, int step_ms) {
+    Window w(mode, step_ms);
+    tests::SettingsDisplayHost host(w.form);
+    std::cout << w.session.metadata("settings-display-rollback-v1") << std::endl;
+    w.form.Keyboard(true, VK_CONTROL); press(w.form, '1'); w.form.Keyboard(false, VK_CONTROL);
+    w.session.ground_command(120, 500);
+    for (int i = 0; i < 20; ++i) w.session.advance();
+    w.open();
+    const auto paused_robot = w.session.robot(1);
+    const auto paused_time = w.session.time();
+    w.row(SettingsModel::Row::Resolution, false); // 1280x720 -> 640x480.
+    w.row(SettingsModel::Row::WindowMode, false); // Windowed -> Exclusive.
+    w.row(SettingsModel::Row::CameraSpeed, true);
+    press(w.form, VK_RETURN);
+    MG_CHECK(!SettingsWindow::active() && g_MatrixMap->IsPaused());
+    const auto wanted = StandaloneSettings::current();
+    MG_CHECK(wanted.display.width == 640 && wanted.display.height == 480 && wanted.display.mode == Display::Mode::Exclusive);
+    MG_CHECK(wanted.camera_speed == 125 && g_Config.m_CamMoveSpeed == 2.5f);
+    MG_CHECK(StandaloneSettings::load().values == wanted);
+    const auto requested_file = settings_bytes();
+    MG_CHECK(Display::current_mode() == Display::Mode::Windowed && Display::current_size() == (Display::Size{1280, 720}));
+    const auto original_parameters = g_D3Dpp;
+    display_events.clear();
+    unsigned resets = 0;
+    w.session.device_reset([&](D3DPRESENT_PARAMETERS *parameters) -> HRESULT {
+        MG_CHECK(parameters && ++resets <= 2 && Display::changing());
+        MG_CHECK(g_MatrixMap->IsPaused() && w.session.time() == paused_time);
+        MG_CHECK(g_ScreenX == 1280 && g_ScreenY == 720);
+        if (resets == 1) {
+            MG_CHECK((display_events == std::vector<char>{'L'}));
+            display_events.push_back('R');
+            MG_CHECK(parameters->BackBufferWidth == 640 && parameters->BackBufferHeight == 480 && !parameters->Windowed);
+            MG_CHECK(Display::current_mode() == Display::Mode::Exclusive && Display::current_size() == (Display::Size{640, 480}));
+        } else {
+            MG_CHECK((display_events == std::vector<char>{'L', 'R'}));
+            display_events.push_back('B');
+            MG_CHECK(parameters->BackBufferWidth == 1280 && parameters->BackBufferHeight == 720 && parameters->Windowed);
+            MG_CHECK(parameters->PresentationInterval == original_parameters.PresentationInterval);
+            MG_CHECK(Display::current_mode() == Display::Mode::Windowed && Display::current_size() == (Display::Size{1280, 720}));
+        }
+        parameters->BackBufferCount = 7; // D3D may modify its copy; the controller must retain its own parameters.
+        return resets == 1 ? D3DERR_INVALIDCALL : D3D_OK;
+    });
+    w.form.Keyboard(true, VK_LEFT);
+    MG_CHECK(Input::isVKeyPressed(VK_LEFT));
+    MG_CHECK(Display::apply_pending(true, release_display, restore_display));
+    MG_CHECK((display_events == std::vector<char>{'L', 'R', 'B', 'S'}));
+    MG_CHECK(resets == 2 && !Display::changing() && !IsWindowVisible(host.window()));
+    MG_CHECK(!Input::isVKeyPressed(VK_LEFT) && g_MatrixMap->m_VKeyDown == 0);
+    MG_CHECK(Display::current_mode() == Display::Mode::Windowed && Display::current_size() == (Display::Size{1280, 720}));
+    MG_CHECK(g_ScreenX == 1280 && g_ScreenY == 720 && !FLAG(g_Flags, GFLAG_FULLSCREEN));
+    MG_CHECK(g_D3Dpp.BackBufferWidth == 1280 && g_D3Dpp.BackBufferHeight == 720 && g_D3Dpp.BackBufferCount == 1);
+    MG_CHECK(g_D3Dpp.Windowed && g_D3Dpp.hDeviceWindow == host.window());
+    MG_CHECK(!Display::apply_pending(true, release_display, restore_display) && resets == 2);
+    // A rejected GPU reset does not undo the saved request or unrelated immediate settings.
+    MG_CHECK(StandaloneSettings::current() == wanted && settings_bytes() == requested_file);
+    MG_CHECK(g_Config.m_CamMoveSpeed == 2.5f);
+    for (int i = 0; i < 20; ++i) w.session.advance();
+    MG_CHECK(w.session.time() == paused_time && w.session.robot(1).x == paused_robot.x && w.session.robot(1).y == paused_robot.y);
+    MG_CHECK(w.session.robot(1).order == paused_robot.order);
+    Text::rendered_text.clear();
+    press(w.form, 'C');
+    MG_CHECK(SettingsWindow::active() && rendered(L"1280x720") && rendered(L"Windowed"));
+    press(w.form, VK_ESCAPE);
+    MG_CHECK(settings_bytes() == requested_file && !Display::apply_pending(true, release_display, restore_display));
+    w.resume();
+    for (int i = 0; i < 20; ++i) w.session.advance();
+    MG_CHECK(w.session.time() > paused_time && w.session.robot(1).y > paused_robot.y);
+    press(w.form, '1');
+    MG_CHECK(g_MatrixMap->GetPlayerSide()->GetCurGroup());
+    w.session.ground_command(200, 500);
+    const auto fresh_order = w.session.robot(1);
+    for (int i = 0; i < 20; ++i) w.session.advance();
+    MG_CHECK(w.session.robot(1).x > fresh_order.x);
+    w.form.Keyboard(true, VK_LEFT);
+    MG_CHECK(Input::isVKeyPressed(VK_LEFT));
+    w.form.Keyboard(false, VK_LEFT);
+    MG_CHECK(!Input::isVKeyPressed(VK_LEFT));
+
+    // A subsequent Apply can succeed; reopening used the effective Windowed state.
+    w.open();
+    w.row(SettingsModel::Row::Resolution, false);
+    press(w.form, VK_RETURN);
+    display_events.clear();
+    resets = 0;
+    w.session.device_reset([&](D3DPRESENT_PARAMETERS *parameters) -> HRESULT {
+        MG_CHECK(++resets == 1 && parameters->Windowed && parameters->BackBufferWidth == 640 && parameters->BackBufferHeight == 480);
+        MG_CHECK((display_events == std::vector<char>{'L'}));
+        display_events.push_back('R');
+        return D3D_OK;
+    });
+    MG_CHECK(Display::apply_pending(true, release_display, restore_display));
+    MG_CHECK((display_events == std::vector<char>{'L', 'R', 'S'}));
+    MG_CHECK(g_ScreenX == 640 && g_ScreenY == 480 && Display::current_size() == (Display::Size{640, 480}));
+    MG_CHECK(Display::current_mode() == Display::Mode::Windowed && !IsWindowVisible(host.window()));
+    MG_CHECK(StandaloneSettings::current().display.mode == Display::Mode::Windowed);
+    MG_CHECK(StandaloneSettings::load().values == StandaloneSettings::current());
+    MG_CHECK(!Display::apply_pending(true, release_display, restore_display) && resets == 1);
+    MG_CHECK(host.cursor_releases >= 4 && host.cursor_queries == 0);
+    w.session.device_reset({});
+    w.resume();
+}
+void display_rollback() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (int step_ms : {10, 16}) display_rollback_profile(mode, step_ms);
+}
 const tests::Case cases[]{
     {"game.presentation.settings_input_pause_cancel", input_pause_cancel},
     {"game.presentation.settings_apply_save_failure", apply_and_save_failure},
+    {"game.presentation.settings_display_rollback", display_rollback},
 };
 }
 int main(int argc, char **argv) { return tests::run(argc, argv, cases); }
