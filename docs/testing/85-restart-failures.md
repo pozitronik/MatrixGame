@@ -17,7 +17,6 @@ This establishes real game-owned teardown, not successful `CGame::Init`, native 
 
 The test suppresses the engine's exception reporter, but production Debug cleanup has a separate modal allocation-leak report inside `BaseDeInit`. A leak regression can therefore show that report on the current desktop and wait for the CTest timeout. The final test-process allocation guard cannot intercept a leak report already raised inside a lifetime. This limitation is distinct from the fixture's no-draw device and message-only window; it does not establish unattended leak diagnostics on a private desktop.
 
-
 Build `matrixgame_battle_restart_failures`, then run individual failure cases directly from its test output directory:
 
 ```text
@@ -42,3 +41,9 @@ These guards cover the structural assumptions exercised by Restart. They do not 
 The O7 fixture must additionally satisfy the real initialization sequence. `CGame::Init` loads configuration and the full fixed robot-module catalog, prepares serialized terrain/movement/group/surface data, initializes interface graphics and hint bitmaps, creates effect and water resources, and opens the introduction. Pneumatic chassis preload requires moving/backward animation frames with both foot attachments. Existing synthetic mesh generation can provide these structures, but its eager cache-loading helpers currently remove the files before initialization could reopen them.
 
 Initialization also requires a native graphics profile: `ApplyVideoParams` queries `IDirect3D9`, resets the device and installs lights; `CTransition::RenderToPrimaryScreen` unconditionally begins a scene and presents. A no-draw surrogate returning success for these operations would not establish the native initialization contract. A future synthetic native-device fixture must use a private desktop or another explicitly bounded invisible host arrangement, retain its generated files for both sessions and verify host callbacks and borrowed graphics references separately.
+
+## Populated object storage controls
+
+`game.restart.object_storage` reloads real synthetic static meshes with HEIGHT and no Z, HEIGHT with an empty Z array, and two HEIGHT rows with a shorter ignored Z array. It verifies object count, reconstructed position and the introduction through the real Restart/cleanup path. A Z column is required only when the loader needs it; HEIGHT makes a redundant Z column irrelevant. The malformed-storage case also rejects object rows lacking both height sources, ANGLE_X without ANGLE_Y, a shadow column with no per-object array, and property names outnumbering values. Every variant repeats twice in both RNG modes.
+
+Semantic property validation remains outside these structural guards. In particular, the existing RS_CAMPOS reader assumes that a CamPosX property has a matching CamPosY; these tests do not validate that pair or correct its reader. Original maps and resource-backed presentation retain separate native validation.

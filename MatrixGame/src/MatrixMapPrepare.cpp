@@ -1745,7 +1745,6 @@ void validate_restart_storage(CStorage &storage) {
     if (storage.GetBuf(DATA_OBJECTS, DATA_OBJECTS_HEIGHT, ST_FLOAT))
         column(DATA_OBJECTS, {DATA_OBJECTS_HEIGHT, ST_FLOAT}, objects);
     else if (objects) column(DATA_OBJECTS, {DATA_OBJECTS_Z, ST_FLOAT}, objects);
-    optional(DATA_OBJECTS, {DATA_OBJECTS_Z, ST_FLOAT}, objects);
     if (storage.GetBuf(DATA_OBJECTS, DATA_OBJECTS_ANGLE_X, ST_FLOAT)) {
         column(DATA_OBJECTS, {DATA_OBJECTS_ANGLE_X, ST_FLOAT}, objects);
         column(DATA_OBJECTS, {DATA_OBJECTS_ANGLE_Y, ST_FLOAT}, objects);
