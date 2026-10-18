@@ -24,6 +24,7 @@
 #include <vector>
 #include <set>
 #include <thread>
+#include <initializer_list>
 
 void CMatrixMap::PointCalcNormals(int x, int y) {
     DTRACE();
@@ -1714,6 +1715,66 @@ void CMatrixMap::StaticPrepare(int ocnt, bool skip_progress) {
     }
 }
 
+namespace {
+// ReloadDynamics assumes these columns exist and indexes parallel arrays by
+// the X column. Validate that structural contract before constructing objects.
+void validate_restart_storage(CStorage &storage) {
+    auto *names = storage.GetBuf(DATA_PROPERTIES, DATA_PROPERTIES_NAME, ST_WCHAR);
+    auto *values = storage.GetBuf(DATA_PROPERTIES, DATA_PROPERTIES_VALUE, ST_WCHAR);
+    if (!names || !values || values->GetArraysCount() < names->GetArraysCount())
+        ERROR_S(L"Invalid restart map properties");
+
+    struct Column { const wchar_t *name; EStorageType type; };
+    const auto column = [&](const wchar_t *table, Column item, DWORD count) {
+        auto *buffer = storage.GetBuf(table, item.name, item.type);
+        if (!buffer || buffer->GetArraysCount() == 0 || buffer->GetArrayLength(0) < count)
+            ERROR_S2(L"Invalid restart map column: ", (std::wstring(table) + L"." + item.name).c_str());
+        return buffer;
+    };
+    const auto table = [&](const wchar_t *name, std::initializer_list<Column> columns) {
+        const DWORD count = column(name, *columns.begin(), 0)->GetArrayLength(0);
+        for (const auto item : columns) column(name, item, count);
+        return count;
+    };
+    const auto optional = [&](const wchar_t *name, Column item, DWORD count) {
+        if (storage.GetBuf(name, item.name, item.type)) column(name, item, count);
+    };
+
+    const DWORD objects = table(DATA_OBJECTS, {{DATA_OBJECTS_X, ST_FLOAT}, {DATA_OBJECTS_Y, ST_FLOAT},
+        {DATA_OBJECTS_ANGLE_Z, ST_FLOAT}, {DATA_OBJECTS_SCALE, ST_FLOAT}, {DATA_OBJECTS_TYPE, ST_DWORD}});
+    if (storage.GetBuf(DATA_OBJECTS, DATA_OBJECTS_HEIGHT, ST_FLOAT))
+        column(DATA_OBJECTS, {DATA_OBJECTS_HEIGHT, ST_FLOAT}, objects);
+    else if (objects) column(DATA_OBJECTS, {DATA_OBJECTS_Z, ST_FLOAT}, objects);
+    if (storage.GetBuf(DATA_OBJECTS, DATA_OBJECTS_ANGLE_X, ST_FLOAT)) {
+        column(DATA_OBJECTS, {DATA_OBJECTS_ANGLE_X, ST_FLOAT}, objects);
+        column(DATA_OBJECTS, {DATA_OBJECTS_ANGLE_Y, ST_FLOAT}, objects);
+    }
+    if (auto *shadows = storage.GetBuf(DATA_OBJECTS, DATA_OBJECTS_SHADOW, ST_BYTE))
+        if (shadows->GetArraysCount() < objects) ERROR_S(L"Invalid restart map shadow array count");
+
+    table(DATA_BUILDINGS, {{DATA_BUILDINGS_X, ST_FLOAT}, {DATA_BUILDINGS_Y, ST_FLOAT},
+        {DATA_BUILDINGS_SIDE, ST_BYTE}, {DATA_BUILDINGS_KIND, ST_BYTE}, {DATA_BUILDINGS_SHADOW, ST_BYTE},
+        {DATA_BUILDINGS_SHADOWSIZE, ST_INT32}, {DATA_BUILDINGS_ANGLE, ST_BYTE}});
+
+    if (storage.GetBuf(DATA_ROBOTS, DATA_ROBOTS_X, ST_FLOAT)) {
+        const DWORD robots = table(DATA_ROBOTS, {{DATA_ROBOTS_X, ST_FLOAT}, {DATA_ROBOTS_Y, ST_FLOAT},
+            {DATA_ROBOTS_SIDE, ST_BYTE}, {DATA_ROBOTS_SHADOW, ST_BYTE},
+            {DATA_ROBOTS_SHADOWSIZE, ST_INT32}, {DATA_ROBOTS_GROUP, ST_INT32}});
+        auto *units = storage.GetBuf(DATA_ROBOTS, DATA_ROBOTS_UNITS, ST_WCHAR);
+        if (robots && (!units || units->GetArraysCount() < robots)) ERROR_S(L"Invalid restart map robot units");
+    }
+
+    const DWORD cannons = table(DATA_CANNONS, {{DATA_CANNONS_X, ST_FLOAT}, {DATA_CANNONS_Y, ST_FLOAT},
+        {DATA_CANNONS_SIDE, ST_BYTE}, {DATA_CANNONS_KIND, ST_BYTE}, {DATA_CANNONS_SHADOW, ST_BYTE},
+        {DATA_CANNONS_SHADOWSIZE, ST_INT32}, {DATA_CANNONS_ANGLE, ST_FLOAT}});
+    optional(DATA_CANNONS, {DATA_CANNONS_PROP, ST_INT32}, cannons);
+    optional(DATA_CANNONS, {DATA_CANNONS_ADDH, ST_FLOAT}, cannons);
+    if (storage.GetBuf(DATA_EFFECTS, DATA_EFFECTS_X, ST_FLOAT))
+        table(DATA_EFFECTS, {{DATA_EFFECTS_X, ST_FLOAT}, {DATA_EFFECTS_Y, ST_FLOAT},
+            {DATA_EFFECTS_Z, ST_FLOAT}, {DATA_EFFECTS_TYPE, ST_INT32}});
+}
+}
+
 void CMatrixMap::Restart(void) {
     m_BeforeWinCount = 0;
     m_BeforeWinLooseDialogCount = 0;
@@ -1776,7 +1837,8 @@ void CMatrixMap::Restart(void) {
 
     CStorage stor(g_CacheHeap);
 
-    stor.Load(MapName().c_str());
+    if (!stor.Load(MapName().c_str())) ERROR_S2(L"Invalid restart map storage: ", MapName().c_str());
+    validate_restart_storage(stor);
 
     ReloadDynamics(stor, RS_SIDEAI);
     ReloadDynamics(stor, RS_RESOURCES);

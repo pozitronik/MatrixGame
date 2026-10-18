@@ -1,10 +1,14 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_device.hpp"
 #include "battle_geometry.hpp"
+#include "battle_mesh.hpp"
+#include "battle_material.hpp"
 #include "test_support.hpp"
+#include "CStorage.hpp"
 #include "MatrixGame.h"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
+#include "MatrixObject.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixSkinManager.hpp"
 #include "SessionCleanup.hpp"
@@ -17,6 +21,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <vector>
 
 LRESULT CALLBACK L3G_WndProc(HWND, UINT, WPARAM, LPARAM);
 
@@ -50,6 +55,7 @@ struct MessageWindow {
 struct OwnedBattle {
     tests::BattleDevice device;
     MessageWindow window;
+    tests::BattleMaterialProfile material;
     CFormMatrixGame *form{};
     bool timer_active{};
     std::unique_ptr<CBitmap> bitmap;
@@ -118,12 +124,42 @@ struct OwnedBattle {
             button->m_strName = name;
             MG_CHECK(hints->AddElement(button));
         }
-        for (const auto *name : {TEMPLATE_DIALOG_MENU, TEMPLATE_DIALOG_RESET}) {
+        for (const auto *name : {TEMPLATE_DIALOG_MENU, TEMPLATE_DIALOG_RESET, TEMPLATE_DIALOG_BEGIN}) {
             std::wstring markup = L"-1|_BITMAP:restart-failure-pixel:";
             for (int i = 0; i < 6; ++i) markup += L"|_MOD:COPY|_BITMAP:restart-failure-pixel:";
             g_MatrixData->BlockGetAdd(PAR_TEMPLATES)->ParSetAdd(name, markup);
         }
         form = HNew(nullptr) CFormMatrixGame;
+    }
+    void install_reload_object() {
+        std::array<std::wstring, OTP_COUNT> fields{};
+        fields[OTP_PATH] = L"restart-validation/";
+        fields[OTP_VO] = L"box";
+        fields[OTP_TEXTURE] = L"surface";
+        fields[OTP_TEXTURE_SCROLL] = L"0,0";
+        fields[OTP_SHADOW] = L"Off";
+        fields[OTP_BEHAVIOUR] = L"Static";
+        fields[OTP_BIAS] = fields[OTP_INVLOGIC] = L"0";
+        std::wstring descriptor;
+        for (size_t i = 0; i < fields.size(); ++i) {
+            if (i) descriptor += L"*";
+            descriptor += fields[i];
+        }
+        auto &map = *g_MatrixMap;
+        MG_CHECK(map.m_IdsCnt == 1);
+        map.m_Ids[0].~basic_string();
+        HFree(map.m_Ids, g_MatrixHeap);
+        map.m_Ids = nullptr;
+        map.m_IdsCnt = 0;
+        map.m_Ids = static_cast<std::wstring *>(HAlloc(2 * sizeof(std::wstring), g_MatrixHeap));
+        new(map.m_Ids + map.m_IdsCnt) std::wstring(descriptor);
+        ++map.m_IdsCnt;
+        new(map.m_Ids + map.m_IdsCnt) std::wstring(path.wstring());
+        ++map.m_IdsCnt;
+        tests::install_battle_texture(L"restart-validation/surface");
+        tests::load_battle_material_mesh({}, L"restart-validation/box.vo", L"restart-validation/surface");
+        g_Config.m_RobotShadow = SHADOW_OFF;
+        g_Config.m_DrawAllObjectsToMinimap = 0;
     }
     void queue_mouse_confirmation() {
         for (auto key : {VK_ESCAPE, int('R')}) {
@@ -191,7 +227,94 @@ struct OwnedBattle {
     }
 };
 
-enum class Reload { None, Missing, Corrupt };
+enum class Reload { None, Missing, Corrupt, UnsupportedVersion, NoProperties, MissingColumn, ShortColumn,
+                    PartialRobots, PartialEffects, Empty, EmptyOptional, MissingObjectHeight, MissingObjectAngleY,
+                    MissingObjectShadow, PropertyValueCount, ObjectHeight, ObjectHeightEmptyZ, ObjectHeightShortZ };
+bool object_rows(Reload kind) {
+    return kind == Reload::MissingObjectHeight || kind == Reload::MissingObjectAngleY ||
+           kind == Reload::MissingObjectShadow || kind == Reload::ObjectHeight ||
+           kind == Reload::ObjectHeightEmptyZ || kind == Reload::ObjectHeightShortZ;
+}
+bool valid_objects(Reload kind) {
+    return kind == Reload::ObjectHeight || kind == Reload::ObjectHeightEmptyZ || kind == Reload::ObjectHeightShortZ;
+}
+
+void write_empty_scene(const std::filesystem::path &path, Reload kind) {
+    CStorage storage;
+    if (kind == Reload::NoProperties) { storage.Save(path.c_str()); return; }
+    const auto table = [&](const wchar_t *name,
+                           std::initializer_list<std::pair<const wchar_t *, EStorageType>> columns) {
+        CStorageRecord record(name);
+        for (const auto &[column, type] : columns) {
+            if (kind == Reload::MissingColumn && wcscmp(name, DATA_BUILDINGS) == 0 &&
+                wcscmp(column, DATA_BUILDINGS_SIDE) == 0) continue;
+            record.AddItem(CStorageRecordItem(column, type));
+        }
+        if (wcscmp(name, DATA_OBJECTS) == 0 && object_rows(kind)) {
+            if (kind != Reload::MissingObjectHeight) record.AddItem(CStorageRecordItem(DATA_OBJECTS_HEIGHT, ST_FLOAT));
+            if (kind == Reload::MissingObjectAngleY) record.AddItem(CStorageRecordItem(DATA_OBJECTS_ANGLE_X, ST_FLOAT));
+            if (kind == Reload::MissingObjectShadow) record.AddItem(CStorageRecordItem(DATA_OBJECTS_SHADOW, ST_BYTE));
+            if (kind == Reload::ObjectHeightEmptyZ || kind == Reload::ObjectHeightShortZ)
+                record.AddItem(CStorageRecordItem(DATA_OBJECTS_Z, ST_FLOAT));
+        }
+        storage.AddRecord(record);
+        for (const auto &[column, type] : columns)
+            if (type != ST_WCHAR)
+                if (auto *buffer = storage.GetBuf(name, column, type)) buffer->AddArray();
+    };
+    table(DATA_PROPERTIES, {{DATA_PROPERTIES_NAME, ST_WCHAR}, {DATA_PROPERTIES_VALUE, ST_WCHAR}});
+    table(DATA_OBJECTS, {{DATA_OBJECTS_X, ST_FLOAT}, {DATA_OBJECTS_Y, ST_FLOAT},
+        {DATA_OBJECTS_ANGLE_Z, ST_FLOAT}, {DATA_OBJECTS_SCALE, ST_FLOAT}, {DATA_OBJECTS_TYPE, ST_DWORD}});
+    table(DATA_BUILDINGS, {{DATA_BUILDINGS_X, ST_FLOAT}, {DATA_BUILDINGS_Y, ST_FLOAT},
+        {DATA_BUILDINGS_SIDE, ST_BYTE}, {DATA_BUILDINGS_KIND, ST_BYTE}, {DATA_BUILDINGS_SHADOW, ST_BYTE},
+        {DATA_BUILDINGS_SHADOWSIZE, ST_INT32}, {DATA_BUILDINGS_ANGLE, ST_BYTE}});
+    table(DATA_CANNONS, {{DATA_CANNONS_X, ST_FLOAT}, {DATA_CANNONS_Y, ST_FLOAT},
+        {DATA_CANNONS_SIDE, ST_BYTE}, {DATA_CANNONS_KIND, ST_BYTE}, {DATA_CANNONS_SHADOW, ST_BYTE},
+        {DATA_CANNONS_SHADOWSIZE, ST_INT32}, {DATA_CANNONS_ANGLE, ST_FLOAT}});
+    if (object_rows(kind)) {
+        const auto floats = [&](const wchar_t *name, std::initializer_list<float> values, bool add_array = false) {
+            auto *buffer = storage.GetBuf(DATA_OBJECTS, name, ST_FLOAT);
+            if (add_array) buffer->AddArray();
+            buffer->AddToArray<float>(0, values.begin(), static_cast<int>(values.size()));
+        };
+        floats(DATA_OBJECTS_X, {300});
+        floats(DATA_OBJECTS_Y, {100});
+        floats(DATA_OBJECTS_ANGLE_Z, {0});
+        floats(DATA_OBJECTS_SCALE, {1});
+        storage.GetBuf(DATA_OBJECTS, DATA_OBJECTS_TYPE, ST_DWORD)->AddToArray<DWORD>(0, DWORD{0});
+        if (kind != Reload::MissingObjectHeight) floats(DATA_OBJECTS_HEIGHT, {20}, true);
+        if (kind == Reload::MissingObjectAngleY) floats(DATA_OBJECTS_ANGLE_X, {0}, true);
+        if (kind == Reload::ObjectHeightEmptyZ || kind == Reload::ObjectHeightShortZ)
+            storage.GetBuf(DATA_OBJECTS, DATA_OBJECTS_Z, ST_FLOAT)->AddArray();
+        if (kind == Reload::ObjectHeightShortZ) {
+            floats(DATA_OBJECTS_X, {450});
+            floats(DATA_OBJECTS_Y, {100});
+            floats(DATA_OBJECTS_ANGLE_Z, {0});
+            floats(DATA_OBJECTS_SCALE, {1});
+            floats(DATA_OBJECTS_HEIGHT, {20});
+            floats(DATA_OBJECTS_Z, {-100}); // Ignored: HEIGHT supplies both rows.
+            storage.GetBuf(DATA_OBJECTS, DATA_OBJECTS_TYPE, ST_DWORD)->AddToArray<DWORD>(0, DWORD{0});
+        }
+    }
+    if (kind == Reload::PropertyValueCount)
+        storage.GetBuf(DATA_PROPERTIES, DATA_PROPERTIES_NAME, ST_WCHAR)->AddWStr(DATA_SIDERESINFO);
+    if (kind == Reload::ShortColumn) {
+        const float x = 100;
+        storage.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_X, ST_FLOAT)->AddToArray<float>(0, &x, 1);
+    }
+    if (kind == Reload::PartialRobots) table(DATA_ROBOTS, {{DATA_ROBOTS_X, ST_FLOAT}});
+    if (kind == Reload::PartialEffects) table(DATA_EFFECTS, {{DATA_EFFECTS_X, ST_FLOAT}});
+    if (kind == Reload::EmptyOptional) {
+        // A zero-row robot table needs no per-robot units strings.
+        table(DATA_ROBOTS, {{DATA_ROBOTS_X, ST_FLOAT}, {DATA_ROBOTS_Y, ST_FLOAT},
+            {DATA_ROBOTS_SIDE, ST_BYTE}, {DATA_ROBOTS_SHADOW, ST_BYTE},
+            {DATA_ROBOTS_SHADOWSIZE, ST_INT32}, {DATA_ROBOTS_GROUP, ST_INT32}});
+        table(DATA_EFFECTS, {{DATA_EFFECTS_X, ST_FLOAT}, {DATA_EFFECTS_Y, ST_FLOAT},
+            {DATA_EFFECTS_Z, ST_FLOAT}, {DATA_EFFECTS_TYPE, ST_INT32}});
+    }
+    storage.Save(path.c_str());
+}
+
 void one_lifetime(Reload reload, random::Mode mode, bool mouse = false) {
     CMain::BaseInit();
     SetUnhandledExceptionFilter(nullptr);
@@ -199,11 +322,15 @@ void one_lifetime(Reload reload, random::Mode mode, bool mouse = false) {
     random::seed(79, mode);
     OwnedBattle battle;
     battle.setup();
-    if (reload == Reload::Corrupt) {
-        const std::array<unsigned char, 12> invalid_header{};
+    if (object_rows(reload)) battle.install_reload_object();
+    if (reload == Reload::Corrupt || reload == Reload::UnsupportedVersion) {
+        const std::array<uint32_t, 3> invalid_header = reload == Reload::Corrupt
+            ? std::array<uint32_t, 3>{} : std::array<uint32_t, 3>{0x47525453u, 2u, 0u};
         std::ofstream stream(battle.path, std::ios::binary);
-        stream.write(reinterpret_cast<const char *>(invalid_header.data()), invalid_header.size());
+        stream.write(reinterpret_cast<const char *>(invalid_header.data()), sizeof(invalid_header));
         MG_CHECK(stream.good());
+    } else if (reload != Reload::None && reload != Reload::Missing) {
+        write_empty_scene(battle.path, reload);
     }
     if (mouse) battle.queue_mouse_confirmation();
     else if (reload != Reload::None) {
@@ -221,12 +348,33 @@ void one_lifetime(Reload reload, random::Mode mode, bool mouse = false) {
     BOOL enabled = FALSE;
     MG_CHECK(battle.device.get()->GetLight(0, &light) == D3D_OK && light.Type == D3DLIGHT_DIRECTIONAL);
     MG_CHECK(battle.device.get()->GetLightEnable(0, &enabled) == D3D_OK && enabled);
-    if (reload != Reload::None) {
+    if (reload != Reload::None && reload != Reload::Empty && reload != Reload::EmptyOptional && !valid_objects(reload)) {
         MG_CHECK(g_ExitState == 100 && FLAG(g_Flags, GFLAG_EXITLOOP));
         MG_CHECK(!CMatrixMapStatic::GetFirstLogic());
     } else {
         MG_CHECK(g_ExitState == 0 && FLAG(g_Flags, GFLAG_APPCLOSE));
-        MG_CHECK(CMatrixMapStatic::GetFirstLogic());
+        if (!valid_objects(reload)) MG_CHECK(bool(CMatrixMapStatic::GetFirstLogic()) == (reload == Reload::None));
+        if (valid_objects(reload)) {
+            std::vector<CMatrixMapStatic *> objects;
+            g_MatrixMap->FindObjects(D3DXVECTOR3(320, 320, 0), 1000, 1, TRACE_OBJECT, nullptr,
+                [](const D3DXVECTOR3 &, CMatrixMapStatic *object, uintptr_t context) {
+                    reinterpret_cast<std::vector<CMatrixMapStatic *> *>(context)->push_back(object);
+                    return true;
+                }, reinterpret_cast<uintptr_t>(&objects));
+            MG_CHECK(objects.size() == (reload == Reload::ObjectHeightShortZ ? 2u : 1u));
+            for (auto *object : objects) {
+                MG_CHECK(object->GetObjectType() == OBJECT_TYPE_MAPOBJECT);
+                auto *core = object->GetCore(DEBUG_CALL_INFO);
+                const auto position = core->m_Matrix;
+                core->Release();
+                MG_CHECK(position._43 == 30 && position._42 == 100); // HEIGHT 20 above the fixture terrain at Z 10.
+                MG_CHECK(position._41 == 300 || position._41 == 450);
+            }
+            MG_CHECK(g_MatrixMap->m_DialogModeName &&
+                     wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
+        }
+        if (reload == Reload::Empty || reload == Reload::EmptyOptional)
+            MG_CHECK(g_MatrixMap->m_DialogModeName && wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
     }
     battle.cleanup();
 }
@@ -244,6 +392,15 @@ void owned_cleanup() { reload_failure(Reload::None); }
 void missing() { reload_failure(Reload::Missing); }
 void missing_mouse() { reload_failure(Reload::Missing, true); }
 void corrupt() { reload_failure(Reload::Corrupt); }
+void malformed() {
+    for (auto kind : {Reload::UnsupportedVersion, Reload::NoProperties, Reload::MissingColumn, Reload::ShortColumn,
+                      Reload::PartialRobots, Reload::PartialEffects, Reload::MissingObjectHeight, Reload::MissingObjectAngleY,
+                      Reload::MissingObjectShadow, Reload::PropertyValueCount}) reload_failure(kind);
+}
+void empty_storage() { reload_failure(Reload::Empty); reload_failure(Reload::EmptyOptional); }
+void object_storage() {
+    for (auto kind : {Reload::ObjectHeight, Reload::ObjectHeightEmptyZ, Reload::ObjectHeightShortZ}) reload_failure(kind);
+}
 
 // A bounded callback source for timing and diagnostic contracts. The window
 // procedure, message dispatch, exception transport and loop remain production.
@@ -332,7 +489,10 @@ constexpr tests::Case cases[] = {
     {"game.restart.callback_before_loop", callback_before_loop},
     {"game.restart.callback_during_tick", callback_during_tick},
     {"game.restart.callback_abandoned", callback_abandoned},
-    {"probe.restart.corrupt_file_cleanup", corrupt},
+    {"game.restart.corrupt_file_cleanup", corrupt},
+    {"game.restart.malformed_storage_cleanup", malformed},
+    {"game.restart.empty_storage", empty_storage},
+    {"game.restart.object_storage", object_storage},
 };
 }
 int main(int argc, char **argv) {
