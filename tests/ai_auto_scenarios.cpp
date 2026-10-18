@@ -288,8 +288,9 @@ template<random::Mode Mode, int Step> void camera_first_flight_reference() {
         std::cout << "camera-reference " << i << ' ' << trace.angles[i][0] << ' ' << trace.angles[i][1]
             << ' ' << trace.state[i] << '\n';
 }
-std::vector<std::array<uint32_t, 5>> camera_overview_run(int step) {
-    Session session(auto_profile(random::Mode::ParkMiller, step));
+std::vector<std::array<uint32_t, 5>> camera_overview_run(int step,
+        random::Mode mode = random::Mode::ParkMiller, bool start_in_overview = false, bool warm_first = false) {
+    Session session(auto_profile(mode, step));
     const auto draws = random::draw_count();
     CMatrixRobotAI *player = nullptr, *enemy = nullptr;
     for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
@@ -298,39 +299,63 @@ std::vector<std::array<uint32_t, 5>> camera_overview_run(int step) {
             if (session.matches(3, object->AsRobot())) enemy = object->AsRobot();
         }
     MG_CHECK(player && enemy);
-    SAutoFlyData flight{};
-    struct ReleaseFlight { SAutoFlyData &flight; ~ReleaseFlight() { flight.Release(); } } release{flight};
-    flight.m_Cur = flight.m_New = D3DXVECTOR3(200, 200, 1000);
-    flight.m_CurDist = flight.m_NewDist = 100;
-    flight.m_CurAngZ = 0.5f; flight.m_NewAngZ = 1.5f;
-    flight.m_CurAngX = 0.4f; flight.m_NewAngX = 0.5f;
-    flight.m_CalcDestAngZTime = 100000;
-    flight.AddWarPair(enemy, player);
-    std::vector<std::array<uint32_t, 5>> trace;
-    const auto advance = [&] {
-        flight.Takt(float(step));
-        g_MatrixMap->m_Camera.BeforeDraw();
-        trace.push_back({std::bit_cast<uint32_t>(flight.m_CurAngZ), std::bit_cast<uint32_t>(flight.m_CurAngX),
-            std::bit_cast<uint32_t>(flight.m_Cur.x), std::bit_cast<uint32_t>(flight.m_Cur.y),
-            std::bit_cast<uint32_t>(flight.m_Cur.z)});
+    const auto run_flight = [&](bool immediate_overview) {
+        SAutoFlyData flight{};
+        struct ReleaseFlight { SAutoFlyData &flight; ~ReleaseFlight() { flight.Release(); } } release{flight};
+        flight.m_Cur = flight.m_New = D3DXVECTOR3(200, 200, 1000);
+        flight.m_CurDist = flight.m_NewDist = 100;
+        flight.m_CurAngZ = 0.5f; flight.m_NewAngZ = 1.5f;
+        flight.m_CurAngX = 0.4f; flight.m_NewAngX = 0.5f;
+        flight.m_CalcDestAngZTime = 100000;
+        flight.AddWarPair(enemy, player);
+        std::vector<std::array<uint32_t, 5>> trace;
+        const auto advance = [&] {
+            flight.Takt(float(step));
+            g_MatrixMap->m_Camera.BeforeDraw();
+            trace.push_back({std::bit_cast<uint32_t>(flight.m_CurAngZ), std::bit_cast<uint32_t>(flight.m_CurAngX),
+                std::bit_cast<uint32_t>(flight.m_Cur.x), std::bit_cast<uint32_t>(flight.m_Cur.y),
+                std::bit_cast<uint32_t>(flight.m_Cur.z)});
+        };
+        if (!immediate_overview) {
+            for (int i = 0; i < 20; ++i) advance();
+            MG_CHECK(flight.m_CurAngZ > 0.5f && flight.m_CurAngZ < 1.5f);
+        }
+        // Explicit component entry, either on the first update or after live
+        // smoothing. The random 15-second overview trigger is not selected.
+        flight.m_ObzorTime = 500;
+        flight.m_BeforeObzorAngX = flight.m_CurAngX;
+        float previous_step = 0;
+        for (int i = 0; i < 20; ++i) {
+            const auto before = flight.m_CurAngZ;
+            advance();
+            MG_CHECK(flight.m_ObzorTime == 500 - (i + 1) * step);
+            if (immediate_overview) {
+                // A new flight has no carried yaw, even if an earlier flight
+                // in this same session ended with a nonzero last delta.
+                MG_CHECK(flight.m_CurAngZ == 0.5f);
+            } else {
+                const float delta = flight.m_CurAngZ - before;
+                MG_CHECK(delta > 0);
+                if (i) MG_CHECK(delta < previous_step);
+                previous_step = delta;
+            }
+        }
+        return trace;
     };
-    for (int i = 0; i < 20; ++i) advance();
-    MG_CHECK(flight.m_CurAngZ > 0.5f && flight.m_CurAngZ < 1.5f);
-    // Enter the overview component state explicitly, after real smoothing has
-    // accumulated. This does not claim the random 15-second overview trigger.
-    flight.m_ObzorTime = 500;
-    flight.m_BeforeObzorAngX = flight.m_CurAngX;
-    for (int i = 0; i < 20; ++i) {
-        advance();
-        MG_CHECK(flight.m_ObzorTime == 500 - (i + 1) * step);
+    if (warm_first) {
+        MG_CHECK(start_in_overview);
+        run_flight(false); // Retire a nonzero history without rebuilding the camera/session.
     }
+    auto trace = run_flight(start_in_overview);
     MG_CHECK(random::draw_count() == draws);
     return trace;
 }
 void auto_camera_overview_replay() {
-    for (int step : {10, 16}) {
-        const auto first = camera_overview_run(step);
-        MG_CHECK(first == camera_overview_run(step));
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = camera_overview_run(step, mode);
+        MG_CHECK(first == camera_overview_run(step, mode));
+        const auto fresh = camera_overview_run(step, mode, true);
+        MG_CHECK(fresh == camera_overview_run(step, mode, true, true));
     }
 }
 template<int Step> void camera_first_overview_reference() {
