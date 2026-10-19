@@ -132,6 +132,8 @@ The [owned-session cleanup and Restart failure guide](testing/85-restart-failure
 
 The [loop scheduler contracts](testing/85-loop-scheduler.md) run production `L3GRun` with a scripted platform and a recording form, freezing speed scaling, timestep capping, inactive waits and quit boundaries. They are separate from fixed-map-tick scenarios and do not establish full initialization, robot movement through the loop or native focus delivery.
 
+The [result-loop cases](testing/85-loop-results.md) carry menu Exit/Surrender and typed or trace diagnostic callbacks through actual loop return, with cancellation/resumed-movement and compile-gate controls.
+
 The [strategic and tactical AI guide](testing/84-ai-decisions.md) describes decision fixtures, declared initial state and separately tracked correctness probes.
 
 ### Extending the fixture
