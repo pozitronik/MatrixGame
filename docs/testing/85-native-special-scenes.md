@@ -129,6 +129,8 @@ Generation checks do not execute gameplay or satisfy a visual case. Preparation 
 
 The optional `game.session.native_special_scenes` check opens only children of an invisible host window and uses a real Direct3D 9 device. Through the actual DLL entry point it loads both exported scenes and then the ordinary synthetic map, in Text and Packed modes. It verifies objective registration, descriptors, hit points, geometry/animations, weapon effects, loop entry and cleanup. In each special map it selects the armed robot, enters direct control through the form, holds fire and supplies resolved world aim at the host callback boundary. Full native frames must produce a nonfatal weapon hit on each colored objective within ten seconds of game time, preserving the objective count. This verifies generated weapon geometry, actual weapon traces and damage; it does not test screen picking. The ordinary following session runs three ticks. No objective destruction or result transition is injected or claimed. The DLL startup RNG remains its real ParkMiller/time-derived configuration; no fixed-step or cross-run image determinism is claimed.
 
+The invisible parent contains presentation but does not isolate the calling desktop's cursor state. Production cursor selection calls `ShowCursor` even for the software cursor, and DLL teardown calls `ClipCursor(nullptr)`; initialization also calls `ShowWindow` on the borrowed child. Run this opt-in case only on an explicitly chosen test desktop where those operations are acceptable. Asset-generation checks above do not invoke any of these game paths.
+
 To register it, set `MATRIXGAME_NATIVE_SESSION_TESTS=ON` in the DLL build, then run:
 
 ```powershell
