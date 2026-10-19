@@ -2641,12 +2641,16 @@ std::vector<std::string> last_base_weapon_run(random::Mode mode, int step, bool 
         [](SObjectCore *value) { value->Release(); });
     std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> cannon_core(cannon->GetCore(DEBUG_CALL_INFO),
         [](SObjectCore *value) { value->Release(); });
+    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> shooter_core(shooter->GetCore(DEBUG_CALL_INFO),
+        [](SObjectCore *value) { value->Release(); });
     const int command_at = step == 10 ? 2020 : 2032;
     const int first_hit_at = step == 10 ? 2130 : 2160;
     const int eliminate_at = step == 10 ? 4030 : 4048;
     const int result_at = step == 10 ? 6040 : 6064;
     std::vector<std::string> trace;
     auto record = [&] {
+        MG_CHECK(shooter_core->m_Object == shooter);
+        MG_CHECK(factory_core->m_Object == factory && cannon_core->m_Object == cannon);
         std::ostringstream out;
         out << session.snapshot() << ":base=" << (core->m_Object != nullptr);
         if (core->m_Object) out << ':' << base->m_State << ':' << base->GetHitPoint() << ':' << base->GetSide();
@@ -2667,7 +2671,9 @@ std::vector<std::string> last_base_weapon_run(random::Mode mode, int step, bool 
     MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 0);
     // Normal player group intent drives robot targeting, weapon update, trace and damage dispatch.
     side().PGOrderAttack(side().SelGroupToLogicGroup(), CPoint(20, 20), base);
+    MG_CHECK(shooter_core->m_Object == shooter);
     const int group_id = shooter->GetGroupLogic();
+    MG_CHECK(group_id >= 0 && group_id < MAX_LOGIC_GROUP);
     auto &group = side().m_PlayerGroup[group_id];
     MG_CHECK(group.Order() == mpo_Attack && group.m_Obj == base);
     record();
@@ -2678,6 +2684,7 @@ std::vector<std::string> last_base_weapon_run(random::Mode mode, int step, bool 
     while (session.time() < (retain_robot ? 12000 : result_at)) {
         MG_CHECK(!g_MatrixMap->IsPaused());
         session.advance();
+        MG_CHECK(shooter_core->m_Object == shooter);
         MG_CHECK(factory_core->m_Object == factory && cannon_core->m_Object == cannon);
         if (session.time() == first_hit_at)
             MG_CHECK(core->m_Object && base->IsLiveBuilding() && base->GetHitPoint() == 2);
@@ -2736,9 +2743,11 @@ std::vector<std::string> last_base_weapon_run(random::Mode mode, int step, bool 
     MG_CHECK(eliminated == (retain_robot ? 0 : eliminate_at));
     MG_CHECK(result == (retain_robot ? 0 : result_at));
     MG_CHECK(core->m_Object == nullptr && core->m_Ref == 1 && group.m_Obj == nullptr);
+    MG_CHECK(shooter_core->m_Object == shooter);
     MG_CHECK(shooter->GetEnv()->m_Target != base && shooter->GetEnv()->m_TargetAttack != base);
     MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1 && enemy.GetStatValue(STAT_BUILDING_KILL) == 0);
-    if (!retain_robot) MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
+    if (!retain_robot)
+        MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
     return trace;
 }
 void last_base_weapon_outcome() {
