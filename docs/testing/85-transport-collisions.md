@@ -3,7 +3,7 @@
 These O3 contracts extend the [survival schedule profiles](85-survival-profiles.md) with a synthetic weapon-attached transport and actual plasma collision. Production gameplay is unchanged. All cases use seed 85, both RNG modes and separate 10/16 ms schedules, with unavailable audio and no native rendering.
 
 ```powershell
-$cases = '^game\.outcome\.(armed_transport_survival|armed_flyer_does_not_prevent_elimination|transport_projectile_outcomes)$'
+$cases = '^game\.outcome\.(armed_transport_survival|armed_flyer_does_not_prevent_elimination|transport_projectile_outcomes|transport_context_rejection)$'
 .\tools\test.ps1 -Configuration Debug -Filter $cases
 .\tools\test.ps1 -Configuration Release -Filter $cases
 ```
@@ -15,6 +15,10 @@ The shared transport fixture optionally declares a body attachment and a separat
 `armed_transport_survival` follows the last player robot through carrying, release, landing and carrier retirement. It retains the independently measured release/landing/retirement times of the body-only profiles and verifies active-side survival, carrier links, retirement and no kill credit. `armed_flyer_does_not_prevent_elimination` removes cargo and the owner's ordinary robots, leaving only the weapon-attached carrier. The carrier remains live, but the owner is eliminated at 10/16 ms and the corresponding loss/win dialog opens at 2020/2032 ms. Both player and enemy carrier owners are checked; the enemy-owned carrier's player-owned cargo remains the previously documented Debug-F quirk.
 
 These cases do not call the unused `BuildFlyer` or `CMatrixFlyer::FireBegin` paths. A weapon attachment does not imply an autonomous combat-flyer mode. Rotor/engine animation, native drawing and firing from the carrier are outside this fixture.
+
+## Context target eligibility
+
+`transport_context_rejection` supplies an enemy-owned armed carrier before release and after landing, retaining the original player-owned-cargo quirk. A selected ordinary player robot receives a real context command with that live carrier as the supplied cursor target. In both phases the command becomes a ground Move with a null objective, rather than an Attack on the carrier. `OnRButtonDown` uses `IsLiveUnit`, which recognizes robots and cannons but excludes flyers. This rejection does not make the model immune to weapon traces: the following cases separately establish reachable collision. The cargo is still a live robot in the logic list while carried; these checks do not claim that robot AI can never acquire or fire at it.
 
 ## Projectile collision and outcome continuation
 
@@ -31,8 +35,12 @@ At 1000/1008 ms or 7000/7008 ms, the fixture computes a diagonal ray into the ac
 
 Exactly one shot and one completed hit callback are required. A destroyed carrier retires its retained core and active-delivery entry. Before release, its dependent cargo dies and the player loses without robot-kill credit; after landing, the cargo survives and keeps the player active. A direct projectile hit on the cargo enters its death state, clears any carrying link and credits exactly one enemy robot kill while leaving the carrier alive at impact.
 
-For loss before release, elimination occurs at 2020/2032 ms and the paused loss dialog at 4030/4048 ms. Loss after landing occurs at 8050/8080 ms with the dialog at 10060/10096 ms. Each preceding tick must remain outside the later state. Destroying an empty carrier after landing must produce neither elimination nor a result dialog through the same deadline. Every variant repeats in a fresh session and compares map snapshots, carrier/core lifetime, cargo state and callback count. Retained cores and weapon/projectile ownership are released before fixture teardown.
+For loss before release, elimination occurs at 2020/2032 ms and the paused loss dialog at 4030/4048 ms. Loss after landing occurs at 8050/8080 ms with the dialog at 10060/10096 ms. Each preceding tick must remain outside the later state. Destroying an empty carrier after landing must produce neither elimination nor a result dialog through the same deadline. Every projectile and context-command variant repeats in a fresh session and compares its declared observations. Projectile snapshots include carrier/core lifetime, cargo state and callback count; retained-core identity is checked before dereferencing an observed actor. The weapon retains the live enemy owner and its side attribution, and no second shot or callback may occur during the continuation. Retained cores and weapon/projectile ownership are released before fixture teardown.
 
 ## Coverage boundary
 
-This supplies the selected O3 weapon-attached empty-carrier and transport collision variants, and reusable attachment data for navigation work. It does not establish every multipart carrier model, strategic target eligibility, native portraits or presentation. Successful map initialization/restart, selector relaunches and original-host reentry remain separate lifecycle contracts. Baseline acceptance still requires the reviewed integration evidence.
+The cases supply O3's selected weapon-attached carrier and transport collision outcomes, and a reusable body-plus-weapon fixture for N6. Physical approach obstacles and other multipart models, autonomous aiming at a transport, native portraits and presentation retain their own coverage obligations. Successful map initialization/restart, selector relaunches and original-host reentry remain separate lifecycle contracts. Baseline acceptance still requires the reviewed integration evidence.
+
+## Validation
+
+The pinned MinGW Debug and Release standalone game and affected test targets build. The four new contracts and the body-only survival and delivery controls pass in both configurations. Disabling the attached weapon descriptor makes the geometry-pick assertion fail; independently suppressing `WeaponHit` damage leaves the traced actor alive and fails the completed lethal-hit assertion. Both mutations were removed and the restored controls passed. Supported compiler and x86 DLL validation remain for CI. No original assets, visible game window or native input were used.

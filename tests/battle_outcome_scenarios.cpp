@@ -1399,8 +1399,10 @@ void empty_flyer_survival_profile(bool armed) {
         DialogData dialog;
         std::cout << session.metadata(armed ? "weapon-attached-empty-carrier-v1" : "synthetic-empty-carrier-outcome-v2") << '\n';
         const int owner = player ? PLAYER_SIDE : 2;
-        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 400;
-        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        if (armed) {
+            g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 400;
+            g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        }
         auto *carrier = order_outcome_transport(owner, armed);
         auto core = retain_core(*carrier);
         // Scheduled removal isolates the flyer from the live robot it carried.
@@ -1428,8 +1430,10 @@ void transported_robot_survival_profile(bool armed) {
         Session session(transport_outcome_profile(mode, step));
         DialogData dialog;
         std::cout << session.metadata(armed ? "weapon-attached-transport-survival-v1" : "synthetic-last-transported-robot-v2") << '\n';
-        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 400;
-        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        if (armed) {
+            g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 400;
+            g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        }
         auto *carrier = order_outcome_transport(PLAYER_SIDE, armed);
         auto carrier_core = retain_core(*carrier);
         auto *robot = carrier->GetCarryingRobot()->AsRobot();
@@ -1451,6 +1455,7 @@ void transported_robot_survival_profile(bool armed) {
             if (carrier_core->m_Object) MG_CHECK(carrier->CarryingRobot() == !released);
             if (!retired && !carrier_core->m_Object) retired = session.time();
             if (session.time() == (step == 10 ? 1000 : 1008)) {
+                MG_CHECK(carrier_core->m_Object == carrier);
                 carrier->RNeed(MR_Graph | MR_Matrix);
                 // This ray misses the body box and intersects the attached weapon
                 // box. Use the actual carrier transform, independent of its yaw.
@@ -1705,6 +1710,8 @@ std::vector<std::string> transport_projectile_run(random::Mode mode, int step, b
     MG_CHECK(session.remove(1) && session.remove(2));
     const int fire_at = after_landing ? 7000 : 1000;
     advance_to(session, ((fire_at + step - 1) / step) * step);
+    MG_CHECK(carrier_core->m_Object == carrier && cargo_core->m_Object == cargo);
+    MG_CHECK(cargo->GetSide() == PLAYER_SIDE && carrier->GetSide() == PLAYER_SIDE);
     MG_CHECK(cargo->m_CurrState == (after_landing ? ROBOT_SUCCESSFULLY_BUILD : ROBOT_CARRYING));
     CMatrixRobotAI *attacker = nullptr;
     for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
@@ -1728,13 +1735,22 @@ std::vector<std::string> transport_projectile_run(random::Mode mode, int step, b
     TransportHit hit;
     std::unique_ptr<CMatrixEffectWeapon, TransportWeaponDelete> weapon(static_cast<CMatrixEffectWeapon *>(
         CMatrixEffect::CreateWeapon(start, direction, reinterpret_cast<uintptr_t>(&hit), TransportHit::record, WEAPON_PLASMA)));
+    MG_CHECK(weapon != nullptr);
     weapon->SetOwner(attacker);
+    auto attacker_core = retain_core(*attacker);
+    MG_CHECK(weapon->GetOwner() == attacker && weapon->GetSideStorage() == 2);
     weapon->FireBegin(D3DXVECTOR3(0, 0, 0), attacker);
     weapon->Takt(1);
     weapon->FireEnd();
     MG_CHECK(weapon->GetFireCount() == 1 && hit.calls == 0);
     std::vector<std::string> trace;
     auto record = [&] {
+        MG_CHECK(!carrier_core->m_Object || carrier_core->m_Object == carrier);
+        MG_CHECK(!cargo_core->m_Object || cargo_core->m_Object == cargo);
+        MG_CHECK(attacker_core->m_Object == attacker && hit.calls <= 1);
+        MG_CHECK(attacker->IsLiveRobot());
+        if (cargo_core->m_Object) MG_CHECK(cargo->GetSide() == PLAYER_SIDE);
+        if (hit.calls && carrier_core->m_Object) MG_CHECK(!carrier->CarryingRobot());
         trace.push_back(session.snapshot() + ":carrier=" + std::to_string(carrier_core->m_Object != nullptr)
             + ":cargo=" + std::to_string(cargo_core->m_Object ? cargo->m_CurrState : -1)
             + ":hits=" + std::to_string(hit.calls));
@@ -1744,6 +1760,8 @@ std::vector<std::string> transport_projectile_run(random::Mode mode, int step, b
         session.advance();
         record();
         if (hit.calls) impact = session.time();
+        MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->IsPaused());
+        MG_CHECK(!g_MatrixMap->m_DialogModeName);
     }
     std::cout << "impact=" << impact << " callbacks=" << hit.calls << '\n';
     MG_CHECK(impact > fire_at && hit.calls == 1 && hit.target == TRACE_STOP_NONE);
@@ -1757,22 +1775,73 @@ std::vector<std::string> transport_projectile_run(random::Mode mode, int step, b
     } else {
         MG_CHECK(carrier_core->m_Object == nullptr && g_MatrixMap->m_AD_Obj_cnt == 0);
         MG_CHECK(cargo_core->m_Object == cargo);
+        MG_CHECK(cargo->m_CurrState == (after_landing ? ROBOT_SUCCESSFULLY_BUILD : ROBOT_FALLING));
+        MG_CHECK(cargo->IsMustDie() == !after_landing);
     }
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == int(hit_cargo));
     const bool loss = hit_cargo || !after_landing;
     const int elimination = after_landing ? (step == 10 ? 8050 : 8080) : (step == 10 ? 2020 : 2032);
     const int deadline = elimination + (step == 10 ? 2010 : 2016);
     while (session.time() < deadline) {
         session.advance();
         record();
+        if (loss && cargo_core->m_Object) MG_CHECK(cargo->m_CurrState == ROBOT_DIP);
+        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatus() == SS_ACTIVE);
         MG_CHECK((side().GetStatus() == SS_NONE) == (loss && session.time() >= elimination));
         MG_CHECK(g_MatrixMap->IsPaused() == (loss && session.time() == deadline));
     }
     MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    MG_CHECK(hit.calls == 1 && weapon->GetFireCount() == 1);
+    MG_CHECK(bool(carrier_core->m_Object) == (hit_cargo && (!after_landing || mode == random::Mode::ParkMiller)));
     if (loss) MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
     else MG_CHECK(cargo_core->m_Object == cargo && cargo->IsLiveRobot() && !g_MatrixMap->m_DialogModeName);
     MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
     MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == int(hit_cargo));
     return trace;
+}
+std::string transport_context_rejection_run(random::Mode mode, int step, bool after_landing) {
+    tests::BattleMaterialProfile materials;
+    Session session(transport_outcome_profile(mode, step));
+    std::cout << session.metadata("transport-context-rejection-v1") << " after_landing=" << after_landing << '\n';
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 400;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+    auto *carrier = order_outcome_transport(2, true);
+    auto carrier_core = retain_core(*carrier);
+    auto *cargo = carrier->GetCarryingRobot()->AsRobot();
+    auto cargo_core = retain_core(*cargo);
+    advance_to(session, after_landing ? (step == 10 ? 7000 : 7008) : (step == 10 ? 1000 : 1008));
+    MG_CHECK(carrier_core->m_Object == carrier && cargo_core->m_Object == cargo);
+    MG_CHECK(carrier->GetSide() == 2 && cargo->GetSide() == PLAYER_SIDE);
+    MG_CHECK(cargo->m_CurrState == (after_landing ? ROBOT_SUCCESSFULLY_BUILD : ROBOT_CARRYING));
+    CMatrixRobotAI *selected = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsRobot() && session.matches(1, object->AsRobot())) selected = object->AsRobot();
+    MG_CHECK(selected != nullptr);
+    auto *selection = side().GetCurSelGroup();
+    selection->RemoveAll();
+    selection->AddObject(selected, -4);
+    side().SetCurGroup(selection);
+    side().m_CurrSel = ROBOT_SELECTED;
+    g_MatrixMap->m_TraceStopObj = carrier;
+    g_MatrixMap->m_TraceStopPos = carrier->GetGeoCenter();
+    side().OnRButtonDown(CPoint(0, 0));
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+    const int group = selected->GetGroupLogic();
+    MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+    // Flyers are not IsLiveUnit targets: context input falls back to a ground Move.
+    MG_CHECK(side().m_PlayerGroup[group].Order() == mpo_MoveTo);
+    MG_CHECK(side().m_PlayerGroup[group].m_Obj == nullptr);
+    MG_CHECK(carrier_core->m_Object == carrier && cargo_core->m_Object == cargo);
+    MG_CHECK(carrier->GetHitPoint() == 1000 && cargo->IsLiveRobot());
+    MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->m_DialogModeName);
+    return session.snapshot();
+}
+void transport_context_rejection() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool after_landing : {false, true}) {
+        const auto first = transport_context_rejection_run(mode, step, after_landing);
+        MG_CHECK(first == transport_context_rejection_run(mode, step, after_landing));
+    }
 }
 void transport_projectile_outcomes() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
@@ -2720,6 +2789,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.armed_transport_survival", armed_transport_survival},
     {"game.outcome.armed_flyer_does_not_prevent_elimination", armed_flyer_does_not_prevent_elimination},
     {"game.outcome.transport_projectile_outcomes", transport_projectile_outcomes},
+    {"game.outcome.transport_context_rejection", transport_context_rejection},
     {"game.outcome.transported_robot_removal", transported_robot_removal_outcome},
     {"game.outcome.carrier_removal", carrier_removal_outcome},
     {"game.outcome.carrier_damage", carrier_damage_outcome},
