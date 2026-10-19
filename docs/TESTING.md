@@ -61,6 +61,8 @@ CI runs the engine suite after every game-build configuration. Test failures fai
 
 For current command, navigation, AI and presentation completion work, see the [baseline completion checklist](testing/baseline-completion.md). It reconciles shared test evidence and distinguishes proposed remaining scenario selections from final baseline acceptance. Completed implementation and pending native execution have separate records in the [native validation ledger](testing/native-validation.md); automated regressions continue to run during implementation.
 
+Synthetic native fixtures can use the [test-window containment helper](testing/native-window-containment.md) to keep their own game/loading windows hidden and adapt desktop cursor operations. Its cursor contracts run without a graphics device; its import/hidden-window checks are separately opt-in. Neither establishes visible presentation or original-host integration.
+
 ## Controlled battle scenarios
 
 The `game.scenario.*` cases run synthetic battles through `CMatrixMapLogic::Takt`, including production robot movement, pathfinding, side AI, effects and outcome evaluation. The fixture starts with selected unarmed wheel chassis; context commands enter `CMatrixSideUnit::OnRButtonDown` with a supplied world trace. This exercises its ordinary validation, footprint conversion, group assignment and synchronous command execution. Initial selection is fixture setup; these cases do not claim coverage of screen picking or selection acknowledgement sounds.
