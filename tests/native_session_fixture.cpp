@@ -1,20 +1,24 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "native_session_assets.hpp"
+#include "native_demo_assets.hpp"
 #include "native_packed_config.hpp"
 #include "test_support.hpp"
 #include "MatrixGame.h"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
+#include "MatrixFlyer.hpp"
 #include "MatrixObjectCannon.hpp"
 #include "Interface/CInterface.h"
 #include "MatrixFormGame.hpp"
 #include "input.hpp"
+#include "CStorage.hpp"
 #include <filesystem>
 #include <fstream>
 #include <cstring>
 #include <ctime>
 #include <iostream>
 #include <memory>
+#include <array>
 #include <utility>
 #include <cmath>
 #include <string_view>
@@ -65,7 +69,8 @@ struct Fixture {
         if (error) std::cerr << "Cannot remove synthetic session directory " << root << ": " << error.message() << '\n';
     }
 };
-enum class DemoProfile { None, Escape, Win, Loss };
+enum class DemoProfile { None, Escape, Win, Loss, Reinforcement, NoReinforcement, CameraFights };
+struct DemoCoreRelease { void operator()(SObjectCore *core) const { core->Release(); } };
 struct HostObservation {
     HWND window{};
     int progress{}, begins{}, ticks{}, texts{}, text_clears{};
@@ -79,6 +84,10 @@ struct HostObservation {
     DemoProfile demo{DemoProfile::None};
     bool demo_exited{}, pending_outcome{};
     int demo_start_time{};
+    int request_time{};
+    uint64_t initial_draws{}, observed_draws{};
+    std::array<std::unique_ptr<SObjectCore, DemoCoreRelease>, 3> camera_cores;
+    int camera_phase{}, camera_phase_time{};
     DWORD initial_cheat_flags{};
     std::time_t entry_time{}, first_progress_time{};
     std::string failure;
@@ -226,18 +235,142 @@ void restart_buildings(CFormMatrixGame &form) {
         MG_CHECK(!map->IsPaused() && !map->m_DialogModeName);
     }
 }
+void camera_fights_tick() {
+    const int now = g_MatrixMap->GetTime();
+    MG_CHECK(now - host->demo_start_time < 12000);
+    const auto actor = [](int index) {
+        MG_CHECK(index >= 0 && index < static_cast<int>(host->camera_cores.size()));
+        const auto &core = host->camera_cores[index];
+        MG_CHECK(core && core->m_Object && core->m_Object->IsLiveRobot());
+        return core->m_Object->AsRobot();
+    };
+    const auto damage = [&] (int target) {
+        auto *victim = actor(target);
+        const auto before = random::draw_count();
+        const float health = victim->GetHitPoint();
+        MG_CHECK(!victim->Damage(WEAPON_LASER, victim->GetGeoCenter(), D3DXVECTOR3(1,0,0), PLAYER_SIDE, actor(0)));
+        MG_CHECK(victim->GetHitPoint() < health && random::draw_count() > before);
+        host->observed_draws += random::draw_count() - before;
+    };
+    const auto near_pair = [&](int target, float distance) {
+        const auto midpoint = (actor(0)->GetGeoCenter() + actor(target)->GetGeoCenter()) * 0.5f;
+        const auto delta = g_MatrixMap->m_Camera.GetLinkPoint() - midpoint;
+        return D3DXVec3Length(&delta) < distance;
+    };
+    if (host->camera_phase == 0) {
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+            MG_CHECK(object->IsLiveRobot());
+            const int index = object->GetSide() == PLAYER_SIDE ? 0 : object->AsRobot()->m_PosX < 400 ? 1 : 2;
+            MG_CHECK(!host->camera_cores[index]);
+            host->camera_cores[index].reset(object->GetCore(DEBUG_CALL_INFO));
+        }
+        for (const auto &core : host->camera_cores) MG_CHECK(core && core->m_Ref == 2);
+        MG_CHECK(g_Config.m_ItemChars[CHASSIS2_MOVE_SPEED] == 0);
+        host->demo_start_time = now;
+        host->camera_phase_time = now;
+        host->phase = 1;
+        ++host->camera_phase;
+    } else if (host->camera_phase == 1) {
+        // Component damage registers the pair through production Damage. The
+        // native loop, camera selection/interpolation and ownership stay real.
+        damage(1);
+        MG_CHECK(host->camera_cores[0]->m_Ref == 3 && host->camera_cores[1]->m_Ref == 3);
+        host->camera_phase_time = now;
+        ++host->camera_phase;
+    } else if (host->camera_phase == 2 && now - host->camera_phase_time >= 2000) {
+        MG_CHECK(near_pair(1, 32));
+        damage(2);
+        MG_CHECK(host->camera_cores[0]->m_Ref == 4 && host->camera_cores[2]->m_Ref == 3);
+        host->camera_phase_time = now;
+        ++host->camera_phase;
+    } else if (host->camera_phase == 3 && now - host->camera_phase_time >= 1200) {
+        MG_CHECK(host->camera_cores[2]->m_Ref == 2 && near_pair(1, 10));
+        damage(2);
+        g_MatrixMap->StaticDelete(actor(1));
+        MG_CHECK(host->camera_cores[1]->m_Object == nullptr);
+        host->camera_phase_time = now;
+        ++host->camera_phase;
+    } else if (host->camera_phase == 4 && now - host->camera_phase_time >= 3000 && near_pair(2, 2)) {
+        MG_CHECK(host->camera_cores[1]->m_Ref == 1);
+        MG_CHECK(host->camera_cores[0]->m_Ref == 3 && host->camera_cores[2]->m_Ref == 3);
+        MG_CHECK(near_pair(2, 2));
+        // Host observation references must not outlive the game's owning heap.
+        // Camera-owned references remain for production teardown to release.
+        for (auto &core : host->camera_cores) core.reset();
+        auto *form = static_cast<CFormMatrixGame *>(g_FormCur);
+        form->Keyboard(true, VK_ESCAPE); form->Keyboard(false, VK_ESCAPE);
+        MG_CHECK(g_ExitState == 1 && FLAG(g_Flags, GFLAG_EXITLOOP) && !Input::isVKeyPressed(VK_ESCAPE));
+        host->demo_exited = true;
+        host->phase = 2;
+        ++host->camera_phase;
+    }
+}
 void __stdcall tick() {
     ++host->ticks;
     try {
         MG_CHECK(host->ticks < 5000);
         MG_CHECK(g_FormCur && g_MatrixMap && !IsWindowVisible(host->window));
         if (host->demo != DemoProfile::None) {
+            MG_CHECK(random::mode() == random::Mode::ParkMiller);
             const DWORD flags = MMFLAG_AUTOMATIC_MODE | MMFLAG_FLYCAM | MMFLAG_FULLAUTO;
             MG_CHECK((g_MatrixMap->m_Flags & flags) == flags);
             MG_CHECK(!g_MatrixMap->m_DialogModeName);
             const auto &link = g_MatrixMap->m_Camera.GetLinkPoint();
             MG_CHECK(std::isfinite(link.x) && std::isfinite(link.y) && std::isfinite(link.z));
             MG_CHECK(std::isfinite(g_MatrixMap->m_Camera.GetAngleX()) && std::isfinite(g_MatrixMap->m_Camera.GetAngleZ()));
+            if (host->demo == DemoProfile::CameraFights) { camera_fights_tick(); return; }
+            if (host->demo == DemoProfile::Reinforcement || host->demo == DemoProfile::NoReinforcement) {
+                const bool eligible = host->demo == DemoProfile::Reinforcement;
+                if (host->phase == 0) {
+                    MG_CHECK(g_Config.m_MaintenanceTime == 20000);
+                    MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 200);
+                    MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 0);
+                    host->initial_draws = random::draw_count();
+                    host->demo_start_time = g_MatrixMap->GetTime();
+                    ++host->phase;
+                }
+                CMatrixBuilding *factory = nullptr;
+                for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+                    if (object->IsLiveBuilding()) { MG_CHECK(!factory); factory = object->AsBuilding(); }
+                MG_CHECK(factory && factory->m_Kind == BUILDING_TITAN);
+                MG_CHECK(factory->GetSide() == (eligible ? PLAYER_SIDE : 2));
+                const int elapsed = g_MatrixMap->GetTime() - host->demo_start_time;
+                MG_CHECK(elapsed < 10000);
+                if (g_MatrixMap->m_AD_Obj_cnt) {
+                    MG_CHECK(eligible && g_MatrixMap->m_AD_Obj_cnt == 1);
+                    auto *carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[0]);
+                    MG_CHECK(carrier && carrier->IsFlyer() && carrier->CarryingRobot());
+                    MG_CHECK(carrier->GetCarryingRobot() && carrier->GetCarryingRobot()->IsLiveRobot());
+                    auto *cargo = carrier->GetCarryingRobot()->AsRobot();
+                    MG_CHECK(cargo->GetSide() == PLAYER_SIDE && cargo->m_CurrState == ROBOT_CARRYING);
+                    MG_CHECK(cargo->GetHitPoint() == 150);
+                    MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() > 0 && g_MatrixMap->BeforeMaintenanceTime() <= 200);
+                    host->request_time = elapsed;
+                }
+                if (host->request_time || (!eligible && elapsed >= 1500)) {
+                    host->observed_draws = random::draw_count() - host->initial_draws;
+                    MG_CHECK(host->observed_draws > 0);
+                    if (!eligible) MG_CHECK(g_MatrixMap->BeforeMaintenanceTime() == 0);
+                    CMatrixRobotAI *player = nullptr;
+                    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+                        if (object->IsLiveRobot() && object->GetSide() == PLAYER_SIDE &&
+                            object->AsRobot()->m_CurrState != ROBOT_CARRYING) {
+                            MG_CHECK(!player); player = object->AsRobot();
+                        }
+                    MG_CHECK(player && player->GetGroupLogic() >= 0 && player->GetGroupLogic() < MAX_LOGIC_GROUP);
+                    const auto &logic = g_MatrixMap->GetPlayerSide()->m_LogicGroup[player->GetGroupLogic()];
+                    std::cout << "demo_ai_action=" << logic.m_Action.m_Type << " robots=" << logic.RobotsCnt()
+                        << " request_time=" << host->request_time << '\n';
+                    MG_CHECK(logic.m_Action.m_Type == (eligible ? mlat_Defence : mlat_Capture));
+                    auto *form = static_cast<CFormMatrixGame *>(g_FormCur);
+                    form->Keyboard(true, VK_ESCAPE); form->Keyboard(false, VK_ESCAPE);
+                    MG_CHECK(g_ExitState == 1 && FLAG(g_Flags, GFLAG_EXITLOOP));
+                    MG_CHECK(!Input::isVKeyPressed(VK_ESCAPE));
+                    host->demo_exited = true;
+                    host->phase = 2;
+                }
+                return;
+            }
             if (host->phase == 0) {
                 MG_CHECK(random::mode() == random::Mode::ParkMiller);
                 host->demo_start_time = g_MatrixMap->GetTime();
@@ -322,9 +455,55 @@ void __stdcall tick() {
             MG_CHECK(PostMessageW(host->window, WM_CLOSE, 0, 0));
             ++host->phase;
         }
-    } catch (const std::exception &error) { host->failure = error.what(); throw; }
+    } catch (const std::exception &error) {
+        host->failure = error.what();
+        for (auto &core : host->camera_cores) core.reset();
+        throw;
+    }
 }
 enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, RepeatedPneumaticCleanup };
+void demo_assets() {
+    for (auto demo : {DemoProfile::Reinforcement, DemoProfile::NoReinforcement, DemoProfile::CameraFights})
+        for (bool packed : {false, true}) {
+            Fixture fixture;
+            tests::write_native_session_assets();
+            const bool camera = demo == DemoProfile::CameraFights;
+            if (camera) tests::write_native_demo_camera(L"synthetic-DeMo.map");
+            else tests::write_native_demo_reinforcement(L"synthetic-DeMo.map", demo == DemoProfile::Reinforcement);
+            CStorage map;
+            MG_CHECK(map.Load(L"synthetic-DeMo.map"));
+            const auto actors = camera ? 3u : 2u;
+            for (const auto &[name, type] : {
+                std::pair{DATA_ROBOTS_X, ST_FLOAT}, {DATA_ROBOTS_Y, ST_FLOAT},
+                {DATA_ROBOTS_SIDE, ST_BYTE}, {DATA_ROBOTS_SHADOW, ST_BYTE},
+                {DATA_ROBOTS_SHADOWSIZE, ST_INT32}, {DATA_ROBOTS_GROUP, ST_INT32}}) {
+                auto *column = map.GetBuf(DATA_ROBOTS, name, type);
+                MG_CHECK(column && column->GetArraysCount() == 1 && column->GetArrayLength(0) == actors);
+            }
+            auto *units = map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_UNITS, ST_WCHAR);
+            MG_CHECK(units && units->GetArraysCount() == actors);
+            for (DWORD i = 0; i < actors; ++i) MG_CHECK(units->GetAsWStr(i) == units->GetAsWStr(0));
+            if (!camera) {
+                auto *sides = map.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_SIDE, ST_BYTE);
+                MG_CHECK(sides && sides->GetArrayLength(0) == 1);
+                MG_CHECK(sides->GetFirst<BYTE>(0)[0] == (demo == DemoProfile::Reinforcement ? PLAYER_SIDE : 2));
+                MG_CHECK(fs::is_regular_file(L"synthetic-transport-body.vo"));
+            }
+            CBlockPar data;
+            if (packed) {
+                tests::pack_native_session_configuration();
+                MG_CHECK(!fs::exists(L"CFG/robots/data.txt") && !fs::exists(L"CFG/robots/iface.txt"));
+                CStorage archive;
+                MG_CHECK(archive.Load(L"CFG/robots.dat"));
+                archive.RestoreBlockPar(L"da", data);
+            } else data.LoadFromTextFile(L"CFG/robots/data.txt");
+            if (camera) {
+                MG_CHECK(data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Chassis")->ParGet(PAR_SOURCE_CHASSIS2_MOVE_SPEED) == L"0");
+                MG_CHECK(data.BlockGet(PAR_SOURCE_WEAPONS)->BlockGet(PAR_SOURCE_DAMAGES)->BlockGet(PAR_SOURCE_DAMAGES_ROBOT)
+                    ->ParGet(L"WEAPON_LASER") == L"1,0,0");
+            } else MG_CHECK(data.BlockGet(PAR_SOURCE_TIMINGS)->ParGet(PAR_SOURCE_TIMINGS_MAINTENANCE) == L"20000");
+        }
+}
 struct SessionOptions {
     bool leave_key_held{};
     ConfigurationProfile profile{ConfigurationProfile::Text};
@@ -355,7 +534,14 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
         if (cannon_restart) tests::write_native_session_cannon_assets();
         tests::write_native_session_map(L"synthetic.map", true, cannon_restart);
     }
-    if (demo != DemoProfile::None) fs::copy_file(L"synthetic.map", L"synthetic-DeMo.map");
+    const bool ai_demo = demo >= DemoProfile::Reinforcement;
+    // Every ordinary reentry restores the original declaration, including the
+    // camera profile's stationary chassis and reinforcement-specific timings.
+    if (ai_demo) fs::copy_file(L"CFG/robots/data.txt", L"data.normal");
+    if (demo == DemoProfile::Reinforcement || demo == DemoProfile::NoReinforcement)
+        tests::write_native_demo_reinforcement(L"synthetic-DeMo.map", demo == DemoProfile::Reinforcement);
+    else if (demo == DemoProfile::CameraFights) tests::write_native_demo_camera(L"synthetic-DeMo.map");
+    else if (demo != DemoProfile::None) fs::copy_file(L"synthetic.map", L"synthetic-DeMo.map");
     if (packed) tests::pack_native_session_configuration();
     Window window;
     MG_CHECK(window.parent && window.child && !IsWindowVisible(window.child));
@@ -413,9 +599,18 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
                 fs::rename(L"parked-valid-config", L"CFG/robots.dat");
             } else fs::rename(L"CFG/robots/iface.saved", L"CFG/robots/iface.txt");
         }
+        if (lifetime == 0 && ai_demo) {
+            if (packed) {
+                fs::remove(L"CFG/robots.dat");
+                fs::rename(L"parked-text-config", L"CFG/robots");
+            }
+            fs::copy_file(L"data.normal", L"CFG/robots/data.txt", fs::copy_options::overwrite_existing);
+            if (packed) tests::pack_native_session_configuration();
+        }
         std::cout << "fixture=synthetic-session-v1 packed=" << packed << " lifetime=" << lifetime << " result=" << exit
             << " seed_interval=[" << observed.entry_time << ',' << observed.first_progress_time
             << "] ticks=" << observed.ticks << " moved=" << observed.moved
+            << " request_time=" << observed.request_time << " observed_draws=" << observed.observed_draws
             << " buildings=" << building_restart << " cannons=" << cannon_restart
             << " restarts=" << observed.restarts
             << " demo=" << static_cast<int>(observed.demo) << " toggles=" << observed.toggles_observed << '\n';
@@ -436,8 +631,10 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
         }
         else if (observed.demo != DemoProfile::None) {
             MG_CHECK(observed.ticks >= 2 && observed.phase == 2);
-            MG_CHECK(observed.demo == DemoProfile::Escape ? observed.demo_exited : observed.pending_outcome);
-            MG_CHECK(observed.texts > 0 && observed.texts == observed.text_clears);
+            MG_CHECK(observed.demo == DemoProfile::Win || observed.demo == DemoProfile::Loss ?
+                observed.pending_outcome : observed.demo_exited);
+            if (!ai_demo) MG_CHECK(observed.texts > 0);
+            MG_CHECK(observed.texts == observed.text_clears);
         } else {
             MG_CHECK(observed.ticks >= 2 && observed.moved && observed.phase == 2);
             MG_CHECK(result.m_Time >= 0 && result.m_BuildRobot == 0 && result.m_KillRobot == 0 &&
@@ -455,10 +652,23 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
         MG_CHECK(native.device->Clear(0, nullptr, D3DCLEAR_TARGET, 0, 1, 0) == D3D_OK);
         MG_CHECK(native.device->Present(nullptr, nullptr, nullptr, nullptr) == D3D_OK);
         if (leave_key_held) MG_CHECK(!Input::isVKeyPressed(VK_F12));
+        for (const auto &core : observed.camera_cores) MG_CHECK(!core);
 #ifdef MEM_SPY_ENABLE
         MG_CHECK(Base::SMemHeader::first_mem_block == nullptr);
 #endif
     }
+}
+void native_demo_reinforcement() { native_run_lifetimes_impl({.demo = DemoProfile::Reinforcement}); }
+void native_demo_packed_reinforcement() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::Reinforcement});
+}
+void native_demo_no_reinforcement() { native_run_lifetimes_impl({.demo = DemoProfile::NoReinforcement}); }
+void native_demo_packed_no_reinforcement() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::NoReinforcement});
+}
+void native_demo_camera_fights() { native_run_lifetimes_impl({.demo = DemoProfile::CameraFights}); }
+void native_demo_packed_camera_fights() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::CameraFights});
 }
 void native_run_lifetimes() { native_run_lifetimes_impl({}); }
 void native_packed_lifetimes() { native_run_lifetimes_impl({.profile = ConfigurationProfile::Packed}); }
@@ -497,6 +707,13 @@ int main(int argc, char **argv) {
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
+        {"game.session.demo_assets", demo_assets},
+        {"game.session.native_demo_reinforcement", native_demo_reinforcement},
+        {"game.session.native_demo_no_reinforcement", native_demo_no_reinforcement},
+        {"game.session.native_demo_camera_fights", native_demo_camera_fights},
+        {"game.session.native_demo_packed_reinforcement", native_demo_packed_reinforcement},
+        {"game.session.native_demo_packed_no_reinforcement", native_demo_packed_no_reinforcement},
+        {"game.session.native_demo_packed_camera_fights", native_demo_packed_camera_fights},
         {"game.session.native_run_lifetimes", native_run_lifetimes},
         {"game.session.native_building_restart", native_building_restart},
         {"game.session.native_cannon_restart", native_cannon_restart},
