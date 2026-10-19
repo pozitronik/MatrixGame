@@ -20,6 +20,7 @@ struct Api {
     decltype(&SetWindowLongA) style_a = std::bit_cast<decltype(style_a)>(GetProcAddress(user32, "SetWindowLongA"));
     decltype(&SetWindowLongW) style_w = std::bit_cast<decltype(style_w)>(GetProcAddress(user32, "SetWindowLongW"));
     decltype(&ShowWindow) show = std::bit_cast<decltype(show)>(GetProcAddress(user32, "ShowWindow"));
+    decltype(&TrackMouseEvent) track_mouse = std::bit_cast<decltype(track_mouse)>(GetProcAddress(user32, "TrackMouseEvent"));
     decltype(&SHGetSpecialFolderLocation) special_folder = std::bit_cast<decltype(special_folder)>(
         GetProcAddress(GetModuleHandleW(L"shell32.dll"), "SHGetSpecialFolderLocation"));
 };
@@ -77,6 +78,14 @@ BOOL WINAPI contained_show(HWND window, int command) {
     return api().show(window, command);
 }
 BOOL WINAPI contained_clip(const RECT *) { return TRUE; }
+BOOL WINAPI contained_track_mouse(LPTRACKMOUSEEVENT tracking) {
+    // Posted client input has its own explicit leave events. The desktop
+    // pointer cannot enter this invisible child and must not cancel a drag.
+    if (tracking && tracking->cbSize == sizeof(*tracking) && tracking->dwFlags == TME_LEAVE &&
+        game_window(tracking->hwndTrack) && GetParent(tracking->hwndTrack) == hidden_parent)
+        return TRUE;
+    return api().track_mouse(tracking);
+}
 HCURSOR WINAPI contained_cursor(HCURSOR cursor) {
     return reinterpret_cast<HCURSOR>(native_window::cursor.set(reinterpret_cast<std::uintptr_t>(cursor)));
 }
@@ -123,6 +132,7 @@ void *replacement(const char *name) {
     if (!std::strcmp(name, "SetWindowLongA")) return reinterpret_cast<void *>(contained_style_a);
     if (!std::strcmp(name, "SetWindowLongW")) return reinterpret_cast<void *>(contained_style_w);
     if (!std::strcmp(name, "ShowWindow")) return reinterpret_cast<void *>(contained_show);
+    if (!std::strcmp(name, "TrackMouseEvent")) return reinterpret_cast<void *>(contained_track_mouse);
     if (!std::strcmp(name, "ClipCursor")) return reinterpret_cast<void *>(contained_clip);
     if (!std::strcmp(name, "SetCursor")) return reinterpret_cast<void *>(contained_cursor);
     if (!std::strcmp(name, "ShowCursor")) return reinterpret_cast<void *>(contained_show_cursor);

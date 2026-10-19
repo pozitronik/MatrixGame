@@ -59,7 +59,7 @@ add_matrix_test_executable(matrixgame_native_window_tests native_window_tests.cp
 target_link_libraries(matrixgame_native_window_tests PRIVATE matrixgame_native_window_containment)
 option(MATRIXGAME_NATIVE_WINDOW_TESTS "Run hidden Windows import-containment checks" OFF)
 if(MATRIXGAME_NATIVE_WINDOW_TESTS)
-    foreach(contract cursor_imports constructor_rollback)
+    foreach(contract cursor_imports constructor_rollback explicit_mouse_leave)
         add_matrix_test(game.session.window_${contract} matrixgame_native_window_tests startup input native native-process)
     endforeach()
 endif()
