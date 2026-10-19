@@ -41,9 +41,13 @@ Bonuses scale the existing configuration's difficulty multipliers; None leaves t
 
 ## Installed maps
 
-Maps are `Matrix/Map/*.cmap` files from the registered packages or the loose `Matrix/Map` folder beside `MatrixGame.exe`. Subfolders are not scanned, and arbitrary additional `.pkg` files are not registered automatically. The required `DATA/robots.pkg` supplies shared game resources even when the selected map is loose.
+Place custom `.cmap` files in `maps/` or `DATA/maps/` beside `MatrixGame.exe`. The legacy `Matrix/Map/` folder and maps inside registered packages remain supported. Subfolders are not scanned, and arbitrary additional `.pkg` files are not registered automatically. The required `DATA/robots.pkg` supplies shared game resources even when the selected map is loose; install any additional resources required by a custom map at the paths its author specifies.
 
-Names compare case-insensitively and the list is sorted by filename. A loose map takes precedence over a packaged one with the same name; for duplicate packaged maps the first registered package wins. A same-stem `.jpg` or `.png` supplies the preview, with JPEG preferred. Loose previews override packaged previews. An absent or undecodable image shows **No preview** and does not prevent starting the map.
+For example, `maps/My Battle.cmap` and `maps/My Battle.jpg` install a map and its preview. These paths are relative to the executable directory, including when the game is launched from another directory. The build helper does not copy custom map folders from the source checkout; place them beside the executable you intend to run.
+
+Names compare case-insensitively and the list is sorted by filename. When several sources contain the same map basename, the selector offers one entry, in this priority order: `maps/`, `DATA/maps/`, `Matrix/Map/`, then registered packages. The first registered package wins among packaged duplicates. The selected entry retains its actual relative path for loading and the remembered selection. An unreadable overriding map does not silently fall back to a different file with the same name.
+
+A same-stem `.jpg` or `.png` in any supported map directory supplies the preview, with JPEG preferred. For each image format, the directory priority is the same as for maps; loose previews precede packaged previews. This permits a separately installed preview for a packaged map. An absent or undecodable image shows **No preview** and does not prevent starting the map.
 
 Supported filenames contain ASCII letters, digits, spaces and `_-.()+!#&,'~`. Other names are skipped because the existing resource loader and settings format impose narrower filename rules than Windows. A custom map must use a compatible `.cmap` format and have its referenced resources installed. Listing and the initial readability check do not establish full payload validity.
 
@@ -53,7 +57,7 @@ Names retain their existing gameplay significance: `demo` selects automatic demo
 
 | Key in `CFG/standalone.txt` | Values | Default |
 | --- | --- | --- |
-| `Map` | Relative `.cmap` path, for example `Matrix\Map\desert1_3e.cmap`, or empty | Empty |
+| `Map` | Relative `.cmap` path, for example `maps\My Battle.cmap` or `Matrix\Map\desert1_3e.cmap`, or empty | Empty |
 | `BattleBonus` | `None`, `AirSupport`, `ReinforcedArmor` | `None` |
 
 An empty remembered path selects `Config/Map` when opening the startup selector. If that map is not listed, the first installed map is selected. The `cfg.txt` override still applies with packed configuration. Missing bonus keys default to None; invalid or repeated values default individually and are reported in `test.log`. Settings preserves both keys when applying unrelated options.

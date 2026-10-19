@@ -991,6 +991,50 @@ void map_sources() {
     MG_CHECK(MapCatalog::readable(L"Matrix\\Map\\Loose.cmap") && !MapCatalog::readable(L"Matrix\\Map\\Packed.cmap"));
 }
 
+void external_map_sources() {
+    WorkingDirectory directory;
+    write_file("maps.pkg", map_package({"Packed.cmap", "Shared.cmap", "Shared.jpg"}, map_store(true)));
+    RegisteredPackages registered;
+    Base::CFile::AddPackFile(L"maps.pkg");
+    Base::CFile::OpenPackFiles();
+    for (const auto *folder : {"maps", "DATA/maps", "Matrix/Map"})
+        std::filesystem::create_directories(std::filesystem::path(folder) / "Nested");
+    write_file("Matrix/Map/Shared.cmap", map_store(true));
+    write_file("DATA/maps/SHARED.cmap", map_store(false));
+    write_file("maps/shared.cmap", map_store(true));
+    write_file("maps/Root.cmap", map_store(true));
+    write_file("DATA/maps/Data.cmap", map_store(true));
+    write_file("maps/shared.jpg", Bytes().text("preview"));
+    write_file("DATA/maps/Data.png", Bytes().text("preview"));
+    write_file("maps/bad=name.cmap", map_store(true));
+    for (const auto *folder : {"maps", "DATA/maps", "Matrix/Map"})
+        write_file(std::filesystem::path(folder) / "Nested/Hidden.cmap", map_store(true));
+
+    const std::vector<MapCatalog::Map> expected{
+            {L"Data", L"DATA\\maps\\Data.cmap", L"DATA\\maps\\Data.png", true},
+            {L"Packed", L"Matrix\\Map\\Packed.cmap", L"", false},
+            {L"Root", L"maps\\Root.cmap", L"", true},
+            {L"shared", L"maps\\shared.cmap", L"maps\\shared.jpg", true},
+    };
+    const auto maps = MapCatalog::scan();
+    MG_CHECK(maps == expected);
+    for (const auto &map : maps) MG_CHECK(MapCatalog::readable(map.path));
+
+    // Removing overrides exposes the next source. An invalid winner must not load a different map.
+    MG_CHECK(std::filesystem::remove("maps/shared.cmap"));
+    auto fallback = MapCatalog::scan();
+    MG_CHECK(fallback.back().path == L"DATA\\maps\\SHARED.cmap");
+    MG_CHECK(!MapCatalog::readable(fallback.back().path));
+    MG_CHECK(std::filesystem::remove("DATA/maps/SHARED.cmap"));
+    fallback = MapCatalog::scan();
+    MG_CHECK(fallback.back().path == L"Matrix\\Map\\Shared.cmap" && fallback.back().loose);
+    MG_CHECK(MapCatalog::readable(fallback.back().path));
+    MG_CHECK(std::filesystem::remove("Matrix/Map/Shared.cmap"));
+    fallback = MapCatalog::scan();
+    MG_CHECK(fallback.back().path == L"Matrix\\Map\\Shared.cmap" && !fallback.back().loose);
+    MG_CHECK(MapCatalog::readable(fallback.back().path));
+}
+
 // --- Raw-read records ------------------------------------------------------------------------------------
 
 // Map preparation and the vector-object loader copy ST_BYTE column payloads into these structures, so their
@@ -1083,6 +1127,7 @@ constexpr tests::Case cases[] = {
     {"base.layout.package_file_fallback", package_file_fallback},
     {"base.layout.package_listing", package_listing},
     {"game.maps.sources", map_sources},
+    {"game.maps.external_sources", external_map_sources},
     {"base.layout.raw_records", raw_records},
 };
 

@@ -121,6 +121,7 @@ foreach(contract package_tree package_handles package_malformed package_file_fal
 endforeach()
 add_matrix_test(base.layout.package_listing matrixgame_layout_tests base storage pack)
 add_matrix_test(game.maps.sources matrixgame_layout_tests startup storage pack)
+add_matrix_test(game.maps.external_sources matrixgame_layout_tests startup storage pack)
 add_matrix_test(base.layout.raw_records matrixgame_layout_tests base storage)
 
 add_matrix_test_executable(matrixgame_error_tests error_tests.cpp)
@@ -200,7 +201,7 @@ endforeach()
 
 add_matrix_test_executable(matrixgame_map_catalog_tests map_catalog_tests.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_map_catalog_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
-foreach(contract merge unsafe_names paths)
+foreach(contract merge external_folders unsafe_names paths)
     add_matrix_test(game.maps.${contract} matrixgame_map_catalog_tests startup ui)
 endforeach()
 
