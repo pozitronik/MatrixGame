@@ -36,7 +36,7 @@ After building the same target, a first-flight reference trace can be recorded s
 & '.\build\mingw-release-exe\tests\matrixgame_ai_auto_scenarios.exe' probe.ai.camera_first_pm10
 ```
 
-The demo-named `CGame::Init` path, its introduction/full-auto result rules and following-session behavior remain separate A8/O9 initialization work. These parser-level scenes do not substitute for that lifecycle coverage.
+The [native mode-reentry cases](85-native-mode-reentry.md) separately cover demo-named `CGame::Init`, its introduction/full-auto result rules and following ordinary sessions. These parser-level scenes do not substitute for that lifecycle coverage; the native cases do not yet combine loaded-demo startup with these changing-fight scenes or reinforcement decisions.
 
 ## Accepted effect on later simulation draws
 
