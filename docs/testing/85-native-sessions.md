@@ -26,6 +26,8 @@ The fixture records its version, lifetime number, result, movement observation, 
 
 The [packed-configuration and pneumatic cleanup cases](85-native-packed-sessions.md) extend this fixture with isolated packed loading, invalid-header recovery and repeated animation-data retirement. They retain the same borrowed-host ownership checks.
 
+The [populated native Restart cases](85-native-population-restart.md) add base/factory and stored-cannon reconstruction, partially queued-cannon retirement, minimap drawing and restored terrain/slot ownership. Both text and isolated packed variants perform repeated menu-confirmed reloads and full Run recovery.
+
 ## Running
 
 A usable native Windows Direct3D 9 HAL device and the legacy DirectX runtime are required. The executable is compiled with DLL tests, but native execution is opt-in: ordinary asset-free CI does not assume an interactive graphics adapter. A missing adapter is an explicit failure when the native test is selected, never a successful skip.
