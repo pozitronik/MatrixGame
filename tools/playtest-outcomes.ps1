@@ -143,6 +143,19 @@ if ($AlternateMapFile) {
         [IO.Path]::GetExtension($AlternateMapFile) -ine '.cmap') { throw '-AlternateMapFile must identify an owned local .cmap file.' }
     if (Test-Path -LiteralPath $alternate) { throw 'The reserved alternate-map output already exists; choose another output directory or inspect it manually.' }
 }
+# The selector compares basenames, so a higher-priority loose map would hide either fixture.
+# Check inspection as well as launch, before backups, staging or configuration changes.
+$fixtureNames = @('desert1_3e.cmap')
+if ($AlternateMapFile) { $fixtureNames += 'native-outcome-alternate.cmap' }
+foreach ($folder in @('maps', 'DATA/maps')) {
+    $directory = Join-Path $gameRoot $folder
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) { continue }
+    foreach ($file in @(Get-ChildItem -LiteralPath $directory -File)) {
+        if ($fixtureNames -icontains $file.Name) {
+            throw "A higher-priority map shadows a required selector fixture: $($file.FullName). Move that output copy aside manually or use another build directory."
+        }
+    }
+}
 $cachePath = Join-Path $buildRoot 'CMakeCache.txt'
 if (-not (Test-Path -LiteralPath $cachePath -PathType Leaf)) { throw 'Build the selected candidate with tools/build.ps1 first.' }
 $cache = Get-Content -LiteralPath $cachePath -Raw

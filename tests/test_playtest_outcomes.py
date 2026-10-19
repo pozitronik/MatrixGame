@@ -143,8 +143,11 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         mock = mock.replace("CHILD_LIVE", "$true" if child_live else "$false")
         mock = mock.replace("CLOSE_TIMEOUT", "$true" if close_timeout else "$false")
         mock = mock.replace("KILL_TIMEOUT", "$true" if kill_timeout else "$false")
-        command = mock + "\n& " + quote(SCRIPT) + " -Configuration Debug -BuildDirectory " + quote(self.build)
+        command = mock + "\ntry { & " + quote(SCRIPT) + " -Configuration Debug -BuildDirectory " + quote(self.build)
         command += " " + " ".join(args)
+        # Keep diagnostics exact: PowerShell's error formatter wraps paths and even message words
+        # according to host width, which otherwise makes assertions depend on the checkout path.
+        command += "\n} catch { [Console]::Error.WriteLine($_.Exception.Message); exit 1 }"
         return subprocess.run(
             [POWERSHELL, "-NoProfile", "-NonInteractive", "-Command", command],
             capture_output=True, text=True, timeout=20,
@@ -220,6 +223,15 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         observed = json.loads((self.build / "observed.json").read_text(encoding="utf-8-sig"))
         self.assertEqual(Path(observed["Executable"]), self.game / "MatrixGame.exe")
         self.assert_restored()
+        shadow = self.game / "DATA" / "maps" / "DESERT1_3E.CMAP"
+        shadow.parent.mkdir()
+        shadow.write_bytes(b"independent MSVC map")
+        result = self.run_helper("-Compiler MSVC", "-Launch")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("higher-priority map shadows", result.stderr)
+        self.assertEqual(shadow.read_bytes(), b"independent MSVC map")
+        self.assert_restored()
+        shadow.unlink()
         # The accepted cache type must not relax configuration identity.
         cache = self.build / "CMakeCache.txt"
         cache.write_text(cache.read_text().replace("UNINITIALIZED=Debug", "UNINITIALIZED=Release"))
@@ -354,6 +366,85 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("reserved alternate-map output already exists", result.stderr)
         self.assertEqual(target.read_bytes(), b"unrelated existing map")
+        self.assert_restored()
+
+    def test_first_map_shadow_is_rejected_before_inspection_or_launch(self):
+        for folder in ("maps", "DATA/maps"):
+            for launch in (False, True):
+                with self.subTest(folder=folder, launch=launch):
+                    shadow = self.game / folder / "DESERT1_3E.CMAP"
+                    shadow.parent.mkdir(parents=True, exist_ok=True)
+                    shadow.write_bytes(b"independent map must survive")
+                    try:
+                        result = self.run_helper(*(["-Launch"] if launch else []))
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("higher-priority map shadows", result.stderr)
+                        self.assertIn(str(shadow), result.stderr)
+                        self.assertEqual(shadow.read_bytes(), b"independent map must survive")
+                        self.assertFalse((self.build / "observed.json").exists())
+                        self.assert_restored()
+                    finally:
+                        shadow.unlink()
+
+    def test_alternate_map_shadow_is_rejected_before_inspection_or_staging(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic alternative")
+        for folder in ("maps", "DATA/maps"):
+            for launch in (False, True):
+                with self.subTest(folder=folder, launch=launch):
+                    shadow = self.game / folder / "NATIVE-OUTCOME-ALTERNATE.CMAP"
+                    shadow.parent.mkdir(parents=True, exist_ok=True)
+                    shadow.write_bytes(b"independent alternate must survive")
+                    try:
+                        args = ["-AlternateMapFile " + quote(source)]
+                        if launch:
+                            args.append("-Launch")
+                        result = self.run_helper(*args)
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("higher-priority map shadows", result.stderr)
+                        self.assertEqual(shadow.read_bytes(), b"independent alternate must survive")
+                        self.assertEqual(source.read_bytes(), b"synthetic alternative")
+                        self.assertFalse((self.game / "Matrix").exists())
+                        self.assertFalse((self.build / "observed.json").exists())
+                        self.assert_restored()
+                    finally:
+                        shadow.unlink()
+
+    def test_unrelated_and_nested_maps_do_not_block_staging(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic alternative")
+        preserved = []
+        for folder in ("maps", "DATA/maps"):
+            for name in ("Unrelated.cmap", "Nested/desert1_3e.cmap", "Nested/native-outcome-alternate.cmap"):
+                path = self.game / folder / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"independent map")
+                preserved.append(path)
+        result = self.run_helper("-Launch", "-AlternateMapFile " + quote(source))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads((self.build / "observed.json").read_text(encoding="utf-8-sig"))["Alternate"])
+        for path in preserved:
+            self.assertEqual(path.read_bytes(), b"independent map")
+        self.assertFalse((self.game / "Matrix").exists())
+        self.assert_restored()
+
+    def test_restore_is_not_blocked_by_a_new_map_override(self):
+        self.assertEqual(self.run_helper("-Launch", leftover=True).returncode, 0)
+        shadow = self.game / "maps" / "desert1_3e.cmap"
+        shadow.parent.mkdir()
+        shadow.write_bytes(b"map installed after interruption")
+        result = self.run_helper("-Restore")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(shadow.read_bytes(), b"map installed after interruption")
+        self.assert_restored()
+
+    def test_unused_alternate_override_does_not_block_the_first_map(self):
+        shadow = self.game / "maps" / "native-outcome-alternate.cmap"
+        shadow.parent.mkdir()
+        shadow.write_bytes(b"independent map not used by this run")
+        result = self.run_helper("-Launch")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(shadow.read_bytes(), b"independent map not used by this run")
         self.assert_restored()
 
     def test_alternate_launch_failure_keeps_existing_map_directory(self):
