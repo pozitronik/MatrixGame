@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "native_session_assets.hpp"
 #include "native_demo_assets.hpp"
+#include "native_window_containment.hpp"
 #include "native_packed_config.hpp"
 #include "test_support.hpp"
 #include "MatrixGame.h"
@@ -35,11 +36,21 @@ std::wstring PathToOutputFiles(const wchar_t *destination) {
 
 namespace {
 struct Window {
-    HWND parent = CreateWindowExW(0, L"STATIC", L"Synthetic DLL host", WS_POPUP,
-        0, 0, 640, 480, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-    HWND child = CreateWindowExW(0, L"STATIC", L"Synthetic battle", WS_CHILD,
-        0, 0, 640, 480, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
-    ~Window() { if (child) DestroyWindow(child); if (parent) DestroyWindow(parent); }
+    HWND parent{}, child{};
+    ATOM registered{};
+    explicit Window(HWND owner) : parent(owner) {
+        WNDCLASSW type{};
+        type.lpfnWndProc = DefWindowProcW;
+        type.hInstance = GetModuleHandleW(nullptr);
+        type.lpszClassName = L"MatrixGame_wc";
+        registered = RegisterClassW(&type);
+        if (registered) child = CreateWindowExW(WS_EX_NOACTIVATE, type.lpszClassName, L"Synthetic battle", WS_CHILD,
+            0, 0, 640, 480, parent, nullptr, type.hInstance, nullptr);
+    }
+    ~Window() {
+        if (child) DestroyWindow(child);
+        if (registered) UnregisterClassW(L"MatrixGame_wc", GetModuleHandleW(nullptr));
+    }
 };
 struct NativeDevice {
     IDirect3D9 *api = Direct3DCreate9(D3D_SDK_VERSION);
@@ -92,6 +103,11 @@ struct HostObservation {
     std::time_t entry_time{}, first_progress_time{};
     std::string failure;
 } *host;
+void native_diagnostic(const wchar_t *title, const wchar_t *message) {
+    std::wcerr << title << L": " << message << L'\n';
+    if (!host) TerminateProcess(GetCurrentProcess(), 98);
+    if (host->failure.empty()) host->failure = "Unexpected native diagnostic dialog";
+}
 void __stdcall sound(wchar *) {}
 dword __stdcall sound_create(wchar *, int, int) { return 0; }
 void __stdcall sound_id(dword) {}
@@ -543,8 +559,10 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
     else if (demo == DemoProfile::CameraFights) tests::write_native_demo_camera(L"synthetic-DeMo.map");
     else if (demo != DemoProfile::None) fs::copy_file(L"synthetic.map", L"synthetic-DeMo.map");
     if (packed) tests::pack_native_session_configuration();
-    Window window;
-    MG_CHECK(window.parent && window.child && !IsWindowVisible(window.child));
+    tests::NativeWindowContainment containment(native_diagnostic, false);
+    Window window(containment.parent());
+    MG_CHECK(window.registered && window.parent && window.child && !IsWindowVisible(window.child));
+    MG_CHECK(GetParent(window.child) == containment.parent());
     const auto original_procedure = GetWindowLongPtrA(window.child, GWLP_WNDPROC);
     NativeDevice native(window.child);
     const auto references = native.device->AddRef(); native.device->Release();
@@ -604,7 +622,8 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
                 fs::remove(L"CFG/robots.dat");
                 fs::rename(L"parked-text-config", L"CFG/robots");
             }
-            fs::copy_file(L"data.normal", L"CFG/robots/data.txt", fs::copy_options::overwrite_existing);
+            fs::rename(L"CFG/robots/data.txt", L"data.demo");
+            fs::rename(L"data.normal", L"CFG/robots/data.txt");
             if (packed) tests::pack_native_session_configuration();
         }
         std::cout << "fixture=synthetic-session-v1 packed=" << packed << " lifetime=" << lifetime << " result=" << exit

@@ -859,7 +859,7 @@ endforeach()
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_native_session_fixture native_session_fixture.cpp
         native_session_assets.cpp native_demo_assets.cpp native_packed_config.cpp battle_geometry.cpp)
-    target_link_libraries(matrixgame_native_session_fixture PRIVATE MatrixGameInternal)
+    target_link_libraries(matrixgame_native_session_fixture PRIVATE MatrixGameInternal matrixgame_native_window_containment)
     target_compile_definitions(matrixgame_native_session_fixture PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}"
         MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
     add_matrix_test(game.session.demo_assets matrixgame_native_session_fixture gameplay startup ai)
