@@ -1418,6 +1418,7 @@ void empty_flyer_survival_profile(bool armed) {
         session.advance();
         MG_CHECK(core->m_Object == carrier && !carrier->CarryingRobot());
         MG_CHECK(g_MatrixMap->IsPaused());
+        MG_CHECK(g_MatrixMap->m_DialogModeName != nullptr);
         MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) ==
                  (player ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN));
     }
@@ -1793,7 +1794,8 @@ std::vector<std::string> transport_projectile_run(random::Mode mode, int step, b
     MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
     MG_CHECK(hit.calls == 1 && weapon->GetFireCount() == 1);
     MG_CHECK(bool(carrier_core->m_Object) == (hit_cargo && (!after_landing || mode == random::Mode::ParkMiller)));
-    if (loss) MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+    if (loss) MG_CHECK(g_MatrixMap->m_DialogModeName &&
+                       std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
     else MG_CHECK(cargo_core->m_Object == cargo && cargo->IsLiveRobot() && !g_MatrixMap->m_DialogModeName);
     MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
     MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == int(hit_cargo));
