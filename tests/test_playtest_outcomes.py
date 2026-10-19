@@ -46,7 +46,7 @@ class OutcomePreparation(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def run_helper(self, *args, fail_start=False, leftover=False, running=False, wait_failure=False, child=False, child_exit=0, foreign_child=False, monitor_failure=False, child_id=124, repeated_child=False):
+    def run_helper(self, *args, fail_start=False, leftover=False, running=False, wait_failure=False, child=False, child_exit=0, foreign_child=False, monitor_failure=False, child_id=124, repeated_child=False, child_live=False, close_timeout=False, kill_timeout=False):
         # No process is created. The mock observes the staged files, then simulates a
         # preference save or a launch failure before the helper restores its backups.
         observe = quote(self.build / "observed.json")
@@ -94,16 +94,18 @@ function Start-Process {
     $observation | ConvertTo-Json | Set-Content -LiteralPath OBSERVE -Encoding UTF8
     if (FAIL_START) { throw 'synthetic launch failure' }
     [IO.File]::WriteAllText((Join-Path $cfg 'standalone.txt'), 'saved by fake game')
-    $result = [pscustomobject]@{Id = 123; HasExited = -not WAIT_FAILURE; ExitCode = 0; WaitCalls = 0; Handle = 1; StartTime = [datetime]'2026-01-01T00:00:00Z'}
+    $result = [pscustomobject]@{Id = 123; HasExited = -not WAIT_FAILURE; ExitCode = 0; WaitCalls = 0; Killed = $false; Handle = 1; StartTime = [datetime]'2026-01-01T00:00:00Z'}
     $result | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {
         param([int]$Milliseconds)
         if ($Milliseconds -le 0) { throw 'unbounded wait is forbidden by this test' }
+        [IO.File]::AppendAllText((Join-Path BUILD 'waits.txt'), [string]$Milliseconds + [Environment]::NewLine)
         ++$this.WaitCalls
         if ($Milliseconds -eq 250) {
             if (WAIT_FAILURE) { throw 'synthetic wait interruption' }
             # Exercise repeated bounded polling, not only an already-exited process.
             return $this.WaitCalls -gt 1
         }
+        if ((CLOSE_TIMEOUT -and -not $this.Killed) -or KILL_TIMEOUT) { return $false }
         $this.HasExited = $true
         return $true
     }
@@ -111,10 +113,23 @@ function Start-Process {
         [IO.File]::WriteAllText((Join-Path BUILD 'close-requested.txt'), 'closed')
         return $true
     }
+    $result | Add-Member -MemberType ScriptMethod -Name Kill -Value {
+        $this.Killed = $true
+        [IO.File]::WriteAllText((Join-Path BUILD 'kill-requested.txt'), 'killed')
+    }
     $result | Add-Member -MemberType ScriptMethod -Name Dispose -Value {}
-    $global:outcomeChild = [pscustomobject]@{Id = CHILD_ID; HasExited = $true; ExitCode = CHILD_EXIT; Handle = 2; StartTime = [datetime]'2026-01-01T00:00:01Z'; Path = $(if (FOREIGN_CHILD) { 'C:/other/MatrixGame.exe' } else { $FilePath })}
+    $global:outcomeChild = [pscustomobject]@{Id = CHILD_ID; HasExited = -not CHILD_LIVE; ExitCode = CHILD_EXIT; Handle = 2; StartTime = [datetime]'2026-01-01T00:00:01Z'; Path = $(if (FOREIGN_CHILD) { 'C:/other/MatrixGame.exe' } else { $FilePath })}
     $global:outcomeChild | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param([int]$Milliseconds); return $true }
-    $global:outcomeChild | Add-Member -MemberType ScriptMethod -Name Dispose -Value {}
+    $global:outcomeChild | Add-Member -MemberType ScriptMethod -Name CloseMainWindow -Value {
+        [IO.File]::WriteAllText((Join-Path BUILD 'unrelated-close.txt'), 'must not close')
+        return $false
+    }
+    $global:outcomeChild | Add-Member -MemberType ScriptMethod -Name Kill -Value {
+        [IO.File]::WriteAllText((Join-Path BUILD 'unrelated-kill.txt'), 'must not kill')
+    }
+    $global:outcomeChild | Add-Member -MemberType ScriptMethod -Name Dispose -Value {
+        [IO.File]::WriteAllText((Join-Path BUILD 'unrelated-disposed.txt'), 'disposed read-only')
+    }
     return $result
 }
 function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw 'synthetic monitor interruption' } }
@@ -125,6 +140,9 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         mock = mock.replace("FOREIGN_CHILD", "$true" if foreign_child else "$false")
         mock = mock.replace("MONITOR_FAILURE", "$true" if monitor_failure else "$false")
         mock = mock.replace("CHILD_ID", str(child_id)).replace("REPEATED_CHILD", "$true" if repeated_child else "$false")
+        mock = mock.replace("CHILD_LIVE", "$true" if child_live else "$false")
+        mock = mock.replace("CLOSE_TIMEOUT", "$true" if close_timeout else "$false")
+        mock = mock.replace("KILL_TIMEOUT", "$true" if kill_timeout else "$false")
         command = mock + "\n& " + quote(SCRIPT) + " -Configuration Debug -BuildDirectory " + quote(self.build)
         command += " " + " ".join(args)
         return subprocess.run(
@@ -438,6 +456,41 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(result.stdout.count("Process ID: 123; exit code: 0"), 2)
         self.assertIn("Observed processes: 2; expected: 2", result.stdout)
+        self.assert_restored()
+
+    def test_interruption_never_terminates_unowned_same_path_lifetime(self):
+        # A polled same-path process with even the same PID is not the exact
+        # process object returned by Start-Process. Polling grants no ownership.
+        result = self.run_helper("-Launch", "-WatchRelaunches", child=True, child_id=123,
+                                 child_live=True, wait_failure=True, monitor_failure=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("synthetic monitor interruption", result.stderr)
+        self.assertEqual((self.build / "close-requested.txt").read_text(), "closed")
+        self.assertFalse((self.build / "unrelated-close.txt").exists())
+        self.assertFalse((self.build / "unrelated-kill.txt").exists())
+        self.assertEqual((self.build / "unrelated-disposed.txt").read_text(), "disposed read-only")
+        self.assertIn("backup retained", result.stdout)
+        self.assertTrue((self.cfg / ".native-outcome-backup").exists())
+        self.assertFalse((self.cfg / "robots.dat").exists())
+        self.assertEqual(self.run_helper("-Restore").returncode, 0)
+        self.assert_restored()
+
+    def test_forced_owned_closure_uses_a_bounded_post_kill_wait(self):
+        result = self.run_helper("-Launch", wait_failure=True, close_timeout=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("forced closure", result.stdout)
+        self.assertEqual((self.build / "kill-requested.txt").read_text(), "killed")
+        self.assertEqual((self.build / "waits.txt").read_text().splitlines(), ["250", "5000", "5000"])
+        self.assert_restored()
+
+    def test_owned_post_kill_timeout_retains_backup(self):
+        result = self.run_helper("-Launch", wait_failure=True, close_timeout=True, kill_timeout=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("did not exit after forced closure", result.stdout)
+        self.assertEqual((self.build / "waits.txt").read_text().splitlines(), ["250", "5000", "5000"])
+        self.assertTrue((self.cfg / ".native-outcome-backup").exists())
+        self.assertFalse((self.cfg / "robots.dat").exists())
+        self.assertEqual(self.run_helper("-Restore").returncode, 0)
         self.assert_restored()
 
 

@@ -245,18 +245,30 @@ BattleBonus=None
         Write-Output "Exit code: $($process.ExitCode)"
     }
 } finally {
+    $cleanupIncomplete = $false
     foreach ($item in $processes) {
-        if (-not $item.HasExited) {
-            [void]$item.CloseMainWindow()
-            if (-not $item.WaitForExit(5000)) {
-                $item.Kill()
-                $item.WaitForExit()
-                Write-Warning 'Interrupted run required forced closure; record it as aborted, not passed.'
+        try {
+            # Polling does not establish parentage. Only the process we launched is owned.
+            if ([object]::ReferenceEquals($item, $process) -and -not $item.HasExited) {
+                [void]$item.CloseMainWindow()
+                if (-not $item.WaitForExit(5000)) {
+                    $item.Kill()
+                    if (-not $item.WaitForExit(5000)) {
+                        $cleanupIncomplete = $true
+                        Write-Warning 'The launched process did not exit after forced closure; backup retained.'
+                    }
+                    Write-Warning 'Interrupted run required forced closure; record it as aborted, not passed.'
+                }
             }
+            if (-not $item.HasExited) { $cleanupIncomplete = $true }
+        } catch {
+            $cleanupIncomplete = $true
+            Write-Warning 'Process cleanup could not be verified; backup retained. Close the game and use -Restore.'
+        } finally {
+            $item.Dispose()
         }
-        $item.Dispose()
     }
-    if (Get-Process -Name MatrixGame -ErrorAction SilentlyContinue) {
+    if ($cleanupIncomplete -or (Get-Process -Name MatrixGame -ErrorAction SilentlyContinue)) {
         Write-Warning 'A MatrixGame process remains; backup retained. Close it and use -Restore before building or launching again.'
     } else { Restore-OutcomeConfiguration }
 }
