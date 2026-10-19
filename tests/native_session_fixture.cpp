@@ -80,7 +80,7 @@ struct Fixture {
         if (error) std::cerr << "Cannot remove synthetic session directory " << root << ": " << error.message() << '\n';
     }
 };
-enum class DemoProfile { None, Escape, Win, Loss, Reinforcement, NoReinforcement, CameraFights };
+enum class DemoProfile { None, Escape, Win, Loss, Reinforcement, NoReinforcement, CameraFights, NaturalWin, NaturalLoss, NaturalFights };
 struct DemoCoreRelease { void operator()(SObjectCore *core) const { core->Release(); } };
 struct HostObservation {
     HWND window{};
@@ -99,6 +99,9 @@ struct HostObservation {
     uint64_t initial_draws{}, observed_draws{};
     std::array<std::unique_ptr<SObjectCore, DemoCoreRelease>, 3> camera_cores;
     int camera_phase{}, camera_phase_time{};
+    float victim_health{};
+    bool weapon_damage{}, first_fight{}, second_fight{}, first_camera{};
+    std::array<float, 3> initial_health{};
     DWORD initial_cheat_flags{};
     std::time_t entry_time{}, first_progress_time{};
     std::string failure;
@@ -322,10 +325,59 @@ void camera_fights_tick() {
         ++host->camera_phase;
     }
 }
+void natural_fights_tick() {
+    const int now = g_MatrixMap->GetTime();
+    if (host->phase == 0) {
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+            MG_CHECK(object->IsLiveRobot());
+            const int index = object->GetSide() == PLAYER_SIDE ? 0 : object->AsRobot()->m_PosX < 400 ? 1 : 2;
+            MG_CHECK(!host->camera_cores[index]);
+            host->camera_cores[index].reset(object->GetCore(DEBUG_CALL_INFO));
+            host->initial_health[index] = object->AsRobot()->GetHitPoint();
+        }
+        for (const auto &core : host->camera_cores) MG_CHECK(core && core->m_Object && core->m_Object->IsLiveRobot());
+        host->demo_start_time = now;
+        host->initial_draws = random::draw_count();
+        ++host->phase;
+    }
+    MG_CHECK(now - host->demo_start_time < 25000);
+    auto *attacker = host->camera_cores[0]->m_Object;
+    auto *first = host->camera_cores[1]->m_Object;
+    auto *second = host->camera_cores[2]->m_Object;
+    MG_CHECK(attacker && attacker->IsLiveRobot() && second && second->IsLiveRobot());
+    if (first && first->IsLiveRobot() && first->AsRobot()->GetHitPoint() < host->initial_health[1]) {
+        MG_CHECK(host->camera_cores[1]->m_Ref >= 3);
+        host->first_fight = true;
+    }
+    if (second->AsRobot()->GetHitPoint() < host->initial_health[2]) host->second_fight = true;
+    if (first && host->first_fight) {
+        const auto midpoint = (attacker->GetGeoCenter() + first->GetGeoCenter()) * 0.5f;
+        const auto delta = g_MatrixMap->m_Camera.GetLinkPoint() - midpoint;
+        if (D3DXVec3Length(&delta) < 32 && host->camera_cores[1]->m_Ref >= 3) host->first_camera = true;
+    }
+    if (!first && host->first_fight && host->second_fight) {
+        const auto midpoint = (attacker->GetGeoCenter() + second->GetGeoCenter()) * 0.5f;
+        const auto delta = g_MatrixMap->m_Camera.GetLinkPoint() - midpoint;
+        // A general flyover can cross this midpoint before a new hit registers
+        // the second fight. Observe both the camera and its retained target.
+        if (D3DXVec3Length(&delta) < 2 && host->camera_cores[2]->m_Ref >= 3) {
+            MG_CHECK(host->first_camera);
+            MG_CHECK(host->camera_cores[1]->m_Ref == 1 && host->camera_cores[2]->m_Ref >= 3);
+            MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) == 1);
+            host->observed_draws = random::draw_count() - host->initial_draws;
+            for (auto &core : host->camera_cores) core.reset();
+            auto *form = static_cast<CFormMatrixGame *>(g_FormCur);
+            form->Keyboard(true, VK_ESCAPE); form->Keyboard(false, VK_ESCAPE);
+            MG_CHECK(g_ExitState == 1 && FLAG(g_Flags, GFLAG_EXITLOOP));
+            host->demo_exited = true;
+            host->phase = 2;
+        }
+    }
+}
 void __stdcall tick() {
     ++host->ticks;
     try {
-        MG_CHECK(host->ticks < 5000);
+        MG_CHECK(host->ticks < (host->demo == DemoProfile::NaturalFights ? 20000 : 5000));
         MG_CHECK(g_FormCur && g_MatrixMap && !IsWindowVisible(host->window));
         if (host->demo != DemoProfile::None) {
             MG_CHECK(random::mode() == random::Mode::ParkMiller);
@@ -335,6 +387,38 @@ void __stdcall tick() {
             const auto &link = g_MatrixMap->m_Camera.GetLinkPoint();
             MG_CHECK(std::isfinite(link.x) && std::isfinite(link.y) && std::isfinite(link.z));
             MG_CHECK(std::isfinite(g_MatrixMap->m_Camera.GetAngleX()) && std::isfinite(g_MatrixMap->m_Camera.GetAngleZ()));
+            if (host->demo == DemoProfile::NaturalFights) { natural_fights_tick(); return; }
+            if (host->demo == DemoProfile::NaturalWin || host->demo == DemoProfile::NaturalLoss) {
+                const bool player_wins = host->demo == DemoProfile::NaturalWin;
+                const int losing_side = player_wins ? 2 : PLAYER_SIDE;
+                CMatrixRobotAI *victim = nullptr;
+                int living = 0;
+                for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+                    if (object->IsLiveRobot()) {
+                        ++living;
+                        if (object->GetSide() == losing_side) { MG_CHECK(!victim); victim = object->AsRobot(); }
+                    }
+                if (host->phase == 0) {
+                    MG_CHECK(living == 2 && victim);
+                    host->victim_health = victim->GetHitPoint();
+                    host->demo_start_time = g_MatrixMap->GetTime();
+                    host->initial_draws = random::draw_count();
+                    ++host->phase;
+                }
+                MG_CHECK(g_MatrixMap->GetTime() - host->demo_start_time < 20000);
+                if (victim && victim->GetHitPoint() < host->victim_health) host->weapon_damage = true;
+                if (living == 1 && (player_wins ? FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) :
+                    g_MatrixMap->GetPlayerSide()->GetStatus() == SS_NONE)) {
+                    MG_CHECK(host->weapon_damage && !victim);
+                    MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == player_wins);
+                    MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP));
+                    MG_CHECK(g_MatrixMap->GetSideById(player_wins ? PLAYER_SIDE : 2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+                    host->pending_outcome = true;
+                    host->observed_draws = random::draw_count() - host->initial_draws;
+                    host->phase = 2;
+                }
+                return;
+            }
             if (host->demo == DemoProfile::CameraFights) { camera_fights_tick(); return; }
             if (host->demo == DemoProfile::Reinforcement || host->demo == DemoProfile::NoReinforcement) {
                 const bool eligible = host->demo == DemoProfile::Reinforcement;
@@ -486,16 +570,21 @@ void __stdcall tick() {
 }
 enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, RepeatedPneumaticCleanup };
 void demo_assets() {
-    for (auto demo : {DemoProfile::Reinforcement, DemoProfile::NoReinforcement, DemoProfile::CameraFights})
+    for (auto demo : {DemoProfile::Reinforcement, DemoProfile::NoReinforcement, DemoProfile::CameraFights,
+                     DemoProfile::NaturalWin, DemoProfile::NaturalLoss, DemoProfile::NaturalFights})
         for (bool packed : {false, true}) {
             Fixture fixture;
             tests::write_native_session_assets();
             const bool camera = demo == DemoProfile::CameraFights;
+            const bool fights = demo == DemoProfile::NaturalFights;
+            const bool reinforcement = demo == DemoProfile::Reinforcement || demo == DemoProfile::NoReinforcement;
             if (camera) tests::write_native_demo_camera(L"synthetic-DeMo.map");
-            else tests::write_native_demo_reinforcement(L"synthetic-DeMo.map", demo == DemoProfile::Reinforcement);
+            else if (reinforcement) tests::write_native_demo_reinforcement(L"synthetic-DeMo.map", demo == DemoProfile::Reinforcement);
+            else if (fights) tests::write_native_demo_fights(L"synthetic-DeMo.map");
+            else tests::write_native_demo_outcome(L"synthetic-DeMo.map", demo == DemoProfile::NaturalWin);
             CStorage map;
             MG_CHECK(map.Load(L"synthetic-DeMo.map"));
-            const auto actors = camera ? 3u : 2u;
+            const auto actors = camera || fights ? 3u : 2u;
             for (const auto &[name, type] : {
                 std::pair{DATA_ROBOTS_X, ST_FLOAT}, {DATA_ROBOTS_Y, ST_FLOAT},
                 {DATA_ROBOTS_SIDE, ST_BYTE}, {DATA_ROBOTS_SHADOW, ST_BYTE},
@@ -505,8 +594,13 @@ void demo_assets() {
             }
             auto *units = map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_UNITS, ST_WCHAR);
             MG_CHECK(units && units->GetArraysCount() == actors);
-            for (DWORD i = 0; i < actors; ++i) MG_CHECK(units->GetAsWStr(i) == units->GetAsWStr(0));
-            if (!camera) {
+            const auto laser = L"|" + std::to_wstring(MRT_WEAPON) + L"," + std::to_wstring(RUK_WEAPON_LASER);
+            for (DWORD i = 0; i < actors; ++i) {
+                const bool armed = ((demo == DemoProfile::NaturalWin || fights) && i == 0) ||
+                    (demo == DemoProfile::NaturalLoss && i == 1);
+                MG_CHECK((units->GetAsWStr(i).find(laser) != std::wstring::npos) == armed);
+            }
+            if (reinforcement) {
                 for (const auto &[name, type] : {
                     std::pair{DATA_BUILDINGS_X, ST_FLOAT}, {DATA_BUILDINGS_Y, ST_FLOAT},
                     {DATA_BUILDINGS_SIDE, ST_BYTE}, {DATA_BUILDINGS_KIND, ST_BYTE},
@@ -531,7 +625,7 @@ void demo_assets() {
                 MG_CHECK(data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Chassis")->ParGet(PAR_SOURCE_CHASSIS2_MOVE_SPEED) == L"0");
                 MG_CHECK(data.BlockGet(PAR_SOURCE_WEAPONS)->BlockGet(PAR_SOURCE_DAMAGES)->BlockGet(PAR_SOURCE_DAMAGES_ROBOT)
                     ->ParGet(L"WEAPON_LASER") == L"1,0,0");
-            } else {
+            } else if (reinforcement) {
                 MG_CHECK(data.BlockGet(PAR_SOURCE_TIMINGS)->ParGet(PAR_SOURCE_TIMINGS_MAINTENANCE) == L"20000");
                 auto *body = data.BlockGet(L"Models")->BlockGet(L"Flyers")->BlockGet(L"1")->BlockGet(L"Body");
                 MG_CHECK(body->ParGet(L"Model") == L"synthetic-transport-body.vo" && body->ParGet(L"Texture") == L"pixel");
@@ -541,6 +635,14 @@ void demo_assets() {
                 MG_CHECK(bot->ParGet(L"BotChassis") == L"2" && bot->ParGet(L"BotArmor") == L"1");
                 MG_CHECK(bot->ParGet(L"BotHead") == L"0" && bot->ParGet(L"BotStrength") == L"1" &&
                          bot->ParGet(L"BotHitpoint") == L"1500");
+            } else {
+                MG_CHECK(data.BlockGet(PAR_SOURCE_WEAPONS)->BlockGet(PAR_SOURCE_DAMAGES)->BlockGet(PAR_SOURCE_DAMAGES_ROBOT)
+                    ->ParGet(L"WEAPON_LASER") == L"1000,0,0");
+                if (fights) {
+                    MG_CHECK(data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Chassis")->ParGet(PAR_SOURCE_CHASSIS2_MOVE_SPEED) == L"0");
+                    MG_CHECK(data.BlockGet(PAR_SOURCE_WEAPONS)->BlockGet(PAR_SOURCE_OVERHEAT)
+                        ->ParGet(PAR_SOURCE_OVERHEAT_WEAPON_LASER_HEAT) == L"0");
+                }
             }
         }
 }
@@ -581,6 +683,9 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
     if (demo == DemoProfile::Reinforcement || demo == DemoProfile::NoReinforcement)
         tests::write_native_demo_reinforcement(L"synthetic-DeMo.map", demo == DemoProfile::Reinforcement);
     else if (demo == DemoProfile::CameraFights) tests::write_native_demo_camera(L"synthetic-DeMo.map");
+    else if (demo == DemoProfile::NaturalWin || demo == DemoProfile::NaturalLoss)
+        tests::write_native_demo_outcome(L"synthetic-DeMo.map", demo == DemoProfile::NaturalWin);
+    else if (demo == DemoProfile::NaturalFights) tests::write_native_demo_fights(L"synthetic-DeMo.map");
     else if (demo != DemoProfile::None) fs::copy_file(L"synthetic.map", L"synthetic-DeMo.map");
     if (packed) tests::pack_native_session_configuration();
     tests::NativeWindowContainment containment(native_diagnostic, false);
@@ -686,10 +791,16 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
         }
         else if (observed.demo != DemoProfile::None) {
             MG_CHECK(observed.ticks >= 2 && observed.phase == 2);
-            MG_CHECK(observed.demo == DemoProfile::Win || observed.demo == DemoProfile::Loss ?
+            MG_CHECK(observed.demo == DemoProfile::Win || observed.demo == DemoProfile::Loss ||
+                observed.demo == DemoProfile::NaturalWin || observed.demo == DemoProfile::NaturalLoss ?
                 observed.pending_outcome : observed.demo_exited);
             if (!ai_demo) MG_CHECK(observed.texts > 0);
             MG_CHECK(observed.texts == observed.text_clears);
+            if (observed.demo == DemoProfile::NaturalWin || observed.demo == DemoProfile::NaturalLoss ||
+                observed.demo == DemoProfile::NaturalFights) {
+                MG_CHECK(result.m_KillRobot == (observed.demo == DemoProfile::NaturalLoss ? 0 : 1));
+                MG_CHECK(observed.observed_draws > 0);
+            }
         } else {
             MG_CHECK(observed.ticks >= 2 && observed.moved && observed.phase == 2);
             MG_CHECK(result.m_Time >= 0 && result.m_BuildRobot == 0 && result.m_KillRobot == 0 &&
@@ -755,6 +866,18 @@ void native_demo_packed_win() {
 void native_demo_packed_loss() {
     native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::Loss});
 }
+void native_demo_natural_win() { native_run_lifetimes_impl({.demo = DemoProfile::NaturalWin}); }
+void native_demo_packed_natural_win() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::NaturalWin});
+}
+void native_demo_natural_loss() { native_run_lifetimes_impl({.demo = DemoProfile::NaturalLoss}); }
+void native_demo_packed_natural_loss() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::NaturalLoss});
+}
+void native_demo_natural_fights() { native_run_lifetimes_impl({.demo = DemoProfile::NaturalFights}); }
+void native_demo_packed_natural_fights() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::NaturalFights});
+}
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
@@ -769,6 +892,12 @@ int main(int argc, char **argv) {
         {"game.session.native_demo_packed_reinforcement", native_demo_packed_reinforcement},
         {"game.session.native_demo_packed_no_reinforcement", native_demo_packed_no_reinforcement},
         {"game.session.native_demo_packed_camera_fights", native_demo_packed_camera_fights},
+        {"game.session.native_demo_natural_win", native_demo_natural_win},
+        {"game.session.native_demo_natural_loss", native_demo_natural_loss},
+        {"game.session.native_demo_natural_fights", native_demo_natural_fights},
+        {"game.session.native_demo_packed_natural_win", native_demo_packed_natural_win},
+        {"game.session.native_demo_packed_natural_loss", native_demo_packed_natural_loss},
+        {"game.session.native_demo_packed_natural_fights", native_demo_packed_natural_fights},
         {"game.session.native_run_lifetimes", native_run_lifetimes},
         {"game.session.native_building_restart", native_building_restart},
         {"game.session.native_cannon_restart", native_cannon_restart},
