@@ -1,6 +1,7 @@
 # MatrixGame - licensed under GPLv2 or any later version.
 """Exercise preparation/restoration with synthetic files and a mocked process only."""
 import json
+import base64
 import hashlib
 import shutil
 import struct
@@ -45,7 +46,7 @@ class OutcomePreparation(unittest.TestCase):
             encoding="utf-8",
         )
 
-    def run_helper(self, *args, fail_start=False, leftover=False, running=False, wait_failure=False):
+    def run_helper(self, *args, fail_start=False, leftover=False, running=False, wait_failure=False, child=False, child_exit=0, foreign_child=False, monitor_failure=False, child_id=124, repeated_child=False):
         # No process is created. The mock observes the staged files, then simulates a
         # preference save or a launch failure before the helper restores its backups.
         observe = quote(self.build / "observed.json")
@@ -74,6 +75,7 @@ function Remove-Item {
 function Get-Process {
     [CmdletBinding()] param([string]$Name)
     ++$global:outcomeCalls
+    if (HAS_CHILD -and ($global:outcomeCalls -eq 2 -or (REPEATED_CHILD -and $global:outcomeCalls -le 5 -and $global:outcomeCalls -ge 2))) { return $global:outcomeChild }
     if (RUNNING -or (LEFTOVER -and $global:outcomeCalls -gt 1)) { [pscustomobject]@{Id = 456} }
 }
 function Start-Process {
@@ -84,11 +86,15 @@ function Start-Process {
         Packed = Test-Path -LiteralPath (Join-Path $cfg 'robots.dat')
         Executable = $FilePath
         ManifestBeforePacked = $global:manifestBeforePacked
+        Alternate = Test-Path -LiteralPath (Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-alternate.cmap')
+        AlternateBytes = $(if (Test-Path -LiteralPath (Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-alternate.cmap')) {
+            [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-alternate.cmap')))
+        })
     }
     $observation | ConvertTo-Json | Set-Content -LiteralPath OBSERVE -Encoding UTF8
     if (FAIL_START) { throw 'synthetic launch failure' }
     [IO.File]::WriteAllText((Join-Path $cfg 'standalone.txt'), 'saved by fake game')
-    $result = [pscustomobject]@{Id = 123; HasExited = -not WAIT_FAILURE; ExitCode = 0; WaitCalls = 0}
+    $result = [pscustomobject]@{Id = 123; HasExited = -not WAIT_FAILURE; ExitCode = 0; WaitCalls = 0; Handle = 1; StartTime = [datetime]'2026-01-01T00:00:00Z'}
     $result | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value {
         param([int]$Milliseconds)
         if ($Milliseconds -le 0) { throw 'unbounded wait is forbidden by this test' }
@@ -106,11 +112,19 @@ function Start-Process {
         return $true
     }
     $result | Add-Member -MemberType ScriptMethod -Name Dispose -Value {}
+    $global:outcomeChild = [pscustomobject]@{Id = CHILD_ID; HasExited = $true; ExitCode = CHILD_EXIT; Handle = 2; StartTime = [datetime]'2026-01-01T00:00:01Z'; Path = $(if (FOREIGN_CHILD) { 'C:/other/MatrixGame.exe' } else { $FilePath })}
+    $global:outcomeChild | Add-Member -MemberType ScriptMethod -Name WaitForExit -Value { param([int]$Milliseconds); return $true }
+    $global:outcomeChild | Add-Member -MemberType ScriptMethod -Name Dispose -Value {}
     return $result
 }
+function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw 'synthetic monitor interruption' } }
 """.replace("OBSERVE", observe).replace("FAIL_START", "$true" if fail_start else "$false")
         mock = mock.replace("LEFTOVER", "$true" if leftover else "$false").replace("RUNNING", "$true" if running else "$false")
         mock = mock.replace("WAIT_FAILURE", "$true" if wait_failure else "$false").replace("BUILD", quote(self.build))
+        mock = mock.replace("HAS_CHILD", "$true" if child else "$false").replace("CHILD_EXIT", str(child_exit))
+        mock = mock.replace("FOREIGN_CHILD", "$true" if foreign_child else "$false")
+        mock = mock.replace("MONITOR_FAILURE", "$true" if monitor_failure else "$false")
+        mock = mock.replace("CHILD_ID", str(child_id)).replace("REPEATED_CHILD", "$true" if repeated_child else "$false")
         command = mock + "\n& " + quote(SCRIPT) + " -Configuration Debug -BuildDirectory " + quote(self.build)
         command += " " + " ".join(args)
         return subprocess.run(
@@ -278,6 +292,153 @@ function Start-Process {
         self.assertEqual(extra.read_bytes(), b"preserve this independent file")
         self.assertEqual((self.cfg / "standalone.txt").read_bytes(), self.original)
         self.assertEqual((self.cfg / "robots.dat").read_bytes(), b"original packed bytes")
+    def test_observed_relaunch_reports_both_exits(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", "-ExpectedProcesses 2", child=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Process ID: 123; exit code: 0", result.stdout)
+        self.assertIn("Process ID: 124; exit code: 0", result.stdout)
+        self.assertIn("Observed processes: 2; expected: 2", result.stdout)
+        self.assert_restored()
+
+    def test_parent_exit_cannot_substitute_for_missing_child(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", "-ExpectedProcesses 2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Process evidence is incomplete", result.stderr)
+        self.assertIn("Observed processes: 1; expected: 2", result.stdout)
+        self.assert_restored()
+
+    def test_child_failure_is_not_a_passing_relaunch(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", "-ExpectedProcesses 2", child=True, child_exit=1)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Process ID: 124; exit code: 1", result.stdout)
+        self.assert_restored()
+
+    def test_alternate_map_staging_removes_only_its_output_copy(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic alternative")
+        result = self.run_helper("-Launch", "-AlternateMapFile " + quote(source))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        observed = json.loads((self.build / "observed.json").read_text(encoding="utf-8-sig"))
+        self.assertTrue(observed["Alternate"])
+        self.assertEqual(base64.b64decode(observed["AlternateBytes"]), source.read_bytes())
+        self.assertIn(hashlib.sha256(source.read_bytes()).hexdigest().upper(), result.stdout)
+        self.assertEqual(source.read_bytes(), b"synthetic alternative")
+        self.assertFalse((self.game / "Matrix").exists())
+        self.assert_restored()
+
+    def test_existing_alternate_map_is_never_overwritten(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic alternative")
+        target = self.game / "Matrix" / "Map" / "native-outcome-alternate.cmap"
+        target.parent.mkdir(parents=True)
+        target.write_bytes(b"unrelated existing map")
+        result = self.run_helper("-Launch", "-AlternateMapFile " + quote(source))
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("reserved alternate-map output already exists", result.stderr)
+        self.assertEqual(target.read_bytes(), b"unrelated existing map")
+        self.assert_restored()
+
+    def test_alternate_launch_failure_keeps_existing_map_directory(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic alternative")
+        map_root = self.game / "Matrix" / "Map"
+        map_root.mkdir(parents=True)
+        unrelated = map_root / "unrelated.cmap"
+        unrelated.write_bytes(b"existing user map")
+        result = self.run_helper("-Launch", "-AlternateMapFile " + quote(source), fail_start=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("synthetic launch failure", result.stderr)
+        self.assertTrue(map_root.is_dir())
+        self.assertEqual(unrelated.read_bytes(), b"existing user map")
+        self.assertFalse((map_root / "native-outcome-alternate.cmap").exists())
+        self.assertEqual(source.read_bytes(), b"synthetic alternative")
+        self.assert_restored()
+
+
+    def test_alternate_inspection_remains_read_only(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic alternative")
+        result = self.run_helper("-AlternateMapFile " + quote(source), "-WatchRelaunches", "-ExpectedProcesses 2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(hashlib.sha256(source.read_bytes()).hexdigest().upper(), result.stdout)
+        self.assertFalse((self.game / "Matrix").exists())
+        self.assertFalse((self.build / "observed.json").exists())
+        self.assert_restored()
+
+    def test_process_count_requires_monitor(self):
+        result = self.run_helper("-Launch", "-ExpectedProcesses 2")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("requires -WatchRelaunches", result.stderr)
+        self.assertFalse((self.build / "observed.json").exists())
+        self.assert_restored()
+
+    def test_process_from_another_executable_is_not_a_relaunch(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", "-ExpectedProcesses 2", child=True, foreign_child=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Observed processes: 1; expected: 2", result.stdout)
+        self.assertNotIn("Observed process ID: 124", result.stdout)
+        self.assert_restored()
+
+    def test_extra_observed_process_is_not_a_passing_control(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", child=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Observed processes: 2; expected: 1", result.stdout)
+        self.assert_restored()
+
+    def test_missing_observed_exit_is_not_a_passing_relaunch(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", "-ExpectedProcesses 2", child=True, child_exit="$null")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Process evidence is incomplete", result.stderr)
+        self.assert_restored()
+
+    def test_monitor_interruption_closes_tracked_process_and_restores(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", wait_failure=True, monitor_failure=True)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("synthetic monitor interruption", result.stderr)
+        self.assertEqual((self.build / "close-requested.txt").read_text(), "closed")
+        self.assert_restored()
+
+    def test_abandoned_alternate_map_restores_from_record(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic alternative")
+        result = self.run_helper("-Launch", "-AlternateMapFile " + quote(source), leftover=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        target = self.game / "Matrix" / "Map" / "native-outcome-alternate.cmap"
+        self.assertEqual(target.read_bytes(), source.read_bytes())
+        result = self.run_helper("-Restore")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.game / "Matrix").exists())
+        self.assertEqual(source.read_bytes(), b"synthetic alternative")
+        self.assert_restored()
+
+    def test_invalid_alternate_record_refuses_before_mutation(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic alternative")
+        self.assertEqual(self.run_helper("-Launch", "-AlternateMapFile " + quote(source), leftover=True).returncode, 0)
+        manifest = self.cfg / ".native-outcome-backup" / "state.json"
+        record = json.loads(manifest.read_text(encoding="utf-8-sig"))
+        record["AlternateMapStaged"] = "true"
+        manifest.write_text(json.dumps(record), encoding="utf-8")
+        current = (self.cfg / "standalone.txt").read_bytes()
+        result = self.run_helper("-Restore")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Invalid restoration record", result.stderr)
+        self.assertEqual((self.cfg / "standalone.txt").read_bytes(), current)
+        self.assertTrue((self.game / "Matrix" / "Map" / "native-outcome-alternate.cmap").exists())
+
+    def test_repeated_process_observation_counts_one_lifetime(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", "-ExpectedProcesses 2", child=True, repeated_child=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("Observed process ID: 124"), 1)
+        self.assertEqual(result.stdout.count("Process ID: 124; exit code: 0"), 1)
+        self.assert_restored()
+
+    def test_reused_pid_with_new_start_time_is_a_distinct_lifetime(self):
+        result = self.run_helper("-Launch", "-WatchRelaunches", "-ExpectedProcesses 2", child=True, child_id=123)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.count("Process ID: 123; exit code: 0"), 2)
+        self.assertIn("Observed processes: 2; expected: 2", result.stdout)
+        self.assert_restored()
 
 
 if __name__ == "__main__":
