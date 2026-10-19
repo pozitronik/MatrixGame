@@ -1316,6 +1316,11 @@ std::vector<std::string> rival_capture_run(random::Mode mode, int step, bool ene
     while (session.time() <= expected.capture + 2000) {
         session.advance();
         const int time = session.time();
+        MG_CHECK(cores[winner_index]->m_Object == winner);
+        if (factory->m_Capturer) {
+            MG_CHECK((factory->m_Capturer == robots[0] && cores[0]->m_Object == robots[0]) ||
+                     (factory->m_Capturer == robots[2] && cores[1]->m_Object == robots[2]));
+        }
         for (int i = 0; i < 2; ++i) {
             auto *robot = robots[i * 2];
             if (cores[i]->m_Object) {
