@@ -2084,7 +2084,7 @@ std::vector<std::string> mixed_special_order_run(random::Mode mode, int step, bo
     std::cout << "mixed result=" << session.time() << " draws=" << random::draw_count() << '\n';
     MG_CHECK(session.time() == (step == 10 ? 6040 : 6064));
     MG_CHECK(g_MatrixMap->IsPaused() && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
-    MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
+    MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
     MG_CHECK(side().GetStatus() == SS_ACTIVE && side().GetStatValue(STAT_BUILDING_KILL) == 2);
     MG_CHECK(!session.robot(1).alive && !session.robot(2).alive && session.robot(3).alive && session.robot(4).alive);
     return trace;
@@ -2134,7 +2134,7 @@ std::vector<std::string> ordinary_objective_control_run(random::Mode mode, int s
     std::cout << "ordinary result=" << session.time() << " draws=" << random::draw_count() << '\n';
     MG_CHECK(session.time() == (step == 10 ? 6040 : 6064));
     MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN | MMFLAG_SPECIAL_BROKEN));
-    MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+    MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
     MG_CHECK(special->IsSpecial() && g_MatrixMap->m_BeforeWinCount == 1);
     MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 0 && side().GetStatus() == SS_NONE);
     return trace;
@@ -2201,7 +2201,7 @@ std::vector<std::string> mixed_terron_objective_run(random::Mode mode, int step,
     session.advance(); observe();
     std::cout << "mixed Terron result=" << session.time() << " draws=" << random::draw_count() << '\n';
     MG_CHECK(session.time() == (step == 10 ? 8050 : 8080));
-    MG_CHECK(g_MatrixMap->IsPaused() && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
+    MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
     MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN));
     MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && survivor->IsSpecial() && survivor->m_BreakHitPoint == 10);
     MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1 && side().GetStatus() == SS_ACTIVE);
