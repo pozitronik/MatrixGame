@@ -43,6 +43,36 @@ void unsafe_names() {
     MG_CHECK(maps.size() == 1 && maps[0].name == L"ok (2)");
 }
 
+void external_folders() {
+    const auto maps = MapCatalog::merge({L"Shared.cmap", L"shared.jpg", L"Packed.cmap"},
+                                        {L"SHARED.cmap", L"shared.JPG", L"Legacy.cmap"},
+                                        {L"shared.cmap", L"SHARED.jpg", L"Root.cmap", L"Root.png"},
+                                        {L"Shared.CMAP", L"Shared.jpg", L"Data.cmap", L"Data.png"});
+    const std::vector<Map> expected{
+            {L"Data", L"DATA\\maps\\Data.cmap", L"DATA\\maps\\Data.png", true},
+            {L"Legacy", L"Matrix\\Map\\Legacy.cmap", L"", true},
+            {L"Packed", L"Matrix\\Map\\Packed.cmap", L"", false},
+            {L"Root", L"maps\\Root.cmap", L"maps\\Root.png", true},
+            {L"shared", L"maps\\shared.cmap", L"maps\\SHARED.jpg", true},
+    };
+    MG_CHECK(maps == expected);
+    MG_CHECK(MapCatalog::find(maps, L"MAPS\\SHARED.CMAP") == 4);
+    MG_CHECK(MapCatalog::find(maps, L"Matrix\\Map\\Shared.cmap") == -1);
+
+    // Each lower-priority source remains available when the source above it is absent.
+    const auto data = MapCatalog::merge({L"a.cmap"}, {L"A.cmap"}, {}, {L"a.CMAP"});
+    MG_CHECK(data.size() == 1 && data[0].path == L"DATA\\maps\\a.CMAP");
+    const auto legacy = MapCatalog::merge({L"a.cmap"}, {L"A.cmap"});
+    MG_CHECK(legacy.size() == 1 && legacy[0].path == L"Matrix\\Map\\A.cmap");
+
+    // Preview-only files can supplement a map in another source. JPEG retains precedence over PNG.
+    const auto preview = MapCatalog::merge({L"a.cmap", L"a.jpg", L"b.cmap", L"b.png"}, {},
+                                           {L"a.png", L"b.PNG"}, {L"a.JPG", L"b.png"});
+    MG_CHECK(preview.size() == 2 && preview[0].preview == L"DATA\\maps\\a.JPG");
+    MG_CHECK(preview[1].preview == L"maps\\b.PNG" && !preview[1].loose);
+    MG_CHECK(MapCatalog::merge({}, {}, {L"bad=name.cmap"}, {L"bad|name.cmap"}).empty());
+}
+
 void paths() {
     for (const wchar_t *path : {L"Matrix\\Map\\desert1_3e.cmap", L"Matrix/Map/x.CMAP", L"maps\\a b.cmap",
                                 L"x.cmap", L"Matrix\\Map\\v1.2-beta(+).cmap"})
@@ -61,6 +91,7 @@ void paths() {
 
 constexpr tests::Case cases[] = {
         {"game.maps.merge", merging},
+        {"game.maps.external_folders", external_folders},
         {"game.maps.unsafe_names", unsafe_names},
         {"game.maps.paths", paths},
 };
