@@ -378,8 +378,12 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
                     try:
                         result = self.run_helper(*(["-Launch"] if launch else []))
                         self.assertNotEqual(result.returncode, 0)
-                        self.assertIn("higher-priority map shadows", result.stderr)
-                        self.assertIn(str(shadow), result.stderr)
+                        prefix = "A higher-priority map shadows a required selector fixture: "
+                        self.assertTrue(result.stderr.startswith(prefix), result.stderr)
+                        reported = result.stderr[len(prefix):].split(". Move that output copy aside manually", 1)[0]
+                        # PowerShell expands Windows short names in TEMP; compare the actual file,
+                        # not the spelling chosen by Python's temporary-directory implementation.
+                        self.assertTrue(shadow.samefile(reported), result.stderr)
                         self.assertEqual(shadow.read_bytes(), b"independent map must survive")
                         self.assertFalse((self.build / "observed.json").exists())
                         self.assert_restored()
