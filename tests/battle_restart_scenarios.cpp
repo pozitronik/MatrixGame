@@ -18,7 +18,10 @@
 #include "loop_script.hpp"
 #include "StandaloneRuntime.hpp"
 #include <cstring>
+#include <cmath>
+#include <float.h>
 #include <filesystem>
+#include <sstream>
 #include <vector>
 #include <algorithm>
 #include <array>
