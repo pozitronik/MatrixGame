@@ -105,8 +105,8 @@ std::wstring wide(const char *text) {
     return result;
 }
 int WINAPI contained_message_w(HWND, LPCWSTR text, LPCWSTR title, UINT type) {
-    if ((type & MB_TYPEMASK) != MB_OK) TerminateProcess(GetCurrentProcess(), 98);
-    if (report) report(title ? title : L"", text ? text : L"");
+    if ((type & MB_TYPEMASK) != MB_OK || !report) TerminateProcess(GetCurrentProcess(), 98);
+    report(title ? title : L"", text ? text : L"");
     return IDOK;
 }
 int WINAPI contained_message_a(HWND window, LPCSTR text, LPCSTR title, UINT type) {
@@ -158,6 +158,7 @@ NativeWindowContainment::NativeWindowContainment(Diagnostic diagnostic, bool req
     static_assert(sizeof(void *) == 4, "Native EXE baseline currently targets x86");
     if (hidden_parent) throw std::runtime_error("Window containment already active");
     state = std::make_unique<State>();
+    native_window::cursor = {};
     hidden_parent = api().create_w(WS_EX_NOACTIVATE, L"STATIC", L"Invisible native-test parent", WS_POPUP,
         0, 0, 2048, 2048, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hidden_parent || IsWindowVisible(hidden_parent)) throw std::runtime_error("Cannot create invisible test parent");
