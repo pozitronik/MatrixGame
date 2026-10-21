@@ -1,6 +1,6 @@
 # Mixed special-object outcomes
 
-These cases cover the finite mixed-objective selection in O4 of the [outcome completion plan](85-outcome-completion.md). They complement the [single-family profiles](85-special-profiles.md) and [post-conversion Terron blast regression](186-terron-owner.md). No production behavior changes here.
+These cases cover the finite mixed-objective selection in O4 of the [outcome completion plan](85-outcome-completion.md). They complement the [single-family profiles](85-special-profiles.md) and [post-conversion Terron blast regression](186-terron-owner.md). The [NV-06-4 native scenes](85-native-special-scenes.md) separately supply synthetic exports and exact visible outcome procedures; their native observations remain pending, and they do not cover scan-ordered player loss. No production behavior changes here.
 
 ## Fixtures and actions
 
