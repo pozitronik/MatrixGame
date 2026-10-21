@@ -13,7 +13,7 @@ Press Escape during a battle to open the battle menu. Then click the settings en
 | Apply and save | Checkmark button | Enter |
 | Discard changes | Cross button | Escape |
 
-Apply and Cancel both return to the battle menu. Options marked `*` take effect after the game restarts. The others change immediately when applied.
+Apply and Cancel both return to the battle menu. Options marked `*` take effect on the next full game launch. The battle menu's Restart action reloads the current map and retains the running settings, leaving those saved options pending. The others change immediately when applied.
 
 ## Options
 
@@ -26,10 +26,10 @@ Apply and Cancel both return to the battle menu. Options marked `*` take effect 
 | Music | `MusicVolume` | `0`-`100`, in steps of 10 in the window | `100` | Immediately |
 | Stencil shadows | `StencilShadows` | `On`, `Off` | `On` | Immediately |
 | Projected shadows | `ProjectedShadows` | `On`, `Off` | `On` | Immediately |
-| Sky | `Skybox` | `Off`, `Low`, `High` | `High` | After restart |
-| Robot shadows | `RobotShadows` | `On`, `Off` | `On` | After restart |
+| Sky | `Skybox` | `Off`, `Low`, `High` | `High` | Next game launch |
+| Robot shadows | `RobotShadows` | `On`, `Off` | `On` | Next game launch |
 | Camera speed | `CameraSpeed` | `25`-`300` percent of the configured scroll speed, in steps of 25 in the window | `100` | Immediately |
-| Random generator | `RandomGenerator` | `ParkMiller`, `LegacyCRT` | `ParkMiller` | After restart |
+| Random generator | `RandomGenerator` | `ParkMiller`, `LegacyCRT` | `ParkMiller` | Next game launch |
 | Status damage | `DelayedDamage` | `Corrected`, `Original` | `Corrected` | Immediately |
 
 **Display.** The display keys keep the contract in [Display settings](DISPLAY.md). The window shows the current window mode, including a mode reached with Alt+Enter, and Apply saves it. Choosing `Borderless` or `Exclusive` as the window mode also makes it the Alt+Enter mode, matching how a fullscreen start behaves. A window-mode change uses the same transition and rollback as Alt+Enter. A resolution change resets the device in every mode and re-lays out the interface; see [Changing the resolution during a battle](DISPLAY.md#changing-the-resolution-during-a-battle). If exclusive mode is unavailable at the requested resolution, or the change fails, the game keeps its current mode and resolution and logs the reason.
@@ -86,6 +86,8 @@ Automated `game.settings.*` contracts cover:
 
 `game.audio.master_volume` and `game.audio.master_level_retained` cover volume scaling and its retention across audio sessions. `game.audio.music_volume` and `game.audio.music_sessions` cover the music level, its independence from the effects level and its retention across sessions.
 
+The EXE-only [`game.restart.saved_settings`](testing/85-restart-settings.md) case separately verifies immediate camera speed and pending skybox/random-generator settings across two map reloads, using a synthetic isolated settings file. Full initialization applying saved values remains a separate lifecycle check.
+
 The rendered window, menu integration and real display transitions need a playtest. Run it in Debug and Release with cheats disabled, once with packed and once with text game configuration:
 
 1. Start a battle and press Escape. The settings label must use the same color as the other menu labels and highlight when the pointer is over it or its button. Click it. The Settings window must open centered, with the battle paused.
@@ -94,7 +96,7 @@ The rendered window, menu integration and real display transitions need a playte
 4. Change Resolution and apply; the image must change size at once with the menu re-centred. Set Volume to 30 and apply. Effects must become quieter immediately, including continuing sounds, while music keeps its level. With `DATA/music.pkg`, set Music to 30 and apply; music must become quieter immediately without changing effects. Change camera speed, apply, and confirm the visible effect. Switch Window mode between Windowed, Borderless and Exclusive, and check the result after each Apply.
 5. Starting with both shadow options on, apply in turn: Stencil shadows off, then Projected shadows off, then Stencil shadows on, then Projected shadows on. Each kind of shadow must appear only while its option is on, and a kind turned back on must reappear on objects that were already shadowed.
 6. With Status damage set to Corrected, set an enemy turret and an enemy robot on fire with a flamethrower and stop firing so that burning finishes them. Repeat with an electric weapon. Finish the battle: the statistics must count these kills for the player. Set Status damage to Original, apply without restarting, and repeat: kills by later pulses must not be counted.
-7. Change Sky, Robot shadows and the random generator, apply, and restart. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.
+7. Change Sky, Robot shadows and the random generator, apply, then close and launch the game again. The game must start with the new values. Check that the comments in `CFG/standalone.txt` are preserved.
 8. Make `CFG/standalone.txt` read-only and apply a change. The window must show the save error and keep the original file. Restore write access.
 9. Repeat steps 1 and 2 at 640x480 and with a Russian and an English game configuration.
 
