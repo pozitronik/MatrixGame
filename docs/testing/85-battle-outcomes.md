@@ -144,7 +144,7 @@ The NAV-03 `game.navigation.delivery_carrier_damage` contract covers carrier/car
 
 Non-player carrier requests are reachable through the Debug F command on a traced enemy building; normal reinforcement calls use player buildings. Their player-owned cargo is recorded as a legacy quirk (Q), not as intended ordinary-play ownership.
 
-The original transport tests use body-only carriers. The [weapon-attached transport cases](85-transport-collisions.md) add the selected body-plus-weapon model, context target rejection and actual projectile collision with carriers and cargo, including the resulting survival, elimination and delayed result. They do not establish native robot portraits, loaded-map restart or menu actions during pending results; unused combat-flyer construction/firing paths are not an additional gameplay requirement. They close the explicit transport-only outcome gap without establishing the complete OUT-02 or OUT-03 catalog entries.
+The original transport tests use body-only carriers. The [weapon-attached transport cases](85-transport-collisions.md) add the selected body-plus-weapon model, context-command target rejection and actual projectile collision with carriers and cargo, including the resulting survival, elimination and delayed result. They do not establish native robot portraits, loaded-map restart or menu actions during pending results; unused combat-flyer construction/firing paths are not an additional gameplay requirement. Autonomous acquisition and aiming at a carrier or carried cargo remain open O3 work. These cases do not establish the complete OUT-02 or OUT-03 catalog entries.
 
 ## Result and menu callbacks through the form
 
