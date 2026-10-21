@@ -325,10 +325,28 @@ void __stdcall tick() {
     } catch (const std::exception &error) { host->failure = error.what(); throw; }
 }
 enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, RepeatedPneumaticCleanup };
-void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile = ConfigurationProfile::Text,
-                               bool type_toggles = false, DemoProfile demo = DemoProfile::None,
-                               bool building_restart = false, bool cannon_restart = false) {
-    MG_CHECK(!cannon_restart || building_restart);
+struct SessionOptions {
+    bool leave_key_held{};
+    ConfigurationProfile profile{ConfigurationProfile::Text};
+    bool type_toggles{};
+    DemoProfile demo{DemoProfile::None};
+    bool building_restart{};
+    bool cannon_restart{};
+};
+void native_run_lifetimes_impl(const SessionOptions &options) {
+    MG_CHECK(!options.cannon_restart || options.building_restart);
+    MG_CHECK(!options.building_restart || (!options.type_toggles && options.demo == DemoProfile::None));
+    MG_CHECK(!options.type_toggles || options.demo == DemoProfile::None);
+    MG_CHECK(!options.leave_key_held || (!options.type_toggles && options.demo == DemoProfile::None &&
+        !options.building_restart && options.profile == ConfigurationProfile::Text));
+    MG_CHECK((!options.type_toggles && options.demo == DemoProfile::None && !options.building_restart) ||
+        options.profile == ConfigurationProfile::Text || options.profile == ConfigurationProfile::InvalidPackedHeader);
+    const bool leave_key_held = options.leave_key_held;
+    const auto profile = options.profile;
+    const bool type_toggles = options.type_toggles;
+    const auto demo = options.demo;
+    const bool building_restart = options.building_restart;
+    const bool cannon_restart = options.cannon_restart;
     const bool packed = profile != ConfigurationProfile::Text;
     Fixture fixture;
     tests::write_native_session_assets();
@@ -442,36 +460,35 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
 #endif
     }
 }
-void native_run_lifetimes() { native_run_lifetimes_impl(false); }
-void native_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Packed); }
-void native_packed_header_failure() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader); }
-void pneumatic_retirement() { native_run_lifetimes_impl(false, ConfigurationProfile::RepeatedPneumaticCleanup); }
-void native_held_input_retirement() { native_run_lifetimes_impl(true); }
-void native_building_restart() {
-    native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::None, true);
-}
-void native_cannon_restart() {
-    native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::None, true, true);
-}
+void native_run_lifetimes() { native_run_lifetimes_impl({}); }
+void native_packed_lifetimes() { native_run_lifetimes_impl({.profile = ConfigurationProfile::Packed}); }
+void native_packed_header_failure() { native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader}); }
+void pneumatic_retirement() { native_run_lifetimes_impl({.profile = ConfigurationProfile::RepeatedPneumaticCleanup}); }
+void native_held_input_retirement() { native_run_lifetimes_impl({.leave_key_held = true}); }
+void native_building_restart() { native_run_lifetimes_impl({.building_restart = true}); }
+void native_cannon_restart() { native_run_lifetimes_impl({.building_restart = true, .cannon_restart = true}); }
 void native_packed_building_restart() {
-    native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::None, true);
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .building_restart = true});
 }
 void native_packed_cannon_restart() {
-    native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::None, true, true);
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader,
+        .building_restart = true, .cannon_restart = true});
 }
-void native_cheat_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, true); }
-void native_demo_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Escape); }
-void native_demo_win() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Win); }
-void native_demo_loss() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Loss); }
-void native_cheat_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, true); }
+void native_cheat_lifetimes() { native_run_lifetimes_impl({.type_toggles = true}); }
+void native_demo_lifetimes() { native_run_lifetimes_impl({.demo = DemoProfile::Escape}); }
+void native_demo_win() { native_run_lifetimes_impl({.demo = DemoProfile::Win}); }
+void native_demo_loss() { native_run_lifetimes_impl({.demo = DemoProfile::Loss}); }
+void native_cheat_packed_lifetimes() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .type_toggles = true});
+}
 void native_demo_packed_lifetimes() {
-    native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Escape);
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::Escape});
 }
 void native_demo_packed_win() {
-    native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Win);
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::Win});
 }
 void native_demo_packed_loss() {
-    native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Loss);
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::Loss});
 }
 }
 int main(int argc, char **argv) {
