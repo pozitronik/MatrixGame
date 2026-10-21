@@ -18,7 +18,7 @@ These cases do not call the unused `BuildFlyer` or `CMatrixFlyer::FireBegin` pat
 
 ## Context target eligibility
 
-`transport_context_rejection` supplies an enemy-owned armed carrier before release and after landing, retaining the original player-owned-cargo quirk. A selected ordinary player robot receives a real context command with that live carrier as the supplied cursor target. In both phases the command becomes a ground Move with a null objective, rather than an Attack on the carrier. `OnRButtonDown` uses `IsLiveUnit`, which recognizes robots and cannons but excludes flyers. This rejection does not make the model immune to weapon traces: the following cases separately establish reachable collision. The cargo is still a live robot in the logic list while carried; these checks do not claim that robot AI can never acquire or fire at it.
+`transport_context_rejection` supplies an enemy-owned armed carrier before release and after landing, retaining the original player-owned-cargo quirk. An ordinary player robot, selected directly by the fixture, receives a real context command with that live carrier as the supplied cursor target. In both phases the command becomes a ground Move with a null objective, rather than an Attack on the carrier. `OnRButtonDown` uses `IsLiveUnit`, which recognizes robots and cannons but excludes flyers. This rejection does not make the model immune to weapon traces: the following cases separately establish reachable collision. The cargo is still a live robot in the logic list while carried; these checks do not claim that robot AI can never acquire or fire at it.
 
 ## Projectile collision and outcome continuation
 
