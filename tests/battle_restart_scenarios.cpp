@@ -14,6 +14,7 @@
 #include "Interface/CIFaceButton.h"
 #include "Interface/MatrixHint.hpp"
 #include "input.hpp"
+#include "StandaloneRuntime.hpp"
 #include <cstring>
 #include <filesystem>
 #include <vector>
@@ -332,7 +333,110 @@ void restart_movement() { restart_profile(Origin::Moving); }
 void restart_pending_win() { restart_profile(Origin::PendingWin); }
 void restart_pending_loss() { restart_profile(Origin::PendingLoss); }
 void restart_retired_group() { restart_profile(Origin::Moving, true); }
+struct SettingsDirectory {
+    std::filesystem::path previous = std::filesystem::current_path();
+    std::filesystem::path root;
+    explicit SettingsDirectory(const std::filesystem::path &path) : root(path) {
+        MG_CHECK(std::filesystem::create_directory(root));
+        try { std::filesystem::current_path(root); }
+        catch (...) {
+            std::error_code error;
+            std::filesystem::remove_all(root, error);
+            throw;
+        }
+    }
+    ~SettingsDirectory() {
+        std::error_code error;
+        std::filesystem::current_path(previous, error);
+        if (!error) std::filesystem::remove_all(root, error);
+    }
+};
+template<class Action> void isolated_settings(Action action) {
+    const auto previous = std::filesystem::current_path();
+    const auto root = previous / ("restart-settings-" + std::to_string(GetCurrentProcessId()));
+    const auto check_restored = [&] {
+        MG_CHECK(std::filesystem::current_path() == previous);
+        MG_CHECK(!std::filesystem::exists(root));
+    };
+    try { SettingsDirectory directory(root); action(); }
+    catch (...) { check_restored(); throw; }
+    check_restored();
+}
+void restart_saved_settings() {
+    struct CleanupProbe {};
+    bool unwound = false;
+    try {
+        isolated_settings([] {
+            std::string error;
+            MG_CHECK(StandaloneSettings::save(StandaloneSettings::Values{}, error));
+            throw CleanupProbe{};
+        });
+    }
+    catch (const CleanupProbe &) { unwound = true; }
+    MG_CHECK(unwound);
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    isolated_settings([&] {
+        Profile profile{mode};
+        profile.step_ms = step;
+        profile.initially_selected = false;
+        profile.unavailable_icon_targets = true;
+        Session session(profile);
+        ReloadScene scene;
+        CFormMatrixGame form;
+        auto *const map = g_MatrixMap;
+        auto *const terrain = map->m_Unit;
+        StandaloneSettings::Values initial;
+        initial.random = mode;
+        g_Config.m_CamMoveSpeed = 2;
+        g_Config.m_SkyBox = 2;
+        StandaloneSettings::initialize_runtime(initial);
+        MG_CHECK(!StandaloneSettings::restart_pending(initial));
+        std::cout << session.metadata("restart-saved-settings-v1") << '\n';
+        auto changed = initial;
+        changed.camera_speed = 125;
+        changed.skybox = StandaloneSettings::Skybox::Low;
+        changed.random = mode == random::Mode::ParkMiller ? random::Mode::LegacyCRT : random::Mode::ParkMiller;
+        std::string error;
+        // This is the successful save/apply boundary used by the settings window.
+        // Its editing, input and save-failure behavior has a separate UI fixture.
+        MG_CHECK(StandaloneSettings::save(changed, error));
+        StandaloneSettings::apply_runtime(changed);
+        MG_CHECK(StandaloneSettings::load().invalid.empty() && StandaloneSettings::load().values == changed);
+        MG_CHECK(StandaloneSettings::current() == changed && StandaloneSettings::restart_pending(changed));
+        MG_CHECK(g_Config.m_CamMoveSpeed == 2.5f && g_Config.m_SkyBox == 2 && random::mode() == mode);
+        for (int attempt = 0; attempt < 2; ++attempt) {
+            MG_CHECK(robots(PLAYER_SIDE).size() == (attempt == 0 ? 2 : 1));
+            auto *robot = robots(PLAYER_SIDE).front();
+            const auto old_uid = robot->UID;
+            select(robot);
+            session.ground_command(500, 300);
+            for (int i = 0; i < 25; ++i) session.advance();
+            const auto time = session.time();
+            const auto draws = random::draw_count();
+            press(form, VK_ESCAPE);
+            press(form, 'R');
+            press(form, VK_RETURN);
+            MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_BEGIN);
+            MG_CHECK(robots(PLAYER_SIDE).size() == 1 && robots(PLAYER_SIDE).front()->UID != old_uid);
+            MG_CHECK(g_MatrixMap == map && map->m_Unit == terrain);
+            MG_CHECK(session.time() == time && random::draw_count() == draws);
+            MG_CHECK(StandaloneSettings::load().invalid.empty() && StandaloneSettings::load().values == changed);
+            MG_CHECK(StandaloneSettings::current() == changed);
+            MG_CHECK(StandaloneSettings::restart_pending(changed));
+            MG_CHECK(g_Config.m_CamMoveSpeed == 2.5f && g_Config.m_SkyBox == 2 && random::mode() == mode);
+            press(form, VK_RETURN);
+            MG_CHECK(!g_MatrixMap->IsPaused());
+            robot = robots(PLAYER_SIDE).front();
+            select(robot);
+            session.ground_command(500, 300);
+            for (int i = 0; i < 25; ++i) session.advance();
+            MG_CHECK(robot->m_PosX != 100 || robot->m_PosY != 200);
+            MG_CHECK(g_Config.m_CamMoveSpeed == 2.5f && g_Config.m_SkyBox == 2 && random::mode() == mode);
+        }
+    });
+}
 constexpr tests::Case cases[] = {
+    {"game.restart.saved_settings", restart_saved_settings},
     {"game.restart.retired_group", restart_retired_group},
     {"game.restart.movement", restart_movement},
     {"game.restart.pending_win", restart_pending_win},
