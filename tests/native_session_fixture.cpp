@@ -5,6 +5,8 @@
 #include "MatrixGame.h"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
+#include "MatrixObjectCannon.hpp"
+#include "Interface/CInterface.h"
 #include "MatrixFormGame.hpp"
 #include "input.hpp"
 #include <filesystem>
@@ -12,6 +14,8 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <memory>
+#include <utility>
 #include <cmath>
 #include <string_view>
 
@@ -69,7 +73,9 @@ struct HostObservation {
     float music{1};
     CMatrixRobotAI *robot{};
     float initial_x{};
-    bool moved{}, map_observed{}, leave_key_held{}, type_toggles{}, toggles_observed{};
+    bool moved{}, map_observed{}, leave_key_held{}, building_restart{}, cannon_restart{};
+    int restarts{};
+    bool type_toggles{}, toggles_observed{};
     DemoProfile demo{DemoProfile::None};
     bool demo_exited{}, pending_outcome{};
     int demo_start_time{};
@@ -106,6 +112,120 @@ void __stdcall progress(float) {
 void __stdcall begin() { ++host->begins; }
 float __stdcall music_get() { return host->music; }
 void __stdcall music_set(float value) { host->music = value; }
+std::pair<CMatrixBuilding *, CMatrixBuilding *> buildings() {
+    CMatrixBuilding *base = nullptr, *factory = nullptr;
+    int robots = 0;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+        if (object->IsLiveRobot()) { ++robots; continue; }
+        if (object->IsCannon()) { MG_CHECK(host->cannon_restart); continue; }
+        MG_CHECK(object->IsLiveBuilding());
+        auto *building = object->AsBuilding();
+        if (building->IsBase()) {
+            MG_CHECK(!base && building->GetSide() == PLAYER_SIDE);
+            MG_CHECK(building->m_Pos.x == 180 && building->m_Pos.y == 480);
+            base = building;
+        } else {
+            MG_CHECK(!factory && building->m_Kind == BUILDING_TITAN && building->GetSide() == 2);
+            MG_CHECK(building->m_Pos.x == 400 && building->m_Pos.y == 100);
+            factory = building;
+        }
+    }
+    MG_CHECK(base && factory && robots == 2);
+    int footprint = 0;
+    for (int y = 0; y < 32; ++y) for (int x = 0; x < 32; ++x) {
+        auto *owner = g_MatrixMap->UnitGet(x, y)->m_Base;
+        if (owner) { MG_CHECK(owner == base); ++footprint; }
+    }
+    MG_CHECK(footprint == 9);
+    return {base, factory};
+}
+CMatrixCannon *stored_cannon(CMatrixBuilding &base) {
+    CMatrixCannon *cannon = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsCannon()) { MG_CHECK(!cannon); cannon = object->AsCannon(); }
+    MG_CHECK(cannon && cannon->IsLiveActiveCannon());
+    MG_CHECK(cannon->m_ParentBuilding == &base && cannon->GetSide() == PLAYER_SIDE && cannon->m_Num == 1);
+    MG_CHECK(cannon->m_Pos.x == 80 && cannon->m_Pos.y == 480 && cannon->m_Angle == 0.5f);
+    MG_CHECK(cannon->m_Place == g_MatrixMap->m_RN.FindInPL(CPoint(8, 48)));
+    MG_CHECK(cannon->m_Place >= 0 && cannon->m_CurrState == CANNON_IDLE);
+    MG_CHECK(cannon->GetHitPoint() == cannon->GetMaxHitPoint());
+    MG_CHECK(base.m_TurretsHave == 1 && base.m_TurretsPlacesCnt == 2 && base.m_TurretsMax == 2);
+    MG_CHECK(base.m_TurretsPlaces[0].m_Coord == CPoint(8,48) && base.m_TurretsPlaces[0].m_CannonType == 1);
+    MG_CHECK(base.m_TurretsPlaces[1].m_Coord == CPoint(8,40) && base.m_TurretsPlaces[1].m_CannonType == -1);
+    MG_CHECK(base.m_BS.GetItemsCnt() == 0);
+    return cannon;
+}
+CMatrixCannon *queue_cannon(CMatrixBuilding &base) {
+    auto *side = g_MatrixMap->GetPlayerSide();
+    side->Select(BUILDING, &base);
+    for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+        side->AddResourceAmount(static_cast<ERes>(resource), 1000);
+    const D3DXVECTOR3 target(80, 400, 10);
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
+    g_MatrixMap->m_TraceStopPos = target;
+    g_IFaceList->BeginBuildTurret(1);
+    MG_CHECK(side->m_CannonForBuild.m_Cannon && side->m_CannonForBuild.m_ParentBuilding == &base);
+    g_MatrixMap->m_MouseDir = target - g_MatrixMap->m_Camera.GetFrustumCenter();
+    D3DXVec3Normalize(&g_MatrixMap->m_MouseDir, &g_MatrixMap->m_MouseDir);
+    side->LogicTakt(16);
+    MG_CHECK(side->m_CannonForBuild.m_CanBuildFlag);
+    side->OnLButtonDown(CPoint(0,0));
+    MG_CHECK(base.m_BS.GetItemsCnt() == 1 && base.m_BS.GetTopItem()->IsCannon());
+    auto *cannon = base.m_BS.GetTopItem()->AsCannon();
+    MG_CHECK(cannon->m_CurrState == CANNON_UNDER_CONSTRUCTION && cannon->m_ParentBuilding == &base);
+    base.m_BS.TickTimer(g_Config.m_Timings[UNIT_TURRET] / 4);
+    MG_CHECK(cannon->GetHitPoint() > 0 && cannon->GetHitPoint() < cannon->GetMaxHitPoint());
+    return cannon;
+}
+void restart_buildings(CFormMatrixGame &form) {
+    auto *map = g_MatrixMap;
+    auto *terrain = map->m_Unit;
+    const auto press = [&](int key) { form.Keyboard(true, key); form.Keyboard(false, key); };
+    for (int attempt = 0; attempt < 2; ++attempt) {
+        auto [base, factory] = buildings();
+        std::unique_ptr<SObjectCore, void(*)(SObjectCore *)> old_base(base->GetCore(DEBUG_CALL_INFO),
+            [](auto *core) { core->Release(); });
+        std::unique_ptr<SObjectCore, void(*)(SObjectCore *)> old_factory(factory->GetCore(DEBUG_CALL_INFO),
+            [](auto *core) { core->Release(); });
+        std::unique_ptr<SObjectCore, void(*)(SObjectCore *)> old_cannon(nullptr, [](auto *core) { core->Release(); });
+        std::unique_ptr<SObjectCore, void(*)(SObjectCore *)> old_queued(nullptr, [](auto *core) { core->Release(); });
+        if (host->cannon_restart) {
+            auto *cannon = stored_cannon(*base);
+            old_cannon.reset(cannon->GetCore(DEBUG_CALL_INFO));
+            auto *queued = queue_cannon(*base);
+            old_queued.reset(queued->GetCore(DEBUG_CALL_INFO));
+            cannon->SetSide(2);
+            cannon->SetHitPoint(cannon->GetMaxHitPoint() / 2);
+        }
+        base->Open();
+        factory->SetNeutral();
+        for (int side = 1; side <= 2; ++side) for (int resource = 0; resource < MAX_RESOURCES; ++resource) {
+            auto *owner = map->GetSideById(side);
+            const auto kind = static_cast<ERes>(resource);
+            const int saved = 100 * side + 1 + resource;
+            const int changed = saved + 10 * side + resource + 1;
+            owner->AddResourceAmount(kind, changed - owner->GetResourcesAmount(kind));
+            MG_CHECK(owner->GetResourcesAmount(kind) == changed && changed != saved);
+        }
+        MG_CHECK(base->State() == BASE_OPENING && factory->GetSide() == 0);
+        press(VK_ESCAPE); press('R');
+        MG_CHECK(map->m_DialogModeHints.size() == 2);
+        press(VK_RETURN);
+        MG_CHECK(g_MatrixMap == map && map->m_Unit == terrain);
+        MG_CHECK(old_base->m_Object == nullptr && old_factory->m_Object == nullptr);
+        if (host->cannon_restart) MG_CHECK(old_cannon->m_Object == nullptr && old_queued->m_Object == nullptr);
+        auto [fresh_base, fresh_factory] = buildings();
+        if (host->cannon_restart) stored_cannon(*fresh_base);
+        MG_CHECK(fresh_base->State() == BASE_CLOSED && fresh_factory->GetSide() == 2);
+        MG_CHECK(map->IsPaused() && map->m_DialogModeName &&
+                 wcscmp(map->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
+        for (int side = 1; side <= 2; ++side) for (int resource = 0; resource < MAX_RESOURCES; ++resource)
+            MG_CHECK(map->GetSideById(side)->GetResourcesAmount(static_cast<ERes>(resource)) == 100 * side + 1 + resource);
+        ++host->restarts;
+        press(VK_RETURN);
+        MG_CHECK(!map->IsPaused() && !map->m_DialogModeName);
+    }
+}
 void __stdcall tick() {
     ++host->ticks;
     try {
@@ -173,6 +293,7 @@ void __stdcall tick() {
 #endif
                 host->toggles_observed = true;
             }
+            if (host->building_restart) restart_buildings(*form);
             int robots = 0;
             for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
                 if (object->IsLiveRobot()) {
@@ -204,11 +325,36 @@ void __stdcall tick() {
     } catch (const std::exception &error) { host->failure = error.what(); throw; }
 }
 enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, RepeatedPneumaticCleanup };
-void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile = ConfigurationProfile::Text,
-                               bool type_toggles = false, DemoProfile demo = DemoProfile::None) {
+struct SessionOptions {
+    bool leave_key_held{};
+    ConfigurationProfile profile{ConfigurationProfile::Text};
+    bool type_toggles{};
+    DemoProfile demo{DemoProfile::None};
+    bool building_restart{};
+    bool cannon_restart{};
+};
+void native_run_lifetimes_impl(const SessionOptions &options) {
+    MG_CHECK(!options.cannon_restart || options.building_restart);
+    MG_CHECK(!options.building_restart || (!options.type_toggles && options.demo == DemoProfile::None));
+    MG_CHECK(!options.type_toggles || options.demo == DemoProfile::None);
+    MG_CHECK(!options.leave_key_held || (!options.type_toggles && options.demo == DemoProfile::None &&
+        !options.building_restart && options.profile == ConfigurationProfile::Text));
+    MG_CHECK((!options.type_toggles && options.demo == DemoProfile::None && !options.building_restart) ||
+        options.profile == ConfigurationProfile::Text || options.profile == ConfigurationProfile::InvalidPackedHeader);
+    const bool leave_key_held = options.leave_key_held;
+    const auto profile = options.profile;
+    const bool type_toggles = options.type_toggles;
+    const auto demo = options.demo;
+    const bool building_restart = options.building_restart;
+    const bool cannon_restart = options.cannon_restart;
     const bool packed = profile != ConfigurationProfile::Text;
     Fixture fixture;
     tests::write_native_session_assets();
+    if (building_restart) {
+        tests::write_native_session_building_assets();
+        if (cannon_restart) tests::write_native_session_cannon_assets();
+        tests::write_native_session_map(L"synthetic.map", true, cannon_restart);
+    }
     if (demo != DemoProfile::None) fs::copy_file(L"synthetic.map", L"synthetic-DeMo.map");
     if (packed) tests::pack_native_session_configuration();
     Window window;
@@ -238,6 +384,8 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
         HostObservation observed;
         observed.window = window.child;
         observed.leave_key_held = leave_key_held;
+        observed.building_restart = building_restart;
+        observed.cannon_restart = cannon_restart;
         observed.type_toggles = type_toggles && lifetime == 0;
         observed.demo = lifetime == 0 ? demo : DemoProfile::None;
         host = &observed;
@@ -268,8 +416,11 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
         std::cout << "fixture=synthetic-session-v1 packed=" << packed << " lifetime=" << lifetime << " result=" << exit
             << " seed_interval=[" << observed.entry_time << ',' << observed.first_progress_time
             << "] ticks=" << observed.ticks << " moved=" << observed.moved
+            << " buildings=" << building_restart << " cannons=" << cannon_restart
+            << " restarts=" << observed.restarts
             << " demo=" << static_cast<int>(observed.demo) << " toggles=" << observed.toggles_observed << '\n';
-        MG_CHECK(observed.failure.empty());
+        if (!observed.failure.empty()) throw std::runtime_error(observed.failure);
+        MG_CHECK(observed.restarts == (building_restart && !failing ? 2 : 0));
         MG_CHECK(exit == (failing ? 100 : (observed.demo != DemoProfile::None ? 1 : 0)));
         if (failing && packed) MG_CHECK(observed.progress == 0 && !observed.map_observed && observed.ticks == 0);
         else MG_CHECK(observed.progress > 0 && observed.map_observed);
@@ -309,19 +460,36 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
 #endif
     }
 }
-void native_run_lifetimes() { native_run_lifetimes_impl(false); }
-void native_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Packed); }
-void native_packed_header_failure() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader); }
-void pneumatic_retirement() { native_run_lifetimes_impl(false, ConfigurationProfile::RepeatedPneumaticCleanup); }
-void native_held_input_retirement() { native_run_lifetimes_impl(true); }
-void native_cheat_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, true); }
-void native_demo_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Escape); }
-void native_demo_win() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Win); }
-void native_demo_loss() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Loss); }
-void native_cheat_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, true); }
-void native_demo_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Escape); }
-void native_demo_packed_win() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Win); }
-void native_demo_packed_loss() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Loss); }
+void native_run_lifetimes() { native_run_lifetimes_impl({}); }
+void native_packed_lifetimes() { native_run_lifetimes_impl({.profile = ConfigurationProfile::Packed}); }
+void native_packed_header_failure() { native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader}); }
+void pneumatic_retirement() { native_run_lifetimes_impl({.profile = ConfigurationProfile::RepeatedPneumaticCleanup}); }
+void native_held_input_retirement() { native_run_lifetimes_impl({.leave_key_held = true}); }
+void native_building_restart() { native_run_lifetimes_impl({.building_restart = true}); }
+void native_cannon_restart() { native_run_lifetimes_impl({.building_restart = true, .cannon_restart = true}); }
+void native_packed_building_restart() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .building_restart = true});
+}
+void native_packed_cannon_restart() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader,
+        .building_restart = true, .cannon_restart = true});
+}
+void native_cheat_lifetimes() { native_run_lifetimes_impl({.type_toggles = true}); }
+void native_demo_lifetimes() { native_run_lifetimes_impl({.demo = DemoProfile::Escape}); }
+void native_demo_win() { native_run_lifetimes_impl({.demo = DemoProfile::Win}); }
+void native_demo_loss() { native_run_lifetimes_impl({.demo = DemoProfile::Loss}); }
+void native_cheat_packed_lifetimes() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .type_toggles = true});
+}
+void native_demo_packed_lifetimes() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::Escape});
+}
+void native_demo_packed_win() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::Win});
+}
+void native_demo_packed_loss() {
+    native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader, .demo = DemoProfile::Loss});
+}
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
@@ -330,6 +498,10 @@ int main(int argc, char **argv) {
     std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
         {"game.session.native_run_lifetimes", native_run_lifetimes},
+        {"game.session.native_building_restart", native_building_restart},
+        {"game.session.native_cannon_restart", native_cannon_restart},
+        {"game.session.native_packed_building_restart", native_packed_building_restart},
+        {"game.session.native_packed_cannon_restart", native_packed_cannon_restart},
         {"game.session.native_cheat_lifetimes", native_cheat_lifetimes},
         {"game.session.native_demo_lifetimes", native_demo_lifetimes},
         {"game.session.native_demo_win", native_demo_win},

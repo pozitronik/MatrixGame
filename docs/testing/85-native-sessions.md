@@ -26,6 +26,8 @@ The fixture records its version, lifetime number, result, movement observation, 
 
 The [packed-configuration and pneumatic cleanup cases](85-native-packed-sessions.md) extend this fixture with isolated packed loading, invalid-header recovery and repeated animation-data retirement. They retain the same borrowed-host ownership checks.
 
+The [populated native Restart cases](85-native-population-restart.md) check base/factory and stored-cannon reconstruction, partially queued-cannon retirement and restored terrain/slot ownership, and execute minimap drawing. Both text and isolated packed variants perform repeated menu-confirmed reloads and full Run recovery; image fidelity is not observed.
+
 The [demo and cheat-toggle cases](85-native-mode-reentry.md) add filename-driven demo startup through Escape or automatic win/loss, typed NEED4SPEED/KEEPALIVE in matching cheat builds, an intervening initialization failure and ordinary reentry. Their guide distinguishes those session guarantees from remaining reinforcement, camera-fight and native-presentation evidence.
 
 ## Running

@@ -11,6 +11,7 @@
 #include <vector>
 #include <cstring>
 #include <functional>
+#include <iterator>
 
 namespace fs = std::filesystem;
 namespace tests {
@@ -24,7 +25,8 @@ void table(CStorage &storage, const wchar_t *name,
         if (type != ST_WCHAR) storage.GetBuf(name, column, type)->AddArray();
 }
 }
-void write_native_session_map(const std::filesystem::path &path) {
+void write_native_session_map(const std::filesystem::path &path, bool with_buildings, bool with_cannons) {
+    MG_CHECK(!with_cannons || with_buildings);
     CStorage map;
     table(map, DATA_PROPERTIES, {{DATA_PROPERTIES_NAME, ST_WCHAR}, {DATA_PROPERTIES_VALUE, ST_WCHAR}});
     for (const auto *name : {DATA_SIZEX, DATA_SIZEY}) {
@@ -33,6 +35,11 @@ void write_native_session_map(const std::filesystem::path &path) {
     }
     map.GetBuf(DATA_PROPERTIES, DATA_PROPERTIES_NAME, ST_WCHAR)->AddWStr(DATA_TEXUNIONDIM);
     map.GetBuf(DATA_PROPERTIES, DATA_PROPERTIES_VALUE, ST_WCHAR)->AddWStr(L"1");
+    if (with_buildings) {
+        map.GetBuf(DATA_PROPERTIES, DATA_PROPERTIES_NAME, ST_WCHAR)->AddWStr(DATA_SIDERESINFO);
+        map.GetBuf(DATA_PROPERTIES, DATA_PROPERTIES_VALUE, ST_WCHAR)->AddWStr(
+            L"1,101,102,103,104,100|2,201,202,203,204,100");
+    }
     table(map, DATA_POINTS, {{DATA_POINTS_DATA, ST_BYTE}});
     table(map, DATA_MOVE, {{DATA_MOVE_DATA, ST_BYTE}});
     std::vector<SCompilePoint> points(33 * 33);
@@ -82,9 +89,41 @@ void write_native_session_map(const std::filesystem::path &path) {
     table(map, DATA_BUILDINGS, {{DATA_BUILDINGS_X, ST_FLOAT}, {DATA_BUILDINGS_Y, ST_FLOAT},
         {DATA_BUILDINGS_SIDE, ST_BYTE}, {DATA_BUILDINGS_KIND, ST_BYTE}, {DATA_BUILDINGS_SHADOW, ST_BYTE},
         {DATA_BUILDINGS_SHADOWSIZE, ST_INT32}, {DATA_BUILDINGS_ANGLE, ST_BYTE}});
-    table(map, DATA_CANNONS, {{DATA_CANNONS_X, ST_FLOAT}, {DATA_CANNONS_Y, ST_FLOAT},
+    const std::initializer_list<std::pair<const wchar_t *, EStorageType>> cannon_columns = {
+        {DATA_CANNONS_X, ST_FLOAT}, {DATA_CANNONS_Y, ST_FLOAT},
         {DATA_CANNONS_SIDE, ST_BYTE}, {DATA_CANNONS_KIND, ST_BYTE}, {DATA_CANNONS_SHADOW, ST_BYTE},
-        {DATA_CANNONS_SHADOWSIZE, ST_INT32}, {DATA_CANNONS_ANGLE, ST_FLOAT}});
+        {DATA_CANNONS_SHADOWSIZE, ST_INT32}, {DATA_CANNONS_ANGLE, ST_FLOAT}};
+    CStorageRecord cannons(DATA_CANNONS);
+    for (const auto &[column, type] : cannon_columns) cannons.AddItem(CStorageRecordItem(column, type));
+    if (with_cannons) cannons.AddItem(CStorageRecordItem(DATA_CANNONS_PROP, ST_INT32));
+    map.AddRecord(cannons);
+    for (const auto &[column, type] : cannon_columns) map.GetBuf(DATA_CANNONS, column, type)->AddArray();
+    if (with_cannons) {
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_PROP, ST_INT32)->AddArray();
+        const float x[] = {80, 80}, y[] = {480, 400}, angles[] = {0.5f, 0.75f};
+        const BYTE sides[] = {2, 2}, kinds[] = {1, 1}, shadows[] = {0, 0};
+        const int sizes[] = {0, 0}, properties[] = {1, 2};
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_X, ST_FLOAT)->AddToArray<float>(0, x, 2);
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_Y, ST_FLOAT)->AddToArray<float>(0, y, 2);
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_SIDE, ST_BYTE)->AddToArray<BYTE>(0, sides, 2);
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_KIND, ST_BYTE)->AddToArray<BYTE>(0, kinds, 2);
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_SHADOW, ST_BYTE)->AddToArray<BYTE>(0, shadows, 2);
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_SHADOWSIZE, ST_INT32)->AddToArray<int>(0, sizes, 2);
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_ANGLE, ST_FLOAT)->AddToArray<float>(0, angles, 2);
+        map.GetBuf(DATA_CANNONS, DATA_CANNONS_PROP, ST_INT32)->AddToArray<int>(0, properties, 2);
+    }
+    if (with_buildings) {
+        const float x[] = {180, 400}, y[] = {480, 100};
+        const BYTE sides[] = {1, 2}, kinds[] = {BUILDING_BASE, BUILDING_TITAN}, zeros[] = {0, 0};
+        const int sizes[] = {0, 0};
+        map.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_X, ST_FLOAT)->AddToArray<float>(0, x, 2);
+        map.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_Y, ST_FLOAT)->AddToArray<float>(0, y, 2);
+        map.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_SIDE, ST_BYTE)->AddToArray<BYTE>(0, sides, 2);
+        map.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_KIND, ST_BYTE)->AddToArray<BYTE>(0, kinds, 2);
+        for (const auto *column : {DATA_BUILDINGS_SHADOW, DATA_BUILDINGS_ANGLE})
+            map.GetBuf(DATA_BUILDINGS, column, ST_BYTE)->AddToArray<BYTE>(0, zeros, 2);
+        map.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_SHADOWSIZE, ST_INT32)->AddToArray<int>(0, sizes, 2);
+    }
     table(map, DATA_ROBOTS, {{DATA_ROBOTS_X, ST_FLOAT}, {DATA_ROBOTS_Y, ST_FLOAT},
         {DATA_ROBOTS_SIDE, ST_BYTE}, {DATA_ROBOTS_SHADOW, ST_BYTE}, {DATA_ROBOTS_SHADOWSIZE, ST_INT32},
         {DATA_ROBOTS_GROUP, ST_INT32}, {DATA_ROBOTS_UNITS, ST_WCHAR}});
@@ -111,16 +150,19 @@ void write_native_session_map(const std::filesystem::path &path) {
     road.m_RegionCnt = 1;
     road.m_Region[0].m_Center = CPoint(32, 32);
     road.m_Region[0].m_RadiusPlace = 64;
-    road.SetPlaceCnt(4);
-    for (int i = 0; i < 4; ++i) {
+    const int places = 4;
+    road.SetPlaceCnt(places);
+    for (int i = 0; i < places; ++i) {
         auto &place = road.m_Place[i];
         place.m_Pos = CPoint((i & 1) ? 48 : 8, (i & 2) ? 48 : 8);
+        if (with_cannons && i == 0) place.m_Pos = CPoint(8, 40);
         place.m_Region = 0; place.m_Empty = false; place.m_NearCnt = 2;
         place.m_Near[0] = i ^ 1; place.m_Near[1] = i ^ 2;
+        MG_CHECK(i < std::size(road.m_Zone[0].m_Place));
         road.m_Zone[0].m_Place[i] = road.m_Region[0].m_Place[i] = road.m_Region[0].m_PlaceAll[i] = i;
     }
-    road.m_Zone[0].m_PlaceCnt = 4;
-    road.m_Region[0].m_PlaceCnt = road.m_Region[0].m_PlaceAllCnt = 4;
+    road.m_Zone[0].m_PlaceCnt = places;
+    road.m_Region[0].m_PlaceCnt = road.m_Region[0].m_PlaceAllCnt = places;
     CBuf network;
     network.Add<DWORD>(27);
     road.Save(network);
@@ -190,5 +232,36 @@ void write_native_session_assets() {
         }
     }
     write_native_session_map(L"synthetic.map");
+}
+void write_native_session_building_assets() {
+    fs::create_directories(L"Matrix/Building");
+    write_battle_mesh(L"Matrix/Building/test-building.vo", {}, false, L"pixel");
+    fs::copy_file(L"pixel.png", L"Matrix/Building/pixel.png", fs::copy_options::overwrite_existing);
+    for (const auto *path : {OBJECT_PATH_BASE_00, OBJECT_PATH_BASE_01}) {
+        CBlockPar group;
+        const int units = wcscmp(path, OBJECT_PATH_BASE_00) == 0 ? 3 : 1;
+        for (int id = 1; id <= units; ++id) {
+            auto *unit = group.BlockAdd((L"body" + std::to_wstring(id)).c_str());
+            unit->ParSetAdd(L"Id", std::to_wstring(id).c_str());
+            unit->ParSetAdd(L"Model", L"test-building.vo");
+        }
+        group.SaveInTextFile(path);
+    }
+    CBlockPar data;
+    data.LoadFromTextFile(L"CFG/robots/data.txt");
+    auto *timings = data.BlockGet(PAR_SOURCE_TIMINGS)->BlockGet(PAR_SOURCE_TIMINGS_RESOURCES);
+    timings->ParSetAdd(PAR_SOURCE_TIMINGS_BASE, L"1000000");
+    timings->ParSetAdd(PAR_SOURCE_TIMINGS_TITAN, L"1000000");
+    data.SaveInTextFile(L"CFG/robots/data.txt");
+}
+void write_native_session_cannon_assets() {
+    fs::create_directories(L"Matrix/Cannon");
+    const MeshAttachment basis{20, L"Turret", 0, 0, 20};
+    const MeshAttachment turret{20, L"Shaft", 0, 0, 20};
+    const MeshAttachment muzzle{50, L"muzzle", 0, 15, 0};
+    write_battle_mesh(L"Matrix/Cannon/Basis.vo", std::span(&basis, 1), false, L"pixel");
+    write_battle_mesh(L"Matrix/Cannon/Turret1.vo", std::span(&turret, 1), false, L"pixel");
+    write_battle_mesh(L"Matrix/Cannon/Shaft1.vo", std::span(&muzzle, 1), false, L"pixel");
+    fs::copy_file(L"pixel.png", L"Matrix/Cannon/pixel.png", fs::copy_options::overwrite_existing);
 }
 }
