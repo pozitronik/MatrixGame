@@ -656,6 +656,8 @@ endforeach()
 foreach(contract capture_keyboard_completion capture_button_completion)
     add_matrix_test(game.player.${contract} matrixgame_battle_outcome_scenarios gameplay input)
 endforeach()
+add_matrix_test(game.outcome.capture_player_placed_queue matrixgame_battle_outcome_scenarios gameplay input)
+
 foreach(contract typed_statistics_continuation result_command_boundary legacy_loss_confirmation pending_result_menu menu_exit_surrender_callbacks statistics_cheat_dismissal result_confirmation_callbacks menu_confirmation_cancel base_capture_interruption protected_base_command full_auto_escape legacy_loss_cheat paused_orders)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
 endforeach()

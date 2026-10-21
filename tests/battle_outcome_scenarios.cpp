@@ -1041,6 +1041,181 @@ void capture_move_reassignment() {
         MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
     }
 }
+std::vector<std::string> player_placed_queue_run(random::Mode mode, int step, bool place_turret) {
+    tests::BattleCombatAssets assets;
+    Session session({mode, 79, step, 3000, false});
+    assets.install();
+    std::cout << session.metadata("capture-player-placed-queue-v2") << " turret=" << place_turret << '\n';
+    auto *base = register_building(PLAYER_SIDE, BUILDING_BASE, 500, 400);
+    auto &enemy = *g_MatrixMap->GetSideById(2);
+    using HeldCore = std::unique_ptr<SObjectCore, void (*)(SObjectCore *)>;
+    const auto release_core = [](SObjectCore *core) { core->Release(); };
+    std::array<HeldCore, 2> robot_cores{HeldCore(nullptr, release_core), HeldCore(nullptr, release_core)};
+    HeldCore turret_core(nullptr, release_core);
+    const auto check_queue = [&] {
+        auto *item = base->m_BS.GetTopItem();
+        for (const auto &core : robot_cores) {
+            MG_CHECK(core->m_Object != nullptr && item == core->m_Object);
+            MG_CHECK(item->IsRobot() && item->GetSide() == PLAYER_SIDE);
+            item = item->m_NextStackItem;
+        }
+        if (turret_core) {
+            MG_CHECK(turret_core->m_Object != nullptr && item == turret_core->m_Object);
+            MG_CHECK(item->IsCannon() && item->GetSide() == PLAYER_SIDE);
+            MG_CHECK(item->AsCannon()->m_CurrState == CANNON_UNDER_CONSTRUCTION);
+            MG_CHECK(item->AsCannon()->m_ParentBuilding == base);
+            item = item->m_NextStackItem;
+        }
+        MG_CHECK(item == nullptr);
+        MG_CHECK(base->m_BS.GetItemsCnt() == (turret_core ? 3 : 2));
+        MG_CHECK(base->m_TurretsHave == (turret_core ? 1 : 0));
+    };
+    std::vector<std::string> trace;
+    const auto record = [&] {
+        std::string state = session.snapshot() + ":" + std::to_string(base->GetSide()) +
+            ":" + std::to_string(base->m_State) + ":" + std::to_string(base->m_BS.GetItemsCnt()) +
+            ":" + std::to_string(base->m_TurretsHave) + ":" + std::to_string(base->m_Capturer != nullptr);
+        for (const auto &core : robot_cores) state += ":" + std::to_string(core->m_Object != nullptr);
+        state += ":" + std::to_string(turret_core && turret_core->m_Object != nullptr);
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            state += ":" + std::to_string(side().GetResourcesAmount(static_cast<ERes>(r))) +
+                ":" + std::to_string(enemy.GetResourcesAmount(static_cast<ERes>(r)));
+        trace.push_back(std::move(state));
+    };
+    g_Config.m_Timings[UNIT_ROBOT] = 100000;
+    g_Config.m_Timings[UNIT_TURRET] = 100000;
+    for (auto &cannon : g_Config.m_CannonsProps)
+        for (int &cost : cannon.m_Resources) cost = 1000;
+    auto &props = g_Config.m_CannonsProps[0];
+    props = {};
+    props.weapon = WEAPON_CANNON2;
+    props.m_Hitpoint = 1000;
+    props.m_Strength = 10;
+    props.seek_radius = 300;
+    props.max_da = 0.1f;
+    props.max_top_angle = 1.5f;
+    props.max_bottom_angle = -1.5f;
+    for (int r = 0; r < MAX_RESOURCES; ++r) {
+        g_Config.m_Price[CHASSIS2_TITAN + r] = 11 + r;
+        props.m_Resources[r] = 17 + r;
+        side().SetResourceAmount(static_cast<ERes>(r), 100);
+        enemy.SetResourceAmount(static_cast<ERes>(r), 0);
+    }
+    auto *model = tests::create_battle_cannon(PLAYER_SIDE, 480, 480);
+    g_MatrixMap->StaticDelete(model); // Leave the generated cannon geometry cached for real placement.
+    base->m_TurretsMax = BASE_TURRETS;
+    base->m_TurretsPlacesCnt = 1;
+    base->m_TurretsPlaces[0].m_Coord = CPoint(48, 48);
+    base->m_TurretsPlaces[0].m_CannonType = 1;
+    base->m_TurretsPlaces[0].m_Angle = 0;
+    CPoint places[MAX_PLACES];
+    MG_CHECK(base->GetPlacesForTurrets(places) == 1 && places[0] == CPoint(48, 48));
+    for (int i = 0; i < 2; ++i) {
+        auto robot = tests::make_engine_object<CMatrixRobotAI>();
+        robot->m_Side = PLAYER_SIDE;
+        robot->UnitInsert(0, MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+        base->m_BS.AddItem(robot.get());
+        MG_CHECK(base->m_BS.GetItemsCnt() == i + 1);
+        robot_cores[i].reset(robot->GetCore(DEBUG_CALL_INFO));
+        robot.release();
+    }
+    CMatrixRobotAI *capturer = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsRobot() && session.matches(3, object->AsRobot())) capturer = object->AsRobot();
+    MG_CHECK(capturer != nullptr);
+    record();
+    check_queue();
+    capturer->CaptureFactory(base);
+    MG_CHECK(capturer->GetCaptureFactory() == base && capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    while (session.time() < 2000) { session.advance(); record(); }
+    std::cout << "entry state=" << base->m_State << " manual=" << capturer->IsDisableManual()
+              << " owner=" << base->GetSide() << " captured=" << (base->m_Capturer == capturer) << '\n';
+    MG_CHECK(base->m_State == BASE_OPENED && base->m_Capturer == capturer && capturer->IsDisableManual());
+    MG_CHECK(capturer->GetCaptureFactory() == base && capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    if (place_turret) {
+        side().m_ActiveObject = base; // Synthetic initial building selection.
+        side().m_CurrSel = BASE_SELECTED;
+        g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(480, 480, 0);
+        g_IFaceList->BeginBuildTurret(1);
+        MG_CHECK(side().m_CurrentAction == BUILDING_TURRET && side().m_CannonForBuild.m_Cannon != nullptr);
+        g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
+        auto direction = D3DXVECTOR3(400, 400, 0) - g_MatrixMap->m_Camera.GetFrustumCenter();
+        D3DXVec3Normalize(&g_MatrixMap->m_MouseDir, &direction);
+        session.advance(); // Production side logic rejects a ray outside the declared slot.
+        MG_CHECK(side().m_CannonForBuild.m_CanBuildFlag == 0);
+        side().OnLButtonDown(CPoint(0, 0));
+        MG_CHECK(base->m_BS.GetItemsCnt() == 2 && side().m_CannonForBuild.m_Cannon != nullptr);
+        direction = D3DXVECTOR3(480, 480, 0) - g_MatrixMap->m_Camera.GetFrustumCenter();
+        D3DXVec3Normalize(&g_MatrixMap->m_MouseDir, &direction);
+        session.advance();
+        MG_CHECK(side().m_CannonForBuild.m_CanBuildFlag == 1);
+        MG_CHECK(side().m_CannonForBuild.m_Cannon->m_Place == g_MatrixMap->m_RN.FindInPL(CPoint(48, 48)));
+        g_MatrixMap->Pause(true);
+        side().OnLButtonDown(CPoint(0, 0));
+        MG_CHECK(base->m_BS.GetItemsCnt() == 2 && base->m_TurretsHave == 0);
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100);
+        g_MatrixMap->Pause(false);
+        side().OnLButtonDown(CPoint(0, 0));
+        MG_CHECK(side().m_CurrentAction == NOTHING_SPECIAL && side().m_CannonForBuild.m_Cannon == nullptr);
+        MG_CHECK(base->m_BS.GetItemsCnt() == 3 && base->m_BS.GetRobotsCnt() == 2);
+        MG_CHECK(base->m_TurretsHave == 1);
+        auto *queued = base->m_BS.GetTopItem()->m_NextStackItem->m_NextStackItem;
+        MG_CHECK(queued->IsCannon() && queued->GetSide() == PLAYER_SIDE);
+        MG_CHECK(queued->AsCannon()->m_CurrState == CANNON_UNDER_CONSTRUCTION);
+        MG_CHECK(queued->AsCannon()->m_ParentBuilding == base);
+        MG_CHECK(queued->AsCannon()->m_Place == g_MatrixMap->m_RN.FindInPL(CPoint(48, 48)));
+        turret_core.reset(queued->GetCore(DEBUG_CALL_INFO));
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100 - (17 + r));
+    } else {
+        session.advance();
+        session.advance();
+    }
+    MG_CHECK(session.time() == (step == 10 ? 2020 : 2032));
+    check_queue();
+    record();
+    const int transfer_at = step == 10 ? 5580 : 5600;
+    int transferred = 0;
+    while (session.time() < 15000 && !transferred) {
+        if (session.time() == transfer_at - step) {
+            MG_CHECK(base->GetSide() == PLAYER_SIDE && base->m_State == BASE_CLOSING);
+            MG_CHECK(session.robot(3).alive && (!turret_core || turret_core->m_Object != nullptr));
+            MG_CHECK(base->m_Capturer == capturer && capturer->GetCaptureFactory() == base);
+            MG_CHECK(capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+        }
+        session.advance();
+        record();
+        if (base->GetSide() == 2) transferred = session.time();
+        else {
+            check_queue();
+            for (int r = 0; r < MAX_RESOURCES; ++r)
+                MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100 - (place_turret ? 17 + r : 0));
+        }
+    }
+    std::cout << "player base transfer=" << transferred << " queue=" << base->m_BS.GetItemsCnt() << '\n';
+    MG_CHECK(transferred == transfer_at && base->m_State == BASE_CLOSED);
+    MG_CHECK(base->m_Capturer == nullptr && !session.robot(3).alive && session.robot(4).alive);
+    MG_CHECK(base->m_BS.GetItemsCnt() == 0 && base->m_BS.GetTopItem() == nullptr && base->m_TurretsHave == 0);
+    for (const auto &core : robot_cores) MG_CHECK(core->m_Object == nullptr && core->m_Ref == 1);
+    MG_CHECK(!turret_core || (turret_core->m_Object == nullptr && turret_core->m_Ref == 1));
+    for (int r = 0; r < MAX_RESOURCES; ++r) {
+        MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100 + 2 * (11 + r));
+        MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(r)) == 0);
+    }
+    for (int i = 0; i < 100; ++i) { session.advance(); record(); }
+    MG_CHECK(base->GetSide() == 2 && base->m_State == BASE_CLOSED && !g_MatrixMap->IsPaused());
+    for (int r = 0; r < MAX_RESOURCES; ++r)
+        MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100 + 2 * (11 + r));
+    return trace;
+}
+void capture_player_placed_queue() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool place_turret : {false, true}) {
+        const auto first = player_placed_queue_run(mode, step, place_turret);
+        MG_CHECK(first == player_placed_queue_run(mode, step, place_turret));
+    }
+}
 void registered_base_capture_profile(CaptureRoute route) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) for (int owner : {0, 2}) {
         Session session({mode, 79, step, 3000, false});
@@ -2858,6 +3033,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.capture_queue_refund", capture_queue_refund},
     {"game.outcome.capture_income_continuity", capture_income_continuity},
     {"game.outcome.capture_turret_refund", capture_turret_refund},
+    {"game.outcome.capture_player_placed_queue", capture_player_placed_queue},
     {"game.outcome.capture_move_reassignment", capture_move_reassignment},
     {"game.outcome.paused_orders", paused_orders},
     {"game.outcome.pending_result_pause", pending_result_pause},
