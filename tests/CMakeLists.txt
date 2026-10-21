@@ -812,6 +812,7 @@ target_compile_definitions(matrixgame_battle_restart_scenarios PRIVATE
 foreach(contract movement pending_win pending_loss retired_group objects_spawners)
     add_matrix_test(game.restart.${contract} matrixgame_battle_restart_scenarios gameplay startup)
 endforeach()
+add_matrix_test(game.loop.restart_toggles matrixgame_battle_restart_scenarios gameplay input startup)
 if(NOT MATRIXGAME_BUILD_DLL)
     add_matrix_test(game.restart.saved_settings matrixgame_battle_restart_scenarios gameplay settings startup)
 endif()

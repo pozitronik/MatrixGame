@@ -136,6 +136,8 @@ The [loop scheduler contracts](testing/85-loop-scheduler.md) run production `L3G
 
 The [result-loop cases](testing/85-loop-results.md) carry menu Exit/Surrender and typed or trace diagnostic callbacks through actual loop return, with cancellation/resumed-movement and compile-gate controls.
 
+The [Restart-after-toggles case](testing/85-loop-restart.md) connects typed speed/KEEPALIVE flags, moving robots, paused introductions and two storage-backed reloads within the production loop. It measures four-speed scheduling after reload and retains the KEEPALIVE bit; focus changes after Restart are not exercised. Full initialization, game-owned cleanup and native delivery retain separate coverage.
+
 The [strategic and tactical AI guide](testing/84-ai-decisions.md) describes decision fixtures, declared initial state and separately tracked correctness probes.
 
 ### Extending the fixture

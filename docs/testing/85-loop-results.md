@@ -17,7 +17,7 @@ Repeat each command with `-Trace` to exercise the compiled diagnostic result bra
 
 ## Selected routes
 
-Each invocation uses seed 85, both RNG modes and scripted 10/16 ms intervals, with an independent fresh-session replay. The two cases execute 16 and 40 fresh journeys respectively. Two robots begin a production context Move and advance through 25 actual form ticks. They are deselected before typed words so ordinary shortcuts have no selected group; their existing Move intent remains.
+Each invocation uses seed 85, both RNG modes and scripted 10/16 ms intervals, with an independent fresh-session replay. The two cases execute 16 and 40 fresh journeys respectively. Two robots begin a production context Move and advance through 25 actual form ticks. The fixture deselects them directly before typed words so ordinary shortcuts have no selected group; their existing Move intent remains.
 
 | Input route | Dialog behavior and `g_ExitState` | Control |
 | --- | --- | --- |
