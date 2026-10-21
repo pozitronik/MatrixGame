@@ -26,6 +26,8 @@ The fixture records its version, lifetime number, result, movement observation, 
 
 The [packed-configuration and pneumatic cleanup cases](85-native-packed-sessions.md) extend this fixture with isolated packed loading, invalid-header recovery and repeated animation-data retirement. They retain the same borrowed-host ownership checks.
 
+The [demo and cheat-toggle cases](85-native-mode-reentry.md) add filename-driven demo startup through Escape or automatic win/loss, typed NEED4SPEED/KEEPALIVE in matching cheat builds, an intervening initialization failure and ordinary reentry. Their guide distinguishes those session guarantees from remaining reinforcement, camera-fight and native-presentation evidence.
+
 ## Running
 
 A usable native Windows Direct3D 9 HAL device and the legacy DirectX runtime are required. The executable is compiled with DLL tests, but native execution is opt-in: ordinary asset-free CI does not assume an interactive graphics adapter. A missing adapter is an explicit failure when the native test is selected, never a successful skip.
@@ -46,4 +48,4 @@ A crash after the test host's first progress callback terminates without the eng
 
 `game.session.held_input_retirement` repeats the successful/failing/successful lifecycle while holding F12 through each normal close, with no matching key release. The intervening initialization failure occurs before the tick callback and presses no key; it checks clean state and recovery, not retirement of an actively held key on that failing path. Production `CGame::Deinit` clears the engine's held-key table; the native regression checks both the state after Run returns and the next battle's first callback. It does not synthesize a host focus event or clear input in the fixture. The asset-free `game.lifecycle.held_input_retirement` also checks all 256 entries across repeated partial-state cleanup, with ordinary key release as a control. Run the native regression with the same opt-in registration and a filter of `'^game.session.held_input_retirement$'`.
 
-This slice does not close O7 or #85. Standalone selector/relaunch lifetimes, settings persistence across transitions, full demo startup/continuation, original-host reentry, historical comparison and final same-revision compiler evidence remain their separately tracked obligations. Native Direct3D execution here establishes neither original asset fidelity nor success on a headless CI runner.
+This slice does not close O7 or #85. Standalone selector/relaunch lifetimes, settings persistence across transitions, integrated demo reinforcement/fight scenes, original-host reentry, historical comparison and final same-revision compiler evidence remain their separately tracked obligations. Native Direct3D execution here establishes neither original asset fidelity nor success on a headless CI runner.
