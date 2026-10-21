@@ -665,6 +665,9 @@ endforeach()
 if(MATRIXGAME_TRACE)
     add_matrix_test(game.outcome.trace_result_callbacks matrixgame_battle_outcome_scenarios gameplay input)
 endif()
+foreach(contract menu_result_exit diagnostic_result_exit)
+    add_matrix_test(game.loop.${contract} matrixgame_battle_outcome_scenarios gameplay input startup)
+endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_chassis_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp navigation_damage_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)

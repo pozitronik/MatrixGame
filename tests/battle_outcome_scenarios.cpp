@@ -24,9 +24,11 @@
 #include "input.hpp"
 #include "cheats.hpp"
 #include "SoundBridge.hpp"
+#include "loop_script.hpp"
 #include "audio_fixture.hpp"
 #include <climits>
 #include <cmath>
+#include <float.h>
 #include <string>
 #include <sstream>
 
@@ -2331,6 +2333,221 @@ void result_command_boundary() {
         MG_CHECK(FLAG(g_Flags, GFLAG_EXITLOOP) && g_ExitState == (loss ? 2 : 3));
     }
 }
+enum class LoopResultRoute { Exit, Surrender, LegacyLoss, Statistics, GenericShift, LeftShift, RightShift };
+#ifdef _TRACE
+constexpr bool result_trace_build = true;
+#else
+constexpr bool result_trace_build = false;
+#endif
+struct ResultLoopForm : CFormMatrixGame {
+    Session &session;
+    CForm *previous = g_FormCur;
+    std::vector<int> ticks;
+    std::vector<std::string> trace;
+    std::array<RobotState, 2> moving{};
+    int frozen_time{};
+    uint64_t frozen_draws{};
+    unsigned draws{}, paused_ticks{};
+    bool frozen{};
+    explicit ResultLoopForm(Session &value) : session(value) {
+        g_FormCur = this;
+        SETFLAG(g_Flags, GFLAG_APPACTIVE);
+        SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+    }
+    ~ResultLoopForm() { g_FormCur = previous; }
+    std::string snapshot() const {
+        std::ostringstream out;
+        out << session.snapshot() << ':' << g_ExitState << ':' << g_MatrixMap->IsPaused()
+            << ':' << bool(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN)) << ':' << side().m_CurrSel;
+        if (g_MatrixMap->m_DialogModeName)
+            for (const wchar_t *name = g_MatrixMap->m_DialogModeName; *name; ++name) out << ':' << unsigned(*name);
+        // Active side ticks update scores from timeGetTime(), outside the scripted clock.
+        if (g_MatrixMap->IsPaused() || FLAG(g_Flags, GFLAG_EXITLOOP))
+            out << ':' << side().GetStatValue(STAT_TIME) << ':' << g_MatrixMap->GetSideById(2)->GetStatValue(STAT_TIME);
+        return out.str();
+    }
+    void freeze() {
+        moving = {session.robot(1), session.robot(2)};
+        for (const auto &robot : moving) MG_CHECK(robot.alive && robot.order == mpo_MoveTo && robot.x > 100);
+        frozen_time = session.time();
+        frozen_draws = random::draw_count();
+        frozen = true;
+    }
+    void check_frozen() const {
+        MG_CHECK(frozen && session.time() == frozen_time && random::draw_count() == frozen_draws);
+        for (const auto &robot : moving) check_retained_move(session, robot);
+    }
+    void Takt(int delta) override {
+        MG_CHECK(draws == ticks.size());
+#if defined(__MINGW32__)
+        MG_CHECK((_controlfp(0, 0) & _MCW_PC) == _PC_24);
+#endif
+        const int before = session.time();
+        const bool paused = g_MatrixMap->IsPaused() ||
+            FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG | MMFLAG_STAT_DIALOG_D);
+        ticks.push_back(delta);
+        CFormMatrixGame::Takt(delta);
+        MG_CHECK(session.time() == before + (paused ? 0 : delta));
+        if (g_MatrixMap->IsPaused()) { ++paused_ticks; check_frozen(); }
+#if defined(__MINGW32__)
+        MG_CHECK((_controlfp(0, 0) & _MCW_PC) == _PC_24);
+#endif
+    }
+    void Draw() override {
+        MG_CHECK(draws + 1 == ticks.size());
+        MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP | GFLAG_APPCLOSE));
+        ++draws;
+        g_MatrixMap->m_Camera.BeforeDraw();
+        trace.push_back(snapshot());
+    }
+};
+void result_loop_key(tests::loop::Round &round, uint8_t key) {
+    round.messages.emplace_back(WM_KEYDOWN, key);
+    round.messages.emplace_back(WM_KEYUP, key);
+}
+std::vector<std::string> result_loop_run(random::Mode mode, int step, LoopResultRoute route) {
+    constexpr bool cheats = MATRIXGAME_SCENARIO_CHEATS != 0;
+    const bool menu = route == LoopResultRoute::Exit || route == LoopResultRoute::Surrender;
+    const bool legacy = route == LoopResultRoute::LegacyLoss;
+    const bool statistics = route == LoopResultRoute::Statistics;
+    const bool shift_input = route == LoopResultRoute::GenericShift ||
+        route == LoopResultRoute::LeftShift || route == LoopResultRoute::RightShift;
+    const bool forced_trace = result_trace_build &&
+        (route == LoopResultRoute::LeftShift || route == LoopResultRoute::RightShift);
+    const bool terminal = menu || (legacy && cheats) || forced_trace;
+    const bool paused_control = !terminal && (shift_input || (statistics && cheats));
+    const int result = route == LoopResultRoute::Exit ? 1 : route == LoopResultRoute::Surrender ? 4 :
+        route == LoopResultRoute::LeftShift ? 2 : 3;
+    Session session({mode, 85, step, 1000, false});
+    CallbackDialogs dialogs;
+    ResultLoopForm form(session);
+    std::cout << session.metadata("loop-result-continuation-v1") << " route=" << int(route)
+              << " trace_build=" << result_trace_build << '\n';
+    auto &enemy = *g_MatrixMap->GetSideById(2);
+    session.ground_command(500, 300);
+    side().PLDropAllActions(); // Keep the Move while ordinary shortcut letters have no selected group.
+    MG_CHECK(side().GetCurGroup() == nullptr);
+    tests::loop::Script script;
+    const int last = terminal ? 29 : 55;
+    for (int index = 0; index <= last; ++index) script.rounds.push_back({(index + 1) * step * 1000LL, {}});
+    auto &trigger = script.rounds[25];
+    if (menu) result_loop_key(trigger, VK_ESCAPE);
+    else if (legacy || statistics) {
+        for (const char *word = legacy ? "IAMLOOSER" : "STATS"; *word; ++word)
+            result_loop_key(trigger, static_cast<uint8_t>(*word));
+    } else {
+        const uint8_t shift = route == LoopResultRoute::LeftShift ? VK_LSHIFT :
+            route == LoopResultRoute::RightShift ? VK_RSHIFT : VK_SHIFT;
+        trigger.messages.emplace_back(WM_KEYDOWN, shift);
+        result_loop_key(trigger, VK_ESCAPE);
+        trigger.messages.emplace_back(WM_KEYUP, shift);
+    }
+    const auto dialog_is = [&](const wchar_t *name) {
+        MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == name);
+    };
+    trigger.after_messages = [&] {
+        if (terminal || paused_control) {
+            side().SetStatValue(STAT_TIME, 1234);
+            enemy.SetStatValue(STAT_TIME, 5678);
+        }
+        form.freeze();
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !FLAG(g_Flags, GFLAG_EXITLOOP));
+        if (terminal) {
+            dialog_is(menu ? TEMPLATE_DIALOG_MENU : result == 2 ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN);
+            MG_CHECK(g_ExitState == (menu ? 0 : result) && g_MatrixMap->IsPaused());
+        } else if (statistics && cheats) {
+            MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG_D) && g_ExitState == 0);
+        } else if (paused_control) {
+            dialog_is(TEMPLATE_DIALOG_MENU);
+            MG_CHECK(g_ExitState == 0 && g_MatrixMap->IsPaused());
+        } else MG_CHECK(!g_MatrixMap->m_DialogModeName && !g_MatrixMap->IsPaused() && g_ExitState == 0);
+    };
+    std::string closed_state;
+    if (terminal) {
+        if (menu) {
+            result_loop_key(script.rounds[26], route == LoopResultRoute::Exit ? 'E' : 'S');
+            script.rounds[26].after_messages = [&] {
+                MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 2 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+                form.check_frozen();
+            };
+        }
+        result_loop_key(script.rounds[27], VK_RETURN);
+        script.rounds[27].after_messages = [&] {
+            MG_CHECK(g_ExitState == result && FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG));
+            MG_CHECK(!g_MatrixMap->m_DialogModeName && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            form.check_frozen();
+        };
+        script.rounds[28].after_messages = [&] {
+            dialog_is(TEMPLATE_DIALOG_STATISTICS);
+            MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            form.check_frozen();
+        };
+        result_loop_key(script.rounds[29], VK_RETURN);
+        script.rounds[29].after_messages = [&] {
+            MG_CHECK(FLAG(g_Flags, GFLAG_EXITLOOP) && !FLAG(g_Flags, GFLAG_APPCLOSE));
+            MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+            form.check_frozen();
+            closed_state = form.snapshot();
+        };
+    } else {
+        if (paused_control) {
+            script.rounds[27].after_messages = [&] {
+                dialog_is(statistics ? TEMPLATE_DIALOG_STATISTICS_D : TEMPLATE_DIALOG_MENU);
+                MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+                form.check_frozen();
+            };
+            result_loop_key(script.rounds[28], statistics ? VK_RETURN : VK_ESCAPE);
+            script.rounds[28].after_messages = [&] {
+                MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName && g_ExitState == 0);
+                MG_CHECK(side().GetStatValue(STAT_TIME) == 1234 && enemy.GetStatValue(STAT_TIME) == 5678);
+                form.check_frozen();
+            };
+        }
+        script.rounds[55].messages.emplace_back(WM_CLOSE, 0);
+        script.rounds[55].after_messages = [&] { closed_state = form.snapshot(); };
+    }
+    MG_CHECK(L3GRun(script.platform()) == 1);
+    MG_CHECK(!closed_state.empty() && closed_state == form.snapshot());
+    MG_CHECK(form.draws == (terminal ? 29u : 55u) && form.ticks.size() == form.draws);
+    MG_CHECK(form.paused_ticks == (terminal ? 4u : paused_control ? 3u : 0u));
+    MG_CHECK(script.round == script.rounds.size() && script.clock_reads == form.draws + 1 && script.waits == 0);
+    for (int delta : form.ticks) MG_CHECK(delta == step);
+    MG_CHECK(g_ExitState == (terminal ? result : 0));
+    MG_CHECK(bool(FLAG(g_Flags, GFLAG_EXITLOOP)) == terminal && bool(FLAG(g_Flags, GFLAG_APPCLOSE)) == !terminal);
+    MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+    MG_CHECK(g_MatrixMap->m_DialogModeHints.empty() && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    MG_CHECK(side().GetStatus() == SS_ACTIVE);
+    if (terminal) {
+        MG_CHECK(side().GetStatValue(STAT_TIME) == 1234);
+        MG_CHECK(enemy.GetStatValue(STAT_TIME) == (route == LoopResultRoute::Surrender ? -5678 : 5678));
+    }
+    MG_CHECK(!Input::isVKeyPressed(VK_SHIFT) && !Input::isVKeyPressed(VK_LSHIFT) && !Input::isVKeyPressed(VK_RSHIFT));
+    if (terminal) form.check_frozen();
+    else {
+        MG_CHECK(session.time() == (paused_control ? 52 : 55) * step);
+        for (const auto &before : form.moving) {
+            const auto robot = session.robot(before.id);
+            MG_CHECK(robot.alive && robot.order == mpo_MoveTo && robot.x > before.x);
+        }
+    }
+    form.trace.push_back(closed_state);
+    return form.trace;
+}
+void loop_menu_result_exit() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (auto route : {LoopResultRoute::Exit, LoopResultRoute::Surrender}) {
+        const auto first = result_loop_run(mode, step, route);
+        MG_CHECK(first == result_loop_run(mode, step, route));
+    }
+}
+void loop_diagnostic_result_exit() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (auto route : {LoopResultRoute::LegacyLoss, LoopResultRoute::Statistics, LoopResultRoute::GenericShift,
+                      LoopResultRoute::LeftShift, LoopResultRoute::RightShift}) {
+        const auto first = result_loop_run(mode, step, route);
+        MG_CHECK(first == result_loop_run(mode, step, route));
+    }
+}
 int guarded_base_capturers(CMatrixBuilding *base, int group) {
     int count = 0;
     for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
@@ -2575,6 +2792,8 @@ void guarded_base_profile(bool destroy) {
 void guarded_base_journey() { guarded_base_profile(false); }
 void guarded_base_target_destruction() { guarded_base_profile(true); }
 constexpr tests::Case cases[] = {
+    {"game.loop.menu_result_exit", loop_menu_result_exit},
+    {"game.loop.diagnostic_result_exit", loop_diagnostic_result_exit},
 #ifdef _TRACE
     {"game.outcome.trace_result_callbacks", trace_result_callbacks},
 #endif
