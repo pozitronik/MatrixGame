@@ -13,7 +13,7 @@ Run the related contracts in Debug and Release, with cheats disabled and enabled
 
 The helper changes the configuration of its ordinary build directory. Rebuild without `-Cheats` before using that directory as a normal playable candidate.
 
-For a focused check of the combined Restart executable, use `'^game\.(loop\.restart_toggles|restart\.(movement|pending_win|pending_loss|retired_group|saved_settings))$'`. This selects six cases in an EXE build; `saved_settings` is excluded from DLL registration. The broader filter above also includes scheduler, result-loop and Restart-failure executables; inspect their guides before selecting desktop-dependent or diagnostic failure checks.
+For a focused check of the combined Restart executable, use `'^game\.(loop\.restart_toggles|restart\.(movement|pending_win|pending_loss|retired_group|objects_spawners|saved_settings))$'`. This selects seven cases in an EXE build; `saved_settings` is excluded from DLL registration. The broader filter above also includes scheduler, moving-loop, result-loop and Restart-failure executables; inspect their guides before selecting desktop-dependent or diagnostic failure checks.
 
 ## Sequence and observations
 
