@@ -4,6 +4,8 @@ Player-facing changes are recorded here before release. Each release uses a leve
 
 ## Unreleased
 
+- Install custom maps in `maps/` or `DATA/maps/` beside the executable, with optional same-name JPEG or PNG previews. The original `Matrix/Map/` location remains supported.
+
 - Battle music plays in the standalone game when the original `music.pkg` is copied to `DATA/music.pkg`. The new Music row of the Settings window and `MusicVolume` in `CFG/standalone.txt` set its level independently of sound effects. `music.pkg` is optional.
 
 - Choose a battlefield from a startup menu or New battle in the battle menu. The selector shows previews, optional original descriptions and characteristics, and remembers the map and bonus. Start with the button, Enter or a double-click; a loading screen remains visible while the next battle loads.
