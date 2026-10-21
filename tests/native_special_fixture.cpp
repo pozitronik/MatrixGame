@@ -179,6 +179,11 @@ void export_ownership() {
     try { export_to(directory.root / "existing"); }
     catch (const std::exception &) { rejected = true; }
     MG_CHECK(rejected && fs::file_size(L"existing/sentinel.txt") == 8);
+    fs::create_directory(L"existing-empty");
+    rejected = false;
+    try { export_to(directory.root / "existing-empty"); }
+    catch (const std::exception &) { rejected = true; }
+    MG_CHECK(rejected && fs::is_directory(L"existing-empty") && fs::is_empty(L"existing-empty"));
     rejected = false;
     try { export_to(directory.root / "missing-parent" / "new"); }
     catch (const std::exception &) { rejected = true; }
@@ -250,6 +255,8 @@ void __stdcall tick() {
         auto &o = *observation;
         MG_CHECK(++o.ticks <= 100000 && g_MatrixMap && g_FormCur && !IsWindowVisible(o.window));
         MG_CHECK(g_MatrixMap->GetTime() < 10000);
+        if (o.scene != 2 && o.ticks > 1)
+            MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !g_MatrixMap->m_DialogModeName);
         if (o.ticks == 1) {
             MG_CHECK(g_MatrixMap->m_DialogModeName &&
                 wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);

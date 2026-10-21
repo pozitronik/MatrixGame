@@ -1,6 +1,6 @@
 # Mixed-objective native scenes
 
-Procedure version: **NV-06-4 v3**. This handoff supplies synthetic mixed Break/Anim and Terron maps, a resource exporter, a native loading and weapon check and exact standalone outcome steps. Preparation and execution are separate: the hidden native initialization check does not establish the manual attack, collateral, result-dialog or next-battle observations below. Record those observations in the [native validation ledger](native-validation.md#per-case-record).
+Procedure version: **NV-06-4 v4**. This handoff supplies synthetic mixed Break/Anim and Terron maps, a resource exporter, a native loading and weapon check and exact standalone outcome steps. Preparation and execution are separate: the hidden native initialization check does not establish the manual attack, collateral, result-dialog or next-battle observations below. Record those observations in the [native validation ledger](native-validation.md#per-case-record).
 
 ## What the export contains
 
@@ -59,6 +59,42 @@ $inputs | ForEach-Object { Get-FileHash -LiteralPath (Join-Path $fixture $_) -Al
 
 The integrated post-conversion Terron correction and its registered `game.outcome.terron_blast_after_conversion` regression remain prerequisites for interpreting a collateral result. A crash is a failure, not an accepted objective outcome.
 
+## Preserve and restore the minimap cache
+
+The exporter itself does not load a game or write Documents. The standalone executable does: its production `PathToOutputFiles` creates or uses `Documents/SpaceRangersHD`, shared with the original game. Loading these generated maps reads or writes `Cache/mixed-break-anim.cmap.0` and `Cache/mixed-boss-break.cmap.0` there, because neither map declares a nonzero `DATA_UNIQID`. A cache left by an older export can therefore supply an obsolete minimap. Screenshots also use the Documents output directory. These side effects are separate from the synthetic files in the export.
+
+Before the first launch of each export, close other games using that output directory and park only the two matching cache files. Keep the backup inside the export until restoration; do not delete an export that still holds parked files. Run this once per export, including a fresh export for another build or RNG profile:
+
+```powershell
+$documents = [Environment]::GetFolderPath('MyDocuments')
+if (-not $documents) { throw 'Cannot locate Documents; inspect the actual output path before proceeding.' }
+$cacheRoot = Join-Path $documents 'SpaceRangersHD/Cache'
+$cacheNames = @('mixed-break-anim.cmap.0', 'mixed-boss-break.cmap.0')
+$cacheBackup = Join-Path $fixture 'saved-user-cache'
+if (Test-Path -LiteralPath $cacheBackup) { throw 'Restore the previous cache backup first.' }
+New-Item -ItemType Directory -Path $cacheBackup | Out-Null
+foreach ($name in $cacheNames) {
+    $cached = Join-Path $cacheRoot $name
+    if (Test-Path -LiteralPath $cached) {
+        if (-not (Test-Path -LiteralPath $cached -PathType Leaf)) { throw "Unexpected cache directory: $cached" }
+        Move-Item -LiteralPath $cached -Destination (Join-Path $cacheBackup $name)
+    }
+}
+```
+
+After every process from this export has exited, remove only its generated cache entries and return any parked files. Restore even after a failed launch or interrupted observation. Leave the shared output directory, unrelated cache files and screenshots untouched. The production fallback when Documents lookup fails is the export's own `Cache` directory; record that exception and inspect that path rather than assuming the shared cache was used.
+
+```powershell
+if (-not (Test-Path -LiteralPath $cacheBackup -PathType Container)) { throw 'Cache backup is missing; inspect before cleanup.' }
+foreach ($name in $cacheNames) {
+    $cached = Join-Path $cacheRoot $name
+    if (Test-Path -LiteralPath $cached -PathType Leaf) { Remove-Item -LiteralPath $cached }
+    $parked = Join-Path $cacheBackup $name
+    if (Test-Path -LiteralPath $parked -PathType Leaf) { Move-Item -LiteralPath $parked -Destination $cached }
+}
+Remove-Item -LiteralPath $cacheBackup
+```
+
 ## Launch and observe exits
 
 Launch the exported game without positional arguments. A positional map path selects visibility calculation in `WinMain`, so it cannot be used for these interactive battles:
@@ -70,7 +106,7 @@ $initial = Start-Process -FilePath $game -WorkingDirectory $fixture -PassThru
 $null = $initial.Handle
 ```
 
-Within 60 seconds the startup menu must appear. Choose New battle, select `mixed-break-anim` for cases A/B or `mixed-boss-break` for C, keep bonus None and press Start. Require the battlefield and introduction within 60 seconds of Start. Confirm the loaded map path in `test.log`; a saved preference alone does not identify a successful load. Dismiss the introduction with Enter and release the key. Select only the laser robot above the colored objectives; it is the unit with a weapon attached. Press Enter to enter direct robot control, point at the colored target and hold the left mouse button to fire. Release the button as soon as the target retires. Both colored objectives are inside the laser's configured 250-unit range from the starting position. Tactical right-click/A orders are not suitable for these synthetic map objects: the observed robot approached the target without firing. The optional native check below exercises that direct-control route; its execution needs a separate record. Press Enter again to leave direct control before issuing M and clicking ground to move. Use arrow keys to move the camera outside direct control. Escape opens the battle menu; R then Enter restarts the same map and restores all starting objects. None of these steps needs cheats.
+Within 60 seconds the startup menu must appear. Choose New battle, select `mixed-break-anim` for cases A/B or `mixed-boss-break` for C, keep bonus None and press Start. Require the battlefield and introduction within 60 seconds of Start. Confirm the loaded map path in `test.log`; a saved preference alone does not identify a successful load. Dismiss the introduction with Enter and release the key. Select only the laser robot above the colored objectives; it is the unit with a weapon attached. Press Enter to enter direct robot control, point at the colored target and hold the left mouse button to fire. Release the button as soon as the target retires. Both colored objectives are inside the laser's configured 250-unit range from the starting position. This procedure uses direct control; tactical right-click/A orders on these synthetic map objects remain unverified. The optional native check below exercises that direct-control route; its execution needs a separate record. Press Enter again to leave direct control before issuing M and clicking ground to move. Use arrow keys to move the camera outside direct control. Escape opens the battle menu; R then Enter restarts the same map and restores all starting objects. None of these steps needs cheats.
 
 Allow at most 30 seconds of aimed firing to retire each selected objective or start Terron's destruction sequence. A target that does not take damage, a wrong target or a timeout is a failed observation; do not continue indefinitely. Allow 30 seconds for a menu, confirmation, restart or normal exit, and 60 seconds for a replacement battlefield. Preserve the shorter result/countdown deadlines in A/B/C below. On failure, record the diagnostic and process state, then close the owned game before restoring or removing its export.
 
@@ -114,11 +150,11 @@ Launch `mixed-break-anim.cmap` again, or use Escape, R, Enter before completing 
 3. Terron converts after its approximately five-second destruction countdown. Victory must appear within ten seconds of the countdown starting, while the distant green special Break remains green and intact. This preserves the current rule that Terron requests victory even with another objective still present. Statistics must credit one destroyed objective/building; the ordinary blue conversion does not add objective credit.
 4. Acknowledge result and statistics, choose `mixed-break-anim.cmap`, verify its intact red/green/blue starting targets and fresh units, issue a Move and close. Record both exits as above.
 
-The near robot starts 60 world units from Terron; the distant control and green objective are outside the configured 250-unit blast radius. Robot damage is 2000 internal points versus the observed initial 1900 internal health. These are source-derived expectations for this exported configuration, not a completed collateral playtest. Enemy-side blast attribution and the player's last-robot-loss orderings remain in the component outcome tests; these native scenes do not claim those variants.
+The near robot starts 60 world units from Terron; the distant control and green objective are outside the configured 250-unit blast radius. Robot damage is 2000 internal points versus the configured initial 1900 internal health. These are source-derived expectations for this exported configuration, not a completed collateral playtest. Enemy-side blast attribution is covered by the [post-conversion component regression](186-terron-owner.md). The player's last-robot-loss orderings remain [selected O4 component work](85-special-profiles.md#remaining-o4-work); these native scenes do not claim those variants.
 
 ## Automated check, evidence and cleanup
 
-The default asset-free `game.session.special_export_layout` and `game.session.special_export_ownership` cases validate generation without opening a window or creating a native device. They load the maps and animation storage, verify coordinates/descriptors/armed-control identities, compare all Text/Packed configuration trees, open the generated empty package through its production parser, check Packed isolation, reject existing/missing-parent destinations and remove incomplete output. The negative case deliberately removes the required special mesh before validation; export must fail and clean only its new destination.
+The default asset-free `game.session.special_export_layout` and `game.session.special_export_ownership` cases validate generation without opening a window or creating a native device. They load the maps and animation storage, verify coordinates/descriptors/armed-control identities, compare all Text/Packed configuration trees, open the generated empty package through its production parser, check Packed isolation, reject both non-empty and empty existing directories and missing-parent destinations, and remove incomplete output. The negative case deliberately removes the required special mesh before validation; export must fail and clean only its new destination.
 
 ```powershell
 .\tools\test.ps1 -Configuration Debug -Filter '^game\.session\.special_export_(layout|ownership)$'
@@ -129,7 +165,7 @@ Generation checks do not execute gameplay or satisfy a visual case. Preparation 
 
 The optional `game.session.native_special_scenes` check opens only children of an invisible host window and uses a real Direct3D 9 device. Through the actual DLL entry point it loads both exported scenes and then the ordinary synthetic map, in Text and Packed modes. It verifies objective registration, descriptors, hit points, geometry/animations, weapon effects, loop entry and cleanup. In each special map it selects the armed robot, enters direct control through the form, holds fire and supplies resolved world aim at the host callback boundary. Full native frames must produce a nonfatal weapon hit on each colored objective within ten seconds of game time, preserving the objective count. This verifies generated weapon geometry, actual weapon traces and damage; it does not test screen picking. The ordinary following session runs three ticks. No objective destruction or result transition is injected or claimed. The DLL startup RNG remains its real ParkMiller/time-derived configuration; no fixed-step or cross-run image determinism is claimed.
 
-The invisible parent contains presentation but does not isolate the calling desktop's cursor state. Production cursor selection calls `ShowCursor` even for the software cursor, and DLL teardown calls `ClipCursor(nullptr)`; initialization also calls `ShowWindow` on the borrowed child. Run this opt-in case only on an explicitly chosen test desktop where those operations are acceptable. Asset-generation checks above do not invoke any of these game paths.
+The invisible parent contains presentation but does not isolate the calling desktop's cursor state. Production cursor selection calls `ShowCursor` even for the software cursor, and DLL teardown calls `ClipCursor(nullptr)`; initialization also calls `ShowWindow` on the borrowed child. Run this opt-in case only on an explicitly chosen test desktop where those operations are acceptable. It carries `current-desktop` and `native-process`, without the `asset-free` label: it needs a Direct3D 9 HAL adapter and is not part of the default CI execution. Asset-generation checks above do not invoke any of these game paths.
 
 To register it, set `MATRIXGAME_NATIVE_SESSION_TESTS=ON` in the DLL build, then run:
 
@@ -143,4 +179,4 @@ Copy-Item -LiteralPath '.\.tools\directx-x86\d3dx9_43.dll' -Destination '.\build
 
 Keep separate execution records for A, B and C, Debug/Release, Text/Packed and both standalone RNG modes, or record an explicit maintainer disposition of a variant. Optional original audio packages and original artwork are absent from these fixtures; audible or original-resource presentation validation remains with its respective cases. Native execution of these outcome procedures is pending until recorded. A successful hidden initialization check must not be entered as a pass for A/B/C.
 
-All changes made by the manual procedure are inside the new export directory. Close its game processes before deleting that directory when validation is complete. No supplied resource package or normal configuration needs restoring. Retain only the agreed evidence and hashes; generated assets are reproducible and should not enter the repository or release.
+The exporter writes only inside its new directory. Running the standalone executable also uses the production Documents output path; follow the cache preservation and restoration steps above after all exported game processes exit, before deleting the export. Preserve any screenshots separately. No supplied resource package or normal configuration needs restoring. Retain only the agreed evidence and hashes; generated assets are reproducible and should not enter the repository or release.

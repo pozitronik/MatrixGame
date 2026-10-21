@@ -855,6 +855,7 @@ if(MATRIXGAME_BUILD_DLL AND MATRIXGAME_NATIVE_SESSION_TESTS)
     set_tests_properties(game.session.native_special_scenes PROPERTIES
         LABELS "engine;gameplay;startup;native;native-process;current-desktop" TIMEOUT 90)
 endif()
+
 add_matrix_test_executable(matrixgame_loop_battle_scenarios loop_battle_scenarios.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_loop_battle_scenarios PRIVATE MatrixGameInternal)
