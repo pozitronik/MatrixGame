@@ -359,7 +359,7 @@ void populate_objects_and_spawners(ReloadScene &scene) {
     MG_CHECK(g_MatrixMap->m_IdsCnt == 1);
     const std::array<std::wstring, 5> ids{
         reload_object_descriptor(L"Static"), reload_object_descriptor(L"Break,0,10,None"),
-        L"1,100,100,400,200,50,false,1,ff406080", L"2,100,100,400,200,50,false,1,2", scene.path.wstring()};
+        L"1,100,100,400,200,50,true,1,ff406080", L"2,100,100,400,200,50,false,1,2", scene.path.wstring()};
     g_MatrixMap->m_Ids[0].~basic_string();
     HFree(g_MatrixMap->m_Ids, g_MatrixHeap);
     g_MatrixMap->m_Ids = static_cast<std::wstring *>(HAlloc(ids.size() * sizeof(std::wstring), g_MatrixHeap));
@@ -374,16 +374,16 @@ void populate_objects_and_spawners(ReloadScene &scene) {
     CStorage storage;
     MG_CHECK(storage.Load(scene.path.c_str()));
     values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_X, ST_FLOAT, {300, 450});
-    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_Y, ST_FLOAT, {100, 100});
-    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_Z, ST_FLOAT, {0, 0});
+    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_Y, ST_FLOAT, {100, 150});
+    values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_Z, ST_FLOAT, {5, 15});
     values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_ANGLE_Z, ST_FLOAT, {0, 0});
     values<float>(storage, DATA_OBJECTS, DATA_OBJECTS_SCALE, ST_FLOAT, {1, 1.5f});
     values<DWORD>(storage, DATA_OBJECTS, DATA_OBJECTS_TYPE, ST_DWORD, {0, 1});
     schema(storage, DATA_EFFECTS, {{DATA_EFFECTS_X, ST_FLOAT}, {DATA_EFFECTS_Y, ST_FLOAT},
         {DATA_EFFECTS_Z, ST_FLOAT}, {DATA_EFFECTS_TYPE, ST_INT32}});
     values<float>(storage, DATA_EFFECTS, DATA_EFFECTS_X, ST_FLOAT, {300, 450});
-    values<float>(storage, DATA_EFFECTS, DATA_EFFECTS_Y, ST_FLOAT, {100, 100});
-    values<float>(storage, DATA_EFFECTS, DATA_EFFECTS_Z, ST_FLOAT, {10, 10});
+    values<float>(storage, DATA_EFFECTS, DATA_EFFECTS_Y, ST_FLOAT, {100, 150});
+    values<float>(storage, DATA_EFFECTS, DATA_EFFECTS_Z, ST_FLOAT, {15, 30});
     values<INT32>(storage, DATA_EFFECTS, DATA_EFFECTS_TYPE, ST_INT32, {2, 3});
     storage.Save(scene.path.c_str());
 }
@@ -426,7 +426,7 @@ std::vector<uint64_t> populated_restart_run(random::Mode mode, int step) {
     CFormMatrixGame form;
     auto *const map = g_MatrixMap;
     auto *const terrain = map->m_Unit;
-    std::cout << session.metadata("storage-objects-spawners-v1") << '\n';
+    std::cout << session.metadata("storage-objects-spawners-v2") << '\n';
     confirm_restart(form); // Bootstrap the saved population through the same loader.
     press(form, VK_RETURN);
     session.advance(); // Resolve each emitter's object owner before deletion.
@@ -443,10 +443,9 @@ std::vector<uint64_t> populated_restart_run(random::Mode mode, int step) {
         g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)].mindamage = 0;
         objects[1]->Damage(WEAPON_LASER, objects[1]->GetGeoCenter(), D3DXVECTOR3(0, 0, 1), PLAYER_SIDE, nullptr);
         MG_CHECK(objects[1]->m_BehFlag == BEHF_STATIC && objects[1]->m_Type == 0);
-        // Remove the converted object; its former emitter was retired by the real damage receiver.
+        MG_CHECK(map->m_EffectSpawnersCnt == 1); // Damage, not StaticDelete, retires the owner's emitter.
         map->StaticDelete(objects[1]);
         MG_CHECK(break_core->m_Object == nullptr);
-        MG_CHECK(map->m_EffectSpawnersCnt == 1); // The deleted object's emitter is removed with its owner.
         auto *robot = robots(PLAYER_SIDE).front();
         select(robot);
         session.ground_command(500, 300);
@@ -470,7 +469,7 @@ std::vector<uint64_t> populated_restart_run(random::Mode mode, int step) {
         for (int i = 0; i < 2; ++i) {
             const auto &matrix = objects[i]->GetMatrix();
             MG_CHECK(objects[i]->m_Type == i && objects[i]->m_UID == i && objects[i]->m_Scale == 1 + 0.5f * i);
-            MG_CHECK(matrix._41 == 300 + 150 * i && matrix._42 == 100 && matrix._43 == 0);
+            MG_CHECK(matrix._41 == 300 + 150 * i && matrix._42 == 100 + 50 * i && matrix._43 == 5 + 10 * i);
             MG_CHECK(objects[i]->m_Graph != nullptr);
         }
         MG_CHECK(objects[0]->m_BehFlag == BEHF_STATIC && objects[1]->m_BehFlag == BEHF_BREAK);
@@ -479,12 +478,12 @@ std::vector<uint64_t> populated_restart_run(random::Mode mode, int step) {
         for (int i = 0; i < 2; ++i) {
             const auto *props = map->m_EffectSpawners[i].Props();
             MG_CHECK(props->m_Type == (i == 0 ? EFFECT_SMOKE : EFFECT_FIRE));
-            MG_CHECK(props->m_Pos.x == 300 + 150 * i && props->m_Pos.y == 100 && props->m_Pos.z == 10);
+            MG_CHECK(props->m_Pos.x == 300 + 150 * i && props->m_Pos.y == 100 + 50 * i && props->m_Pos.z == 15 + 15 * i);
         }
         const auto *smoke = static_cast<SpawnEffectSmoke *>(map->m_EffectSpawners[0].Props());
         const auto *fire = static_cast<SpawnEffectFire *>(map->m_EffectSpawners[1].Props());
         MG_CHECK(smoke->m_ttl == 400 && smoke->m_puffttl == 200 && smoke->m_spawntime == 50);
-        MG_CHECK(smoke->m_color == 0xff406080 && smoke->m_speed == 1 && !smoke->m_intense);
+        MG_CHECK(smoke->m_color == 0xff406080 && smoke->m_speed == 1 && smoke->m_intense);
         MG_CHECK(fire->m_ttl == 400 && fire->m_puffttl == 200 && fire->m_spawntime == 50);
         MG_CHECK(fire->m_dispfactor == 2 && fire->m_speed == 1 && !fire->m_intense);
         MG_CHECK(map->GetPlayerSide()->GetCurGroup() == nullptr);
@@ -503,23 +502,35 @@ std::vector<uint64_t> populated_restart_run(random::Mode mode, int step) {
         MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 200);
         select(robot);
         session.ground_command(500, 300);
-        for (int i = 0; i < 25; ++i) session.advance();
+        const auto effect_counts = [&] {
+            std::array<int, 2> counts{};
+            for (auto *effect = map->m_EffectsFirst; effect; effect = effect->m_Next) {
+                counts[0] += effect->GetType() == EFFECT_SMOKE_INTENSE;
+                counts[1] += effect->GetType() == EFFECT_FIRE;
+                MG_CHECK(effect->GetType() != EFFECT_SMOKE); // The saved intensity is observable too.
+            }
+            return counts;
+        };
+        MG_CHECK((effect_counts() == std::array<int, 2>{0, 0}));
+        for (int frame = 1; frame <= 25; ++frame) {
+            session.advance();
+            MG_CHECK(session.time() == before_time + frame * step);
+            const int expected = frame / (100 / step + 1); // Strict now > next, including equality at 100/210 ms.
+            const auto counts = effect_counts();
+            MG_CHECK((counts == std::array<int, 2>{expected, expected}));
+            trace.push_back(counts[0]);
+            trace.push_back(counts[1]);
+        }
         MG_CHECK(robot->m_PosX != 100 || robot->m_PosY != 200);
         MG_CHECK(robot->GetGroupLogic() >= 0 && robot->GetGroupLogic() < MAX_LOGIC_GROUP);
         MG_CHECK(map->GetPlayerSide()->m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_MoveTo);
         MG_CHECK(map->m_EffectsFirst != nullptr);
         for (int i = 0; i < 2; ++i) MG_CHECK(map->m_EffectSpawners[i].GetUnder() == objects[i]);
-        int smoke_count = 0, fire_count = 0;
-        for (auto *effect = map->m_EffectsFirst; effect; effect = effect->m_Next) {
-            smoke_count += effect->GetType() == EFFECT_SMOKE;
-            fire_count += effect->GetType() == EFFECT_FIRE;
-        }
-        MG_CHECK(smoke_count == (step == 10 ? 2 : 3));
-        MG_CHECK(fire_count == smoke_count);
+        MG_CHECK((effect_counts() == std::array<int, 2>{step == 10 ? 2 : 3, step == 10 ? 2 : 3}));
         trace.push_back(random::draw_count());
         trace.push_back(std::bit_cast<uint32_t>(robot->m_PosX));
         trace.push_back(std::bit_cast<uint32_t>(robot->m_PosY));
-        std::cout << "populated restart=" << attempt << " time=" << before_time << " draws=" << trace[trace.size() - 4]
+        std::cout << "populated restart=" << attempt << " time=" << before_time << " reload-draws=2 final-draws=" << random::draw_count()
                   << " active-spawners=" << map->m_EffectSpawnersCnt << '\n';
     }
     return trace;
