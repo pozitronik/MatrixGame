@@ -1,0 +1,34 @@
+# Containment for native test windows
+
+`matrixgame_native_window_containment` is a test-only prerequisite for synthetic native session checks. It changes selected imports in the calling test executable, creates an invisible parent and restores the imports when its owner leaves scope. It installs no system hook and changes no other module's import table. It is intended for an x86 executable that links the engine directly; an independently loaded game DLL would need its own containment boundary.
+
+The adapter places windows with the production game/loading classes below the invisible parent, retains child styles during subsequent style changes and shows them without activation. Before showing one of those windows it verifies its parent and child style; a violation terminates the test process. A test that borrows an existing rendering child still owns creation and retirement of that child. Window messages, device operations and game lifecycle code are not replaced by this helper.
+
+The adapter maps all show commands except `SW_HIDE` to `SW_SHOWNOACTIVATE`, so these checks do not exercise native minimize, maximize or restore transitions. A child of the hidden parent is not visible to `IsWindowVisible`; consequently the production `BattleLoading::show` route does not create its loading window. The loading-class adapter can contain a directly created test window, but this does not establish the production loading-screen lifecycle. Both behaviors require separate visible-window evidence.
+
+For a valid `TME_LEAVE` request on a contained game child, `TrackMouseEvent` returns success without registering the physical desktop pointer. That pointer cannot enter an invisible child and would otherwise cancel posted client gestures. Explicitly posted `WM_MOUSELEAVE` still reaches the normal window procedure. Queries, cancellation, hover, invalid structures and requests for other windows retain the native API path. These fixtures establish declared message-driven input; physical pointer entry/leave timing remains a visible native check.
+
+`ClipCursor` becomes a successful test-local operation. `SetCursor` retains an opaque previous handle, and `ShowCursor` maintains a separate display count for each thread so the engine's balancing loops still terminate. All three imported adapters are mandatory: construction fails before gameplay if any required import is absent. This deliberately excludes desktop clipping, native cursor appearance and actual cursor visibility from the evidence. It does not replace Direct3D device cursor calls or prove display/input behavior on a visible window.
+
+The default constructor policy also requires the named Documents-folder import. That adapter selects the production current-directory fallback so native tests cannot write a game cache into the user's Documents directory. A direct-link fixture that already replaces `PathToOutputFiles` at link time can explicitly pass `require_documents=false`; this does not relax any cursor requirement. Missing imports, a second active instance or an invalid hidden parent reject construction. Partially completed construction restores the imports already changed.
+
+One-button diagnostic message boxes are forwarded to the supplied test reporter and acknowledged without opening a dialog. Other message-box button contracts, and any diagnostic without a reporter, terminate the test instead of inventing a user's choice or silently discarding a diagnostic. Callers must make reported diagnostics fail their scenario and must install this helper before entering a production path that can display them. Each construction resets the constructing thread's test-local cursor handle and display count. It is not an exception-recovery mechanism.
+
+## Validation
+
+Three default tests exercise previous-handle semantics, positive/negative display-count balancing and thread isolation without calling native cursor APIs:
+
+```powershell
+.\tools\test.ps1 -Configuration Debug -Filter '^game\.session\.cursor_'
+.\tools\test.ps1 -Configuration Release -Filter '^game\.session\.cursor_'
+```
+
+Three additional Windows checks are opt-in locally because they create an invisible window and adapt their own executable's imports. Before making any synthetic cursor call, they compare the imported function addresses with native `GetProcAddress` results and require the adapters to be installed. They inspect the real clip rectangle while a synthetic clip is still active, distinguish the separate display counter from the native counter, and observe real cursor visibility. They verify import restoration after normal destruction and strict-constructor rejection, fresh cursor state on repeated construction, diagnostic delivery, and the absence of physical leave tracking while explicitly posted leave still arrives. They do not create a Direct3D device or launch a game.
+
+```powershell
+& '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' -S . -B build/mingw-debug-exe -DMATRIXGAME_NATIVE_WINDOW_TESTS=ON
+& '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' --build build/mingw-debug-exe --target matrixgame_native_window_tests
+.\tools\test.ps1 -Configuration Debug -NoBuild -Filter '^game\.session\.window_'
+```
+
+Repeat with Release and its build directory, or use the DLL test configuration and `-DLL`. Registration remains enabled in that build directory until `MATRIXGAME_NATIVE_WINDOW_TESTS=OFF` is configured. All optional checks carry `native-process` and `current-desktop`; the local `ctest -LE '^(native-process|current-desktop)$'` selection excludes them. CI explicitly registers and executes them in every MinGW/MSVC build-matrix job, alongside the three pure cursor contracts; the coverage job retains the default opt-out. Native game journeys require their own validation and do not follow from passing these checks. A green build alone establishes compilation, while passing `game.session.window_*` results establish execution of the import walk on that toolchain.
