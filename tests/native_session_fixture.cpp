@@ -12,6 +12,8 @@
 #include <cstring>
 #include <ctime>
 #include <iostream>
+#include <cmath>
+#include <string_view>
 
 namespace fs = std::filesystem;
 
@@ -59,6 +61,7 @@ struct Fixture {
         if (error) std::cerr << "Cannot remove synthetic session directory " << root << ": " << error.message() << '\n';
     }
 };
+enum class DemoProfile { None, Escape, Win, Loss };
 struct HostObservation {
     HWND window{};
     int progress{}, begins{}, ticks{}, texts{}, text_clears{};
@@ -66,7 +69,11 @@ struct HostObservation {
     float music{1};
     CMatrixRobotAI *robot{};
     float initial_x{};
-    bool moved{}, map_observed{}, leave_key_held{};
+    bool moved{}, map_observed{}, leave_key_held{}, type_toggles{}, toggles_observed{};
+    DemoProfile demo{DemoProfile::None};
+    bool demo_exited{}, pending_outcome{};
+    int demo_start_time{};
+    DWORD initial_cheat_flags{};
     std::time_t entry_time{}, first_progress_time{};
     std::string failure;
 } *host;
@@ -89,7 +96,10 @@ void __stdcall progress(float) {
     // process failure to its runner instead of opening a diagnostic window.
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
-    if (host->progress == 0) host->first_progress_time = std::time(nullptr);
+    if (host->progress == 0) {
+        host->first_progress_time = std::time(nullptr);
+        host->initial_cheat_flags = g_Flags & (GFLAG_4SPEED | GFLAG_KEEPALIVE);
+    }
     ++host->progress;
     if (g_MatrixMap && g_MatrixMap->m_Size.x == 32) host->map_observed = true;
 }
@@ -101,13 +111,68 @@ void __stdcall tick() {
     try {
         MG_CHECK(host->ticks < 5000);
         MG_CHECK(g_FormCur && g_MatrixMap && !IsWindowVisible(host->window));
+        if (host->demo != DemoProfile::None) {
+            const DWORD flags = MMFLAG_AUTOMATIC_MODE | MMFLAG_FLYCAM | MMFLAG_FULLAUTO;
+            MG_CHECK((g_MatrixMap->m_Flags & flags) == flags);
+            MG_CHECK(!g_MatrixMap->m_DialogModeName);
+            const auto &link = g_MatrixMap->m_Camera.GetLinkPoint();
+            MG_CHECK(std::isfinite(link.x) && std::isfinite(link.y) && std::isfinite(link.z));
+            MG_CHECK(std::isfinite(g_MatrixMap->m_Camera.GetAngleX()) && std::isfinite(g_MatrixMap->m_Camera.GetAngleZ()));
+            if (host->phase == 0) {
+                MG_CHECK(random::mode() == random::Mode::ParkMiller);
+                host->demo_start_time = g_MatrixMap->GetTime();
+                ++host->phase;
+            } else if (host->phase == 1 && g_MatrixMap->GetTime() >= host->demo_start_time + 250 &&
+                       host->demo == DemoProfile::Escape) {
+                auto *form = static_cast<CFormMatrixGame *>(g_FormCur);
+                form->Keyboard(true, VK_ESCAPE); form->Keyboard(false, VK_ESCAPE);
+                MG_CHECK(g_ExitState == 1 && FLAG(g_Flags, GFLAG_EXITLOOP));
+                MG_CHECK(!Input::isVKeyPressed(VK_ESCAPE));
+                host->demo_exited = true;
+                ++host->phase;
+            } else if (host->phase == 1 && g_MatrixMap->GetTime() >= host->demo_start_time + 250) {
+                const int eliminated = host->demo == DemoProfile::Loss ? PLAYER_SIDE : 2;
+                CMatrixRobotAI *victim = nullptr;
+                for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+                    if (object->IsLiveRobot() && object->GetSide() == eliminated) {
+                        MG_CHECK(victim == nullptr);
+                        victim = object->AsRobot();
+                    }
+                MG_CHECK(victim);
+                MG_CHECK(victim->Damage(WEAPON_INSTANT_DEATH, victim->GetGeoCenter(), D3DXVECTOR3(0,0,1), 0, nullptr));
+                MG_CHECK(!victim->IsLiveRobot());
+                ++host->phase;
+            } else if (host->phase == 2 &&
+                       (host->demo == DemoProfile::Win ? FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) :
+                        g_MatrixMap->GetPlayerSide()->GetStatus() == SS_NONE)) {
+                MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) == (host->demo == DemoProfile::Win));
+                MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP));
+                host->pending_outcome = true;
+            }
+            return;
+        }
         if (host->phase == 0) {
+            MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_AUTOMATIC_MODE | MMFLAG_FLYCAM | MMFLAG_FULLAUTO));
             MG_CHECK(!Input::isVKeyPressed(VK_F12));
             MG_CHECK(random::mode() == random::Mode::ParkMiller);
             MG_CHECK(g_MatrixMap->m_DialogModeName && wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
             auto *form = static_cast<CFormMatrixGame *>(g_FormCur);
             form->Keyboard(true, VK_RETURN); form->Keyboard(false, VK_RETURN);
             MG_CHECK(!g_MatrixMap->m_DialogModeName && !Input::isVKeyPressed(VK_RETURN));
+            MG_CHECK(!FLAG(g_Flags, GFLAG_4SPEED | GFLAG_KEEPALIVE));
+            if (host->type_toggles) {
+                for (const std::string_view word : {"NEED4SPEED", "KEEPALIVE"})
+                    for (const char key : word) {
+                        form->Keyboard(true, key); form->Keyboard(false, key);
+                        MG_CHECK(!Input::isVKeyPressed(key));
+                    }
+#if MATRIXGAME_SCENARIO_CHEATS
+                MG_CHECK((g_Flags & (GFLAG_4SPEED | GFLAG_KEEPALIVE)) == (GFLAG_4SPEED | GFLAG_KEEPALIVE));
+#else
+                MG_CHECK(!FLAG(g_Flags, GFLAG_4SPEED | GFLAG_KEEPALIVE));
+#endif
+                host->toggles_observed = true;
+            }
             int robots = 0;
             for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
                 if (object->IsLiveRobot()) {
@@ -139,10 +204,12 @@ void __stdcall tick() {
     } catch (const std::exception &error) { host->failure = error.what(); throw; }
 }
 enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, RepeatedPneumaticCleanup };
-void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile = ConfigurationProfile::Text) {
+void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile = ConfigurationProfile::Text,
+                               bool type_toggles = false, DemoProfile demo = DemoProfile::None) {
     const bool packed = profile != ConfigurationProfile::Text;
     Fixture fixture;
     tests::write_native_session_assets();
+    if (demo != DemoProfile::None) fs::copy_file(L"synthetic.map", L"synthetic-DeMo.map");
     if (packed) tests::pack_native_session_configuration();
     Window window;
     MG_CHECK(window.parent && window.child && !IsWindowVisible(window.child));
@@ -171,6 +238,8 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
         HostObservation observed;
         observed.window = window.child;
         observed.leave_key_held = leave_key_held;
+        observed.type_toggles = type_toggles && lifetime == 0;
+        observed.demo = lifetime == 0 ? demo : DemoProfile::None;
         host = &observed;
         if (failing) {
             if (packed) {
@@ -182,9 +251,9 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
         }
         SRobotGameState result{41,42,43,44,45,46};
         const auto unchanged = result;
-        wchar_t map[] = L".\\synthetic.map";
+        std::wstring map = lifetime == 0 && demo != DemoProfile::None ? L".\\synthetic-DeMo.map" : L".\\synthetic.map";
         observed.entry_time = std::time(nullptr);
-        const int exit = entry->m_Run(GetModuleHandleW(nullptr), window.child, map, &settings,
+        const int exit = entry->m_Run(GetModuleHandleW(nullptr), window.child, map.data(), &settings,
             nullptr, nullptr, nullptr, nullptr, nullptr, &result);
         SetUnhandledExceptionFilter(nullptr);
         std::set_terminate([] { std::abort(); });
@@ -198,11 +267,14 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
         }
         std::cout << "fixture=synthetic-session-v1 packed=" << packed << " lifetime=" << lifetime << " result=" << exit
             << " seed_interval=[" << observed.entry_time << ',' << observed.first_progress_time
-            << "] ticks=" << observed.ticks << " moved=" << observed.moved << '\n';
+            << "] ticks=" << observed.ticks << " moved=" << observed.moved
+            << " demo=" << static_cast<int>(observed.demo) << " toggles=" << observed.toggles_observed << '\n';
         MG_CHECK(observed.failure.empty());
-        MG_CHECK(exit == (failing ? 100 : 0));
+        MG_CHECK(exit == (failing ? 100 : (observed.demo != DemoProfile::None ? 1 : 0)));
         if (failing && packed) MG_CHECK(observed.progress == 0 && !observed.map_observed && observed.ticks == 0);
         else MG_CHECK(observed.progress > 0 && observed.map_observed);
+        MG_CHECK(observed.initial_cheat_flags == 0);
+        MG_CHECK(observed.toggles_observed == observed.type_toggles);
         MG_CHECK(observed.begins == (failing ? 0 : 1));
         if (failing) {
             MG_CHECK(std::memcmp(&result, &unchanged, sizeof(result)) == 0);
@@ -211,7 +283,11 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
             MG_CHECK(diagnostic.find(packed ? "Invalid packed configuration: cfg\\robots.dat" :
                 "Error open file: cfg\\robots\\iface.txt") != std::string::npos);
         }
-        else {
+        else if (observed.demo != DemoProfile::None) {
+            MG_CHECK(observed.ticks >= 2 && observed.phase == 2);
+            MG_CHECK(observed.demo == DemoProfile::Escape ? observed.demo_exited : observed.pending_outcome);
+            MG_CHECK(observed.texts > 0 && observed.texts == observed.text_clears);
+        } else {
             MG_CHECK(observed.ticks >= 2 && observed.moved && observed.phase == 2);
             MG_CHECK(result.m_Time >= 0 && result.m_BuildRobot == 0 && result.m_KillRobot == 0 &&
                 result.m_BuildTurret == 0 && result.m_KillTurret == 0 && result.m_KillBuilding == 0);
@@ -238,6 +314,14 @@ void native_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationP
 void native_packed_header_failure() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader); }
 void pneumatic_retirement() { native_run_lifetimes_impl(false, ConfigurationProfile::RepeatedPneumaticCleanup); }
 void native_held_input_retirement() { native_run_lifetimes_impl(true); }
+void native_cheat_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, true); }
+void native_demo_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Escape); }
+void native_demo_win() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Win); }
+void native_demo_loss() { native_run_lifetimes_impl(false, ConfigurationProfile::Text, false, DemoProfile::Loss); }
+void native_cheat_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, true); }
+void native_demo_packed_lifetimes() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Escape); }
+void native_demo_packed_win() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Win); }
+void native_demo_packed_loss() { native_run_lifetimes_impl(false, ConfigurationProfile::InvalidPackedHeader, false, DemoProfile::Loss); }
 }
 int main(int argc, char **argv) {
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
@@ -246,6 +330,14 @@ int main(int argc, char **argv) {
     std::set_terminate([] { std::abort(); });
     const tests::Case cases[] = {
         {"game.session.native_run_lifetimes", native_run_lifetimes},
+        {"game.session.native_cheat_lifetimes", native_cheat_lifetimes},
+        {"game.session.native_demo_lifetimes", native_demo_lifetimes},
+        {"game.session.native_demo_win", native_demo_win},
+        {"game.session.native_demo_loss", native_demo_loss},
+        {"game.session.native_cheat_packed_lifetimes", native_cheat_packed_lifetimes},
+        {"game.session.native_demo_packed_lifetimes", native_demo_packed_lifetimes},
+        {"game.session.native_demo_packed_win", native_demo_packed_win},
+        {"game.session.native_demo_packed_loss", native_demo_packed_loss},
         {"game.session.native_packed_lifetimes", native_packed_lifetimes},
         {"game.session.native_packed_header_failure", native_packed_header_failure},
         {"game.session.pneumatic_retirement", pneumatic_retirement},
