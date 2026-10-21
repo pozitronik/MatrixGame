@@ -286,7 +286,7 @@ void native_run_lifetimes_impl(bool leave_key_held, ConfigurationProfile profile
         else if (observed.demo != DemoProfile::None) {
             MG_CHECK(observed.ticks >= 2 && observed.phase == 2);
             MG_CHECK(observed.demo == DemoProfile::Escape ? observed.demo_exited : observed.pending_outcome);
-            MG_CHECK(observed.texts == observed.text_clears);
+            MG_CHECK(observed.texts > 0 && observed.texts == observed.text_clears);
         } else {
             MG_CHECK(observed.ticks >= 2 && observed.moved && observed.phase == 2);
             MG_CHECK(result.m_Time >= 0 && result.m_BuildRobot == 0 && result.m_KillRobot == 0 &&
