@@ -188,7 +188,14 @@ void restart_buildings(CFormMatrixGame &form) {
         }
         base->Open();
         factory->SetNeutral();
-        map->GetPlayerSide()->AddResourceAmount(TITAN, 73);
+        for (int side = 1; side <= 2; ++side) for (int resource = 0; resource < MAX_RESOURCES; ++resource) {
+            auto *owner = map->GetSideById(side);
+            const auto kind = static_cast<ERes>(resource);
+            const int saved = 100 * side + 1 + resource;
+            const int changed = saved + 10 * side + resource + 1;
+            owner->AddResourceAmount(kind, changed - owner->GetResourcesAmount(kind));
+            MG_CHECK(owner->GetResourcesAmount(kind) == changed && changed != saved);
+        }
         MG_CHECK(base->State() == BASE_OPENING && factory->GetSide() == 0);
         press(VK_ESCAPE); press('R');
         MG_CHECK(map->m_DialogModeHints.size() == 2);

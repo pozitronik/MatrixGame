@@ -26,7 +26,7 @@ The fixture records its version, lifetime number, result, movement observation, 
 
 The [packed-configuration and pneumatic cleanup cases](85-native-packed-sessions.md) extend this fixture with isolated packed loading, invalid-header recovery and repeated animation-data retirement. They retain the same borrowed-host ownership checks.
 
-The [populated native Restart cases](85-native-population-restart.md) add base/factory and stored-cannon reconstruction, partially queued-cannon retirement, minimap drawing and restored terrain/slot ownership. Both text and isolated packed variants perform repeated menu-confirmed reloads and full Run recovery.
+The [populated native Restart cases](85-native-population-restart.md) check base/factory and stored-cannon reconstruction, partially queued-cannon retirement and restored terrain/slot ownership, and execute minimap drawing. Both text and isolated packed variants perform repeated menu-confirmed reloads and full Run recovery; image fidelity is not observed.
 
 ## Running
 
