@@ -24,9 +24,11 @@
 #include "input.hpp"
 #include "cheats.hpp"
 #include "SoundBridge.hpp"
+#include "loop_script.hpp"
 #include "audio_fixture.hpp"
 #include <climits>
 #include <cmath>
+#include <float.h>
 #include <string>
 #include <sstream>
 
@@ -1037,6 +1039,181 @@ void capture_move_reassignment() {
         for (int i = 0; i < 100; ++i) session.advance();
         MG_CHECK(session.robot(1).alive && session.robot(2).alive);
         MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    }
+}
+std::vector<std::string> player_placed_queue_run(random::Mode mode, int step, bool place_turret) {
+    tests::BattleCombatAssets assets;
+    Session session({mode, 79, step, 3000, false});
+    assets.install();
+    std::cout << session.metadata("capture-player-placed-queue-v2") << " turret=" << place_turret << '\n';
+    auto *base = register_building(PLAYER_SIDE, BUILDING_BASE, 500, 400);
+    auto &enemy = *g_MatrixMap->GetSideById(2);
+    using HeldCore = std::unique_ptr<SObjectCore, void (*)(SObjectCore *)>;
+    const auto release_core = [](SObjectCore *core) { core->Release(); };
+    std::array<HeldCore, 2> robot_cores{HeldCore(nullptr, release_core), HeldCore(nullptr, release_core)};
+    HeldCore turret_core(nullptr, release_core);
+    const auto check_queue = [&] {
+        auto *item = base->m_BS.GetTopItem();
+        for (const auto &core : robot_cores) {
+            MG_CHECK(core->m_Object != nullptr && item == core->m_Object);
+            MG_CHECK(item->IsRobot() && item->GetSide() == PLAYER_SIDE);
+            item = item->m_NextStackItem;
+        }
+        if (turret_core) {
+            MG_CHECK(turret_core->m_Object != nullptr && item == turret_core->m_Object);
+            MG_CHECK(item->IsCannon() && item->GetSide() == PLAYER_SIDE);
+            MG_CHECK(item->AsCannon()->m_CurrState == CANNON_UNDER_CONSTRUCTION);
+            MG_CHECK(item->AsCannon()->m_ParentBuilding == base);
+            item = item->m_NextStackItem;
+        }
+        MG_CHECK(item == nullptr);
+        MG_CHECK(base->m_BS.GetItemsCnt() == (turret_core ? 3 : 2));
+        MG_CHECK(base->m_TurretsHave == (turret_core ? 1 : 0));
+    };
+    std::vector<std::string> trace;
+    const auto record = [&] {
+        std::string state = session.snapshot() + ":" + std::to_string(base->GetSide()) +
+            ":" + std::to_string(base->m_State) + ":" + std::to_string(base->m_BS.GetItemsCnt()) +
+            ":" + std::to_string(base->m_TurretsHave) + ":" + std::to_string(base->m_Capturer != nullptr);
+        for (const auto &core : robot_cores) state += ":" + std::to_string(core->m_Object != nullptr);
+        state += ":" + std::to_string(turret_core && turret_core->m_Object != nullptr);
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            state += ":" + std::to_string(side().GetResourcesAmount(static_cast<ERes>(r))) +
+                ":" + std::to_string(enemy.GetResourcesAmount(static_cast<ERes>(r)));
+        trace.push_back(std::move(state));
+    };
+    g_Config.m_Timings[UNIT_ROBOT] = 100000;
+    g_Config.m_Timings[UNIT_TURRET] = 100000;
+    for (auto &cannon : g_Config.m_CannonsProps)
+        for (int &cost : cannon.m_Resources) cost = 1000;
+    auto &props = g_Config.m_CannonsProps[0];
+    props = {};
+    props.weapon = WEAPON_CANNON2;
+    props.m_Hitpoint = 1000;
+    props.m_Strength = 10;
+    props.seek_radius = 300;
+    props.max_da = 0.1f;
+    props.max_top_angle = 1.5f;
+    props.max_bottom_angle = -1.5f;
+    for (int r = 0; r < MAX_RESOURCES; ++r) {
+        g_Config.m_Price[CHASSIS2_TITAN + r] = 11 + r;
+        props.m_Resources[r] = 17 + r;
+        side().SetResourceAmount(static_cast<ERes>(r), 100);
+        enemy.SetResourceAmount(static_cast<ERes>(r), 0);
+    }
+    auto *model = tests::create_battle_cannon(PLAYER_SIDE, 480, 480);
+    g_MatrixMap->StaticDelete(model); // Leave the generated cannon geometry cached for real placement.
+    base->m_TurretsMax = BASE_TURRETS;
+    base->m_TurretsPlacesCnt = 1;
+    base->m_TurretsPlaces[0].m_Coord = CPoint(48, 48);
+    base->m_TurretsPlaces[0].m_CannonType = 1;
+    base->m_TurretsPlaces[0].m_Angle = 0;
+    CPoint places[MAX_PLACES];
+    MG_CHECK(base->GetPlacesForTurrets(places) == 1 && places[0] == CPoint(48, 48));
+    for (int i = 0; i < 2; ++i) {
+        auto robot = tests::make_engine_object<CMatrixRobotAI>();
+        robot->m_Side = PLAYER_SIDE;
+        robot->UnitInsert(0, MRT_CHASSIS, RUK_CHASSIS_WHEEL);
+        base->m_BS.AddItem(robot.get());
+        MG_CHECK(base->m_BS.GetItemsCnt() == i + 1);
+        robot_cores[i].reset(robot->GetCore(DEBUG_CALL_INFO));
+        robot.release();
+    }
+    CMatrixRobotAI *capturer = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsRobot() && session.matches(3, object->AsRobot())) capturer = object->AsRobot();
+    MG_CHECK(capturer != nullptr);
+    record();
+    check_queue();
+    capturer->CaptureFactory(base);
+    MG_CHECK(capturer->GetCaptureFactory() == base && capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    while (session.time() < 2000) { session.advance(); record(); }
+    std::cout << "entry state=" << base->m_State << " manual=" << capturer->IsDisableManual()
+              << " owner=" << base->GetSide() << " captured=" << (base->m_Capturer == capturer) << '\n';
+    MG_CHECK(base->m_State == BASE_OPENED && base->m_Capturer == capturer && capturer->IsDisableManual());
+    MG_CHECK(capturer->GetCaptureFactory() == base && capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+    if (place_turret) {
+        side().m_ActiveObject = base; // Synthetic initial building selection.
+        side().m_CurrSel = BASE_SELECTED;
+        g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(480, 480, 0);
+        g_IFaceList->BeginBuildTurret(1);
+        MG_CHECK(side().m_CurrentAction == BUILDING_TURRET && side().m_CannonForBuild.m_Cannon != nullptr);
+        g_MatrixMap->m_TraceStopObj = TRACE_STOP_LANDSCAPE;
+        auto direction = D3DXVECTOR3(400, 400, 0) - g_MatrixMap->m_Camera.GetFrustumCenter();
+        D3DXVec3Normalize(&g_MatrixMap->m_MouseDir, &direction);
+        session.advance(); // Production side logic rejects a ray outside the declared slot.
+        MG_CHECK(side().m_CannonForBuild.m_CanBuildFlag == 0);
+        side().OnLButtonDown(CPoint(0, 0));
+        MG_CHECK(base->m_BS.GetItemsCnt() == 2 && side().m_CannonForBuild.m_Cannon != nullptr);
+        direction = D3DXVECTOR3(480, 480, 0) - g_MatrixMap->m_Camera.GetFrustumCenter();
+        D3DXVec3Normalize(&g_MatrixMap->m_MouseDir, &direction);
+        session.advance();
+        MG_CHECK(side().m_CannonForBuild.m_CanBuildFlag == 1);
+        MG_CHECK(side().m_CannonForBuild.m_Cannon->m_Place == g_MatrixMap->m_RN.FindInPL(CPoint(48, 48)));
+        g_MatrixMap->Pause(true);
+        side().OnLButtonDown(CPoint(0, 0));
+        MG_CHECK(base->m_BS.GetItemsCnt() == 2 && base->m_TurretsHave == 0);
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100);
+        g_MatrixMap->Pause(false);
+        side().OnLButtonDown(CPoint(0, 0));
+        MG_CHECK(side().m_CurrentAction == NOTHING_SPECIAL && side().m_CannonForBuild.m_Cannon == nullptr);
+        MG_CHECK(base->m_BS.GetItemsCnt() == 3 && base->m_BS.GetRobotsCnt() == 2);
+        MG_CHECK(base->m_TurretsHave == 1);
+        auto *queued = base->m_BS.GetTopItem()->m_NextStackItem->m_NextStackItem;
+        MG_CHECK(queued->IsCannon() && queued->GetSide() == PLAYER_SIDE);
+        MG_CHECK(queued->AsCannon()->m_CurrState == CANNON_UNDER_CONSTRUCTION);
+        MG_CHECK(queued->AsCannon()->m_ParentBuilding == base);
+        MG_CHECK(queued->AsCannon()->m_Place == g_MatrixMap->m_RN.FindInPL(CPoint(48, 48)));
+        turret_core.reset(queued->GetCore(DEBUG_CALL_INFO));
+        for (int r = 0; r < MAX_RESOURCES; ++r)
+            MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100 - (17 + r));
+    } else {
+        session.advance();
+        session.advance();
+    }
+    MG_CHECK(session.time() == (step == 10 ? 2020 : 2032));
+    check_queue();
+    record();
+    const int transfer_at = step == 10 ? 5580 : 5600;
+    int transferred = 0;
+    while (session.time() < 15000 && !transferred) {
+        if (session.time() == transfer_at - step) {
+            MG_CHECK(base->GetSide() == PLAYER_SIDE && base->m_State == BASE_CLOSING);
+            MG_CHECK(session.robot(3).alive && (!turret_core || turret_core->m_Object != nullptr));
+            MG_CHECK(base->m_Capturer == capturer && capturer->GetCaptureFactory() == base);
+            MG_CHECK(capturer->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+        }
+        session.advance();
+        record();
+        if (base->GetSide() == 2) transferred = session.time();
+        else {
+            check_queue();
+            for (int r = 0; r < MAX_RESOURCES; ++r)
+                MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100 - (place_turret ? 17 + r : 0));
+        }
+    }
+    std::cout << "player base transfer=" << transferred << " queue=" << base->m_BS.GetItemsCnt() << '\n';
+    MG_CHECK(transferred == transfer_at && base->m_State == BASE_CLOSED);
+    MG_CHECK(base->m_Capturer == nullptr && !session.robot(3).alive && session.robot(4).alive);
+    MG_CHECK(base->m_BS.GetItemsCnt() == 0 && base->m_BS.GetTopItem() == nullptr && base->m_TurretsHave == 0);
+    for (const auto &core : robot_cores) MG_CHECK(core->m_Object == nullptr && core->m_Ref == 1);
+    MG_CHECK(!turret_core || (turret_core->m_Object == nullptr && turret_core->m_Ref == 1));
+    for (int r = 0; r < MAX_RESOURCES; ++r) {
+        MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100 + 2 * (11 + r));
+        MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(r)) == 0);
+    }
+    for (int i = 0; i < 100; ++i) { session.advance(); record(); }
+    MG_CHECK(base->GetSide() == 2 && base->m_State == BASE_CLOSED && !g_MatrixMap->IsPaused());
+    for (int r = 0; r < MAX_RESOURCES; ++r)
+        MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(r)) == 100 + 2 * (11 + r));
+    return trace;
+}
+void capture_player_placed_queue() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool place_turret : {false, true}) {
+        const auto first = player_placed_queue_run(mode, step, place_turret);
+        MG_CHECK(first == player_placed_queue_run(mode, step, place_turret));
     }
 }
 void registered_base_capture_profile(CaptureRoute route) {
@@ -2331,6 +2508,221 @@ void result_command_boundary() {
         MG_CHECK(FLAG(g_Flags, GFLAG_EXITLOOP) && g_ExitState == (loss ? 2 : 3));
     }
 }
+enum class LoopResultRoute { Exit, Surrender, LegacyLoss, Statistics, GenericShift, LeftShift, RightShift };
+#ifdef _TRACE
+constexpr bool result_trace_build = true;
+#else
+constexpr bool result_trace_build = false;
+#endif
+struct ResultLoopForm : CFormMatrixGame {
+    Session &session;
+    CForm *previous = g_FormCur;
+    std::vector<int> ticks;
+    std::vector<std::string> trace;
+    std::array<RobotState, 2> moving{};
+    int frozen_time{};
+    uint64_t frozen_draws{};
+    unsigned draws{}, paused_ticks{};
+    bool frozen{};
+    explicit ResultLoopForm(Session &value) : session(value) {
+        g_FormCur = this;
+        SETFLAG(g_Flags, GFLAG_APPACTIVE);
+        SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+    }
+    ~ResultLoopForm() { g_FormCur = previous; }
+    std::string snapshot() const {
+        std::ostringstream out;
+        out << session.snapshot() << ':' << g_ExitState << ':' << g_MatrixMap->IsPaused()
+            << ':' << bool(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN)) << ':' << side().m_CurrSel;
+        if (g_MatrixMap->m_DialogModeName)
+            for (const wchar_t *name = g_MatrixMap->m_DialogModeName; *name; ++name) out << ':' << unsigned(*name);
+        // Active side ticks update scores from timeGetTime(), outside the scripted clock.
+        if (g_MatrixMap->IsPaused() || FLAG(g_Flags, GFLAG_EXITLOOP))
+            out << ':' << side().GetStatValue(STAT_TIME) << ':' << g_MatrixMap->GetSideById(2)->GetStatValue(STAT_TIME);
+        return out.str();
+    }
+    void freeze() {
+        moving = {session.robot(1), session.robot(2)};
+        for (const auto &robot : moving) MG_CHECK(robot.alive && robot.order == mpo_MoveTo && robot.x > 100);
+        frozen_time = session.time();
+        frozen_draws = random::draw_count();
+        frozen = true;
+    }
+    void check_frozen() const {
+        MG_CHECK(frozen && session.time() == frozen_time && random::draw_count() == frozen_draws);
+        for (const auto &robot : moving) check_retained_move(session, robot);
+    }
+    void Takt(int delta) override {
+        MG_CHECK(draws == ticks.size());
+#if defined(__MINGW32__)
+        MG_CHECK((_controlfp(0, 0) & _MCW_PC) == _PC_24);
+#endif
+        const int before = session.time();
+        const bool paused = g_MatrixMap->IsPaused() ||
+            FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG | MMFLAG_STAT_DIALOG_D);
+        ticks.push_back(delta);
+        CFormMatrixGame::Takt(delta);
+        MG_CHECK(session.time() == before + (paused ? 0 : delta));
+        if (g_MatrixMap->IsPaused()) { ++paused_ticks; check_frozen(); }
+#if defined(__MINGW32__)
+        MG_CHECK((_controlfp(0, 0) & _MCW_PC) == _PC_24);
+#endif
+    }
+    void Draw() override {
+        MG_CHECK(draws + 1 == ticks.size());
+        MG_CHECK(!FLAG(g_Flags, GFLAG_EXITLOOP | GFLAG_APPCLOSE));
+        ++draws;
+        g_MatrixMap->m_Camera.BeforeDraw();
+        trace.push_back(snapshot());
+    }
+};
+void result_loop_key(tests::loop::Round &round, uint8_t key) {
+    round.messages.emplace_back(WM_KEYDOWN, key);
+    round.messages.emplace_back(WM_KEYUP, key);
+}
+std::vector<std::string> result_loop_run(random::Mode mode, int step, LoopResultRoute route) {
+    constexpr bool cheats = MATRIXGAME_SCENARIO_CHEATS != 0;
+    const bool menu = route == LoopResultRoute::Exit || route == LoopResultRoute::Surrender;
+    const bool legacy = route == LoopResultRoute::LegacyLoss;
+    const bool statistics = route == LoopResultRoute::Statistics;
+    const bool shift_input = route == LoopResultRoute::GenericShift ||
+        route == LoopResultRoute::LeftShift || route == LoopResultRoute::RightShift;
+    const bool forced_trace = result_trace_build &&
+        (route == LoopResultRoute::LeftShift || route == LoopResultRoute::RightShift);
+    const bool terminal = menu || (legacy && cheats) || forced_trace;
+    const bool paused_control = !terminal && (shift_input || (statistics && cheats));
+    const int result = route == LoopResultRoute::Exit ? 1 : route == LoopResultRoute::Surrender ? 4 :
+        route == LoopResultRoute::LeftShift ? 2 : 3;
+    Session session({mode, 85, step, 1000, false});
+    CallbackDialogs dialogs;
+    ResultLoopForm form(session);
+    std::cout << session.metadata("loop-result-continuation-v1") << " route=" << int(route)
+              << " trace_build=" << result_trace_build << '\n';
+    auto &enemy = *g_MatrixMap->GetSideById(2);
+    session.ground_command(500, 300);
+    side().PLDropAllActions(); // Keep the Move while ordinary shortcut letters have no selected group.
+    MG_CHECK(side().GetCurGroup() == nullptr);
+    tests::loop::Script script;
+    const int last = terminal ? 29 : 55;
+    for (int index = 0; index <= last; ++index) script.rounds.push_back({(index + 1) * step * 1000LL, {}});
+    auto &trigger = script.rounds[25];
+    if (menu) result_loop_key(trigger, VK_ESCAPE);
+    else if (legacy || statistics) {
+        for (const char *word = legacy ? "IAMLOOSER" : "STATS"; *word; ++word)
+            result_loop_key(trigger, static_cast<uint8_t>(*word));
+    } else {
+        const uint8_t shift = route == LoopResultRoute::LeftShift ? VK_LSHIFT :
+            route == LoopResultRoute::RightShift ? VK_RSHIFT : VK_SHIFT;
+        trigger.messages.emplace_back(WM_KEYDOWN, shift);
+        result_loop_key(trigger, VK_ESCAPE);
+        trigger.messages.emplace_back(WM_KEYUP, shift);
+    }
+    const auto dialog_is = [&](const wchar_t *name) {
+        MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == name);
+    };
+    trigger.after_messages = [&] {
+        if (terminal || paused_control) {
+            side().SetStatValue(STAT_TIME, 1234);
+            enemy.SetStatValue(STAT_TIME, 5678);
+        }
+        form.freeze();
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !FLAG(g_Flags, GFLAG_EXITLOOP));
+        if (terminal) {
+            dialog_is(menu ? TEMPLATE_DIALOG_MENU : result == 2 ? TEMPLATE_DIALOG_LOOSE : TEMPLATE_DIALOG_WIN);
+            MG_CHECK(g_ExitState == (menu ? 0 : result) && g_MatrixMap->IsPaused());
+        } else if (statistics && cheats) {
+            MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG_D) && g_ExitState == 0);
+        } else if (paused_control) {
+            dialog_is(TEMPLATE_DIALOG_MENU);
+            MG_CHECK(g_ExitState == 0 && g_MatrixMap->IsPaused());
+        } else MG_CHECK(!g_MatrixMap->m_DialogModeName && !g_MatrixMap->IsPaused() && g_ExitState == 0);
+    };
+    std::string closed_state;
+    if (terminal) {
+        if (menu) {
+            result_loop_key(script.rounds[26], route == LoopResultRoute::Exit ? 'E' : 'S');
+            script.rounds[26].after_messages = [&] {
+                MG_CHECK(g_MatrixMap->m_DialogModeHints.size() == 2 && !FLAG(g_Flags, GFLAG_EXITLOOP));
+                form.check_frozen();
+            };
+        }
+        result_loop_key(script.rounds[27], VK_RETURN);
+        script.rounds[27].after_messages = [&] {
+            MG_CHECK(g_ExitState == result && FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG));
+            MG_CHECK(!g_MatrixMap->m_DialogModeName && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            form.check_frozen();
+        };
+        script.rounds[28].after_messages = [&] {
+            dialog_is(TEMPLATE_DIALOG_STATISTICS);
+            MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+            form.check_frozen();
+        };
+        result_loop_key(script.rounds[29], VK_RETURN);
+        script.rounds[29].after_messages = [&] {
+            MG_CHECK(FLAG(g_Flags, GFLAG_EXITLOOP) && !FLAG(g_Flags, GFLAG_APPCLOSE));
+            MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+            form.check_frozen();
+            closed_state = form.snapshot();
+        };
+    } else {
+        if (paused_control) {
+            script.rounds[27].after_messages = [&] {
+                dialog_is(statistics ? TEMPLATE_DIALOG_STATISTICS_D : TEMPLATE_DIALOG_MENU);
+                MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_Flags, GFLAG_EXITLOOP));
+                form.check_frozen();
+            };
+            result_loop_key(script.rounds[28], statistics ? VK_RETURN : VK_ESCAPE);
+            script.rounds[28].after_messages = [&] {
+                MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName && g_ExitState == 0);
+                MG_CHECK(side().GetStatValue(STAT_TIME) == 1234 && enemy.GetStatValue(STAT_TIME) == 5678);
+                form.check_frozen();
+            };
+        }
+        script.rounds[55].messages.emplace_back(WM_CLOSE, 0);
+        script.rounds[55].after_messages = [&] { closed_state = form.snapshot(); };
+    }
+    MG_CHECK(L3GRun(script.platform()) == 1);
+    MG_CHECK(!closed_state.empty() && closed_state == form.snapshot());
+    MG_CHECK(form.draws == (terminal ? 29u : 55u) && form.ticks.size() == form.draws);
+    MG_CHECK(form.paused_ticks == (terminal ? 4u : paused_control ? 3u : 0u));
+    MG_CHECK(script.round == script.rounds.size() && script.clock_reads == form.draws + 1 && script.waits == 0);
+    for (int delta : form.ticks) MG_CHECK(delta == step);
+    MG_CHECK(g_ExitState == (terminal ? result : 0));
+    MG_CHECK(bool(FLAG(g_Flags, GFLAG_EXITLOOP)) == terminal && bool(FLAG(g_Flags, GFLAG_APPCLOSE)) == !terminal);
+    MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+    MG_CHECK(g_MatrixMap->m_DialogModeHints.empty() && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    MG_CHECK(side().GetStatus() == SS_ACTIVE);
+    if (terminal) {
+        MG_CHECK(side().GetStatValue(STAT_TIME) == 1234);
+        MG_CHECK(enemy.GetStatValue(STAT_TIME) == (route == LoopResultRoute::Surrender ? -5678 : 5678));
+    }
+    MG_CHECK(!Input::isVKeyPressed(VK_SHIFT) && !Input::isVKeyPressed(VK_LSHIFT) && !Input::isVKeyPressed(VK_RSHIFT));
+    if (terminal) form.check_frozen();
+    else {
+        MG_CHECK(session.time() == (paused_control ? 52 : 55) * step);
+        for (const auto &before : form.moving) {
+            const auto robot = session.robot(before.id);
+            MG_CHECK(robot.alive && robot.order == mpo_MoveTo && robot.x > before.x);
+        }
+    }
+    form.trace.push_back(closed_state);
+    return form.trace;
+}
+void loop_menu_result_exit() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (auto route : {LoopResultRoute::Exit, LoopResultRoute::Surrender}) {
+        const auto first = result_loop_run(mode, step, route);
+        MG_CHECK(first == result_loop_run(mode, step, route));
+    }
+}
+void loop_diagnostic_result_exit() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (auto route : {LoopResultRoute::LegacyLoss, LoopResultRoute::Statistics, LoopResultRoute::GenericShift,
+                      LoopResultRoute::LeftShift, LoopResultRoute::RightShift}) {
+        const auto first = result_loop_run(mode, step, route);
+        MG_CHECK(first == result_loop_run(mode, step, route));
+    }
+}
 int guarded_base_capturers(CMatrixBuilding *base, int group) {
     int count = 0;
     for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
@@ -2575,6 +2967,8 @@ void guarded_base_profile(bool destroy) {
 void guarded_base_journey() { guarded_base_profile(false); }
 void guarded_base_target_destruction() { guarded_base_profile(true); }
 constexpr tests::Case cases[] = {
+    {"game.loop.menu_result_exit", loop_menu_result_exit},
+    {"game.loop.diagnostic_result_exit", loop_diagnostic_result_exit},
 #ifdef _TRACE
     {"game.outcome.trace_result_callbacks", trace_result_callbacks},
 #endif
@@ -2639,6 +3033,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.capture_queue_refund", capture_queue_refund},
     {"game.outcome.capture_income_continuity", capture_income_continuity},
     {"game.outcome.capture_turret_refund", capture_turret_refund},
+    {"game.outcome.capture_player_placed_queue", capture_player_placed_queue},
     {"game.outcome.capture_move_reassignment", capture_move_reassignment},
     {"game.outcome.paused_orders", paused_orders},
     {"game.outcome.pending_result_pause", pending_result_pause},

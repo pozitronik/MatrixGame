@@ -36,7 +36,19 @@ std::pair<std::wstring, std::wstring> split(const std::wstring &file) {
     return {folded(file.substr(0, dot)), folded(file.substr(dot + 1))};
 }
 
-std::wstring in_folder(const std::wstring &file) { return std::wstring(folder) + L"\\" + file; }
+std::wstring in_folder(const wchar_t *directory, const std::wstring &file) {
+    return std::wstring(directory) + L"\\" + file;
+}
+
+std::vector<std::wstring> loose_files(const wchar_t *directory) {
+    std::vector<std::wstring> files;
+    std::error_code error;
+    for (std::filesystem::directory_iterator it(std::filesystem::path(directory), error), end; !error && it != end;
+         it.increment(error)) {
+        if (it->is_regular_file(error)) files.push_back(it->path().filename().wstring());
+    }
+    return files;
+}
 
 }  // namespace
 
@@ -54,31 +66,37 @@ bool valid_path(std::wstring_view path) {
     return true;
 }
 
-std::vector<Map> merge(const std::vector<std::wstring> &packed, const std::vector<std::wstring> &loose) {
+std::vector<Map> merge(const std::vector<std::wstring> &packed, const std::vector<std::wstring> &loose,
+                       const std::vector<std::wstring> &external, const std::vector<std::wstring> &data) {
     struct Found {
         Map map;
         bool present = false;
         std::wstring preview[2];  // jpg, png
     };
     std::map<std::wstring, Found> found;
-    // Packaged names first, so that a loose name replaces them.
-    for (const auto *source : {&packed, &loose}) {
-        const bool is_loose = source == &loose;
-        for (const auto &file : *source) {
+    struct Source {
+        const std::vector<std::wstring> &files;
+        const wchar_t *directory;
+        bool loose;
+    };
+    // Visit lower priorities first so higher-priority loose files replace them.
+    for (const auto &source : {Source{packed, folder, false}, Source{loose, folder, true},
+                               Source{data, data_folder, true}, Source{external, external_folder, true}}) {
+        for (const auto &file : source.files) {
             if (!printable(file)) continue;
             const auto [stem, extension] = split(file);
             if (stem.empty()) continue;
             auto &entry = found[stem];
             if (extension == L"cmap") {
-                if (entry.present && !is_loose) continue;  // The first packaged map wins, as the loader opens it.
+                if (entry.present && !source.loose) continue;  // The first packaged map wins, as the loader opens it.
                 entry.map.name = file.substr(0, file.size() - 5);
-                entry.map.path = in_folder(file);
-                entry.map.loose = is_loose;
+                entry.map.path = in_folder(source.directory, file);
+                entry.map.loose = source.loose;
                 entry.present = true;
             }
             else if (extension == L"jpg" || extension == L"png") {
                 auto &preview = entry.preview[extension == L"jpg" ? 0 : 1];
-                if (preview.empty() || is_loose) preview = in_folder(file);
+                if (preview.empty() || source.loose) preview = in_folder(source.directory, file);
             }
         }
     }
@@ -93,13 +111,8 @@ std::vector<Map> merge(const std::vector<std::wstring> &packed, const std::vecto
 }
 
 std::vector<Map> scan() {
-    std::vector<std::wstring> loose;
-    std::error_code error;
-    for (std::filesystem::directory_iterator it(std::filesystem::path(folder), error), end; !error && it != end;
-         it.increment(error)) {
-        if (it->is_regular_file(error)) loose.push_back(it->path().filename().wstring());
-    }
-    return merge(Base::CFile::PackedFileNames(folder), loose);
+    return merge(Base::CFile::PackedFileNames(folder), loose_files(folder), loose_files(external_folder),
+                 loose_files(data_folder));
 }
 
 int find(const std::vector<Map> &maps, std::wstring_view path) {

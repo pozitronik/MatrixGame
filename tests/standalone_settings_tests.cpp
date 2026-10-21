@@ -284,6 +284,13 @@ void save_creates_file() {
     if (!StandaloneSettings::save(custom(), error)) throw std::runtime_error(error);
     MG_CHECK(std::filesystem::exists(L"CFG\\standalone.txt"));
     MG_CHECK(StandaloneSettings::load().values == custom());
+    for (const auto *map : {L"maps\\Custom (2).cmap", L"DATA\\maps\\Custom.cmap"}) {
+        auto values = custom();
+        values.map = map;
+        MG_CHECK(StandaloneSettings::save(values, error));
+        const auto loaded = StandaloneSettings::load();
+        MG_CHECK(loaded.invalid.empty() && loaded.values == values);
+    }
     const auto missing = StandaloneSettings::load(L"CFG\\absent.txt");
     MG_CHECK(missing.invalid.empty() && missing.values == Values{});
 }

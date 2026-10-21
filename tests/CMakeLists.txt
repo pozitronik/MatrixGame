@@ -140,6 +140,7 @@ foreach(contract package_tree package_handles package_malformed package_file_fal
 endforeach()
 add_matrix_test(base.layout.package_listing matrixgame_layout_tests base storage pack)
 add_matrix_test(game.maps.sources matrixgame_layout_tests startup storage pack)
+add_matrix_test(game.maps.external_sources matrixgame_layout_tests startup storage pack)
 add_matrix_test(base.layout.raw_records matrixgame_layout_tests base storage)
 
 add_matrix_test_executable(matrixgame_error_tests error_tests.cpp)
@@ -219,7 +220,7 @@ endforeach()
 
 add_matrix_test_executable(matrixgame_map_catalog_tests map_catalog_tests.cpp ../MatrixGame/src/MapCatalog.cpp)
 target_include_directories(matrixgame_map_catalog_tests PRIVATE ${PROJECT_SOURCE_DIR}/MatrixGame/src)
-foreach(contract merge unsafe_names paths)
+foreach(contract merge external_folders unsafe_names paths)
     add_matrix_test(game.maps.${contract} matrixgame_map_catalog_tests startup ui)
 endforeach()
 
@@ -674,6 +675,8 @@ endforeach()
 foreach(contract capture_keyboard_completion capture_button_completion)
     add_matrix_test(game.player.${contract} matrixgame_battle_outcome_scenarios gameplay input)
 endforeach()
+add_matrix_test(game.outcome.capture_player_placed_queue matrixgame_battle_outcome_scenarios gameplay input)
+
 foreach(contract typed_statistics_continuation result_command_boundary legacy_loss_confirmation pending_result_menu menu_exit_surrender_callbacks statistics_cheat_dismissal result_confirmation_callbacks menu_confirmation_cancel base_capture_interruption protected_base_command full_auto_escape legacy_loss_cheat paused_orders)
     add_matrix_test(game.outcome.${contract} matrixgame_battle_outcome_scenarios gameplay input)
 endforeach()
@@ -683,6 +686,9 @@ endforeach()
 if(MATRIXGAME_TRACE)
     add_matrix_test(game.outcome.trace_result_callbacks matrixgame_battle_outcome_scenarios gameplay input)
 endif()
+foreach(contract menu_result_exit diagnostic_result_exit)
+    add_matrix_test(game.loop.${contract} matrixgame_battle_outcome_scenarios gameplay input startup)
+endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_chassis_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp navigation_damage_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -805,6 +811,9 @@ target_compile_definitions(matrixgame_battle_restart_scenarios PRIVATE
 foreach(contract movement pending_win pending_loss retired_group)
     add_matrix_test(game.restart.${contract} matrixgame_battle_restart_scenarios gameplay startup)
 endforeach()
+if(NOT MATRIXGAME_BUILD_DLL)
+    add_matrix_test(game.restart.saved_settings matrixgame_battle_restart_scenarios gameplay settings startup)
+endif()
 
 add_matrix_test_executable(matrixgame_map_window_scenarios map_window_scenarios.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -851,3 +860,15 @@ if(MATRIXGAME_BUILD_DLL)
         add_matrix_test(game.session.held_input_retirement matrixgame_native_session_fixture gameplay startup input native native-process)
     endif()
 endif()
+
+add_matrix_test_executable(matrixgame_loop_battle_scenarios loop_battle_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_loop_battle_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_loop_battle_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_loop_battle_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_loop_battle_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract speed_movement focus_movement)
+    add_matrix_test(game.loop.${contract} matrixgame_loop_battle_scenarios gameplay input)
+endforeach()
