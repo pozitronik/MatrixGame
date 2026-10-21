@@ -2279,14 +2279,17 @@ std::wstring objective_descriptor(const std::wstring &behavior) {
     }
     return result;
 }
-void install_objective_catalog(const std::wstring &behavior, bool terron = false) {
+void install_objective_descriptors(std::span<const std::wstring> behaviors, bool terron) {
     MG_CHECK(g_MatrixMap->m_IdsCnt == 1);
     const auto map_name = g_MatrixMap->m_Ids[0];
     g_MatrixMap->m_Ids[0].~basic_string();
     HFree(g_MatrixMap->m_Ids, g_MatrixHeap);
-    g_MatrixMap->m_Ids = static_cast<std::wstring *>(HAlloc(3 * sizeof(std::wstring), g_MatrixHeap));
+    std::vector<std::wstring> entries;
+    for (const auto &behavior : behaviors) entries.push_back(objective_descriptor(behavior));
+    entries.push_back(map_name);
+    g_MatrixMap->m_Ids = static_cast<std::wstring *>(HAlloc(entries.size() * sizeof(std::wstring), g_MatrixHeap));
     g_MatrixMap->m_IdsCnt = 0;
-    for (const auto &entry : {objective_descriptor(behavior), objective_descriptor(L"Static"), map_name}) {
+    for (const auto &entry : entries) {
         new(g_MatrixMap->m_Ids + g_MatrixMap->m_IdsCnt) std::wstring(entry);
         ++g_MatrixMap->m_IdsCnt;
     }
@@ -2295,9 +2298,13 @@ void install_objective_catalog(const std::wstring &behavior, bool terron = false
     tests::load_battle_material_mesh({}, L"synthetic-objective/box.vo", L"synthetic-objective/surface", false,
         terron ? std::span<const wchar_t *const>(terron_animations) : std::span<const wchar_t *const>{});
 }
-CMatrixMapObject *create_objective(float x) {
+void install_objective_catalog(const std::wstring &behavior, bool terron = false) {
+    const std::array<std::wstring, 2> behaviors{behavior, L"Static"};
+    install_objective_descriptors(behaviors, terron);
+}
+CMatrixMapObject *create_objective(float x, int type = 0, bool special = true) {
     auto *object = g_MatrixMap->StaticAdd<CMatrixMapObject>();
-    object->Init(0);
+    object->Init(type);
     std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(object->GetCore(DEBUG_CALL_INFO),
         [](SObjectCore *value) { value->Release(); });
     core->m_Matrix._41 = x;
@@ -2305,7 +2312,7 @@ CMatrixMapObject *create_objective(float x) {
     core->m_Matrix._43 = g_MatrixMap->GetZ(x, 100);
     object->RNeed(MR_Matrix | MR_Graph);
     object->JoinToGroup();
-    MG_CHECK(object->IsSpecial() && object->m_BreakHitPoint == 10);
+    MG_CHECK(object->IsSpecial() == special && object->m_BreakHitPoint == 10);
     return object;
 }
 std::vector<std::string> special_object_run(random::Mode mode, int family, int step) {
@@ -2495,6 +2502,298 @@ void terron_destruction_run(bool collateral, int step, int blast_damage = 600) {
 void terron_destruction() { for (int step : {10, 16}) terron_destruction_run(false, step); }
 void terron_blast_after_conversion() {
     for (int step : {10, 16}) for (int damage : {600, 1200}) terron_destruction_run(true, step, damage);
+}
+
+struct ObjectiveIdentity {
+    CMatrixMapObject *object;
+    SObjectCore *core;
+    explicit ObjectiveIdentity(CMatrixMapObject *value) : object(value), core(value->GetCore(DEBUG_CALL_INFO)) {}
+    ObjectiveIdentity(const ObjectiveIdentity &) = delete;
+    ObjectiveIdentity &operator=(const ObjectiveIdentity &) = delete;
+    ~ObjectiveIdentity() { core->Release(); }
+};
+// Stable object order in these snapshots is fixture identity, never a pointer or UID.
+std::string mixed_objective_snapshot(Session &session, std::span<const ObjectiveIdentity> objects) {
+    std::string state = session.snapshot() + ":" + std::to_string(g_MatrixMap->m_BeforeWinCount) + ":" +
+        std::to_string(g_MatrixMap->m_Flags & (MMFLAG_WIN | MMFLAG_SPECIAL_BROKEN | MMFLAG_TERRON_DEAD)) + ":" +
+        std::to_string(side().GetStatus()) + ":" + std::to_string(g_MatrixMap->GetSideById(2)->GetStatus()) + ":" +
+        std::to_string(side().GetStatValue(STAT_BUILDING_KILL)) + ":" + std::to_string(side().GetStatValue(STAT_ROBOT_KILL)) + ":" +
+        std::to_string(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL)) + ":" +
+        std::to_string(g_MatrixMap->IsPaused()) + ":" +
+        std::to_string(g_MatrixMap->m_DialogModeName ?
+            (std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN ? 1 : 2) : 0);
+    for (const auto &identity : objects) {
+        MG_CHECK(identity.core->m_Object == identity.object);
+        const auto *object = identity.object;
+        state += ":" + std::to_string(object->m_Type) + ":" + std::to_string(object->m_BehFlag) + ":" +
+            std::to_string(object->IsSpecial()) + ":" + std::to_string(object->m_BreakHitPoint) + ":" +
+            std::to_string(object->m_BehFlag == BEHF_ANIM ? object->m_AnimState : -1) + ":" +
+            std::to_string(object->m_PB != nullptr);
+    }
+    return state;
+}
+void hit_objective(CMatrixMapObject *object, int attacker = PLAYER_SIDE) {
+    object->Damage(WEAPON_LASER, object->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), attacker, nullptr);
+}
+void lose_last_objective_robot(Session &session) {
+    MG_CHECK(!session.robot(1).alive && session.robot(2).alive);
+    CMatrixRobotAI *last = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsRobot() && session.matches(2, object->AsRobot())) last = object->AsRobot();
+    MG_CHECK(last != nullptr);
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {10000, 0, 0};
+    MG_CHECK(last->Damage(WEAPON_LASER, last->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+    MG_CHECK(!session.robot(2).alive);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+}
+void check_objective_threshold(CMatrixMapObject *object) {
+    auto &damage = g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)];
+    damage = {4, 0, 6};
+    const auto rejected_draws = random::draw_count();
+    hit_objective(object, 2);
+    MG_CHECK(object->m_BreakHitPoint == 10 && object->m_PB == nullptr);
+    MG_CHECK(random::draw_count() == rejected_draws);
+    hit_objective(object);
+    MG_CHECK(object->m_BreakHitPoint == 6 && object->m_PB != nullptr);
+    const auto threshold_draws = random::draw_count();
+    hit_objective(object);
+    MG_CHECK(object->m_BreakHitPoint == 6 && object->IsSpecial());
+    MG_CHECK(random::draw_count() == threshold_draws);
+}
+std::vector<std::string> mixed_special_order_run(random::Mode mode, int step, bool animation_first, bool loss_before) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, step, 1500, false});
+    assets.install(); crater.install();
+    DialogData dialog;
+    const std::array<std::wstring, 3> descriptors{L"+Break,1,10,None", L"Static", L"+Anim,0:0:10:1#1:0:0:-1"};
+    install_objective_descriptors(descriptors, false);
+    auto *broken = create_objective(600);
+    auto *animated = create_objective(550, 2);
+    const std::array objects{ObjectiveIdentity(broken), ObjectiveIdentity(animated)};
+    auto *first = animation_first ? animated : broken;
+    auto *last = animation_first ? broken : animated;
+    MG_CHECK(session.remove(1));
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 2);
+    std::cout << session.metadata("synthetic-mixed-special-order-v2") << " animation_first=" << animation_first
+              << " loss_before=" << loss_before << '\n';
+    std::vector<std::string> trace;
+    const auto observe = [&] { trace.push_back(mixed_objective_snapshot(session, objects)); };
+    const auto tick_to = [&](int until) {
+        while (session.time() < until) { MG_CHECK(!g_MatrixMap->IsPaused()); session.advance(); observe(); }
+        MG_CHECK(session.time() == until);
+    };
+    observe();
+    for (const auto &identity : objects) { check_objective_threshold(identity.object); observe(); }
+    g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)] = {6, 0, 0};
+    hit_objective(first); observe();
+    MG_CHECK(!first->IsSpecial() && last->IsSpecial());
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && side().GetStatValue(STAT_BUILDING_KILL) == 1);
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN | MMFLAG_WIN));
+    MG_CHECK(side().GetStatus() == SS_ACTIVE);
+    if (loss_before) {
+        tick_to(step == 10 ? 2010 : 2016);
+        lose_last_objective_robot(session); observe();
+    }
+    tick_to(step == 10 ? 2020 : 2032);
+    MG_CHECK(!g_MatrixMap->m_DialogModeName && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    MG_CHECK(side().GetStatus() == (loss_before ? SS_NONE : SS_ACTIVE));
+    hit_objective(last); observe();
+    MG_CHECK(!last->IsSpecial() && g_MatrixMap->m_BeforeWinCount == 0);
+    MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN) && side().GetStatus() == SS_JUST_WIN);
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 2);
+    MG_CHECK(broken->m_Type == 1 && broken->m_BehFlag == BEHF_STATIC && broken->m_PB == nullptr);
+    MG_CHECK(animated->m_Type == 2 && animated->m_BehFlag == BEHF_ANIM && animated->m_AnimState == 1);
+    MG_CHECK(animated->m_BreakHitPoint == 2000000000 && animated->m_PB == nullptr);
+    if (!loss_before) { lose_last_objective_robot(session); observe(); }
+    hit_objective(first); hit_objective(last); observe();
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && side().GetStatValue(STAT_BUILDING_KILL) == 2);
+    tick_to(step == 10 ? 4020 : 4032);
+    MG_CHECK(side().GetStatus() == SS_JUST_WIN && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    tick_to(step == 10 ? 4030 : 4048);
+    if (loss_before) {
+        // A pending defeat is not replaced by a later special-object win request.
+        MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+        MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN) && side().GetStatus() == SS_JUST_WIN);
+        MG_CHECK(!session.robot(1).alive && !session.robot(2).alive && session.robot(3).alive && session.robot(4).alive);
+        std::cout << "mixed scan-first loss=" << session.time() << " draws=" << random::draw_count() << '\n';
+        return trace;
+    }
+    MG_CHECK(side().GetStatus() == SS_ACTIVE && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    MG_CHECK(!g_MatrixMap->m_DialogModeName);
+    tick_to(step == 10 ? 6030 : 6048);
+    MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+    session.advance(); observe();
+    std::cout << "mixed result=" << session.time() << " draws=" << random::draw_count() << '\n';
+    MG_CHECK(session.time() == (step == 10 ? 6040 : 6064));
+    MG_CHECK(g_MatrixMap->IsPaused() && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
+    MG_CHECK(side().GetStatus() == SS_ACTIVE && side().GetStatValue(STAT_BUILDING_KILL) == 2);
+    MG_CHECK(!session.robot(1).alive && !session.robot(2).alive && session.robot(3).alive && session.robot(4).alive);
+    return trace;
+}
+void mixed_special_order() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        for (bool animation_first : {false, true}) for (bool loss_before : {false, true}) {
+            const auto first = mixed_special_order_run(mode, step, animation_first, loss_before);
+            MG_CHECK(first == mixed_special_order_run(mode, step, animation_first, loss_before));
+        }
+}
+std::vector<std::string> ordinary_objective_control_run(random::Mode mode, int step) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, step, 1500, false});
+    assets.install(); crater.install();
+    DialogData dialog;
+    const std::array<std::wstring, 3> descriptors{L"+Break,1,10,None", L"Static", L"Break,1,10,None"};
+    install_objective_descriptors(descriptors, false);
+    auto *special = create_objective(600);
+    auto *ordinary = create_objective(550, 2, false);
+    const std::array objects{ObjectiveIdentity(special), ObjectiveIdentity(ordinary)};
+    MG_CHECK(session.remove(1) && session.remove(3) && session.remove(4));
+    std::cout << session.metadata("synthetic-ordinary-objective-control-v1") << '\n';
+    std::vector<std::string> trace;
+    const auto observe = [&] { trace.push_back(mixed_objective_snapshot(session, objects)); };
+    observe();
+    g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)] = {10, 0, 0};
+    hit_objective(ordinary, 2); observe();
+    MG_CHECK(ordinary->m_Type == 1 && ordinary->m_BehFlag == BEHF_STATIC && !ordinary->IsSpecial());
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && special->IsSpecial() && special->m_BreakHitPoint == 10);
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 0 && ordinary->m_PB == nullptr);
+    hit_objective(ordinary); observe();
+    while (session.time() < (step == 10 ? 2020 : 2032)) { session.advance(); observe(); }
+    MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName && side().GetStatus() == SS_ACTIVE);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatus() == SS_NONE);
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN | MMFLAG_SPECIAL_BROKEN | MMFLAG_TERRON_DEAD));
+    lose_last_objective_robot(session); observe();
+    while (session.time() < (step == 10 ? 6030 : 6048)) {
+        MG_CHECK(!g_MatrixMap->IsPaused()); session.advance(); observe();
+        if (session.time() == (step == 10 ? 4020 : 4032)) MG_CHECK(side().GetStatus() == SS_ACTIVE);
+        if (session.time() == (step == 10 ? 4030 : 4048)) MG_CHECK(side().GetStatus() == SS_NONE);
+        MG_CHECK(!g_MatrixMap->m_DialogModeName && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    }
+    MG_CHECK(!g_MatrixMap->m_DialogModeName);
+    session.advance(); observe();
+    std::cout << "ordinary result=" << session.time() << " draws=" << random::draw_count() << '\n';
+    MG_CHECK(session.time() == (step == 10 ? 6040 : 6064));
+    MG_CHECK(g_MatrixMap->IsPaused() && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN | MMFLAG_SPECIAL_BROKEN));
+    MG_CHECK(g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+    MG_CHECK(special->IsSpecial() && g_MatrixMap->m_BeforeWinCount == 1);
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 0 && side().GetStatus() == SS_NONE);
+    return trace;
+}
+void ordinary_objective_control() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = ordinary_objective_control_run(mode, step);
+        MG_CHECK(first == ordinary_objective_control_run(mode, step));
+    }
+}
+std::vector<std::string> mixed_terron_objective_run(random::Mode mode, int step, bool loss_before, bool scan_before_lethal = false) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, step, 1500, false});
+    assets.install(); crater.install();
+    DialogData dialog;
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_BIGBOOM)] = 20;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_BIGBOOM)] = 100;
+    const std::array<std::wstring, 3> descriptors{L"+Break,1,10,Terron", L"Static", L"+Break,1,10,None"};
+    install_objective_descriptors(descriptors, true);
+    auto *terron = create_objective(600);
+    auto *survivor = create_objective(550, 2);
+    const std::array objects{ObjectiveIdentity(terron), ObjectiveIdentity(survivor)};
+    MG_CHECK(session.remove(1));
+    std::cout << session.metadata("synthetic-mixed-terron-objective-v2") << " loss_before=" << loss_before
+              << " scan_before_lethal=" << scan_before_lethal << '\n';
+    std::vector<std::string> trace;
+    const auto observe = [&] { trace.push_back(mixed_objective_snapshot(session, objects)); };
+    observe();
+    check_objective_threshold(terron); observe();
+    g_Config.m_ObjectDamages[Weap2Index(WEAPON_LASER)] = {6, 0, 0};
+    if (scan_before_lethal) {
+        while (session.time() < (step == 10 ? 2010 : 2016)) { session.advance(); observe(); }
+        lose_last_objective_robot(session); observe();
+        MG_CHECK(side().GetStatus() == SS_ACTIVE);
+        session.advance(); observe();
+        MG_CHECK(session.time() == (step == 10 ? 2020 : 2032));
+        MG_CHECK(side().GetStatus() == SS_NONE && !g_MatrixMap->m_DialogModeName);
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_TERRON_DEAD | MMFLAG_WIN));
+    }
+    hit_objective(terron); observe();
+    MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_TERRON_DEAD) && terron->m_Graph->IsAnim(L"Death"));
+    if (scan_before_lethal) {
+        // Terron's protection starts too late to cancel the already pending defeat.
+        MG_CHECK(side().GetStatus() == SS_NONE);
+        while (session.time() < (step == 10 ? 4020 : 4032)) {
+            session.advance(); observe();
+            MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        }
+        session.advance(); observe();
+        MG_CHECK(session.time() == (step == 10 ? 4030 : 4048));
+        MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeName);
+        MG_CHECK(std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_LOOSE);
+        MG_CHECK(side().GetStatus() == SS_NONE && !FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN | MMFLAG_SPECIAL_BROKEN));
+        MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_TERRON_DEAD));
+        MG_CHECK(terron->IsSpecial() && terron->m_Type == 0 && terron->m_Graph->IsAnim(L"Death"));
+        MG_CHECK(terron->m_BreakHitPoint == 0 && survivor->IsSpecial() && survivor->m_BreakHitPoint == 10);
+        MG_CHECK(g_MatrixMap->m_BeforeWinCount == 2 && side().GetStatValue(STAT_BUILDING_KILL) == 0);
+        std::cout << "Terron scan-first loss=" << session.time() << " draws=" << random::draw_count() << '\n';
+        return trace;
+    }
+    while (session.time() < (step == 10 ? 5000 : 4992)) {
+        session.advance(); observe();
+        if (session.time() == 2000) {
+            const auto draws = random::draw_count();
+            hit_objective(terron); observe();
+            MG_CHECK(random::draw_count() == draws && terron->m_Graph->IsAnim(L"Death"));
+            MG_CHECK(terron->m_BreakHitPoint == 0 && g_MatrixMap->m_BeforeWinCount == 2);
+        }
+    }
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 2 && terron->IsSpecial() && survivor->IsSpecial());
+    MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN | MMFLAG_SPECIAL_BROKEN));
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 0);
+    if (loss_before) { lose_last_objective_robot(session); observe(); }
+    session.advance(); observe();
+    MG_CHECK(session.time() == (step == 10 ? 5010 : 5008));
+    MG_CHECK(terron->m_Type == 1 && terron->m_BehFlag == BEHF_STATIC && !terron->IsSpecial());
+    MG_CHECK(survivor->m_Type == 2 && survivor->m_BehFlag == BEHF_BREAK && survivor->IsSpecial());
+    MG_CHECK(survivor->m_BreakHitPoint == 10 && g_MatrixMap->m_BeforeWinCount == 1);
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1 && side().GetStatus() == SS_JUST_WIN);
+    MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN));
+    if (!loss_before) { lose_last_objective_robot(session); observe(); }
+    hit_objective(terron); observe();
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && side().GetStatValue(STAT_BUILDING_KILL) == 1);
+    while (session.time() < (step == 10 ? 8040 : 8064)) {
+        MG_CHECK(!g_MatrixMap->IsPaused()); session.advance(); observe();
+        if (session.time() == (step == 10 ? 6030 : 6048)) MG_CHECK(side().GetStatus() == SS_JUST_WIN);
+        if (session.time() == (step == 10 ? 6040 : 6064)) MG_CHECK(side().GetStatus() == SS_ACTIVE);
+        MG_CHECK(!g_MatrixMap->m_DialogModeName && FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN));
+    }
+    MG_CHECK(!g_MatrixMap->m_DialogModeName);
+    session.advance(); observe();
+    std::cout << "mixed Terron result=" << session.time() << " draws=" << random::draw_count() << '\n';
+    MG_CHECK(session.time() == (step == 10 ? 8050 : 8080));
+    MG_CHECK(g_MatrixMap->IsPaused() && g_MatrixMap->m_DialogModeName && std::wstring(g_MatrixMap->m_DialogModeName) == TEMPLATE_DIALOG_WIN);
+    MG_CHECK(FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN));
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && survivor->IsSpecial() && survivor->m_BreakHitPoint == 10);
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 1 && side().GetStatus() == SS_ACTIVE);
+    MG_CHECK(!session.robot(1).alive && !session.robot(2).alive && session.robot(3).alive && session.robot(4).alive);
+    return trace;
+}
+void mixed_terron_objective() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+        for (bool loss_before : {false, true}) {
+            const auto first = mixed_terron_objective_run(mode, step, loss_before);
+            MG_CHECK(first == mixed_terron_objective_run(mode, step, loss_before));
+        }
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        const auto first = mixed_terron_objective_run(mode, step, true, true);
+        MG_CHECK(first == mixed_terron_objective_run(mode, step, true, true));
+    }
 }
 
 void repeated_sessions() {
@@ -3536,6 +3835,9 @@ constexpr tests::Case cases[] = {
     {"game.outcome.carrier_damage", carrier_damage_outcome},
     {"game.outcome.transported_robot_damage", transported_robot_damage_outcome},
     {"game.outcome.capture_target_damage", capture_target_damage},
+    {"game.outcome.mixed_special_order", mixed_special_order},
+    {"game.outcome.ordinary_objective_control", ordinary_objective_control},
+    {"game.outcome.mixed_terron_objective", mixed_terron_objective},
     {"game.outcome.terron_destruction", terron_destruction},
     {"game.outcome.terron_blast_after_conversion", terron_blast_after_conversion},
     {"game.outcome.special_break", special_object_destruction<0>},
