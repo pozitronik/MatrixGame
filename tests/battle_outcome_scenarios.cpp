@@ -1407,6 +1407,179 @@ struct CaptureCraterAssets {
     }
     ~CaptureCraterAssets() { CaptureEffectAccess::m_SpotProperties[SPOT_VORONKA] = previous; }
 };
+std::vector<std::string> rival_capture_run(random::Mode mode, int step, bool enemy_first) {
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 85, step, 4000, false, true, false, tests::NavigationLayout::Open});
+    assets.install();
+    crater.install();
+    std::cout << session.metadata("rival-armed-capture-v1") << " enemy_first=" << enemy_first << '\n';
+    auto *factory = register_building(0, BUILDING_TITAN, 300, 300);
+    g_Config.m_Timings[RESOURCE_TITAN] = 1000;
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 180;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {20, 0, 0};
+    g_Config.m_WeaponStrengthAI[RUK_WEAPON_LASER] = 10;
+    g_Config.m_Overheat[WEAPON_LASER_HEAT] = 10;
+    g_Config.m_Overheat[WEAPON_LASER_COOL] = 10;
+    g_Config.m_Overheat[WCP_LASER] = 100;
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+    std::array<CMatrixRobotAI *, 4> robots{};
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsRobot()) for (EntityId id = 1; id <= 4; ++id)
+            if (session.matches(id, object->AsRobot())) robots[id - 1] = object->AsRobot();
+    for (auto *robot : robots) MG_CHECK(robot != nullptr);
+    const auto position = [&](CMatrixRobotAI *robot, float x, float y, bool sentinel) {
+        robot->m_PosX = x; robot->m_PosY = y;
+        if (sentinel) { robot->SetMaxSpeed(0); robot->m_GroupSpeed = 0; }
+        robot->MapPosCalc(); robot->RChange(MR_Matrix); robot->RNeed(MR_Matrix);
+        robot->m_CalcBoundsLastTime = g_MatrixMap->GetTime() - 100;
+        robot->JoinToGroup();
+    };
+    position(robots[0], 180, 280, false);
+    position(robots[2], 420, 320, false);
+    // Live, unarmed sentinels keep this encounter from ending the battle.
+    position(robots[1], 50, 600, true);
+    position(robots[3], 600, 50, true);
+    for (auto *robot : {robots[0], robots[2]}) {
+        tests::arm_battle_robot(*robot, RUK_WEAPON_LASER);
+        robot->InitMaxHitpoint(200);
+        robot->CalcStrength();
+    }
+    // Preserve the loader's buildings-before-robots invariant. Reverse rival logic
+    // and spatial registration, not allocation/UID creation or command submission.
+    for (auto *robot : robots) { robot->DelLT(); robot->UnjoinGroup(); }
+    const std::array<int, 4> order = enemy_first ? std::array<int, 4>{2, 0, 1, 3} : std::array<int, 4>{0, 2, 1, 3};
+    for (int index : order) { robots[index]->AddLT(); robots[index]->JoinToGroup(); }
+    MG_CHECK(CMatrixMapStatic::GetFirstLogic() == factory);
+    MG_CHECK(factory->GetNextLogic() == robots[order[0]]);
+    auto *selection = side().GetCurSelGroup();
+    selection->RemoveAll();
+    selection->AddObject(robots[0], -4);
+    side().SetCurGroup(selection);
+    side().m_CurrSel = ROBOT_SELECTED;
+    for (int r = 0; r < MAX_RESOURCES; ++r) {
+        side().SetResourceAmount(static_cast<ERes>(r), 0);
+        g_MatrixMap->GetSideById(2)->SetResourceAmount(static_cast<ERes>(r), 0);
+    }
+    submit_capture(factory, CaptureRoute::Context);
+    // The enemy capture order is a declared scenario input, not an AI-planner claim.
+    robots[2]->CaptureFactory(factory);
+    MG_CHECK(robots[0]->GetCaptureFactory() == factory && robots[2]->GetCaptureFactory() == factory);
+    const int group = robots[0]->GetGroupLogic();
+    MG_CHECK(side().m_PlayerGroup[group].Order() == mpo_Capture && side().m_PlayerGroup[group].m_Obj == factory);
+    const auto release = [](SObjectCore *core) { core->Release(); };
+    std::unique_ptr<SObjectCore, decltype(release)> player_core(robots[0]->GetCore(DEBUG_CALL_INFO), release);
+    std::unique_ptr<SObjectCore, decltype(release)> enemy_core(robots[2]->GetCore(DEBUG_CALL_INFO), release);
+    const std::array<SObjectCore *, 2> cores{player_core.get(), enemy_core.get()};
+    const int winner_index = enemy_first ? 1 : 0, loser_index = 1 - winner_index;
+    auto *winner = robots[winner_index * 2];
+    const int winner_side = winner->GetSide();
+    const DWORD winner_color = 0xff000000 | g_MatrixMap->GetSideColor(winner_side);
+    struct Expected {
+        int paint, capture, income, death, retired;
+        std::array<int, 2> targeted, firing, hits;
+    };
+    const bool park = mode == random::Mode::ParkMiller;
+    const Expected expected = enemy_first
+        ? (step == 10 ? Expected{2160, 9060, 10060, 1910, park ? 4830 : 6250, {910, 820}, {90, 92}, {10, 9}}
+                      : Expected{2176, 9072, 10080, 1920, park ? 4848 : 6272, {912, 816}, {56, 58}, {10, 9}})
+        : (step == 10 ? Expected{1650, 8550, 9550, 3000, park ? 7320 : 6580, {2010, 2020}, {100, 98}, {8, 10}}
+                      : Expected{1664, 8560, 9568, 3024, park ? 7360 : 6608, {2032, 2048}, {63, 61}, {8, 10}});
+    std::array<float, 2> health{20, 20};
+    std::array<int, 2> hits{}, firing{}, targeted{}, death{}, retired{};
+    int painted = 0, captured = 0, income = 0, released = 0, forgotten = 0;
+    std::vector<std::string> trace;
+    while (session.time() <= expected.capture + 2000) {
+        session.advance();
+        const int time = session.time();
+        MG_CHECK(cores[winner_index]->m_Object == winner);
+        if (factory->m_Capturer) {
+            MG_CHECK((factory->m_Capturer == robots[0] && cores[0]->m_Object == robots[0]) ||
+                     (factory->m_Capturer == robots[2] && cores[1]->m_Object == robots[2]));
+        }
+        for (int i = 0; i < 2; ++i) {
+            auto *robot = robots[i * 2];
+            if (cores[i]->m_Object) {
+                MG_CHECK(cores[i]->m_Object == robot);
+                if (!targeted[i] && (robot->GetEnv()->m_Target == robots[(1 - i) * 2] ||
+                    robot->GetEnv()->m_TargetAttack == robots[(1 - i) * 2])) targeted[i] = time;
+                // This is the number of observed firing-order boundaries, not shot count.
+                if (robot->FindOrderLikeThat(ROT_FIRE)) ++firing[i];
+                if (robot->GetHitPoint() < health[i]) { ++hits[i]; health[i] = robot->GetHitPoint(); }
+                if (!death[i] && !robot->IsLiveRobot()) death[i] = time;
+            } else if (!retired[i]) retired[i] = time;
+        }
+        if (!painted && factory->m_TrueColor.m_ColoredCnt) {
+            painted = time;
+            MG_CHECK(factory->m_TrueColor.m_ColoredCnt == 1);
+            // Capture-order execution stores its robot, while nearest-robot scanning
+            // determines the paint source. Those identities need not agree.
+            MG_CHECK(factory->m_Capturer == robots[2]);
+        }
+        if (!captured && factory->GetSide()) captured = time;
+        if (!income && (side().GetResourcesAmount(TITAN) || g_MatrixMap->GetSideById(2)->GetResourcesAmount(TITAN)))
+            income = time;
+        if (!released && factory->GetSide() && !winner->GetCaptureFactory() && !factory->m_Capturer) released = time;
+        if (!forgotten && death[loser_index] && !winner->GetEnv()->m_Target &&
+            !winner->GetEnv()->m_TargetAttack && !winner->GetEnv()->GetEnemyCnt()) forgotten = time;
+        MG_CHECK(winner->IsLiveRobot());
+        MG_CHECK(factory->GetSide() == (time < expected.capture ? 0 : winner_side));
+        MG_CHECK((factory->m_TrueColor.m_ColoredCnt > 0) == (time >= expected.paint));
+        if (time >= expected.paint) MG_CHECK(factory->m_TrueColor.m_Color == winner_color);
+        MG_CHECK(bool(cores[loser_index]->m_Object) == (time < expected.retired));
+        if (time < expected.death) MG_CHECK(robots[loser_index * 2]->IsLiveRobot());
+        if (time == expected.death) MG_CHECK(!robots[loser_index * 2]->IsLiveRobot());
+        for (int side_id : {PLAYER_SIDE, 2}) {
+            auto *owner = g_MatrixMap->GetSideById(side_id);
+            MG_CHECK(owner->GetStatValue(STAT_ROBOT_KILL) == (time >= expected.death && side_id == winner_side ? 1 : 0));
+            for (int resource = 0; resource < MAX_RESOURCES; ++resource) {
+                const int amount = owner->GetResourcesAmount(static_cast<ERes>(resource));
+                if (resource != TITAN || side_id != winner_side || time < expected.income) MG_CHECK(amount == 0);
+                else MG_CHECK(amount == (time < expected.income + (step == 10 ? 1000 : 1008) ? 10 : 20));
+            }
+        }
+        if (time == expected.capture - step) {
+            MG_CHECK(factory->m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+            MG_CHECK(winner->GetCaptureFactory() == factory);
+        }
+        if (time >= expected.capture) {
+            MG_CHECK(factory->m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
+            MG_CHECK(!winner->GetCaptureFactory() && !factory->m_Capturer);
+            MG_CHECK(!winner->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+        }
+        trace.push_back(session.snapshot() + ":" + std::to_string(factory->GetSide()) + ":" +
+            std::to_string(factory->m_TrueColor.m_ColoredCnt) + ":" + std::to_string(factory->m_TrueColor.m_Color) + ":" +
+            std::to_string(factory->m_Capturer ? factory->m_Capturer->GetSide() : 0) + ":" +
+            std::to_string(health[0]) + ":" + std::to_string(health[1]) + ":" +
+            std::to_string(side().GetResourcesAmount(TITAN)) + ":" +
+            std::to_string(g_MatrixMap->GetSideById(2)->GetResourcesAmount(TITAN)));
+    }
+    MG_CHECK(painted == expected.paint && captured == expected.capture && income == expected.income);
+    MG_CHECK(targeted == expected.targeted && firing == expected.firing && hits == expected.hits);
+    MG_CHECK(death[loser_index] == expected.death && retired[loser_index] == expected.retired);
+    MG_CHECK(death[winner_index] == 0 && retired[winner_index] == 0);
+    MG_CHECK(health[loser_index] == 0 && health[winner_index] == (enemy_first ? 2 : 4));
+    MG_CHECK(forgotten == expected.death && released == expected.capture);
+    MG_CHECK(!winner->GetEnv()->m_Target && !winner->GetEnv()->m_TargetAttack && !winner->GetEnv()->GetEnemyCnt());
+    MG_CHECK(side().m_PlayerGroup[group].m_RobotCnt == (enemy_first ? 0 : 1));
+    // An empty group retains its dormant order; a surviving player group stops normally.
+    MG_CHECK(side().m_PlayerGroup[group].Order() == (enemy_first ? mpo_Capture : mpo_Stop));
+    MG_CHECK(side().m_PlayerGroup[group].m_Obj == (enemy_first ? factory : nullptr));
+    MG_CHECK(session.robot(2).alive && session.robot(4).alive);
+    std::cout << "rival owner=" << winner_side << " paint=" << painted << " captured=" << captured << " income=" << income
+              << " target=" << targeted[0] << ',' << targeted[1] << " firing_boundaries=" << firing[0] << ',' << firing[1]
+              << " damage_boundaries=" << hits[0] << ',' << hits[1] << " death=" << death[loser_index]
+              << " retired=" << retired[loser_index] << " references_released=" << released << '\n';
+    return trace;
+}
+void rival_armed_capture() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool enemy_first : {false, true}) {
+        const auto first = rival_capture_run(mode, step, enemy_first);
+        MG_CHECK(first == rival_capture_run(mode, step, enemy_first));
+    }
+}
 std::vector<std::string> capture_death_run(random::Mode mode, int step) {
     tests::BattleCombatAssets assets;
     CaptureCraterAssets crater;
@@ -3217,6 +3390,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.capture_queue_refund", capture_queue_refund},
     {"game.outcome.capture_income_continuity", capture_income_continuity},
     {"game.outcome.capture_turret_refund", capture_turret_refund},
+    {"game.outcome.rival_armed_capture", rival_armed_capture},
     {"game.outcome.capture_player_placed_queue", capture_player_placed_queue},
     {"game.outcome.capture_move_reassignment", capture_move_reassignment},
     {"game.outcome.paused_orders", paused_orders},

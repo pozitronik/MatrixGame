@@ -163,6 +163,15 @@ jobs:
           if ('${{ matrix.cheats }}' -eq 'true') { $buildParameters.Cheats = $true }
           if ('${{ matrix.trace }}' -eq 'true') { $buildParameters.Trace = $true }
           ./tools/build.ps1 @buildParameters
+      - name: Register hidden-window import containment checks
+        shell: pwsh
+        run: |
+          $kind = '${{ matrix.target }}'.ToLowerInvariant()
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-' + $kind
+          $buildName = $buildName.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          & ./.tools/cmake-4.4.4-windows-i386/bin/cmake.exe -S . -B "build/$buildName" -DMATRIXGAME_NATIVE_WINDOW_TESTS=ON
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot register hidden-window containment checks.' }
       - name: Run engine contract tests
         shell: pwsh
         run: |
