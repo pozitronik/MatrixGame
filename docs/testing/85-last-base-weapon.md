@@ -1,6 +1,6 @@
 # Last-base weapon outcome
 
-`game.outcome.last_base_weapon` covers the last-base encounter in O3 of [the outcome completion plan](85-outcome-completion.md). It connects the normal player group attack command, actual robot laser hits, building demolition, side elimination and the delayed Win dialog in one registered map session. A live enemy factory and turret remain throughout the encounter. An otherwise identical control retains one enemy robot and verifies that the side stays active after its base is gone.
+`game.outcome.last_base_weapon` covers the last-base encounter in O3 of [the outcome completion plan](85-outcome-completion.md). It connects a direct `PGOrderAttack` group order, actual robot laser hits, building demolition, side elimination and the delayed Win dialog in one registered map session. A live enemy factory and turret remain throughout the encounter. An otherwise identical control retains one enemy robot and verifies that the side stays active after its base is gone.
 
 ## Fixture and command path
 
