@@ -9,6 +9,7 @@ MatrixGame uses DirectX 9. The game thread checks `TestCooperativeLevel` before 
 | `D3DERR_DEVICENOTRESET` | Release ready resources, attempt reset, then restore resources after success. A reset returning `D3DERR_DEVICELOST` waits before retrying. |
 | Other status or reset failure | Stop through an engine diagnostic containing the failing operation and hexadecimal HRESULT. Permanent failures do not retry indefinitely. |
 | `Present` returns `D3DERR_DEVICELOST` | Allow the next tick to handle loss. Other presentation failures produce the same diagnostic in Debug and Release. |
+| `Present` returns another successful HRESULT, including `S_PRESENT_OCCLUDED` or `S_PRESENT_MODE_CHANGED` | Continue without a fatal error. This does not establish that the frame reached the screen; the loading handshake signals readiness only after `S_OK`. |
 
 The diagnostic font and cached UI fonts receive `OnLostDevice` before reset and `OnResetDevice` before text drawing resumes. Font names, faces and sizes retain their existing values. Notifications do not construct unused UI fonts. Font-notification failures name the affected font, operation and HRESULT. Microsoft documents these callbacks as necessary to release font state blocks and video-memory references before reset and restore them afterward: [OnLostDevice](https://learn.microsoft.com/en-us/windows/win32/direct3d9/id3dxfont--onlostdevice), [OnResetDevice](https://learn.microsoft.com/en-us/windows/win32/direct3d9/id3dxfont--onresetdevice).
 
@@ -22,7 +23,7 @@ Focus loss clears held input, releases confinement and retires video resources. 
 
 ## Automated and native checks
 
-`game.device.*` exercises production recovery decisions with synthetic HRESULTs and callback recorders: operational frames, release/reset/restore order, repeated loss, transient reset loss, permanent failures, presentation loss and the wait interval. `game.font.*` exercises production font-cache ownership, the existing five definitions, repeated notifications, missing fonts, partial creation cleanup and failure diagnostics through synthetic COM fonts. These registered cases create no device or window and use no game assets.
+`game.device.*` exercises production recovery decisions with synthetic HRESULTs and callback recorders: operational frames, release/reset/restore order, repeated loss, transient reset loss, permanent failures, presentation loss, successful presentation statuses and the wait interval. `game.loading.presentation` separately checks that occlusion and mode changes leave readiness pending until `S_OK`. `game.font.*` exercises production font-cache ownership, the existing five definitions, repeated notifications, missing fonts, partial creation cleanup and failure diagnostics through synthetic COM fonts. These registered cases create no device or window and use no game assets.
 
 The explicit native check draws with real D3DX fonts, resets a hidden windowed device and draws again three times. It prints the adapter and driver version. It needs a working DirectX device and is deliberately excluded from CTest and CI:
 

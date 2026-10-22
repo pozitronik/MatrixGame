@@ -197,8 +197,8 @@ void strategic_purchase(StrategicEnd ending) {
         struct DefinitionsGuard { ~DefinitionsGuard() { SSpecialBot::ClearAIRobotType(); } } definitions_guard;
         MG_CHECK(!SSpecialBot::m_AIRobotTypeList && SSpecialBot::m_AIRobotTypeCnt == 0);
         CBlockPar definitions;
-        definitions.ParAdd(L"1", L"W,1S,RR");
         definitions.ParAdd(L"1", L"W,1S,R");
+        definitions.ParAdd(L"1", L"W,1S,RR");
         SSpecialBot::LoadAIRobotType(definitions, g_MatrixMap->m_RobotWeaponMatrix);
         MG_CHECK(SSpecialBot::m_AIRobotTypeCnt == 2);
         MG_CHECK(SSpecialBot::m_AIRobotTypeList[0].m_Strength == 100);
