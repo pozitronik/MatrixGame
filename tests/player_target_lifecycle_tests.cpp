@@ -240,7 +240,7 @@ std::vector<std::string> bomb_run(random::Mode mode, int step, bool button, Targ
               << " damage_events=" << damage_events << '\n';
     if (ending == Ending::Stop) MG_CHECK(!requested_at && !dying_at && !retired_at && target && target->GetHitPoint() == 5);
     else {
-        MG_CHECK(requested_at > 1000 && dying_at >= requested_at && retired_at > dying_at);
+        MG_CHECK(requested_at > 1000 && dying_at > requested_at && retired_at > dying_at);
         MG_CHECK(!core->m_Object && !session.robot(1).alive);
         MG_CHECK(session.robot(2).alive && session.robot(2).order == mpo_Stop && session.robot(2).target_is_null);
         if (target) MG_CHECK(damage_events == 1 && target->GetHitPoint() == damaged_health);
