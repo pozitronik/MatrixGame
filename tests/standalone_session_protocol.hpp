@@ -5,8 +5,9 @@
 
 namespace tests::native_session {
 inline constexpr UINT snapshot_message = WM_APP + 0x385;
+inline constexpr UINT diagnostic_snapshot_message = snapshot_message + 1;
 inline constexpr wchar_t environment[] = L"MATRIXGAME_NATIVE_TEST";
-inline constexpr LONG version = 3;
+inline constexpr LONG version = 4;
 inline constexpr int capacity = 16;
 struct Snapshot {
     LONG request{};
@@ -24,6 +25,9 @@ struct Snapshot {
     int hints{}, settings{}, saved_camera{}, saved_skybox{}, saved_random{}, runtime_skybox{}, runtime_random{}, restart_pending{};
     float runtime_camera{};
     DWORD flags{};
+    DWORD map_flags{};
+    HRESULT device_status{E_PENDING};
+    int draw_fps{}, backbuffer_width{}, backbuffer_height{}, device_windowed{};
 };
 struct Process {
     volatile LONG id{}, window{}, diagnostics{}, snapshot_generation{}, request{};

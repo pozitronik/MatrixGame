@@ -211,11 +211,11 @@ struct Harness {
         MG_CHECK(!IsWindowVisible(target));
         return PostMessageW(target, code, wp, lp) != 0;
     }
-    std::optional<protocol::Snapshot> snapshot(DWORD pid) {
+    std::optional<protocol::Snapshot> snapshot(DWORD pid, bool diagnostic = false) {
         auto *entry = slot(pid);
         if (!entry) return std::nullopt;
         const auto request = InterlockedIncrement(&entry->request);
-        if (!message(pid, protocol::snapshot_message, request)) return std::nullopt;
+        if (!message(pid, diagnostic ? protocol::diagnostic_snapshot_message : protocol::snapshot_message, request)) return std::nullopt;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
         while (std::chrono::steady_clock::now() < deadline) {
             pump(1);
@@ -245,11 +245,21 @@ struct Harness {
             if (auto state = snapshot(pid); state && ready(*state)) return *state;
         }
         std::cerr << "Observed slot=" << slot(pid) << " window=" << window(pid) << '\n';
-        if (auto state = snapshot(pid)) std::wcerr << L"Last form=" << state->form << L" flags=" << state->flags
+        if (auto state = snapshot(pid, true)) std::wcerr << L"Last form=" << state->form << L" flags=" << state->flags
             << L" time=" << state->time << L" friendly health=" << state->friendly_health << L" enemy health=" << state->enemy_health
             << L" selected=" << state->selected << L" preorder=" << state->move_preorder << L" moving=" << state->friendly_move
-            << L" position=" << state->friendly_x << L"," << state->friendly_y << L" trace=" << state->trace_x << L"," << state->trace_y
-            << L" trace land=" << state->trace_land << L" focus=" << state->interface_focus << '\n';
+            << L" pos=" << state->friendly_x << L',' << state->friendly_y << L" trace=" << state->trace_x << L',' << state->trace_y
+            << L" trace land=" << state->trace_land << L" focus=" << state->interface_focus
+            << L" map_flags=0x" << std::hex << state->map_flags << L" device_status=0x" << state->device_status << std::dec
+            << L" draw_fps=" << state->draw_fps << L" backbuffer=" << state->backbuffer_width << L'x' << state->backbuffer_height
+            << L" windowed=" << state->device_windowed << '\n';
+        RECT child_rectangle{}, parent_rectangle{};
+        if (const auto child = window(pid); child && GetWindowRect(child, &child_rectangle) &&
+            GetWindowRect(GetParent(child), &parent_rectangle))
+            std::cerr << "Child rectangle=" << child_rectangle.left << ',' << child_rectangle.top << ','
+                      << child_rectangle.right << ',' << child_rectangle.bottom << " parent rectangle="
+                      << parent_rectangle.left << ',' << parent_rectangle.top << ',' << parent_rectangle.right << ','
+                      << parent_rectangle.bottom << '\n';
         throw std::runtime_error("Timed out waiting for " + std::string(description));
     }
     void key(DWORD pid, WPARAM key) { MG_CHECK(message(pid, WM_KEYDOWN, key)); MG_CHECK(message(pid, WM_KEYUP, key)); }
