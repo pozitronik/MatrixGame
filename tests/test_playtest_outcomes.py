@@ -91,6 +91,9 @@ function Start-Process {
             [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-alternate.cmap')))
         })
         Demo = Test-Path -LiteralPath (Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-demo.cmap')
+        DemoBytes = $(if (Test-Path -LiteralPath (Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-demo.cmap')) {
+            [Convert]::ToBase64String([IO.File]::ReadAllBytes((Join-Path $WorkingDirectory 'Matrix/Map/native-outcome-demo.cmap')))
+        })
     }
     $observation | ConvertTo-Json | Set-Content -LiteralPath OBSERVE -Encoding UTF8
     if (FAIL_START) { throw 'synthetic launch failure' }
@@ -451,6 +454,7 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(shadow.read_bytes(), b"independent map not used by this run")
         self.assert_restored()
+
     def test_demo_alias_uses_real_filename_path_and_preserves_source(self):
         source = self.build / "ordinary-map.cmap"
         source.write_bytes(b"synthetic ordinary payload")
@@ -458,6 +462,7 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         self.assertEqual(result.returncode, 0, result.stderr)
         observed = json.loads((self.build / "observed.json").read_text(encoding="utf-8-sig"))
         self.assertTrue(observed["Demo"])
+        self.assertEqual(base64.b64decode(observed["DemoBytes"]), b"synthetic ordinary payload")
         self.assertFalse(observed["Alternate"])
         self.assertIn("Alternate selector entry: native-outcome-demo", result.stdout)
         self.assertEqual(source.read_bytes(), b"synthetic ordinary payload")
@@ -468,6 +473,53 @@ function Start-Sleep { param([int]$Milliseconds); if (MONITOR_FAILURE) { throw '
         result = self.run_helper("-AlternateMapMode Demo")
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("requires -AlternateMapFile", result.stderr)
+        self.assert_restored()
+
+    def test_demo_inspection_preserves_all_files_and_does_not_launch(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic ordinary payload")
+        before = {p.relative_to(self.build): p.read_bytes() if p.is_file() else None for p in self.build.rglob("*")}
+        result = self.run_helper("-AlternateMapMode Demo", "-AlternateMapFile " + quote(source))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Inspection only", result.stdout)
+        self.assertFalse((self.build / "observed.json").exists())
+        after = {p.relative_to(self.build): p.read_bytes() if p.is_file() else None for p in self.build.rglob("*")}
+        self.assertEqual(after, before)
+
+    def test_demo_map_shadow_is_rejected_before_inspection_or_staging(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic ordinary payload")
+        for folder in ("maps", "DATA/maps"):
+            for launch in (False, True):
+                with self.subTest(folder=folder, launch=launch):
+                    shadow = self.game / folder / "NATIVE-OUTCOME-DEMO.CMAP"
+                    shadow.parent.mkdir(parents=True, exist_ok=True)
+                    shadow.write_bytes(b"independent demo must survive")
+                    observation = self.build / "observed.json"
+                    observation.unlink(missing_ok=True)
+                    try:
+                        args = ["-Launch"] if launch else []
+                        result = self.run_helper(*args, "-AlternateMapMode Demo", "-AlternateMapFile " + quote(source))
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("higher-priority map shadows", result.stderr)
+                        self.assertEqual(shadow.read_bytes(), b"independent demo must survive")
+                        self.assertFalse(observation.exists())
+                        self.assert_restored()
+                    finally:
+                        shadow.unlink()
+
+    def test_unused_ordinary_shadow_does_not_block_demo(self):
+        source = self.build / "owned-map.cmap"
+        source.write_bytes(b"synthetic ordinary payload")
+        shadows = [self.game / folder / "native-outcome-alternate.cmap" for folder in ("maps", "DATA/maps")]
+        for shadow in shadows:
+            shadow.parent.mkdir(parents=True, exist_ok=True)
+            shadow.write_bytes(b"independent ordinary map")
+        result = self.run_helper("-Launch", "-AlternateMapMode Demo", "-AlternateMapFile " + quote(source))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(json.loads((self.build / "observed.json").read_text(encoding="utf-8-sig"))["Demo"])
+        for shadow in shadows:
+            self.assertEqual(shadow.read_bytes(), b"independent ordinary map")
         self.assert_restored()
 
     def test_existing_demo_alias_is_not_replaced(self):

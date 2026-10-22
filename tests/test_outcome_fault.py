@@ -341,6 +341,17 @@ function Get-Process {
         self.assertIn("no fault already applied", result.stderr)
         self.assertEqual(self.target.read_bytes(), self.original_map)
 
+    def test_version_three_interface_recovery_remains_supported(self):
+        self.state["Version"] = 3
+        self.state.pop("AlternateMapMode")
+        self.save_state()
+        original = (self.cfg / "robots" / "iface.txt").read_bytes()
+        result = self.run_fault("MissingInterface")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.restore()
+        self.assertEqual((self.cfg / "robots" / "iface.txt").read_bytes(), original)
+        self.assertFalse(self.backup.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

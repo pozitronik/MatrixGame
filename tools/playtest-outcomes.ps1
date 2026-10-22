@@ -167,7 +167,7 @@ if ($AlternateMapFile) {
 # The selector compares basenames, so a higher-priority loose map would hide either fixture.
 # Check inspection as well as launch, before backups, staging or configuration changes.
 $fixtureNames = @('desert1_3e.cmap')
-if ($AlternateMapFile) { $fixtureNames += 'native-outcome-alternate.cmap' }
+if ($AlternateMapFile) { $fixtureNames += ($alternateName + '.cmap') }
 foreach ($folder in @('maps', 'DATA/maps')) {
     $directory = Join-Path $gameRoot $folder
     if (-not (Test-Path -LiteralPath $directory -PathType Container)) { continue }
