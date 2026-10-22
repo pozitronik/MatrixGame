@@ -109,6 +109,16 @@ void present_loss_is_recoverable() {
     MG_CHECK(caught);
 }
 
+void present_success_statuses() {
+    for (const HRESULT status : {S_OK, S_PRESENT_OCCLUDED, S_PRESENT_MODE_CHANGED}) {
+        try { Rendering::CheckPresentResult(status); }
+        catch (const Base::CException &error) {
+            std::wcerr << error.Info() << '\n';
+            throw;
+        }
+    }
+}
+
 constexpr tests::Case cases[] = {
     {"game.device.operational", operational_device},
     {"game.device.lost_wait", lost_device_waits_and_releases_once},
@@ -116,6 +126,7 @@ constexpr tests::Case cases[] = {
     {"game.device.transient_reset", transient_reset_failure},
     {"game.device.permanent_error", permanent_errors_are_diagnosed},
     {"game.device.present_loss", present_loss_is_recoverable},
+    {"game.device.present_statuses", present_success_statuses},
 };
 }
 

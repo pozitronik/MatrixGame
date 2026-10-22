@@ -10,6 +10,7 @@
 #include "battle_combat_geometry.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFormGame.hpp"
+#include "Effects/MatrixEffectWeapon.hpp"
 #include "input.hpp"
 #include <array>
 #include <cstring>
@@ -305,6 +306,74 @@ void positional_loop_reentry() {
     }
 }
 
+void weapon_positional_loop(bool stop_before_retirement) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
+        BattleSound sound(mode);
+        g_MatrixData->BlockGet(L"Sounds")->BlockGet(L"wlaser")->ParSetAdd(L"attn", L"10");
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 1;
+        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 1000;
+        auto &camera = g_MatrixMap->m_Camera;
+        const auto center = camera.GetFrustumCenter();
+        const auto right = camera.GetRight();
+        const D3DXVECTOR3 direction(0, 0, 1), speed(0, 0, 0);
+        auto release = [](CMatrixEffectWeapon *effect) { effect->Release(); };
+        std::unique_ptr<CMatrixEffectWeapon, decltype(release)> weapon(
+            static_cast<CMatrixEffectWeapon *>(CMatrixEffect::CreateWeapon(
+                center + right * 25, direction, 0, nullptr, WEAPON_LASER)), release);
+        weapon->FireBegin(speed, nullptr);
+        weapon->Takt(10);
+        MG_CHECK(weapon->IsFire() && weapon->GetFireCount() == 1);
+        MG_CHECK(sound.device->voices.size() == 1);
+        const auto voice = sound.device->voices.front();
+        MG_CHECK(voice->loop && voice->playing && voice->destroyed == 0);
+        MG_CHECK(voice->pan > 0.999f && voice->volume == 1);
+        const auto draws = random::draw_count();
+
+        const auto xy = camera.GetXYStrategy();
+        camera.SetXYStrategy(xy + D3DXVECTOR2(right.x, right.y) * 50);
+        camera.Takt(0);
+        camera.BeforeDraw();
+        const auto moved_center = camera.GetFrustumCenter();
+        const auto expected_center = center + right * 50;
+        const auto camera_error = moved_center - expected_center;
+        MG_CHECK(D3DXVec3Length(&camera_error) < 0.001f);
+        weapon->Takt(10);
+        MG_CHECK(voice->playing && voice->pan < -0.999f && voice->volume == 1);
+
+        // No direct CSound position/stop call may satisfy these owner assertions.
+        weapon->Modify(moved_center + right * 260, direction, speed);
+        weapon->Takt(10);
+        MG_CHECK(voice->playing && voice->volume == 0 && voice->destroyed == 0);
+        weapon->Modify(moved_center - right * 225, direction, speed);
+        weapon->Takt(10);
+        MG_CHECK(voice->playing && voice->pan < -0.999f);
+        MG_CHECK(std::abs(voice->volume - 0.5f) < 0.00001f);
+        MG_CHECK(sound.device->voices.size() == 1 && weapon->GetFireCount() == 1);
+        MG_CHECK(random::draw_count() == draws && sound.reported.empty());
+        MG_CHECK(sound.loaded == std::vector<std::wstring>{L"wlaser"});
+
+        if (stop_before_retirement) {
+            weapon->FireEnd();
+            MG_CHECK(!weapon->IsFire() && !voice->playing && voice->destroyed == 1);
+            weapon->FireEnd();
+            MG_CHECK(voice->destroyed == 1);
+        }
+        weapon.reset();
+        MG_CHECK(!voice->playing && voice->destroyed == 1);
+        CSound::Clear();
+        MG_CHECK(voice->destroyed == 1 && sound.device->voices.size() == 1);
+        auto metadata = sound.session.metadata("weapon-owned-positional-loop-v1");
+        const std::string base_audio = "\"audio\":\"unavailable\"";
+        const auto audio_position = metadata.find(base_audio);
+        MG_CHECK(audio_position != std::string::npos);
+        metadata.replace(audio_position, base_audio.size(), "\"audio\":\"synthetic-continuous-loop\"");
+        std::cout << metadata
+            << " stop_before_retirement=" << stop_before_retirement << " weapon_ticks=4x10ms map_ticks=0\n";
+    }
+}
+void weapon_positional_loop_stop() { weapon_positional_loop(true); }
+void weapon_positional_loop_retirement() { weapon_positional_loop(false); }
+
 void missing_speech_mapping() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         BattleSound sound(mode, true, false);
@@ -591,6 +660,8 @@ void camera_input_interruption() {
     }
 }
 constexpr tests::Case cases[]{
+    {"game.presentation.weapon_positional_loop_stop", weapon_positional_loop_stop},
+    {"game.presentation.weapon_positional_loop_retirement", weapon_positional_loop_retirement},
     {"game.presentation.manual_fire_interface_focus", manual_fire_interface_focus},
     {"game.presentation.positional_attenuation_boundaries", positional_attenuation_boundaries},
     {"game.presentation.positional_loop_reentry", positional_loop_reentry},
