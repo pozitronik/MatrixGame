@@ -39,6 +39,8 @@ The disconnected scenario preserves a specific observable: the group retains its
 
 ## Evidence and measurement
 
+The [loaded-terrain fixture](81-loaded-navigation.md) adds a generated CStorage map passed through the actual native loader, distinguishable routes for all five chassis and a wheel Move into an impassable destination with physical arrival at the legal fallback. It distinguishes imported compiled restrictions from runtime height/normal preparation: the original terrain-to-mask compiler is outside this repository. The native cases are opt-in and use hidden owned windows; the default asset case only validates their serialized inputs.
+
 ### Open journeys for every chassis
 
 `chassis_journeys` runs unarmed pneumatic, wheel, track, hovercraft and antigravity robots separately from (100, 200) to (500, 200) on open flat terrain. Each chassis uses both RNG modes with seed 81 and both 10 and 16 ms ticks: twenty profiles in total, with unavailable audio and no native drawing. All receive explicitly configured maximum speed 0.6, rotation speed 0.04, structure 1000, water coefficient 0.5 and uphill/downhill coefficients 0.7/2.5. Before construction, the other four chassis movement-speed slots are set to zero; the candidate's asserted maximum speed therefore detects reading another chassis's movement slot. Equal configured speeds provide a controlled input; these values do not represent original resource balance or a comparative chassis benchmark.
