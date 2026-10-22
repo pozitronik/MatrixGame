@@ -35,4 +35,6 @@ Copy-Item -LiteralPath '.\.tools\directx-x86\d3dx9_43.dll' -Destination '.\build
 
 Repeat with Release, including `release` in the build paths. The initialization case covers six DLL lifetimes; the three outcome cases cover another twelve, followed by one intentionally rejected ordinary-map lifetime in the diagnostic control. Generated inputs live in a unique test-owned directory and are removed after the run; no original package or normal game configuration is changed. The special-scene exporter and its asset-free layout/ownership tests remain available in both EXE and DLL builds; native outcome tests register only for the opted-in DLL role.
 
+After native checks, configure each affected DLL build directory with `-DMATRIXGAME_NATIVE_SESSION_TESTS=OFF` to restore ordinary test registration. Keep the build's cheats and music options matched to the test-helper arguments throughout validation.
+
 The missing-Terron-win-request negative control disables only that production status transition: the real death sequence still starts, but the registered Terron test fails its result deadline. Use this only as a temporary local mutation and restore the production source before accepting passing evidence. This guide defines the control; recorded run results identify which revision and profiles were actually checked.
