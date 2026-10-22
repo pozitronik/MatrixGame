@@ -293,21 +293,26 @@ function Get-Process {
         after = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
         self.assertEqual(after, before)
 
-    def test_incomplete_v3_record_refuses_before_restoration(self):
-        for name in ("Version", "InterfaceRemoved"):
-            with self.subTest(name=name):
-                original = self.state.pop(name)
-                self.save_state()
-                try:
-                    before = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
-                    result = preparation.OutcomePreparation.run_helper(self, "-Restore")
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertIn("Invalid restoration record", result.stderr)
-                    after = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
-                    self.assertEqual(after, before)
-                finally:
-                    self.state[name] = original
+    def test_incomplete_versioned_record_refuses_before_restoration(self):
+        original = self.state.copy()
+        for version in (3, 4):
+            for name in ("Version", "InterfaceRemoved"):
+                with self.subTest(version=version, name=name):
+                    self.state = dict(original, Version=version)
+                    if version == 3:
+                        self.state.pop("AlternateMapMode")
+                    self.state.pop(name)
                     self.save_state()
+                    try:
+                        before = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
+                        result = preparation.OutcomePreparation.run_helper(self, "-Restore")
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("Invalid restoration record", result.stderr)
+                        after = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
+                        self.assertEqual(after, before)
+                    finally:
+                        self.state = original.copy()
+                        self.save_state()
 
     def test_failed_header_replacement_removes_only_its_temporary(self):
         # A normal Python read handle permits hashing but denies Windows replacement.
