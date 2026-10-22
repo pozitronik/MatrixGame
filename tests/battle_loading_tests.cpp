@@ -32,9 +32,11 @@ void presentation() {
     MG_CHECK(ready.value != nullptr);
     BattleLoading::connect(name);
     MG_CHECK(BattleLoading::has_parent());
-    BattleLoading::presented(D3DERR_DEVICELOST);
-    MG_CHECK(WaitForSingleObject(ready.value, 0) == WAIT_TIMEOUT);
-    MG_CHECK(BattleLoading::has_parent());
+    for (const HRESULT status : {D3DERR_DEVICELOST, S_PRESENT_OCCLUDED, S_PRESENT_MODE_CHANGED}) {
+        BattleLoading::presented(status);
+        MG_CHECK(WaitForSingleObject(ready.value, 0) == WAIT_TIMEOUT);
+        MG_CHECK(BattleLoading::has_parent());
+    }
     BattleLoading::presented(S_OK);
     MG_CHECK(WaitForSingleObject(ready.value, 0) == WAIT_OBJECT_0);
     MG_CHECK(!BattleLoading::has_parent());
