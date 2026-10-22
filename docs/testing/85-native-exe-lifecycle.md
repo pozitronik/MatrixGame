@@ -45,7 +45,7 @@ Every name below has the prefix `game.session.exe_`.
 | `unreadable_map_rejected` | After discovery, the second map's generated storage header becomes invalid. Accepting the listed file leaves the selector open and the old battle paused, without a child. Restoring the file permits a ready second-map child, advancing simulation and successful exits. |
 | `failed_map_recovery` | After discovery, the second map retains a valid storage container and property tables but loses its mandatory width property. The catalog accepts it; `PrepareMap` rejects it before terrain allocation. The child reports `Unable to load map`, exits with code 1 and clears the remembered map. Restoring the original bytes permits a fresh process to load that second map and exit successfully. |
 
-Each awaited transition has a 20-second wall-clock deadline, and CTest limits each case to 90 seconds. These are native operating-system and graphics-driver journeys, not fixed 10/16 ms simulation schedules. Production `WinMain` chooses its usual time-based seed; the assertions do not depend on a random draw sequence. The settings case checks both running RNG implementations across initialization without claiming deterministic combat coverage.
+Each awaited transition has a 20-second wall-clock deadline. CTest limits ordinary lifecycle cases to 90 seconds and natural-result cases to 150 seconds. These are native operating-system and graphics-driver journeys, not fixed 10/16 ms simulation schedules. Production `WinMain` chooses its usual time-based seed; the assertions do not depend on a random draw sequence. The settings case checks both running RNG implementations across initialization without claiming deterministic combat coverage.
 
 ## Natural results and pending-result interruption
 
