@@ -328,3 +328,5 @@ out of reports.
 ## Coverage and performance measurements
 
 `tools/test.ps1 -Coverage` collects gcov line, function and branch coverage of the production areas with the MinGW toolchain; CI uploads the report without thresholds. `matrixgame_benchmarks` times representative navigation, selection and side-logic workloads through production code. CTest runs only its `game.benchmark.smoke` pass, which checks repeatable work without a timing limit. [Coverage and performance measurements](MEASUREMENTS.md) describes collection, the report denominator and exclusions, running and comparing benchmarks, and the manual native frame measurement.
+
+The [contained standalone lifecycle checks](testing/85-native-exe-lifecycle.md) run production `WinMain` with generated resources through startup, natural results, statistics, selectors, process relaunch, readiness, failures and cleanup. Their native Direct3D 9 checks are opt-in and keep windows, cursor presentation and generated output contained; visible presentation, desktop focus and original-host lifetimes remain separate requirements.
