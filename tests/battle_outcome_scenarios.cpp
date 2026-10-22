@@ -2582,19 +2582,17 @@ std::vector<std::string> special_command_run(random::Mode mode, int step, bool a
     }
     return trace;
 }
-void special_attack_routes() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+template<random::Mode Mode, int Step> void special_attack_routes() {
     for (bool animation : {false, true}) for (auto route : {ObjectiveCommandRoute::Context,
         ObjectiveCommandRoute::Keyboard, ObjectiveCommandRoute::Button}) {
-        const auto first = special_command_run(mode, step, animation, false, route);
-        MG_CHECK(first == special_command_run(mode, step, animation, false, route));
+        const auto first = special_command_run(Mode, Step, animation, false, route);
+        MG_CHECK(first == special_command_run(Mode, Step, animation, false, route));
     }
 }
-template<bool Stop> void special_bomb_routes() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+template<bool Stop, random::Mode Mode, int Step> void special_bomb_routes() {
     for (bool animation : {false, true}) for (auto route : {ObjectiveCommandRoute::Keyboard, ObjectiveCommandRoute::Button}) {
-        const auto first = special_command_run(mode, step, animation, true, route, Stop);
-        MG_CHECK(first == special_command_run(mode, step, animation, true, route, Stop));
+        const auto first = special_command_run(Mode, Step, animation, true, route, Stop);
+        MG_CHECK(first == special_command_run(Mode, Step, animation, true, route, Stop));
     }
 }
 std::vector<std::string> ordinary_object_command_run(random::Mode mode, int step, ObjectiveCommandRoute route,
@@ -2681,14 +2679,13 @@ std::vector<std::string> ordinary_object_command_run(random::Mode mode, int step
     MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 0 && side().GetStatValue(STAT_ROBOT_KILL) == 0);
     return trace;
 }
-void ordinary_object_commands() {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+template<random::Mode Mode, int Step> void ordinary_object_commands() {
     for (auto route : {ObjectiveCommandRoute::Context, ObjectiveCommandRoute::Keyboard, ObjectiveCommandRoute::Button})
     for (int variant : {0, 1, 2}) {
         const bool capture = variant == 1, live_control = variant == 2;
         if (capture && route == ObjectiveCommandRoute::Context) continue;
-        const auto first = ordinary_object_command_run(mode, step, route, capture, live_control);
-        MG_CHECK(first == ordinary_object_command_run(mode, step, route, capture, live_control));
+        const auto first = ordinary_object_command_run(Mode, Step, route, capture, live_control);
+        MG_CHECK(first == ordinary_object_command_run(Mode, Step, route, capture, live_control));
     }
 }
 void terron_destruction_run(bool collateral, int step, int blast_damage = 600) {
@@ -4109,10 +4106,22 @@ void last_base_weapon_outcome() {
     }
 }
 constexpr tests::Case cases[] = {
-    {"game.player.special_attack_routes", special_attack_routes},
-    {"game.player.special_bomb_routes", special_bomb_routes<false>},
-    {"game.player.special_bomb_stop", special_bomb_routes<true>},
-    {"game.player.ordinary_object_commands", ordinary_object_commands},
+    {"game.player.special_attack_routes.park_miller10", special_attack_routes<random::Mode::ParkMiller, 10>},
+    {"game.player.special_attack_routes.park_miller16", special_attack_routes<random::Mode::ParkMiller, 16>},
+    {"game.player.special_attack_routes.legacy10", special_attack_routes<random::Mode::LegacyCRT, 10>},
+    {"game.player.special_attack_routes.legacy16", special_attack_routes<random::Mode::LegacyCRT, 16>},
+    {"game.player.special_bomb_routes.park_miller10", special_bomb_routes<false, random::Mode::ParkMiller, 10>},
+    {"game.player.special_bomb_routes.park_miller16", special_bomb_routes<false, random::Mode::ParkMiller, 16>},
+    {"game.player.special_bomb_routes.legacy10", special_bomb_routes<false, random::Mode::LegacyCRT, 10>},
+    {"game.player.special_bomb_routes.legacy16", special_bomb_routes<false, random::Mode::LegacyCRT, 16>},
+    {"game.player.special_bomb_stop.park_miller10", special_bomb_routes<true, random::Mode::ParkMiller, 10>},
+    {"game.player.special_bomb_stop.park_miller16", special_bomb_routes<true, random::Mode::ParkMiller, 16>},
+    {"game.player.special_bomb_stop.legacy10", special_bomb_routes<true, random::Mode::LegacyCRT, 10>},
+    {"game.player.special_bomb_stop.legacy16", special_bomb_routes<true, random::Mode::LegacyCRT, 16>},
+    {"game.player.ordinary_object_commands.park_miller10", ordinary_object_commands<random::Mode::ParkMiller, 10>},
+    {"game.player.ordinary_object_commands.park_miller16", ordinary_object_commands<random::Mode::ParkMiller, 16>},
+    {"game.player.ordinary_object_commands.legacy10", ordinary_object_commands<random::Mode::LegacyCRT, 10>},
+    {"game.player.ordinary_object_commands.legacy16", ordinary_object_commands<random::Mode::LegacyCRT, 16>},
     {"game.loop.menu_result_exit", loop_menu_result_exit},
     {"game.loop.diagnostic_result_exit", loop_diagnostic_result_exit},
 #ifdef _TRACE

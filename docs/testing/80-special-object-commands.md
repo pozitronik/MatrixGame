@@ -1,16 +1,16 @@
 # Player commands for special and ordinary map objects
 
-Four `game.player.*` contracts characterize keyboard, interface-action and context commands against special Break/Anim objectives, with ordinary-object and live-unit controls. They reuse the outcome executable's generated geometry, material/weapon fixtures and production map ticks. Seed 80, both RNG modes, separate 10/16 ms schedules and unavailable audio define the profiles; no original resources, native window, rendered picking or direct damage submission participates.
+Four `game.player.*` contract families characterize keyboard, interface-action and context commands against special Break/Anim objectives, with ordinary-object and live-unit controls. Each family has four CTest cases, split by RNG mode and timestep. They reuse the outcome executable's generated geometry, material/weapon fixtures and production map ticks. Seed 80, both RNG modes, separate 10/16 ms schedules and unavailable audio define the profiles; no original resources, native window, rendered picking or direct damage submission participates.
 
 ```powershell
-$cases = '^game\.player\.(special_attack_routes|special_bomb_routes|special_bomb_stop|ordinary_object_commands)$'
+$cases = '^game\.player\.(special_attack_routes|special_bomb_routes|special_bomb_stop|ordinary_object_commands)\.'
 .\tools\test.ps1 -Configuration Debug -Filter $cases
 .\tools\test.ps1 -Configuration Release -Filter $cases
 .\tools\test.ps1 -Configuration Debug -DLL -Filter $cases
 .\tools\test.ps1 -Configuration Release -DLL -Filter $cases
 ```
 
-The cases run 88 declared scene/route/RNG/schedule profiles, each twice in a fresh session. Each registered case therefore executes 32–64 fresh sessions. CTest allows 90 seconds for each complete matrix, including Debug and coverage instrumentation. Individual simulation and fixture wall-clock bounds remain unchanged by that process limit.
+The sixteen cases retain all 88 declared scene/route/RNG/schedule profiles, each twice in a fresh session. A registered case executes 8, 12 or 16 fresh sessions for one fixed RNG/timestep pair. Splitting the process matrices keeps the slower MSVC Debug checks bounded without reducing the profile set, simulation duration or replay assertions. Each process retains its existing 90-second CTest limit; individual simulation and fixture wall-clock bounds are unchanged.
 
 ## Selected scenes and input boundary
 
@@ -51,6 +51,6 @@ Ordinary non-live/non-special objects take different input branches: context inp
 
 Every scenario repeats and compares its ordered observations within the same compiler/build/RNG/schedule profile. The existing session snapshots supply raw position/health/order bits, registered identities and shared RNG draw counts. Additional fields capture special-object type/state/health/count, normalized tactical target roles, full fire-order aim bits, weapon heat, death-request state and group destination/target nullness. Retained cores guard actor and object reads. No pointer address or process-global robot UID is used as a replay oracle; no persisted historical reference artifact is added by these cases.
 
-Pinned MinGW Debug/Release standalone and x86 DLL builds pass the four new contracts together with the existing special Break, special Anim and ordinary-objective controls. Sensitivity checks remove special eligibility from input, suppress bomb damage to map objects and suppress laser damage in the ordinary-enemy control. The affected cases reject each mutation at the intended destination, conversion or receiver-health assertion. Exact production bytes are restored, the actual game and test rebuilt, and all four positive cases pass after each mutation. Supported MSVC and the combined baseline revision remain for CI/integration validation.
+Pinned MinGW Debug/Release standalone and x86 DLL builds pass all sixteen cases in the four contract families together with the existing special Break, special Anim and ordinary-objective controls. Sensitivity checks remove special eligibility from input, suppress bomb damage to map objects and suppress laser damage in the ordinary-enemy control. The affected cases reject each mutation at the intended destination, conversion or receiver-health assertion. Exact production bytes are restored, the actual game and test rebuilt, and all affected positive profiles pass after each mutation. Supported MSVC and the combined baseline revision remain for CI/integration validation.
 
 The input and current-behavior evidence covers the selected command variants; the special-target defect still requires a separate disposition before accepting that behavior as a complete baseline contract. The command work package and whole-baseline gate remain open. Native input/visual evidence, accepted historical comparisons and gameplay correction are outside this increment.
