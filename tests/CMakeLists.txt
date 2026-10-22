@@ -887,7 +887,7 @@ endif()
 
 add_matrix_test_executable(matrixgame_native_special_fixture native_special_fixture.cpp
     native_special_assets.cpp native_session_assets.cpp native_packed_config.cpp battle_geometry.cpp)
-target_link_libraries(matrixgame_native_special_fixture PRIVATE MatrixGameInternal shell32)
+target_link_libraries(matrixgame_native_special_fixture PRIVATE MatrixGameInternal matrixgame_native_window_containment shell32)
 target_compile_definitions(matrixgame_native_special_fixture PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}"
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>)
 foreach(contract layout ownership)
@@ -896,7 +896,12 @@ endforeach()
 if(MATRIXGAME_BUILD_DLL AND MATRIXGAME_NATIVE_SESSION_TESTS)
     add_matrix_test(game.session.native_special_scenes matrixgame_native_special_fixture gameplay startup native native-process)
     set_tests_properties(game.session.native_special_scenes PROPERTIES
-        LABELS "engine;gameplay;startup;native;native-process;current-desktop" TIMEOUT 90)
+        LABELS "engine;gameplay;startup;native;native-process;current-desktop" TIMEOUT 90 RUN_SERIAL TRUE)
+    foreach(contract break_anim anim_break terron special_diagnostic)
+        add_matrix_test(game.session.native_${contract} matrixgame_native_special_fixture gameplay outcome native native-process)
+        set_tests_properties(game.session.native_${contract} PROPERTIES
+            LABELS "engine;gameplay;outcome;native;native-process;current-desktop" TIMEOUT 90 RUN_SERIAL TRUE)
+    endforeach()
 endif()
 
 add_matrix_test_executable(matrixgame_loop_battle_scenarios loop_battle_scenarios.cpp battle_scenario.cpp
