@@ -5,7 +5,6 @@
 #include "command_world.hpp"
 #include "MatrixFormGame.hpp"
 #include "MatrixRobot.hpp"
-#include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include "Interface/CInterface.h"
 #include "Interface/CIFaceElement.h"
 #include "input.hpp"
@@ -129,24 +128,13 @@ void repair_target_lifecycle() {
             }
 }
 
-struct EffectAccess : CMatrixEffect { using CMatrixEffect::m_SpotProperties; };
-struct CraterAssets {
-    SSpotProperties previous = EffectAccess::m_SpotProperties[SPOT_VORONKA];
-    void install() {
-        EffectAccess::m_SpotProperties[SPOT_VORONKA] = EffectAccess::m_SpotProperties[SPOT_PLASMA_HIT];
-        EffectAccess::m_SpotProperties[SPOT_VORONKA].func = SpotTaktVoronka;
-    }
-    ~CraterAssets() { EffectAccess::m_SpotProperties[SPOT_VORONKA] = previous; }
-};
 enum class Target { Friendly, Enemy, Ground };
 std::vector<std::string> bomb_run(random::Mode mode, int step, bool button, Target target_kind, Ending ending) {
     tests::BattleCombatAssets assets;
-    CraterAssets crater;
     Session session({mode, 80, step, 4000, false, true});
     std::cout << session.metadata("bomb-target-lifecycle-v1") << " button=" << button
               << " target=" << int(target_kind) << " ending=" << int(ending) << std::endl;
     assets.install();
-    crater.install();
     CFormMatrixGame form;
     auto *bomber = robot(session, 1);
     auto *target = robot(session, 3);
