@@ -48,7 +48,7 @@ bool RecoverDevice(HRESULT status, bool resourcesReady, Release release, Reset r
 
 inline void CheckPresentResult(HRESULT result) {
     // Loss can occur after the frame's status check; the next tick performs recovery.
-    if (result != D3D_OK && result != D3DERR_DEVICELOST) {
+    if (FAILED(result) && result != D3DERR_DEVICELOST) {
         DeviceFailure(result, L"Present");
     }
 }

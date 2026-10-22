@@ -12,6 +12,8 @@
 #include "CStorage.hpp"
 #include "Pack.hpp"
 #include "StandaloneSettings.hpp"
+#include "input.hpp"
+#include "native_window_containment.hpp"
 #include <filesystem>
 #include <fstream>
 #include <cstring>
@@ -202,21 +204,54 @@ void export_ownership() {
     directory.close();
 }
 #if MATRIXGAME_SCENARIO_BUILD_DLL
+std::wstring native_diagnostics;
+void diagnostic(const wchar_t *title, const wchar_t *text) {
+    native_diagnostics += std::wstring(title) + L": " + text + L"\n";
+}
+struct NativeDiagnostic : std::runtime_error { using std::runtime_error::runtime_error; };
+void reject_diagnostics() {
+    if (!native_diagnostics.empty())
+        throw NativeDiagnostic("Native diagnostic: " + utils::from_wstring(native_diagnostics));
+}
 struct NativeHost {
-    HWND parent = CreateWindowExW(0, L"STATIC", L"Synthetic host", WS_POPUP, 0, 0, 640, 480,
-        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-    HWND child = CreateWindowExW(0, L"STATIC", L"Synthetic objectives", WS_CHILD, 0, 0, 640, 480,
-        parent, nullptr, GetModuleHandleW(nullptr), nullptr);
-    IDirect3D9 *api = Direct3DCreate9(D3D_SDK_VERSION);
+    HWND parent{}, child{};
+    ATOM registered{};
+    IDirect3D9 *api{};
     IDirect3DDevice9 *device{};
+    explicit NativeHost(HWND owner) : parent(owner) {
+        MG_CHECK(parent && IsWindow(parent) && !IsWindowVisible(parent));
+        WNDCLASSW window_class{};
+        window_class.lpfnWndProc = DefWindowProcW;
+        window_class.hInstance = GetModuleHandleW(nullptr);
+        window_class.lpszClassName = L"MatrixGame_wc";
+        registered = RegisterClassW(&window_class);
+        MG_CHECK(registered);
+        child = CreateWindowExW(WS_EX_NOACTIVATE, L"MatrixGame_wc", L"Synthetic objectives", WS_CHILD,
+            0, 0, 640, 480, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!child) {
+            UnregisterClassW(L"MatrixGame_wc", GetModuleHandleW(nullptr)); registered = 0;
+            throw std::runtime_error("Cannot create contained special-scene child");
+        }
+    }
+    void close() {
+        if (device) { device->Release(); device = nullptr; }
+        if (api) { api->Release(); api = nullptr; }
+        if (child) { MG_CHECK(DestroyWindow(child)); child = nullptr; }
+        if (registered) {
+            MG_CHECK(UnregisterClassW(L"MatrixGame_wc", GetModuleHandleW(nullptr))); registered = 0;
+        }
+    }
     ~NativeHost() {
         if (device) device->Release();
         if (api) api->Release();
         if (child) DestroyWindow(child);
-        if (parent) DestroyWindow(parent);
+        if (registered) UnregisterClassW(L"MatrixGame_wc", GetModuleHandleW(nullptr));
     }
     void create_device() {
-        MG_CHECK(parent && child && api && !IsWindowVisible(parent) && !IsWindowVisible(child));
+        MG_CHECK(child && GetParent(child) == parent && !IsWindowVisible(child));
+        MG_CHECK(GetWindowLongW(child, GWL_EXSTYLE) & WS_EX_NOACTIVATE);
+        api = Direct3DCreate9(D3D_SDK_VERSION);
+        MG_CHECK(api);
         D3DPRESENT_PARAMETERS pp{};
         pp.Windowed = TRUE; pp.hDeviceWindow = child; pp.SwapEffect = D3DSWAPEFFECT_DISCARD;
         pp.BackBufferWidth = 640; pp.BackBufferHeight = 480; pp.BackBufferFormat = D3DFMT_X8R8G8B8;
@@ -228,12 +263,20 @@ struct NativeHost {
 };
 struct Observation {
     HWND window;
-    int scene, ticks{}, hits{};
+    int scene, ticks{}, hits{}, texts{}, text_clears{};
     bool checked{}, closing{};
+    bool outcome{}, reverse{}, won{}, statistics{}, inject_diagnostic{};
+    int phase{}, retired_at{};
     CMatrixMapObject *target{};
     CMatrixMapObject *second{};
+    CMatrixMapObject *red{}, *green{}, *blue{};
+    CMatrixRobotAI *near_robot{}, *far_robot{};
     std::string failure;
 } *observation;
+struct ObservationScope {
+    explicit ObservationScope(Observation &current) { MG_CHECK(!observation); observation = &current; }
+    ~ObservationScope() { observation = nullptr; }
+};
 void __stdcall sound(wchar *) {}
 dword __stdcall create_sound(wchar *, int, int) { return 0; }
 void __stdcall sound_id(dword) {}
@@ -241,23 +284,112 @@ int __stdcall playing(dword) { return 0; }
 void __stdcall set_sound(dword, float) {}
 float __stdcall get_sound(dword) { return 0; }
 void __stdcall text(wchar *, wchar *, DWORD, int, int, int, int, int, int, int, Base::CRect *, SMGDRangersInterfaceText *out) {
+    MG_CHECK(observation);
     out->m_SizeX = out->m_SizeY = 2; out->m_Pitch = 8; out->m_Buf = new BYTE[16]{};
+    ++observation->texts;
 }
-void __stdcall clear_text(SMGDRangersInterfaceText *out) { delete[] out->m_Buf; out->m_Buf = nullptr; }
+void __stdcall clear_text(SMGDRangersInterfaceText *out) {
+    MG_CHECK(observation && out->m_Buf && observation->text_clears < observation->texts);
+    delete[] out->m_Buf; out->m_Buf = nullptr; ++observation->text_clears;
+}
 void __stdcall progress(float) {
     SetUnhandledExceptionFilter(nullptr); std::set_terminate([] { std::abort(); });
 }
 void __stdcall begin() {}
 float __stdcall music() { return 1; }
 void __stdcall set_music(float) {}
+void press_enter() {
+    g_FormCur->Keyboard(true, VK_RETURN); g_FormCur->Keyboard(false, VK_RETURN);
+}
+void fire(bool down) {
+    static_cast<CFormMatrixGame *>(g_FormCur)->MouseKey(down ? B_DOWN : B_UP, VK_LBUTTON, 320, 240);
+}
+bool live_robot(CMatrixRobotAI *expected) {
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object == expected) return object->IsLiveRobot();
+    return false;
+}
+void outcome_tick(Observation &o) {
+    const int now = g_MatrixMap->GetTime();
+    auto &side = *g_MatrixMap->GetPlayerSide();
+    MG_CHECK(now < 30000);
+    if (o.phase == 0 || o.phase == 2) {
+        g_IFaceList->m_InFocus = UNKNOWN;
+        g_MatrixMap->m_TraceStopObj = o.target;
+        g_MatrixMap->m_TraceStopPos = o.target->GetGeoCenter();
+        MG_CHECK(!g_MatrixMap->m_DialogModeName);
+        const bool retired = o.scene == 1 ? o.target->m_BreakHitPoint <= 0 : !o.target->IsSpecial();
+        if (retired) {
+            fire(false);
+            o.target = nullptr;
+            o.retired_at = now;
+            std::cout << "native retirement scene=" << o.scene << " reverse=" << o.reverse
+                << " phase=" << o.phase << " time=" << now << std::endl;
+            if (o.scene == 1) {
+                // Leave direct control through the same key used by a player; the shooter stays in blast range.
+                press_enter();
+                MG_CHECK(!side.IsArcadeMode());
+                o.phase = 3;
+            } else if (o.phase == 0) {
+                MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1 && side.GetStatValue(STAT_BUILDING_KILL) == 1);
+                o.phase = 1;
+            } else {
+                MG_CHECK(g_MatrixMap->m_BeforeWinCount == 0 && side.GetStatValue(STAT_BUILDING_KILL) == 2);
+                o.phase = 3;
+            }
+        }
+    } else if (o.phase == 1) {
+        MG_CHECK(!g_MatrixMap->m_DialogModeName && g_MatrixMap->m_BeforeWinCount == 1);
+        MG_CHECK(side.GetStatus() == SS_ACTIVE);
+        MG_CHECK(!(g_MatrixMap->m_Flags & (MMFLAG_WIN | MMFLAG_SPECIAL_BROKEN)));
+        MG_CHECK(o.second->IsSpecial() && o.second->m_BreakHitPoint == 300);
+        if (now - o.retired_at >= 2200) {
+            o.target = o.second;
+            o.phase = 2;
+            fire(true);
+        }
+    } else if (o.phase == 3) {
+        MG_CHECK(now - o.retired_at < 10000);
+        if (!g_MatrixMap->m_DialogModeName) return;
+        MG_CHECK(wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_WIN) == 0);
+        MG_CHECK(side.GetStatValue(STAT_BUILDING_KILL) == (o.scene == 1 ? 1 : 2));
+        MG_CHECK(side.GetStatValue(STAT_ROBOT_KILL) == 0);
+        MG_CHECK(o.red->m_BehFlag == BEHF_STATIC);
+        if (o.scene == 1) {
+            MG_CHECK(g_MatrixMap->m_BeforeWinCount == 1);
+            MG_CHECK(o.green->IsSpecial() && o.green->m_BreakHitPoint == 300);
+            MG_CHECK(o.blue->m_BehFlag == BEHF_STATIC);
+            MG_CHECK(!live_robot(o.near_robot) && live_robot(o.far_robot));
+            MG_CHECK(o.far_robot->GetHitPoint() == 190);
+        } else {
+            MG_CHECK(!o.green->IsSpecial() && g_MatrixMap->m_BeforeWinCount == 0);
+            MG_CHECK(o.blue->m_BehFlag == BEHF_BREAK && o.blue->m_BreakHitPoint == 300);
+        }
+        o.won = true;
+        press_enter();
+        MG_CHECK(g_ExitState == 3 && FLAG(g_MatrixMap->m_Flags, MMFLAG_STAT_DIALOG));
+        o.phase = 4;
+    } else if (o.phase == 4 && g_MatrixMap->m_DialogModeName) {
+        MG_CHECK(wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_STATISTICS) == 0);
+        o.statistics = true;
+        press_enter();
+        MG_CHECK(g_ExitState == 3 && FLAG(g_Flags, GFLAG_EXITLOOP));
+        o.closing = true;
+        o.phase = 5;
+    }
+}
 void __stdcall tick() {
     try {
         auto &o = *observation;
         MG_CHECK(++o.ticks <= 100000 && g_MatrixMap && g_FormCur && !IsWindowVisible(o.window));
-        MG_CHECK(g_MatrixMap->GetTime() < 10000);
-        if (o.scene != 2 && o.ticks > 1)
-            MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !g_MatrixMap->m_DialogModeName);
+        if (!o.outcome) {
+            MG_CHECK(g_MatrixMap->GetTime() < 10000);
+            if (o.scene != 2 && o.ticks > 1)
+                MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN) && !g_MatrixMap->m_DialogModeName);
+        }
         if (o.ticks == 1) {
+            if (o.inject_diagnostic)
+                MessageBoxW(o.window, L"intentional special-scene diagnostic", L"Fixture diagnostic", MB_OK);
             MG_CHECK(g_MatrixMap->m_DialogModeName &&
                 wcscmp(g_MatrixMap->m_DialogModeName, TEMPLATE_DIALOG_BEGIN) == 0);
             std::vector<CMatrixMapObject *> objects;
@@ -269,6 +401,10 @@ void __stdcall tick() {
             std::sort(objects.begin(), objects.end(), [](auto *a, auto *b) { return a->m_Type < b->m_Type; });
             MG_CHECK(objects.size() == (o.scene == 2 ? 0u : 4u));
             MG_CHECK(g_MatrixMap->m_BeforeWinCount == (o.scene == 2 ? 0 : 2));
+            MG_CHECK(g_ExitState == 0);
+            MG_CHECK(!(g_MatrixMap->m_Flags & (MMFLAG_WIN | MMFLAG_SPECIAL_BROKEN | MMFLAG_TERRON_DEAD)));
+            MG_CHECK(!g_MatrixMap->GetPlayerSide()->IsArcadeMode() && !Input::isVKeyPressed(VK_LBUTTON));
+            MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_BUILDING_KILL) == 0);
             if (o.scene != 2) {
                 MG_CHECK(objects[0]->m_BehFlag == BEHF_STATIC && !objects[0]->IsSpecial());
                 MG_CHECK(objects[1]->m_BehFlag == (o.scene == 0 ? BEHF_BREAK : BEHF_TERRON));
@@ -292,6 +428,8 @@ void __stdcall tick() {
                 if (!object->IsLiveRobot()) continue;
                 ++robots;
                 if (o.scene != 2) MG_CHECK(object->GetSide() == PLAYER_SIDE);
+                if (o.scene == 1 && object->AsRobot()->m_PosX == 260) o.near_robot = object->AsRobot();
+                if (o.scene == 1 && object->AsRobot()->m_PosX == 560) o.far_robot = object->AsRobot();
                 std::cout << "scene=" << o.scene << " robot-side=" << object->GetSide()
                     << " position=" << object->AsRobot()->m_PosX << ',' << object->AsRobot()->m_PosY
                     << " health=" << object->AsRobot()->GetHitPoint() << '\n';
@@ -306,8 +444,10 @@ void __stdcall tick() {
             auto *form = static_cast<CFormMatrixGame *>(g_FormCur);
             form->Keyboard(true, VK_RETURN); form->Keyboard(false, VK_RETURN);
             if (shooter) {
-                o.target = objects[1];
-                o.second = objects[2];
+                o.red = objects[1]; o.green = objects[2]; o.blue = objects[3];
+                o.target = o.reverse ? o.green : o.red;
+                o.second = o.reverse ? o.red : o.green;
+                if (o.scene == 1) MG_CHECK(o.near_robot && o.far_robot);
                 auto &side = *g_MatrixMap->GetPlayerSide();
                 side.CreateGroupFromCurrent(shooter); side.Select(ROBOT, nullptr);
                 form->Keyboard(true, VK_RETURN); form->Keyboard(false, VK_RETURN);
@@ -317,6 +457,7 @@ void __stdcall tick() {
             }
             o.checked = true;
         }
+        if (o.outcome) { outcome_tick(o); return; }
         if (o.target) {
             // Supply resolved world aim; real manual control, weapon tracing and damage follow it.
             g_IFaceList->m_InFocus = UNKNOWN;
@@ -337,12 +478,17 @@ void __stdcall tick() {
             MG_CHECK(PostMessageW(o.window, WM_CLOSE, 0, 0));
         }
     } catch (const std::exception &error) { observation->failure = error.what(); throw; }
+    catch (...) { observation->failure = "Unexpected native special-scene callback exception"; throw; }
 }
-void special_scene_initialization() {
+void special_sessions(int outcome = -1, bool inject_diagnostic = false) {
     Directory directory("native-special-" + std::to_string(GetCurrentProcessId()));
     assets();
-    NativeHost native;
+    tests::NativeWindowContainment containment(diagnostic, false);
+    NativeHost native(containment.parent());
     native.create_device();
+    const auto device_references = native.device->AddRef(); native.device->Release();
+    const auto original_procedure = GetWindowLongPtrA(native.child, GWLP_WNDPROC);
+    MG_CHECK(original_procedure);
     auto settings = SRobotsSettings::generate_default_settings();
     settings.FDirect3D = reinterpret_cast<uintptr_t>(native.api);
     settings.FD3DDevice = reinterpret_cast<uintptr_t>(native.device);
@@ -355,21 +501,64 @@ void special_scene_initialization() {
     auto *entry = GetRobotInterface(); entry->m_Init(&callbacks);
     struct Guard { SMGDRobotInterface *entry; ~Guard() { entry->m_Deinit(); observation = nullptr; } } guard{entry};
     const wchar_t *maps[] = {L".\\Matrix\\Map\\mixed-break-anim.cmap", L".\\Matrix\\Map\\mixed-boss-break.cmap", L".\\synthetic.map"};
-    for (bool packed : {false, true}) for (int scene = 0; scene < 3; ++scene) {
-        if (packed && scene == 0) tests::pack_native_session_configuration();
-        Observation observed{}; observed.window = native.child; observed.scene = scene; observation = &observed;
-        SRobotGameState result{};
-        std::wstring map(maps[scene]);
-        const int exit = entry->m_Run(GetModuleHandleW(nullptr), native.child, map.data(), &settings,
-            nullptr, nullptr, nullptr, nullptr, nullptr, &result);
-        if (!observed.failure.empty()) throw std::runtime_error(observed.failure);
-        MG_CHECK(exit == 0 && observed.checked && observed.closing && observed.ticks >= 3);
-        MG_CHECK(observed.hits == (scene == 2 ? 0 : 2));
-        MG_CHECK(!g_MatrixMap && !g_Cache && !g_MatrixHeap && !g_FormCur && !g_D3DD);
-        MG_CHECK(IsWindow(native.child) && !IsWindowVisible(native.child));
-        std::cout << "native-special scene=" << scene << " packed=" << packed
-            << " initialized=1 weapon-targets-hit=" << observed.hits << " frames=" << observed.ticks << " exit=" << exit << '\n';
+    for (bool packed : {false, true}) {
+        if (packed) tests::pack_native_session_configuration();
+        const std::vector<int> scenes = inject_diagnostic ? std::vector<int>{2} :
+            outcome < 0 ? std::vector<int>{0,1,2} : std::vector<int>{outcome == 2 ? 1 : 0, 2};
+        for (int scene : scenes) {
+            Observation observed{}; observed.window = native.child; observed.scene = scene;
+            ObservationScope observation_scope(observed);
+            observed.outcome = outcome >= 0 && scene != 2; observed.reverse = outcome == 1;
+            observed.inject_diagnostic = inject_diagnostic;
+            native_diagnostics.clear();
+            SRobotGameState result{};
+            std::wstring map(maps[scene]);
+            const int exit = entry->m_Run(GetModuleHandleW(nullptr), native.child, map.data(), &settings,
+                nullptr, nullptr, nullptr, nullptr, nullptr, &result);
+            SetUnhandledExceptionFilter(nullptr); std::set_terminate([] { std::abort(); });
+            if (!observed.failure.empty()) throw std::runtime_error(observed.failure);
+            MG_CHECK(exit == (observed.outcome ? 3 : 0) && observed.checked && observed.closing && observed.ticks >= 3);
+            if (observed.outcome) {
+                MG_CHECK(observed.won && observed.statistics && observed.phase == 5);
+                MG_CHECK(result.m_KillBuilding == (scene == 1 ? 1 : 2));
+                MG_CHECK(result.m_KillRobot == 0);
+            } else MG_CHECK(observed.hits == (scene == 2 ? 0 : 2));
+            if (scene == 2) MG_CHECK(result.m_KillBuilding == 0 && result.m_KillRobot == 0);
+            MG_CHECK(observed.texts > 0 && observed.texts == observed.text_clears);
+            MG_CHECK(!g_MatrixMap && !g_MatrixData && !g_Render && !g_IFaceList);
+            MG_CHECK(!g_Cache && !g_CacheHeap && !g_MatrixHeap && !g_D3DD && !g_D3D && !g_Wnd);
+            MG_CHECK(!g_FormCur && !g_FormFirst && !g_FormLast && !CMatrixMapStatic::GetFirstLogic());
+            MG_CHECK(IsWindow(native.child) && !IsWindowVisible(native.child));
+            MG_CHECK(GetParent(native.child) == containment.parent());
+            MG_CHECK(GetWindowLongPtrA(native.child, GWLP_WNDPROC) == original_procedure);
+            MG_CHECK(native.device->TestCooperativeLevel() == D3D_OK);
+            const auto remaining = native.device->AddRef(); native.device->Release();
+            MG_CHECK(remaining == device_references);
+            MG_CHECK(native.device->Clear(0, nullptr, D3DCLEAR_TARGET, 0, 1, 0) == D3D_OK);
+            // A successful Present can be occluded; this proves reuse, not visible output.
+            MG_CHECK(SUCCEEDED(native.device->Present(nullptr, nullptr, nullptr, nullptr)));
+            // An expected diagnostic cannot mask a failed Run, callback or cleanup assertion.
+            reject_diagnostics();
+            std::cout << "native-special scene=" << scene << " packed=" << packed
+                << " initialized=1 weapon-targets-hit=" << observed.hits << " outcome=" << outcome
+                << " frames=" << observed.ticks << " exit=" << exit << '\n';
+        }
     }
+    native.close();
+}
+void special_scene_initialization() { special_sessions(); }
+void break_anim_outcome() { special_sessions(0); }
+void anim_break_outcome() { special_sessions(1); }
+void terron_outcome() { special_sessions(2); }
+void diagnostic_failure() {
+    bool failed = false;
+    try { special_sessions(-1, true); }
+    catch (const NativeDiagnostic &error) {
+        MG_CHECK(native_diagnostics == L"Fixture diagnostic: intentional special-scene diagnostic\n");
+        MG_CHECK(std::string(error.what()) == "Native diagnostic: Fixture diagnostic: intentional special-scene diagnostic\n");
+        failed = true;
+    }
+    MG_CHECK(failed);
 }
 #endif
 }
@@ -399,6 +588,10 @@ int main(int argc, char **argv) {
             {"game.session.special_export_ownership", export_ownership},
 #if MATRIXGAME_SCENARIO_BUILD_DLL
             {"game.session.native_special_scenes", special_scene_initialization},
+            {"game.session.native_break_anim", break_anim_outcome},
+            {"game.session.native_anim_break", anim_break_outcome},
+            {"game.session.native_terron", terron_outcome},
+            {"game.session.native_special_diagnostic", diagnostic_failure},
 #endif
         };
         result = tests::run(argc, argv, cases);
