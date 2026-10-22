@@ -427,7 +427,8 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
         if (!observed.failure.empty()) throw std::runtime_error(observed.failure);
         MG_CHECK(observed.restarts == (building_restart && !failing ? 2 : 0));
         MG_CHECK(exit == (failing ? 100 : (observed.demo != DemoProfile::None ? 1 : 0)));
-        if (failing && packed && profile != ConfigurationProfile::PackedMissingHint) MG_CHECK(observed.progress == 0 && !observed.map_observed && observed.ticks == 0);
+        if (failing && packed && profile != ConfigurationProfile::PackedMissingHint)
+            MG_CHECK(observed.progress == 0 && !observed.map_observed && observed.ticks == 0);
         else MG_CHECK(observed.progress > 0 && observed.map_observed);
         MG_CHECK(observed.initial_cheat_flags == 0);
         MG_CHECK(observed.toggles_observed == observed.type_toggles);

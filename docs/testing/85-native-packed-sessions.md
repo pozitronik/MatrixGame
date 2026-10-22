@@ -12,11 +12,11 @@ The text case separately tests a missing-interface initialization failure betwee
 
 `game.session.pneumatic_retirement` also calls `CMatrixRobot::DestroyPneumaticData` again after each successful packed battle. This explicit cleanup boundary must be harmless, and the following real initialization must rebuild the animation data. Before the pointer-retirement correction, this case crashes Debug; Release can appear to pass despite the double free. Both configurations remain required.
 
-Enable `MATRIXGAME_NATIVE_SESSION_TESTS` in the existing DLL build as described in the native-session guide, then run:
+Native execution of this continuation requires the [contained session fixture](https://github.com/pozitronik/MatrixGame/pull/272) and [successful presentation-status correction](https://github.com/pozitronik/MatrixGame/pull/271). Integrate both prerequisites before running this selection. Enable `MATRIXGAME_NATIVE_SESSION_TESTS` in the existing DLL build as described in the native-session guide, then run serially:
 
 ```powershell
-.\tools\test.ps1 -Configuration Debug -DLL -NoBuild -Filter '^game.session.(native_(run|packed)_lifetimes|native_packed_(header|hint)_failure|pneumatic_retirement)$'
-.\tools\test.ps1 -Configuration Release -DLL -NoBuild -Filter '^game.session.(native_(run|packed)_lifetimes|native_packed_(header|hint)_failure|pneumatic_retirement)$'
+.\tools\test.ps1 -Configuration Debug -DLL -NoBuild -Jobs 1 -Filter '^game\.session\.(native_(run|packed)_lifetimes|native_packed_(header|hint)_failure|pneumatic_retirement)$'
+.\tools\test.ps1 -Configuration Release -DLL -NoBuild -Jobs 1 -Filter '^game\.session\.(native_(run|packed)_lifetimes|native_packed_(header|hint)_failure|pneumatic_retirement)$'
 ```
 
 These opt-in tests require a local Direct3D 9 HAL device and run inside an invisible borrowed child window. Packed/text equivalence is scoped to the declared introduction, movement and cleanup observations. It does not establish every original packed resource, language configuration, host implementation or visible presentation profile. The full baseline and remaining native validation retain their existing acceptance requirements.
