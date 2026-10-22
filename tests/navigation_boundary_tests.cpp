@@ -465,8 +465,26 @@ void sloped_terrain_journeys() {
 
 // Terrain data is supplied once; the complete production map tick derives the
 // chassis height, tilt, water state and movement through each boundary.
-int terrain_transition(random::Mode mode, int step, float gradient, bool lateral, bool water, bool reverse = false) {
+struct TiltResponse {
+    int started = -1, sampled = -1, settled = -1;
+    float initial_error = 0, sampled_error = 0;
+    void observe(int now, float error) {
+        if (started < 0) { started = now; initial_error = error; }
+        if (sampled < 0 && now - started >= 160) { sampled = now; sampled_error = error; }
+        if (settled < 0 && error < 0.001f) settled = now;
+        if (settled >= 0) MG_CHECK(error < 0.001f);
+    }
+    void verify() const {
+        MG_CHECK(started >= 0 && sampled - started == 160);
+        MG_CHECK(initial_error > 0.05f && initial_error < 0.11f);
+        MG_CHECK(sampled_error > initial_error * 0.35f && sampled_error < initial_error * 0.75f);
+        MG_CHECK(settled - started >= 900 && settled - started <= 1300);
+    }
+};
+int terrain_transition(random::Mode mode, int step, float gradient, bool lateral, bool water,
+                       bool reverse = false, bool characterize_response = false) {
     Profile profile{mode, 81, step, 5000, false};
+    MG_CHECK(!characterize_response || (!lateral && !water && gradient == 0.2f));
     profile.layout = NavigationLayout::Open;
     Session session(profile);
     MG_CHECK(session.remove(2));
@@ -521,13 +539,16 @@ int terrain_transition(random::Mode mode, int step, float gradient, bool lateral
     session.ground_command(target_x, target_y);
     const float slope = gradient / std::sqrt(1 + gradient * gradient) * (reverse ? -1 : 1);
     int first_band = 0, middle = 0, last_band = 0, emerged = 0, dry_level_samples = 0;
-    std::cout << session.metadata("terrain-transition-journey-v1") << " gradient=" << gradient
+    TiltResponse entering, leaving;
+    std::cout << session.metadata(characterize_response ? "terrain-transition-response-v1" :
+                                                        "terrain-transition-journey-v1") << " gradient=" << gradient
               << " lateral=" << lateral << " water=" << water << " reverse=" << reverse << std::endl;
     while (session.frame() < profile.max_frames) {
         const float previous_forward_slope = core->m_Matrix._23;
         session.advance();
         const auto state = session.robot(1);
-        MG_CHECK(state.alive && !robot->IsMustDie() && core->m_Object == robot);
+        MG_CHECK(core->m_Object == robot);
+        MG_CHECK(state.alive && !robot->IsMustDie());
         MG_CHECK(state.order == mpo_MoveTo && state.destination_x == (reverse ? 4 : 52));
         MG_CHECK(state.destination_y == (lateral ? 28 : 18));
         MG_CHECK(std::isfinite(state.x) && std::isfinite(state.y) && std::isfinite(robot->m_Speed));
@@ -537,6 +558,12 @@ int terrain_transition(random::Mode mode, int step, float gradient, bool lateral
         MG_CHECK(session.robot(4).x == 540 && session.robot(4).y == 540);
         const float expected_height = height(lateral ? core->m_Matrix._42 : core->m_Matrix._41);
         MG_CHECK(std::abs(core->m_Matrix._43 - expected_height) < 0.001f);
+        if (characterize_response) {
+            if (reverse ? state.x <= 360 && state.x > 220 : state.x >= 200 && state.x < 360)
+                entering.observe(session.time(), std::abs(core->m_Matrix._23 - slope));
+            if (reverse ? state.x <= 160 && state.x > 80 : state.x >= 400 && state.x < 500)
+                leaving.observe(session.time(), std::abs(core->m_Matrix._23));
+        }
         // Stay away from interpolation/tilt convergence and arrival slowdown.
         const bool before = reverse ? state.x > 470 && state.x < 500 : state.x > 100 && state.x < 130;
         const bool on_ramp = water ? state.x > 220 && state.x < 230 :
@@ -583,7 +610,21 @@ int terrain_transition(random::Mode mode, int step, float gradient, bool lateral
               << last_band << ',' << emerged << ',' << dry_level_samples << '\n';
     MG_CHECK(first_band > 0 && middle > 0 && last_band > 0 &&
              (!water || (emerged > 0 && dry_level_samples > 0)));
+    if (characterize_response) {
+        for (const auto *response : {&entering, &leaving})
+            std::cout << "tilt response start=" << response->started << " sampled=" << response->sampled
+                      << " settled=" << response->settled << " errors=" << response->initial_error
+                      << ',' << response->sampled_error << " ratio="
+                      << response->sampled_error / response->initial_error << '\n';
+        entering.verify();
+        leaving.verify();
+    }
     return session.time();
+}
+void terrain_transient_response() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+      for (bool reverse : {false, true})
+        terrain_transition(mode, step, 0.2f, false, false, reverse, true);
 }
 void terrain_ramp_transitions() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
@@ -663,6 +704,7 @@ void water_depth() {
     }
 }
 const Case cases[] = {
+    {"game.navigation.terrain_transient_response", terrain_transient_response},
     {"game.navigation.terrain_ramp_transitions", terrain_ramp_transitions},
     {"game.navigation.terrain_lateral_slope", terrain_lateral_slope},
     {"game.navigation.terrain_water_slope", terrain_water_slope},
