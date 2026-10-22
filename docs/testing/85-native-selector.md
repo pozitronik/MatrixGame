@@ -91,7 +91,7 @@ Natural result preparation lives in [CMatrixMapLogic::Takt](../../MatrixGame/src
 
 The required follow-up is a reloadable scene with exact survival/objective inputs plus a reviewed observation/control mechanism that demonstrates the pending state before delivering Restart/Quit. The successful-initialization work in O7 is developing a complete synthetic map/configuration; a dynamic-only restart storage fixture cannot itself be launched as a full map. Materializing the future O7 fixture may supply the scene, but it does not by itself solve the timing/observation requirement. No production test seam, new cheat or change to result timing is introduced by this procedure.
 
-Failed selected-map initialization additionally needs exact malformed input that passes the selector's shallow readability check but fails later, its expected diagnostic, complete process observations and a successful recovery launch. Merely naming a missing map tests an earlier rejection route. These inputs and short-lived failure observation remain preparation work; no NV-06-3 row is ready or passed here.
+The [native failure procedure](85-native-failures.md) prepares failed Restart through a disposable header change and late selected-map initialization through an unchanged valid map plus a missing staged text interface. It requires exact diagnostics, visible child observation before acknowledging its exception and a subsequent successful launch. General malformed selected-map input and short-lived failure tracing remain missing. Merely naming a missing map tests an earlier rejection route. No NV-06-3 execution is recorded here.
 
 ## Coverage and restoration
 
@@ -103,7 +103,8 @@ Failed selected-map initialization additionally needs exact malformed input that
 | Victory-dialog/statistics route entered by developer code | Ready: W1/W2; direct-dialog scope only |
 | Menu Exit with no selector/child | Ready: E0 |
 | Natural win and natural loss through their scheduled dialogs | Missing exact repeatable scene/trigger and observations; W1/W2 and Surrender do not substitute |
-| Pending-result Restart/Quit and selected-map failure/recovery | Missing reviewed trigger/input and complete failure-process evidence; NV-06-3 remains open |
+| Failed reload and late text-interface initialization/recovery | Prepared separately in the [native failure procedure](85-native-failures.md); no execution recorded |
+| Pending-result Restart/Quit and general malformed selected-map failure | Missing reviewed trigger/input and complete failure-process evidence; NV-06-3 remains open |
 
 Use the same profile/result record as the session guide, adding case ID, selector origin, source/destination map identity, activation method, expected/observed process count, every captured exit and each readiness observation. After all observed processes exit, the helper restores the staged configuration and removes its own alternate-map copy. It leaves any source map and existing unrelated output maps unchanged. Abandoned-run recovery uses explicit `-Restore` after all games close; preserve independent later settings edits before that command.
 
