@@ -26,6 +26,8 @@ The new demo scenes require balanced release of every requested host text bitmap
 
 Native execution uses the [test-window containment helper](native-window-containment.md). The borrowed rendering child remains under an invisible parent; imported cursor operations are test-local and unexpected diagnostic dialogs fail the scenario. Actual Direct3D creation, reset, rendering and presentation remain enabled. Native cursor appearance, focus delivery, visible loading, audible playback and original-host binary loading are excluded.
 
+The driver's successful presentation statuses, including an occluded window, establish continued device use rather than visible output. The host's post-session presentation check therefore uses HRESULT success. The engine must also accept such statuses; [the presentation classification correction](https://github.com/pozitronik/MatrixGame/issues/270) is a prerequisite on drivers returning occlusion. Native failures caused by that defect remain failures until the correction is integrated and the cases pass.
+
 ```powershell
 .\tools\build.ps1 -Configuration Debug -DLL -WithoutResources -TestsOnly
 & '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' -S . -B build/mingw-debug-dll -DMATRIXGAME_NATIVE_SESSION_TESTS=ON

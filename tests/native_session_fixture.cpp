@@ -687,7 +687,7 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
         const auto remaining = native.device->AddRef(); native.device->Release();
         MG_CHECK(remaining == references);
         MG_CHECK(native.device->Clear(0, nullptr, D3DCLEAR_TARGET, 0, 1, 0) == D3D_OK);
-        MG_CHECK(native.device->Present(nullptr, nullptr, nullptr, nullptr) == D3D_OK);
+        MG_CHECK(SUCCEEDED(native.device->Present(nullptr, nullptr, nullptr, nullptr)));
         if (leave_key_held) MG_CHECK(!Input::isVKeyPressed(VK_F12));
         for (const auto &core : observed.camera_cores) MG_CHECK(!core);
 #ifdef MEM_SPY_ENABLE
