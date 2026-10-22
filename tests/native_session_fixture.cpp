@@ -354,8 +354,10 @@ void __stdcall tick() {
                 MG_CHECK(elapsed < 10000);
                 if (g_MatrixMap->m_AD_Obj_cnt) {
                     MG_CHECK(eligible && g_MatrixMap->m_AD_Obj_cnt == 1);
-                    auto *carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[0]);
-                    MG_CHECK(carrier && carrier->IsFlyer() && carrier->CarryingRobot());
+                    auto *requested = g_MatrixMap->m_AD_Obj[0];
+                    MG_CHECK(requested && requested->IsFlyer());
+                    auto *carrier = static_cast<CMatrixFlyer *>(requested);
+                    MG_CHECK(carrier->CarryingRobot());
                     MG_CHECK(carrier->GetCarryingRobot() && carrier->GetCarryingRobot()->IsLiveRobot());
                     auto *cargo = carrier->GetCarryingRobot()->AsRobot();
                     MG_CHECK(cargo->GetSide() == PLAYER_SIDE && cargo->m_CurrState == ROBOT_CARRYING);
@@ -475,6 +477,10 @@ void __stdcall tick() {
         host->failure = error.what();
         for (auto &core : host->camera_cores) core.reset();
         throw;
+    } catch (...) {
+        host->failure = "Unexpected native host callback exception";
+        for (auto &core : host->camera_cores) core.reset();
+        throw;
     }
 }
 enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, RepeatedPneumaticCleanup };
@@ -586,6 +592,11 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
             profile == ConfigurationProfile::RepeatedPneumaticCleanup)) continue;
         const bool failing = lifetime == 1;
         HostObservation observed;
+        // Diagnostics can also arrive while the host/device guards retire.
+        // Clear this alias before its stack observation is destroyed.
+        struct ObservationScope {
+            ~ObservationScope() { host = nullptr; }
+        } observation_scope;
         observed.window = window.child;
         observed.leave_key_held = leave_key_held;
         observed.building_restart = building_restart;
