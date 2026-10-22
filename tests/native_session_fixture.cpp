@@ -620,6 +620,13 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
             nullptr, nullptr, nullptr, nullptr, nullptr, &result);
         SetUnhandledExceptionFilter(nullptr);
         std::set_terminate([] { std::abort(); });
+        const int expected_exit = failing ? 100 : observed.demo != DemoProfile::None ? 1 : 0;
+        if (exit != expected_exit) {
+            std::ifstream errors("matrixgame-dll-errors.log", std::ios::binary);
+            const std::string diagnostic((std::istreambuf_iterator<char>(errors)), {});
+            std::cerr << "Unexpected Run result " << exit << ": "
+                << (diagnostic.empty() ? "No DLL failure diagnostic recorded" : diagnostic) << '\n';
+        }
         if (!failing && profile == ConfigurationProfile::RepeatedPneumaticCleanup)
             CMatrixRobot::DestroyPneumaticData();
         if (failing) {
@@ -646,7 +653,7 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
             << " demo=" << static_cast<int>(observed.demo) << " toggles=" << observed.toggles_observed << '\n';
         if (!observed.failure.empty()) throw std::runtime_error(observed.failure);
         MG_CHECK(observed.restarts == (building_restart && !failing ? 2 : 0));
-        MG_CHECK(exit == (failing ? 100 : (observed.demo != DemoProfile::None ? 1 : 0)));
+        MG_CHECK(exit == expected_exit);
         if (failing && packed) MG_CHECK(observed.progress == 0 && !observed.map_observed && observed.ticks == 0);
         else MG_CHECK(observed.progress > 0 && observed.map_observed);
         MG_CHECK(observed.initial_cheat_flags == 0);
