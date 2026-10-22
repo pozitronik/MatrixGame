@@ -463,6 +463,7 @@ add_matrix_test(game.device.reset_order matrixgame_device_tests rendering)
 add_matrix_test(game.device.transient_reset matrixgame_device_tests rendering)
 add_matrix_test(game.device.permanent_error matrixgame_device_tests rendering)
 add_matrix_test(game.device.present_loss matrixgame_device_tests rendering)
+add_matrix_test(game.device.present_statuses matrixgame_device_tests rendering)
 
 add_matrix_test_executable(matrixgame_display_tests display_tests.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_display_tests PRIVATE MatrixGameInternal)
