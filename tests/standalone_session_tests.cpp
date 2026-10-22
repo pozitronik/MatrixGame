@@ -2,11 +2,15 @@
 #include "test_support.hpp"
 #include "native_session_assets.hpp"
 #include "native_outcome_assets.hpp"
+#include "native_packed_config.hpp"
 #include "standalone_session_protocol.hpp"
 #include "CMain.hpp"
 #include "StandaloneSettings.hpp"
+#include "CBlockPar.hpp"
+#include "CStorage.hpp"
 #include <windows.h>
 #include <chrono>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +23,8 @@ namespace {
 namespace fs = std::filesystem;
 namespace protocol = tests::native_session;
 fs::path probe_executable, compiler_directory;
+enum class ConfigurationProfile { Text, Packed };
+ConfigurationProfile configuration_profile = ConfigurationProfile::Text;
 void write(const fs::path &path, std::string_view text) {
     fs::create_directories(path.parent_path());
     std::ofstream stream(path, std::ios::binary);
@@ -44,15 +50,21 @@ struct Environment {
     ~Environment() { SetEnvironmentVariableW(key.c_str(), existed ? previous.c_str() : nullptr); }
 };
 struct Deployment {
+    const ConfigurationProfile configuration;
     fs::path previous = fs::current_path();
     fs::path root = previous / ("native-exe-session-" + std::to_string(GetCurrentProcessId()));
     fs::path app = root / "app", caller = root / "caller";
-    Deployment() {
+    explicit Deployment(ConfigurationProfile profile = configuration_profile) : configuration(profile) {
         MG_CHECK(!fs::exists(root));
         fs::create_directories(app); fs::create_directories(caller);
         try {
             fs::current_path(app);
             tests::write_native_session_assets();
+            if (configuration == ConfigurationProfile::Packed) {
+                tests::pack_native_session_configuration();
+                fs::remove_all(L"parked-text-config");
+                MG_CHECK(!fs::exists(L"CFG/robots") && !fs::exists(L"parked-text-config"));
+            }
             fs::create_directories("Matrix/Map");
             tests::write_native_session_map(L"Matrix/Map/first.cmap");
             tests::write_native_session_map(L"Matrix/Map/second.cmap");
@@ -83,6 +95,27 @@ struct Deployment {
         }
     }
 };
+void configuration_assets() {
+    for (auto profile : {ConfigurationProfile::Text, ConfigurationProfile::Packed}) {
+        Deployment deployment(profile);
+        Base::CBlockPar data, interface_config;
+        const auto config = deployment.app / "CFG";
+        if (profile == ConfigurationProfile::Packed) {
+            MG_CHECK(fs::is_regular_file(config / "robots.dat") && !fs::exists(config / "robots"));
+            MG_CHECK(!fs::exists(deployment.app / "parked-text-config"));
+            Base::CStorage archive;
+            MG_CHECK(archive.Load((config / "robots.dat").c_str()));
+            archive.RestoreBlockPar(L"da", data);
+            archive.RestoreBlockPar(L"if", interface_config);
+        } else {
+            MG_CHECK(!fs::exists(config / "robots.dat"));
+            data.LoadFromTextFile((config / "robots/data.txt").c_str());
+            interface_config.LoadFromTextFile((config / "robots/iface.txt").c_str());
+        }
+        MG_CHECK(data.BlockGet(L"Config")->ParGet(L"SoftwareCursor") == L"1");
+        MG_CHECK(interface_config.BlockCount() > 0);
+    }
+}
 struct Process {
     HANDLE handle{};
     bool exited{};
@@ -101,6 +134,12 @@ struct Harness {
     std::optional<Environment> path;
     explicit Harness(const Deployment &deployment) : application(deployment.app) {
         try {
+            const bool packed = deployment.configuration == ConfigurationProfile::Packed;
+            MG_CHECK(fs::is_regular_file(application / "CFG/robots.dat") == packed);
+            MG_CHECK(fs::is_regular_file(application / "CFG/robots/data.txt") == !packed);
+            MG_CHECK(fs::is_regular_file(application / "CFG/robots/iface.txt") == !packed);
+            MG_CHECK(!fs::exists(application / "parked-text-config"));
+            std::cout << "configuration=" << (packed ? "Packed" : "Text") << '\n' << std::flush;
             MG_CHECK(mapping);
             shared = static_cast<protocol::Shared *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(protocol::Shared)));
             MG_CHECK(shared); new (shared) protocol::Shared{};
@@ -360,7 +399,8 @@ void battle_relaunch(bool different, bool edit_settings = false) {
 }
 void failed_child_recovery(bool corrupt_map = false) {
     Deployment deployment;
-    const auto original = deployment.app / (corrupt_map ? "Matrix/Map/second.cmap" : "CFG/robots/iface.txt");
+    const bool packed = deployment.configuration == ConfigurationProfile::Packed;
+    const auto original = deployment.app / (corrupt_map ? "Matrix/Map/second.cmap" : packed ? "CFG/robots.dat" : "CFG/robots/iface.txt");
     const auto backup = deployment.app / "fault-backup";
     {
         Harness run(deployment);
@@ -373,6 +413,9 @@ void failed_child_recovery(bool corrupt_map = false) {
         if (corrupt_map) {
             fs::copy_file(original, backup);
             tests::remove_native_map_width(original);
+        } else if (packed) {
+            fs::copy_file(original, backup);
+            write(original, "BAD!");
         } else fs::rename(original, backup);
         run.key(parent, VK_END);
         run.key(parent, VK_RETURN);
@@ -382,14 +425,18 @@ void failed_child_recovery(bool corrupt_map = false) {
         MG_CHECK(run.processes.size() == 2);
         const auto *failure = run.slot(child);
         MG_CHECK(failure && failure->diagnostics == 1);
-        MG_CHECK(std::wstring(failure->diagnostic_text).find(corrupt_map ? L"Unable to load map" : L"iface.txt") != std::wstring::npos);
-        MG_CHECK(StandaloneSettings::load((deployment.app / "CFG/standalone.txt").c_str()).values.map.empty());
+        const auto expected = corrupt_map ? L"Unable to load map" : packed ? L"Invalid packed configuration: cfg\\robots.dat" : L"iface.txt";
+        MG_CHECK(std::wstring(failure->diagnostic_text).find(expected) != std::wstring::npos);
+        // A bad archive fails before startup_map/begin_map_load; that path has
+        // not attempted the remembered map and therefore retains its choice.
+        const auto saved_map = StandaloneSettings::load((deployment.app / "CFG/standalone.txt").c_str()).values.map;
+        MG_CHECK(saved_map == (packed && !corrupt_map ? L"Matrix\\Map\\second.cmap" : L""));
     }
-    if (corrupt_map) restore_bytes(backup, original);
+    if (corrupt_map || packed) restore_bytes(backup, original);
     else fs::rename(backup, original);
     {
         Harness fresh(deployment);
-        start_battle(fresh, corrupt_map);
+        start_battle(fresh, corrupt_map || packed);
         MG_CHECK(fresh.message(fresh.root_pid, WM_CLOSE));
         fresh.exit(fresh.root_pid, 0);
         MG_CHECK(fresh.processes.size() == 1);
@@ -671,13 +718,15 @@ void natural_result(bool player_wins, random::Mode mode, PendingAction action = 
 }
 int main(int argc, char **argv) {
     if (argc != 4) return 2;
+    if (std::string_view(argv[1]).ends_with("_packed")) configuration_profile = ConfigurationProfile::Packed;
     probe_executable = fs::absolute(argv[2]);
     compiler_directory = fs::absolute(argv[3]).parent_path();
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
-    const tests::Case cases[] = {{"game.session.exe_startup_selector_close", startup_selector_close},
+    tests::Case cases[] = {{"game.session.exe_configuration_assets", configuration_assets},
+        {"game.session.exe_startup_selector_close", startup_selector_close},
         {"game.session.exe_surrender_close", [] { battle_end(true, true, true); }},
         {"game.session.exe_startup_cancel", startup_cancel}, {"game.session.exe_startup_battle", startup_battle},
         {"game.session.exe_same_map", [] { battle_relaunch(false); }}, {"game.session.exe_different_map", [] { battle_relaunch(true); }},
@@ -704,6 +753,12 @@ int main(int argc, char **argv) {
         {"game.session.exe_natural_loss_legacy_crt", [] { natural_result(false, random::Mode::LegacyCRT, PendingAction::None); }},
         {"game.session.exe_natural_loss_restart_legacy_crt", [] { natural_result(false, random::Mode::LegacyCRT, PendingAction::Restart); }},
         {"game.session.exe_natural_loss_exit_legacy_crt", [] { natural_result(false, random::Mode::LegacyCRT, PendingAction::Exit); }}};
+    std::array<std::string, std::size(cases)> packed_names;
+    if (configuration_profile == ConfigurationProfile::Packed)
+        for (size_t i = 0; i < std::size(cases); ++i) {
+            packed_names[i] = std::string(cases[i].name) + "_packed";
+            cases[i].name = packed_names[i].c_str();
+        }
     const int result = tests::run(2, argv, cases);
     Base::CMain::BaseDeInit();
     return result;
