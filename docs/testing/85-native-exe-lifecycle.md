@@ -83,7 +83,7 @@ Before production startup, the adapter also intercepts `SHGetSpecialFolderLocati
 
 The actual game window procedure and message loop receive posted keyboard, mouse, activation and close messages directed only to a window owned by the recorded process. No desktop input is synthesized. Thread-local message hooks observe the current form, loaded map, simulation clock, dialog, settings and live robot count on the game thread. Numbered requests and sequence-guarded snapshots distinguish a completed observation from a stale or partially written response. The observer does not mutate gameplay state.
 
-For a successful relaunch, the child must have a live initialized scene, have recognized the selected-battle launch arguments, clear its parent-handshake handle after the real successful `Present`, and subsequently advance simulation. The failure case separately checks the diagnostic and exit code, because the production failure handler also signals the parent event. Suppressing `BattleLoading::presented` in a temporary negative-control build must make the successful relaunch case time out at the readiness assertion.
+For a successful relaunch, the child must have a live initialized scene, have recognized the selected-battle launch arguments, clear its parent-handshake handle after a real `S_OK` from `Present`, and subsequently advance simulation. The failure case separately checks the diagnostic and exit code, because the production failure handler also signals the parent event. Suppressing `BattleLoading::presented` in a temporary negative-control build must make the successful relaunch case time out at the readiness assertion.
 
 ## Coverage limits
 
