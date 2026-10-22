@@ -554,7 +554,9 @@ void diagnostic_failure() {
     bool failed = false;
     try { special_sessions(-1, true); }
     catch (const NativeDiagnostic &error) {
-        failed = std::string(error.what()).find("intentional special-scene diagnostic") != std::string::npos;
+        MG_CHECK(native_diagnostics == L"Fixture diagnostic: intentional special-scene diagnostic\n");
+        MG_CHECK(std::string(error.what()) == "Native diagnostic: Fixture diagnostic: intentional special-scene diagnostic\n");
+        failed = true;
     }
     MG_CHECK(failed);
 }
