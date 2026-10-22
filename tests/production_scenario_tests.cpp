@@ -233,6 +233,7 @@ void strategic_purchase(StrategicEnd ending) {
         while (factory->m_BS.GetItemsCnt() == 0 && session.time() < 2000) {
             const auto before = resources();
             session.advance();
+            MG_CHECK(base_core->m_Object == factory);
             const auto earned = resources();
             const int change = earned[0] - before[0];
             MG_CHECK(change == 0 || change == 3);
@@ -284,6 +285,7 @@ void strategic_purchase(StrategicEnd ending) {
         while (session.time() < purchased + 8000 && closed < 0) {
             const auto before = resources();
             session.advance();
+            MG_CHECK(base_core->m_Object == factory && robot_core->m_Object == built);
             const auto after = resources();
             const int change = after[0] - before[0];
             MG_CHECK(change == 0 || change == 3);
