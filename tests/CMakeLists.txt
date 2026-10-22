@@ -919,4 +919,3 @@ target_compile_definitions(matrixgame_formation_regulation_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 add_matrix_test(game.navigation.mixed_formation_regulation matrixgame_formation_regulation_tests gameplay navigation)
-

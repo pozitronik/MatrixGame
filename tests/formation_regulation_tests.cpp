@@ -29,6 +29,9 @@ struct Formation {
     float minimum_separation = 10000, maximum_separation = 0;
     explicit Formation(CMatrixRobotAI *track) {
         auto *selected = g_MatrixMap->GetPlayerSide()->GetCurGroup();
+        MG_CHECK(selected && selected->GetObjectsCnt() == 3);
+        for (int i = 0; i < 3; ++i) MG_CHECK(selected->GetObjectByN(i) && selected->GetObjectByN(i)->IsLiveRobot());
+        MG_CHECK(selected->GetObjectByN(2) == track);
         units = {selected->GetObjectByN(0)->AsRobot(), selected->GetObjectByN(1)->AsRobot(), track};
         for (int i = 0; i < 3; ++i) identities[i] = units[i]->UID;
     }
@@ -102,6 +105,7 @@ void journey(random::Mode mode, int step) {
     Formation formation(track);
     MG_CHECK(formation.units[0]->GetMaxSpeed() == .6f && formation.units[1]->GetMaxSpeed() == .6f);
     MG_CHECK(track->GetMaxSpeed() == .3f);
+    std::cout << session.metadata("mixed-formation-regulation-v1") << std::endl;
     formation.command(session, 600, 200);
     MG_CHECK(formation.target == CPoint(58, 18));
     int replacement = 0, first_regulated = 0;
