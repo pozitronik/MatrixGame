@@ -23,7 +23,7 @@ foreach ($configuration in @('Debug', 'Release')) {
 
 The test helper stages the verified D3DX9 runtime. Use builds with cheats disabled for this suite; no developer command is used. The fixtures load text configuration, render at 640x480 in windowed mode and disable shadows. The general lifecycle cases use two unarmed robots on flat generated terrain; the natural-result cases below arm one side. Both installed map entries initially contain the same scene under different filenames. The empty synthetic `robots.pkg` satisfies the standalone package preflight; all actual images, models and map records are generated loose files. The test deployment lives below CTest's working directory and is removed on normal completion or failure. Source configuration and supplied resources remain untouched.
 
-The normal build still compiles the controller and probe when the option is off. To remove these native cases from subsequent CTest selections, reconfigure each build with `-DMATRIXGAME_NATIVE_EXE_TESTS=OFF`.
+The normal build still compiles the controller and probe when the option is off. Each optional case has the `native-process` and `current-desktop` labels and runs serially within its CTest invocation; do not run separate native suites concurrently. To remove these native cases from subsequent CTest selections, reconfigure each build with `-DMATRIXGAME_NATIVE_EXE_TESTS=OFF`.
 
 ## Cases and assertions
 
