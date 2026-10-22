@@ -725,7 +725,7 @@ target_include_directories(matrixgame_navigation_boundary_tests PRIVATE "${CMAKE
 target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract terrain_ramp_transitions terrain_lateral_slope terrain_water_slope sloped_terrain_journeys zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth shallow_water_traversal)
+foreach(contract terrain_transient_response terrain_ramp_transitions terrain_lateral_slope terrain_water_slope sloped_terrain_journeys zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth shallow_water_traversal)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
 add_matrix_test(game.navigation.formation_speed_boundaries matrixgame_navigation_boundary_tests gameplay ai navigation)
