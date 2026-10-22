@@ -20,15 +20,15 @@ This case distinguishes an incidental general flyover from a retained fight by c
 
 ## Running and evidence
 
-The ordinary `game.session.demo_assets` check now parses all six AI/combat declarations in Text and Packed form, including complete robot columns, the single armed side, stationary/nonlethal component-scene configuration and the natural-fight heat declaration. It requires no window or device and runs in default DLL test configurations.
+The ordinary `game.session.demo_assets` check parses all six AI/combat declarations in Text and Packed form, including complete robot columns, the single armed side, stationary/nonlethal component-scene configuration and the natural-fight heat and armor declarations. It preserves the factory-column, transport-model and reinforcement-order checks of the loaded-demo AI suite. It requires no window or device and runs in default DLL test configurations.
 
 ```powershell
 .\tools\build.ps1 -Configuration Debug -DLL -WithoutResources -TestsOnly
 & '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' -S . -B build/mingw-debug-dll -DMATRIXGAME_NATIVE_SESSION_TESTS=ON
 & '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' --build build/mingw-debug-dll --target matrixgame_native_session_fixture
-.\tools\test.ps1 -Configuration Debug -DLL -NoBuild -Filter '^game\.session\.native_demo_(packed_)?natural_'
+.\tools\test.ps1 -Configuration Debug -DLL -NoBuild -Jobs 1 -Filter '^game\.session\.(demo_assets|native_demo_(packed_)?natural_.*)$'
 ```
 
-Repeat with Release and its build directory. Native combat processes have a 90-second CTest deadline in addition to game-time and callback bounds; registration is opt-in and the checks carry the `native-process` label. They require a usable native Direct3D 9 HAL and legacy DirectX runtime. A selected test fails if setup is unavailable. The shared [containment helper](native-window-containment.md) keeps windows and imported cursor operations test-local, while real rendering and presentation remain enabled.
+Repeat with Release and its build directory, then repeat both with `-Cheats` on the build and test helpers. Keep those options matched and restore the ordinary builds without `-Cheats` afterwards. Native combat processes have a 90-second CTest deadline in addition to game-time and callback bounds; registration is opt-in and the checks carry the `native-process` and `current-desktop` labels. They run serially; do not run separate native suites concurrently. They require a usable native Direct3D 9 HAL and legacy DirectX runtime. A selected test fails if setup is unavailable. The shared [containment helper](native-window-containment.md) keeps windows and imported cursor operations test-local, while real rendering and presentation remain enabled. Restore registration with `-DMATRIXGAME_NATIVE_SESSION_TESTS=OFF` after an opted-in run.
 
 These observations do not establish visible artwork, human screen picking, original resource behavior, original-host DLL loading or a standalone child-process transition. Native DLL execution uses ParkMiller selected and seeded by production code; the ordinary fixed-step AUTO/combat tests retain both supported RNG modes and replay comparisons. Native procedures and complete-baseline acceptance retain their separate recorded requirements.

@@ -595,6 +595,8 @@ void demo_assets() {
             auto *units = map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_UNITS, ST_WCHAR);
             MG_CHECK(units && units->GetArraysCount() == actors);
             const auto laser = L"|" + std::to_wstring(MRT_WEAPON) + L"," + std::to_wstring(RUK_WEAPON_LASER);
+            if (camera || reinforcement)
+                for (DWORD i = 0; i < actors; ++i) MG_CHECK(units->GetAsWStr(i) == units->GetAsWStr(0));
             for (DWORD i = 0; i < actors; ++i) {
                 const bool armed = ((demo == DemoProfile::NaturalWin || fights) && i == 0) ||
                     (demo == DemoProfile::NaturalLoss && i == 1);
@@ -640,6 +642,9 @@ void demo_assets() {
                     ->ParGet(L"WEAPON_LASER") == L"1000,0,0");
                 if (fights) {
                     MG_CHECK(data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Chassis")->ParGet(PAR_SOURCE_CHASSIS2_MOVE_SPEED) == L"0");
+                    auto *armor = data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Armor");
+                    MG_CHECK(armor->ParGet(PAR_SOURCE_ARMOR6_STRUCTURE) == L"30000");
+                    MG_CHECK(armor->ParGet(PAR_SOURCE_ARMOR2_STRUCTURE) == L"200000");
                     MG_CHECK(data.BlockGet(PAR_SOURCE_WEAPONS)->BlockGet(PAR_SOURCE_OVERHEAT)
                         ->ParGet(PAR_SOURCE_OVERHEAT_WEAPON_LASER_HEAT) == L"0");
                 }
