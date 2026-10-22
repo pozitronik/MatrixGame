@@ -27,6 +27,7 @@ if ($Compiler -eq 'MSVC') { $gameRoot = Join-Path $gameRoot $Configuration }
 $configRoot = Join-Path $gameRoot 'CFG'
 $settings = Join-Path $configRoot 'standalone.txt'
 $packed = Join-Path $configRoot 'robots.dat'
+$interface = Join-Path $configRoot 'robots/iface.txt'
 $backup = Join-Path $configRoot '.native-outcome-backup'
 $manifest = Join-Path $backup 'state.json'
 $exe = Join-Path $gameRoot 'MatrixGame.exe'
@@ -99,14 +100,19 @@ function Get-OutcomeSHA256([string]$Path) {
 function Restore-OutcomeConfiguration {
     if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw "No complete restoration record at $manifest" }
     $state = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-    if ($state.Version -notin @(1, 2) -or $state.SettingsPresent -isnot [bool] -or $state.PackedRemoved -isnot [bool] -or
-        ($state.Version -eq 2 -and ($state.AlternateMapStaged -isnot [bool] -or
-            $state.MapDirectoryCreated -isnot [bool] -or $state.MatrixDirectoryCreated -isnot [bool]))) {
+    if ($state.Version -notin @(1, 2, 3) -or $state.SettingsPresent -isnot [bool] -or $state.PackedRemoved -isnot [bool] -or
+        ($state.Version -ge 2 -and ($state.AlternateMapStaged -isnot [bool] -or
+            $state.MapDirectoryCreated -isnot [bool] -or $state.MatrixDirectoryCreated -isnot [bool])) -or
+        ($state.Version -eq 3 -and $state.InterfaceRemoved -isnot [bool])) {
         throw 'Invalid restoration record; inspect the retained backup manually.'
     }
     # Validate every required backup before touching the current configuration.
-    foreach ($name in @('standalone.txt', 'robots.dat')) {
-        $required = if ($name -eq 'standalone.txt') { $state.SettingsPresent } else { $state.PackedRemoved }
+    foreach ($name in @('standalone.txt', 'robots.dat', 'iface.txt')) {
+        $required = switch ($name) {
+            'standalone.txt' { $state.SettingsPresent }
+            'robots.dat' { $state.PackedRemoved }
+            'iface.txt' { $state.Version -eq 3 -and $state.InterfaceRemoved }
+        }
         if ($required -and -not (Test-Path -LiteralPath (Join-Path $backup $name) -PathType Leaf)) {
             throw "Incomplete backup: $name"
         }
@@ -114,14 +120,20 @@ function Restore-OutcomeConfiguration {
     if ($state.SettingsPresent) { Copy-Item -LiteralPath (Join-Path $backup 'standalone.txt') -Destination $settings -Force }
     elseif (Test-Path -LiteralPath $settings) { Remove-Item -LiteralPath $settings }
     if ($state.PackedRemoved) { Copy-Item -LiteralPath (Join-Path $backup 'robots.dat') -Destination $packed -Force }
-    if ($state.Version -eq 2 -and $state.AlternateMapStaged) {
+    if ($state.Version -eq 3 -and $state.InterfaceRemoved) {
+        Copy-Item -LiteralPath (Join-Path $backup 'iface.txt') -Destination $interface -Force
+        Write-Output ('Restored interface SHA256: ' + (Get-OutcomeSHA256 $interface))
+    }
+    if ($state.Version -ge 2 -and $state.AlternateMapStaged) {
         if (Test-Path -LiteralPath $alternate) { Remove-Item -LiteralPath $alternate }
         if ($state.MapDirectoryCreated -and (Test-Path -LiteralPath $mapRoot) -and
             -not @(Get-ChildItem -LiteralPath $mapRoot -Force).Count) { Remove-Item -LiteralPath $mapRoot }
         if ($state.MatrixDirectoryCreated -and (Test-Path -LiteralPath $matrixRoot) -and
             -not @(Get-ChildItem -LiteralPath $matrixRoot -Force).Count) { Remove-Item -LiteralPath $matrixRoot }
     }
-    foreach ($name in @('standalone.txt', 'robots.dat', 'state.json')) {
+    $backupFiles = @('standalone.txt', 'robots.dat', 'state.json')
+    if ($state.Version -eq 3 -and $state.InterfaceRemoved) { $backupFiles += 'iface.txt' }
+    foreach ($name in $backupFiles) {
         $path = Join-Path $backup $name
         if (Test-Path -LiteralPath $path) { Remove-Item -LiteralPath $path }
     }
@@ -206,12 +218,13 @@ if ($WatchRelaunches) {
 if (-not $Launch) { Write-Output 'Inspection only. Add -Launch to stage temporary settings and open the game.'; return }
 if (Get-Process -Name MatrixGame -ErrorAction SilentlyContinue) { throw 'Close all MatrixGame processes before starting this case.' }
 $state = [ordered]@{
-    Version = 2
+    Version = 3
     SettingsPresent = [bool](Test-Path -LiteralPath $settings -PathType Leaf)
     PackedRemoved = [bool]($ConfigurationMode -eq 'Text' -and (Test-Path -LiteralPath $packed -PathType Leaf))
     AlternateMapStaged = [bool]$AlternateMapFile
     MapDirectoryCreated = [bool](-not (Test-Path -LiteralPath $mapRoot))
     MatrixDirectoryCreated = [bool](-not (Test-Path -LiteralPath $matrixRoot))
+    InterfaceRemoved = $false
 }
 New-Item -ItemType Directory -Path $backup | Out-Null
 if ($state.SettingsPresent) { Copy-Item -LiteralPath $settings -Destination (Join-Path $backup 'standalone.txt') }
