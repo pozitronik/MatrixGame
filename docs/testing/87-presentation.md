@@ -24,6 +24,7 @@ The new `game.presentation.*` cases link real `CIFaceButton`, `CSound` and stand
 | `positional_attenuation_boundaries` | Raw frontend and standalone voice volume/pan at full-volume, attenuated and inaudible distances; see Positional audio boundaries below |
 | `positional_loop_reentry` | Inaudible creation, live-loop silence/re-entry, stale handles, cached PCM and single destruction; see Positional audio boundaries below |
 | `weapon_positional_loop_stop`, `weapon_positional_loop_retirement` | Weapon-owned positional updates after camera/emitter movement, silence and reentry, then explicit firing stop or active effect destruction; see Weapon-owned loops below |
+| `automatic_positional_camera`, `repeated_weapon_loop` | Full-map automatic positional updates after camera movement, inaudible-entry retirement/recreation, and one weapon voice across repeated audible/silent shots; see [audio continuations](87-audio-continuations.md) |
 | `interface_layer` | The next interface click interrupts the previous interface voice, and clearing sound retires the remaining voice exactly once |
 | `textured_button_hit_testing` | A translated interface panel and an atlas-offset button use production geometry and pixel reads. Transparent RGB rejects hover and a focused press; a transparent release dispatches no action and leaves the button pressed (an observation); alpha 1 and 255 accept hover. Interface mouse dispatch produces focus/press/release, leaving the right/bottom edges resets focus, disabled clicks invoke no action, and hidden controls reject input |
 
@@ -120,7 +121,7 @@ The first shot creates one fully audible voice 25 units to the camera's right. M
 
 The stop case calls `FireEnd` twice and requires one immediate voice destruction; deleting the effect and clearing sound cannot destroy it again. The retirement case instead deletes the still-firing effect and requires its destructor to stop the voice before global audio cleanup. This covers component ownership and camera-relative updates through the weapon implementation. Robot movement and deletion through full map ticks, audible playback, native camera input and all other weapon types remain separate scenarios.
 
-Remaining checks include reuse of a weapon's loop across repeated shots and camera-driven updates of `AddSound` positional sounds through `CSound::Takt`. The current weapon cases produce one shot and exercise their owner's `ChangePos` path; they do not establish those two additional paths.
+The separate [audio continuation cases](87-audio-continuations.md) now cover reuse of a weapon's loop across repeated shots and camera-driven updates of `AddSound` positional sounds through ordinary map ticks and `CSound::Takt`. The earlier weapon cases remain one-shot owner-position/stop controls; robot-lifecycle and native listening evidence remain separate.
 
 ## Opt-in defect reproducers
 
