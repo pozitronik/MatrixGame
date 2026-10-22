@@ -189,15 +189,18 @@ struct Harness {
         }
         return std::nullopt;
     }
+    void check_diagnostics(DWORD pid) {
+        if (auto *entry = slot(pid); entry && InterlockedCompareExchange(&entry->diagnostics, 0, 0)) {
+            std::wcerr << entry->diagnostic_title << L": " << entry->diagnostic_text << '\n';
+            throw std::runtime_error("Unexpected native diagnostic");
+        }
+    }
     template<class Predicate> protocol::Snapshot wait(DWORD pid, Predicate ready, const char *description, int seconds = 20) {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
         while (std::chrono::steady_clock::now() < deadline) {
             pump();
             while (pump(0)) {}
-            if (auto *entry = slot(pid); entry && entry->diagnostics) {
-                std::wcerr << entry->diagnostic_title << L": " << entry->diagnostic_text << '\n';
-                throw std::runtime_error("Unexpected native diagnostic");
-            }
+            check_diagnostics(pid);
             if (auto found = processes.find(pid); found != processes.end() && found->second.exited)
                 throw std::runtime_error("Process exited while waiting for " + std::string(description) + ": " + std::to_string(found->second.exit));
             if (auto state = snapshot(pid); state && ready(*state)) return *state;
@@ -220,7 +223,11 @@ struct Harness {
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(20);
         while (std::chrono::steady_clock::now() < deadline) {
             pump();
-            if (processes.contains(pid) && processes.at(pid).exited) { MG_CHECK(processes.at(pid).exit == expected); return; }
+            if (processes.contains(pid) && processes.at(pid).exited) {
+                if (expected == 0) check_diagnostics(pid);
+                MG_CHECK(processes.at(pid).exit == expected);
+                return;
+            }
         }
         throw std::runtime_error("Native process did not exit");
     }
