@@ -966,7 +966,7 @@ if(NOT MATRIXGAME_BUILD_DLL)
                 set(contract "game.session.exe_active_order_${destination}_${mode}")
                 add_test(NAME ${contract} COMMAND matrixgame_standalone_session_tests
                     ${contract} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
-                set_tests_properties(${contract} PROPERTIES LABELS "engine;asset-free;startup;gameplay;input;native;native-process" TIMEOUT 90 RUN_SERIAL TRUE)
+                set_tests_properties(${contract} PROPERTIES LABELS "engine;asset-free;startup;gameplay;input;native;native-process;current-desktop" TIMEOUT 90 RUN_SERIAL TRUE)
             endforeach()
             foreach(outcome win loss)
                 foreach(action "" _restart _exit)
