@@ -739,7 +739,7 @@ target_include_directories(matrixgame_formation_regulation_tests PRIVATE "${CMAK
 target_compile_definitions(matrixgame_formation_regulation_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-add_matrix_test(game.navigation.mixed_formation_regulation matrixgame_formation_regulation_tests gameplay navigation)
+add_matrix_test(game.navigation.mixed_formation_regulation matrixgame_formation_regulation_tests gameplay ai navigation)
 add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_player_order_scenarios PRIVATE MatrixGameInternal)

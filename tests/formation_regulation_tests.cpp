@@ -51,6 +51,7 @@ struct Formation {
         return value;
     }
     void tick(Session &session) {
+        const int previous_time = session.time();
         std::array<float, 3> previous_speed, previous_x, previous_y;
         for (int i = 0; i < 3; ++i) {
             previous_speed[i] = units[i]->m_GroupSpeed;
@@ -77,8 +78,14 @@ struct Formation {
             // Objects move before the side recomputes the next frame's allowance.
             const bool progressed = unit.m_PosX != previous_x[i] || unit.m_PosY != previous_y[i];
             if (progressed && std::abs(unit.m_Speed - previous_speed[i]) < .000001f) {
-                if (previous_speed[i] < unit.GetMaxSpeed() - .000001f) ++physical_slow[i];
-                else ++physical_full[i];
+                const float travelled = std::hypot(unit.m_PosX - previous_x[i], unit.m_PosY - previous_y[i]);
+                const float expected = previous_speed[i] * (session.time() - previous_time) / LOGIC_TAKT_PERIOD;
+                if (previous_speed[i] < unit.GetMaxSpeed() - .000001f) {
+                    MG_CHECK(std::abs(travelled - expected) < .001f);
+                    ++physical_slow[i];
+                } else if (std::abs(travelled - expected) < .001f) {
+                    ++physical_full[i];
+                }
             }
         }
         for (int i = 0; i < 3; ++i) for (int j = i + 1; j < 3; ++j) {
@@ -127,6 +134,7 @@ void journey(random::Mode mode, int step) {
     std::cout << session.metadata("mixed-formation-regulation-v1") << " first_regulated=" << first_regulated
               << " replacement=" << replacement << " stretched_separation=" << formation.separation() << std::endl;
     MG_CHECK(first_regulated > 0 && replacement > first_regulated && !formation.arrived());
+    MG_CHECK(formation.slowed[0] == 21);
     MG_CHECK(formation.physical_slow[0] > 0 && formation.slowed[1] == 0 && formation.slowed[2] == 0);
     const int former_leader_full_samples = formation.physical_full[0];
     const float stretched = formation.separation();
