@@ -726,7 +726,7 @@ target_include_directories(matrixgame_navigation_boundary_tests PRIVATE "${CMAKE
 target_compile_definitions(matrixgame_navigation_boundary_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract terrain_ramp_transitions terrain_lateral_slope terrain_water_slope sloped_terrain_journeys zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth shallow_water_traversal)
+foreach(contract terrain_transient_response terrain_ramp_transitions terrain_lateral_slope terrain_water_slope sloped_terrain_journeys zone_routes road_routes road_route_reuse chassis_traversal collision_boundaries collision_wait_threshold moving_target replacement_near_blocker dense_flow terrain_speed water_depth shallow_water_traversal)
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
 add_matrix_test(game.navigation.formation_speed_boundaries matrixgame_navigation_boundary_tests gameplay ai navigation)
@@ -882,12 +882,17 @@ endforeach()
 
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_native_session_fixture native_session_fixture.cpp
-        native_session_assets.cpp native_packed_config.cpp battle_geometry.cpp)
-    target_link_libraries(matrixgame_native_session_fixture PRIVATE MatrixGameInternal)
+        native_session_assets.cpp native_demo_assets.cpp native_packed_config.cpp battle_geometry.cpp)
+    target_link_libraries(matrixgame_native_session_fixture PRIVATE MatrixGameInternal matrixgame_native_window_containment)
     target_compile_definitions(matrixgame_native_session_fixture PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}"
         MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+    add_matrix_test(game.session.demo_assets matrixgame_native_session_fixture gameplay startup ai)
     option(MATRIXGAME_NATIVE_SESSION_TESTS "Run native Direct3D 9 synthetic session checks" OFF)
     if(MATRIXGAME_NATIVE_SESSION_TESTS)
+        foreach(profile reinforcement no_reinforcement camera_fights packed_reinforcement packed_no_reinforcement packed_camera_fights)
+            add_matrix_test(game.session.native_demo_${profile} matrixgame_native_session_fixture gameplay startup ai native native-process current-desktop)
+            set_tests_properties(game.session.native_demo_${profile} PROPERTIES RUN_SERIAL TRUE)
+        endforeach()
         add_matrix_test(game.session.native_run_lifetimes matrixgame_native_session_fixture gameplay startup native native-process)
         add_matrix_test(game.session.native_building_restart matrixgame_native_session_fixture gameplay startup native native-process)
         add_matrix_test(game.session.native_cannon_restart matrixgame_native_session_fixture gameplay startup native native-process)
