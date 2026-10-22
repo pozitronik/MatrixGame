@@ -300,10 +300,11 @@ void camera_fights_tick() {
         host->camera_phase_time = now;
         ++host->camera_phase;
     } else if (host->camera_phase == 3 && now - host->camera_phase_time >= 1200) {
+        MG_CHECK(host->camera_cores[0]->m_Ref == 3 && host->camera_cores[1]->m_Ref == 3);
         MG_CHECK(host->camera_cores[2]->m_Ref == 2 && near_pair(1, 10));
         damage(2);
         g_MatrixMap->StaticDelete(actor(1));
-        MG_CHECK(host->camera_cores[1]->m_Object == nullptr);
+        MG_CHECK(host->camera_cores[1]->m_Object == nullptr && host->camera_cores[1]->m_Ref == 2);
         host->camera_phase_time = now;
         ++host->camera_phase;
     } else if (host->camera_phase == 4 && now - host->camera_phase_time >= 3000 && near_pair(2, 2)) {
@@ -506,8 +507,15 @@ void demo_assets() {
             MG_CHECK(units && units->GetArraysCount() == actors);
             for (DWORD i = 0; i < actors; ++i) MG_CHECK(units->GetAsWStr(i) == units->GetAsWStr(0));
             if (!camera) {
+                for (const auto &[name, type] : {
+                    std::pair{DATA_BUILDINGS_X, ST_FLOAT}, {DATA_BUILDINGS_Y, ST_FLOAT},
+                    {DATA_BUILDINGS_SIDE, ST_BYTE}, {DATA_BUILDINGS_KIND, ST_BYTE},
+                    {DATA_BUILDINGS_SHADOW, ST_BYTE}, {DATA_BUILDINGS_ANGLE, ST_BYTE},
+                    {DATA_BUILDINGS_SHADOWSIZE, ST_INT32}}) {
+                    auto *column = map.GetBuf(DATA_BUILDINGS, name, type);
+                    MG_CHECK(column && column->GetArraysCount() == 1 && column->GetArrayLength(0) == 1);
+                }
                 auto *sides = map.GetBuf(DATA_BUILDINGS, DATA_BUILDINGS_SIDE, ST_BYTE);
-                MG_CHECK(sides && sides->GetArrayLength(0) == 1);
                 MG_CHECK(sides->GetFirst<BYTE>(0)[0] == (demo == DemoProfile::Reinforcement ? PLAYER_SIDE : 2));
                 MG_CHECK(fs::is_regular_file(L"synthetic-transport-body.vo"));
             }
@@ -523,7 +531,17 @@ void demo_assets() {
                 MG_CHECK(data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Chassis")->ParGet(PAR_SOURCE_CHASSIS2_MOVE_SPEED) == L"0");
                 MG_CHECK(data.BlockGet(PAR_SOURCE_WEAPONS)->BlockGet(PAR_SOURCE_DAMAGES)->BlockGet(PAR_SOURCE_DAMAGES_ROBOT)
                     ->ParGet(L"WEAPON_LASER") == L"1,0,0");
-            } else MG_CHECK(data.BlockGet(PAR_SOURCE_TIMINGS)->ParGet(PAR_SOURCE_TIMINGS_MAINTENANCE) == L"20000");
+            } else {
+                MG_CHECK(data.BlockGet(PAR_SOURCE_TIMINGS)->ParGet(PAR_SOURCE_TIMINGS_MAINTENANCE) == L"20000");
+                auto *body = data.BlockGet(L"Models")->BlockGet(L"Flyers")->BlockGet(L"1")->BlockGet(L"Body");
+                MG_CHECK(body->ParGet(L"Model") == L"synthetic-transport-body.vo" && body->ParGet(L"Texture") == L"pixel");
+                auto *order = data.BlockGet(PAR_SOURCE_FLYER_ORDERS)->BlockGet(PAR_SOURCE_FLYER_ORDERS_GIVE_BOT);
+                MG_CHECK(order->ParGet(L"Flyer") == L"1" && order->ParGet(L"Hitpoint") == L"1000");
+                auto *bot = order->BlockGet(L"100");
+                MG_CHECK(bot->ParGet(L"BotChassis") == L"2" && bot->ParGet(L"BotArmor") == L"1");
+                MG_CHECK(bot->ParGet(L"BotHead") == L"0" && bot->ParGet(L"BotStrength") == L"1" &&
+                         bot->ParGet(L"BotHitpoint") == L"1500");
+            }
         }
 }
 struct SessionOptions {
