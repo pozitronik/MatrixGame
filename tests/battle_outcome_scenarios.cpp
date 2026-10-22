@@ -8,6 +8,7 @@
 #include "battle_mesh.hpp"
 #include "MatrixObject.hpp"
 #include <array>
+#include <bit>
 #include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include "test_support.hpp"
 #include "command_world.hpp"
@@ -2387,6 +2388,309 @@ template<int Family> void special_object_destruction() {
         MG_CHECK(first == special_object_run(mode, Family, step));
     }
 }
+enum class ObjectiveCommandRoute { Context, Keyboard, Button };
+void objective_preorder(CFormMatrixGame &form, ObjectiveCommandRoute route, bool bomb, bool capture = false) {
+    MG_CHECK(route != ObjectiveCommandRoute::Context);
+    if (route == ObjectiveCommandRoute::Keyboard) press(form, capture ? 'K' : bomb ? 'E' : 'A');
+    else {
+        auto button = tests::make_engine_object<CIFaceElement>();
+        button->m_strName = capture ? IF_ORDER_CAPTURE : bomb ? IF_ORDER_BOMB : IF_ORDER_FIRE;
+        g_IFaceList->PlayerAction(button.get());
+    }
+    const DWORD flag = capture ? PREORDER_CAPTURE : bomb ? PREORDER_BOMB : PREORDER_FIRE;
+    MG_CHECK((g_IFaceList->m_IfListFlags & (flag | ORDERING_MODE)) == (flag | ORDERING_MODE));
+}
+void objective_click(CMatrixMapStatic &object, ObjectiveCommandRoute route) {
+    g_MatrixMap->m_TraceStopObj = &object;
+    g_MatrixMap->m_TraceStopPos = object.GetGeoCenter();
+    if (route == ObjectiveCommandRoute::Context) side().OnRButtonDown(CPoint(0, 0));
+    else side().OnLButtonDown(CPoint(0, 0));
+    g_MatrixMap->m_TraceStopObj = TRACE_STOP_NONE;
+}
+std::vector<std::string> special_command_run(random::Mode mode, int step, bool animation, bool bomb,
+                                            ObjectiveCommandRoute route, bool stop = false) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    CaptureCraterAssets crater;
+    Session session({mode, 80, step, 6000, false, true});
+    assets.install(); crater.install();
+    DialogData dialog;
+    CFormMatrixGame form;
+    std::cout << session.metadata("special-object-command-v1") << " animation=" << animation
+              << " bomb=" << bomb << " route=" << int(route) << " stop=" << stop << std::endl;
+    install_objective_catalog(animation ? L"+Anim,0:0:10:1#1:0:0:-1" : L"+Break,1,10,None");
+    auto *objective = create_objective(400);
+    auto *spare = create_objective(600);
+    auto objective_core = retain_core(*objective);
+    auto spare_core = retain_core(*spare);
+    auto *actor = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+    auto actor_core = retain_core(*actor);
+    const int wi = Weap2Index(bomb ? WEAPON_BIGBOOM : WEAPON_LASER);
+    g_Config.m_WeaponRadius[wi] = bomb ? 150 : 120;
+    g_Config.m_WeaponCooldown[wi] = 100;
+    g_Config.m_ObjectDamages[wi] = {bomb ? 10 : 5, 0, 0};
+    g_Config.m_RobotDamages[wi] = {};
+    g_Config.m_Overheat[WEAPON_LASER_HEAT] = 1;
+    g_Config.m_Overheat[WEAPON_LASER_COOL] = 0;
+    g_Config.m_Overheat[WCP_LASER] = 100;
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+    tests::arm_battle_robot(*actor, bomb ? RUK_WEAPON_BOMB : RUK_WEAPON_LASER);
+    side().CreateGroupFromCurrent(actor);
+    side().Select(ROBOT, nullptr);
+    MG_CHECK(objective->InLT() && objective->IsSpecial() && !objective->IsLive());
+    const auto before = session.snapshot();
+    if (route != ObjectiveCommandRoute::Context) {
+        objective_preorder(form, route, bomb);
+        press(form, 'X');
+        objective_click(*objective, route);
+        MG_CHECK(!IS_PREORDERING && session.snapshot() == before && !actor->IsMustDie());
+        objective_preorder(form, route, bomb);
+    }
+    objective_click(*objective, route);
+    MG_CHECK(!IS_PREORDERING);
+    int group = actor->GetGroupLogic();
+    MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+    MG_CHECK(side().m_PlayerGroup[group].Order() == (bomb ? mpo_Bomb : mpo_Attack));
+    // Q: input accepts IsSpecial, but synchronous TaktPL validates IsLive only.
+    // Keep this characterization distinct from a corrected gameplay contract.
+    MG_CHECK(side().m_PlayerGroup[group].m_Obj == nullptr);
+    const auto destination = side().m_PlayerGroup[group].m_To;
+    const auto target_center = objective->GetGeoCenter();
+    MG_CHECK(destination.x == int(target_center.x / GLOBAL_SCALE_MOVE) &&
+             destination.y == int(target_center.y / GLOBAL_SCALE_MOVE));
+    int damaged = 0, completed = 0, dying = 0, retired = 0, stopped = 0, requested = 0;
+    int stop_at = 0;
+    int fire_order_at = 0, emitted_at = 0, heat = 0;
+    int first_fire_target = 0, first_emission_target = 0;
+    float last_x = 0, last_y = 0;
+    std::vector<std::string> trace;
+    const auto target_role = [&](CMatrixMapStatic *candidate) {
+        if (!candidate) return 0;
+        if (candidate == objective) return 100;
+        if (candidate == spare) return 101;
+        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+            if (object == candidate && object->IsRobot())
+                for (EntityId id = 1; id <= 4; ++id) if (session.matches(id, object->AsRobot())) return int(id);
+        return -1;
+    };
+    const auto observe = [&] {
+        const auto &order = side().m_PlayerGroup[group];
+        auto frame = session.snapshot() + ":hp=" + std::to_string(objective->m_BreakHitPoint) +
+            ":special=" + std::to_string(objective->IsSpecial()) + ":type=" + std::to_string(objective->m_Type) +
+            ":animation=" + std::to_string(objective->m_AnimState) + ":count=" + std::to_string(g_MatrixMap->m_BeforeWinCount) +
+            ":actor=" + std::to_string(actor_core->m_Object != nullptr) + ":order=" + std::to_string(order.Order()) +
+            ":null=" + std::to_string(order.m_Obj == nullptr) + ":dest=" + std::to_string(order.m_To.x) + ',' + std::to_string(order.m_To.y);
+        if (actor_core->m_Object) {
+            MG_CHECK(actor_core->m_Object == actor);
+            frame += ":must_die=" + std::to_string(actor->IsMustDie());
+            MG_CHECK(actor->GetEnv()->m_Target != objective && actor->GetEnv()->m_Target != spare);
+            MG_CHECK(actor->GetEnv()->m_TargetAttack != objective && actor->GetEnv()->m_TargetAttack != spare);
+            frame += ":attack_target=" + std::to_string(target_role(actor->GetEnv()->m_TargetAttack));
+            frame += ":fire_target=" + std::to_string(target_role(actor->GetEnv()->m_Target));
+            if (!bomb) frame += ":heat=" + std::to_string(actor->GetWeapon(0).m_Heat);
+            for (int i = 0; i < actor->GetOrdersInPool(); ++i) {
+                const auto *fire = actor->GetOrder(i);
+                if (fire->m_OrderType == ROT_FIRE) frame += ":aim=" + std::to_string(std::bit_cast<uint32_t>(fire->m_Param1)) + ',' +
+                    std::to_string(std::bit_cast<uint32_t>(fire->m_Param2)) + ',' + std::to_string(std::bit_cast<uint32_t>(fire->m_Param3));
+            }
+        }
+        trace.push_back(std::move(frame));
+    };
+    observe();
+    while (session.time() < 30000) {
+        if (stop && !stop_at && session.time() >= 500) {
+            MG_CHECK(actor_core->m_Object == actor && actor->IsLiveRobot() && !actor->IsMustDie());
+            MG_CHECK(std::abs(actor->m_PosX - 100) + std::abs(actor->m_PosY - 200) > 5);
+            if (route == ObjectiveCommandRoute::Button) {
+                auto button = tests::make_engine_object<CIFaceElement>();
+                button->m_strName = IF_ORDER_STOP;
+                g_IFaceList->PlayerAction(button.get());
+            } else press(form, 'S');
+            group = actor->GetGroupLogic();
+            MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+            stop_at = session.time();
+        }
+        session.advance();
+        MG_CHECK(objective_core->m_Object == objective && spare_core->m_Object == spare);
+        MG_CHECK(!actor_core->m_Object || actor_core->m_Object == actor);
+        MG_CHECK(spare->IsSpecial() && spare->m_BreakHitPoint == 10);
+        MG_CHECK(!g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        MG_CHECK(side().GetStatus() == SS_ACTIVE);
+        MG_CHECK(!FLAG(g_MatrixMap->m_Flags, MMFLAG_SPECIAL_BROKEN | MMFLAG_WIN));
+        if (!damaged && objective->m_BreakHitPoint != 10) damaged = session.time();
+        if (!completed && !objective->IsSpecial()) completed = session.time();
+        if (actor_core->m_Object) {
+            if (!requested && actor->IsMustDie()) requested = session.time();
+            if (!dying && actor->m_CurrState == ROBOT_DIP) dying = session.time();
+            if (!bomb) {
+                if (!fire_order_at && actor->FindOrderLikeThat(ROT_FIRE)) {
+                    fire_order_at = session.time();
+                    first_fire_target = target_role(actor->GetEnv()->m_Target);
+                }
+                heat = actor->GetWeapon(0).m_Heat;
+                if (!emitted_at && heat) {
+                    emitted_at = session.time();
+                    first_emission_target = target_role(actor->GetEnv()->m_Target);
+                }
+            }
+        } else if (!retired) retired = session.time();
+        const auto &order = side().m_PlayerGroup[group];
+        MG_CHECK(order.m_Obj == nullptr);
+        if (!bomb || (stop && stop_at)) {
+            MG_CHECK(actor_core->m_Object == actor && actor->IsLiveRobot() && !actor->IsMustDie());
+            MG_CHECK(objective->IsSpecial() && objective->m_BreakHitPoint == 10);
+            MG_CHECK(order.Order() == (stop_at ? mpo_Stop : mpo_Attack));
+            if (!stop_at) MG_CHECK(order.m_To.x == destination.x && order.m_To.y == destination.y);
+            if (stop_at && session.time() >= 25000)
+                MG_CHECK(actor->m_PosX == last_x && actor->m_PosY == last_y);
+            last_x = actor->m_PosX; last_y = actor->m_PosY;
+        }
+        if (!stopped && order.Order() == mpo_Stop) stopped = session.time();
+        observe();
+    }
+    std::cout << "damaged=" << damaged << " completed=" << completed << " dying=" << dying << " retired=" << retired
+              << " stopped=" << stopped << " hp=" << objective->m_BreakHitPoint << " kills=" << side().GetStatValue(STAT_BUILDING_KILL)
+              << " before_win=" << g_MatrixMap->m_BeforeWinCount << " pos=" << (actor_core->m_Object ? actor->m_PosX : -1) << std::endl;
+    std::cout << "fire_order_at=" << fire_order_at << " emitted_at=" << emitted_at << " heat=" << heat
+              << " first_fire_target=" << first_fire_target << " first_emission_target=" << first_emission_target << std::endl;
+    MG_CHECK((completed != 0) == (bomb && !stop));
+    MG_CHECK(g_MatrixMap->m_BeforeWinCount == (bomb && !stop ? 1 : 2));
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == int(bomb && !stop));
+    MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0 && g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    if (bomb && !stop) {
+        MG_CHECK(damaged == completed && requested == stopped && stopped && dying > requested && completed > dying && retired > completed);
+        MG_CHECK(!actor_core->m_Object && (animation ? objective->m_AnimState == 1 : objective->m_Type == 1));
+    } else {
+        MG_CHECK(!damaged && !requested && !dying && !retired);
+        if (stop) MG_CHECK(stop_at && stopped == stop_at + step);
+        else {
+            MG_CHECK(!stopped && fire_order_at && emitted_at > fire_order_at && heat > 0);
+            MG_CHECK((first_fire_target == 3 || first_fire_target == 4) &&
+                     (first_emission_target == 3 || first_emission_target == 4));
+            MG_CHECK(std::abs(actor->m_PosX - target_center.x) + std::abs(actor->m_PosY - target_center.y) < 120);
+        }
+        // Recover player control after the bounded non-completion or canceled bomb.
+        press(form, 'S');
+        MG_CHECK(session.robot(1).order == mpo_Stop);
+        session.ground_command(120, 500);
+        group = actor->GetGroupLogic();
+        MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+        for (int i = 0; i < 20000 / step + 1; ++i) { session.advance(); observe(); }
+        MG_CHECK(actor_core->m_Object == actor && actor->IsLiveRobot());
+        MG_CHECK(session.robot(1).in_place && actor->m_PosY > 450 && actor->m_PosX < 200);
+        MG_CHECK(objective->IsSpecial() && objective->m_BreakHitPoint == 10 && !g_MatrixMap->IsPaused());
+    }
+    return trace;
+}
+void special_attack_routes() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool animation : {false, true}) for (auto route : {ObjectiveCommandRoute::Context,
+        ObjectiveCommandRoute::Keyboard, ObjectiveCommandRoute::Button}) {
+        const auto first = special_command_run(mode, step, animation, false, route);
+        MG_CHECK(first == special_command_run(mode, step, animation, false, route));
+    }
+}
+template<bool Stop> void special_bomb_routes() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool animation : {false, true}) for (auto route : {ObjectiveCommandRoute::Keyboard, ObjectiveCommandRoute::Button}) {
+        const auto first = special_command_run(mode, step, animation, true, route, Stop);
+        MG_CHECK(first == special_command_run(mode, step, animation, true, route, Stop));
+    }
+}
+std::vector<std::string> ordinary_object_command_run(random::Mode mode, int step, ObjectiveCommandRoute route,
+                                                   bool capture, bool live_control) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    Session session({mode, 80, step, 3000, false, true});
+    assets.install();
+    CFormMatrixGame form;
+    std::cout << session.metadata("ordinary-object-command-v1") << " route=" << int(route)
+              << " capture=" << capture << " live_control=" << live_control << std::endl;
+    const std::array<std::wstring, 3> descriptors{L"+Break,1,10,None", L"Static", L"Break,1,10,None"};
+    install_objective_descriptors(descriptors, false);
+    auto *ordinary = create_objective(400, 2, false);
+    auto *spare = create_objective(600);
+    auto ordinary_core = retain_core(*ordinary);
+    auto spare_core = retain_core(*spare);
+    auto *actor = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
+    auto actor_core = retain_core(*actor);
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 120;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {1, 0, 0};
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+    tests::arm_battle_robot(*actor, RUK_WEAPON_LASER);
+    side().CreateGroupFromCurrent(actor);
+    side().Select(ROBOT, nullptr);
+    CMatrixRobotAI *enemy = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot() && session.matches(3, object->AsRobot())) enemy = object->AsRobot();
+    MG_CHECK(enemy);
+    auto enemy_core = retain_core(*enemy);
+    if (live_control) {
+        MG_CHECK(!capture);
+        enemy->m_PosX = 400; enemy->m_PosY = 200;
+        enemy->SetMaxSpeed(0); enemy->m_GroupSpeed = 0;
+        enemy->InitMaxHitpoint(10000);
+        enemy->MapPosCalc(); enemy->RChange(MR_Matrix); enemy->RNeed(MR_Matrix);
+        enemy->m_CalcBoundsLastTime = -100; enemy->JoinToGroup();
+    }
+    const float enemy_health = enemy->GetHitPoint();
+    MG_CHECK(!ordinary->IsLive() && !ordinary->IsSpecial() && ordinary->InLT());
+    const auto before = session.snapshot();
+    if (route != ObjectiveCommandRoute::Context) objective_preorder(form, route, false, capture);
+    objective_click(live_control ? static_cast<CMatrixMapStatic &>(*enemy) : *ordinary, route);
+    const int group = actor->GetGroupLogic();
+    if (capture) {
+        MG_CHECK(route != ObjectiveCommandRoute::Context);
+        MG_CHECK(IS_PREORDERING && session.snapshot() == before);
+        press(form, 'X');
+        objective_click(*ordinary, route);
+        MG_CHECK(!IS_PREORDERING && session.snapshot() == before);
+    } else {
+        MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+        const auto &order = side().m_PlayerGroup[group];
+        MG_CHECK(!IS_PREORDERING);
+        MG_CHECK(order.Order() == (route == ObjectiveCommandRoute::Context && !live_control ? mpo_MoveTo : mpo_Attack));
+        MG_CHECK(order.m_Obj == (live_control ? static_cast<CMatrixMapStatic *>(enemy) : nullptr));
+        if (!live_control) {
+            const auto center = ordinary->GetGeoCenter();
+            MG_CHECK(order.m_To.x == Float2Int(center.x / GLOBAL_SCALE_MOVE) - ROBOT_MOVECELLS_PER_SIZE / 2);
+            MG_CHECK(order.m_To.y == Float2Int(center.y / GLOBAL_SCALE_MOVE) - ROBOT_MOVECELLS_PER_SIZE / 2);
+        }
+    }
+    std::vector<std::string> trace{session.snapshot()};
+    if (!live_control) {
+        press(form, 'S');
+        session.ground_command(120, 500);
+    }
+    const int deadline = live_control ? 10000 : 20000;
+    while (session.time() < deadline) {
+        session.advance();
+        MG_CHECK(actor_core->m_Object == actor && actor->IsLiveRobot());
+        MG_CHECK(enemy_core->m_Object == enemy && enemy->IsLiveRobot());
+        MG_CHECK(ordinary_core->m_Object == ordinary && spare_core->m_Object == spare);
+        MG_CHECK(!ordinary->IsSpecial() && ordinary->m_BreakHitPoint == 10);
+        MG_CHECK(spare->IsSpecial() && spare->m_BreakHitPoint == 10 && g_MatrixMap->m_BeforeWinCount == 1);
+        MG_CHECK(!g_MatrixMap->IsPaused());
+        if (live_control) MG_CHECK(side().m_PlayerGroup[group].Order() == mpo_Attack &&
+                                   side().m_PlayerGroup[group].m_Obj == enemy);
+        trace.push_back(session.snapshot() + ":ordinary=" + std::to_string(ordinary->m_BreakHitPoint));
+    }
+    if (live_control) MG_CHECK(enemy->GetHitPoint() < enemy_health);
+    else MG_CHECK(session.robot(1).in_place && actor->m_PosY > 450 && actor->m_PosX < 200);
+    MG_CHECK(side().GetStatValue(STAT_BUILDING_KILL) == 0 && side().GetStatValue(STAT_ROBOT_KILL) == 0);
+    return trace;
+}
+void ordinary_object_commands() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (auto route : {ObjectiveCommandRoute::Context, ObjectiveCommandRoute::Keyboard, ObjectiveCommandRoute::Button})
+    for (int variant : {0, 1, 2}) {
+        const bool capture = variant == 1, live_control = variant == 2;
+        if (capture && route == ObjectiveCommandRoute::Context) continue;
+        const auto first = ordinary_object_command_run(mode, step, route, capture, live_control);
+        MG_CHECK(first == ordinary_object_command_run(mode, step, route, capture, live_control));
+    }
+}
 void terron_destruction_run(bool collateral, int step, int blast_damage = 600) {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (bool lose_army : {false, true}) {
         tests::BattleMaterialProfile materials;
@@ -3805,6 +4109,10 @@ void last_base_weapon_outcome() {
     }
 }
 constexpr tests::Case cases[] = {
+    {"game.player.special_attack_routes", special_attack_routes},
+    {"game.player.special_bomb_routes", special_bomb_routes<false>},
+    {"game.player.special_bomb_stop", special_bomb_routes<true>},
+    {"game.player.ordinary_object_commands", ordinary_object_commands},
     {"game.loop.menu_result_exit", loop_menu_result_exit},
     {"game.loop.diagnostic_result_exit", loop_diagnostic_result_exit},
 #ifdef _TRACE
