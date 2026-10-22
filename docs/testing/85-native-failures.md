@@ -1,6 +1,6 @@
 # Native reload and selected-map failure procedures
 
-Procedure version: **2**. These cases prepare the failed reload and late selected-map initialization portions of NV-06-3. They do not prepare Restart/Quit while a natural result is pending. No native execution is recorded here.
+Procedure version: **2**. These cases prepare the failed reload and late selected-map initialization portions of NV-06-3. They do not prepare Restart/Quit while a natural result is pending. Preparation of R1 and I1 is complete for the profiles declared below; their execution and review belong to [native validation #191](https://github.com/pozitronik/MatrixGame/issues/191). No native execution is recorded here, and the remaining NV-06-3 variants stay with implementation #85.
 
 ## Candidate and source requirements
 
@@ -72,6 +72,6 @@ Finally launch again with `-ExpectedProcesses 1`, the same configuration and the
 
 ## Evidence and remaining scope
 
-For each run record configuration/compiler, cheats/cache state, Text/Packed profile, source revision, binary and source-map hashes, case ID, fault action, map readiness before injection, exact diagnostic, every observed PID/exit, restoration and recovery Move. A planned code-1 failure is successful only when the declared diagnostic and subsequent code-0 recovery both occur. The synthetic helper contracts cover exact source preservation, header replacement, read-only inspection, required backups and manifest fields, pre-existing temporary protection, MSVC output layout and exact-byte interface recovery. Neither the fault helper nor its mocked-process tests establish native gameplay results.
+For each run record configuration/compiler, cheats/cache state, Text/Packed profile, source revision, binary and source-map hashes, case ID, fault action, map readiness before injection, exact diagnostic, every observed PID/exit, restoration and recovery Move. A planned code-1 failure is successful only when the declared diagnostic and subsequent code-0 recovery both occur. The synthetic helper contracts cover exact source preservation, header replacement, read-only inspection, required backups and manifest fields, pre-existing temporary and unclaimed-backup protection, failed replacement cleanup, MSVC output layout and exact-byte interface recovery. Neither the fault helper nor its mocked-process tests establish native gameplay results.
 
 Pending-result Restart/Quit still requires a repeatable survival/objective scene plus proof that the natural result counter is armed before the action. `IAMLOOSER` opens a dialog synchronously and is not that trigger. General malformed selected-map payloads, packed-profile late initialization, missing dependencies beyond the declared text interface and complete short-lived failure tracing are not supplied by these procedures. Keep those portions of NV-06-3 open.

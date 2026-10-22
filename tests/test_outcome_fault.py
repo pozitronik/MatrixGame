@@ -282,6 +282,44 @@ function Get-Process {
         self.assertIn("Unexpected files remain", result.stderr)
         self.assertEqual(unexpected.read_bytes(), b"independent unclaimed interface backup")
 
+    def test_unclaimed_interface_backup_refuses_fault_without_changes(self):
+        unexpected = self.backup / "iface.txt"
+        unexpected.write_bytes(b"independent unclaimed interface backup")
+        before = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
+        result = self.run_fault("MissingInterface")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("interface backup already exists", result.stderr)
+        after = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
+        self.assertEqual(after, before)
+
+    def test_incomplete_v3_record_refuses_before_restoration(self):
+        for name in ("Version", "InterfaceRemoved"):
+            with self.subTest(name=name):
+                original = self.state.pop(name)
+                self.save_state()
+                try:
+                    before = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
+                    result = preparation.OutcomePreparation.run_helper(self, "-Restore")
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn("Invalid restoration record", result.stderr)
+                    after = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
+                    self.assertEqual(after, before)
+                finally:
+                    self.state[name] = original
+                    self.save_state()
+
+    def test_failed_header_replacement_removes_only_its_temporary(self):
+        # A normal Python read handle permits hashing but denies Windows replacement.
+        # The prepared fault must fail before replacing this locked directory entry.
+        with self.target.open("rb"):
+            result = self.run_fault()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(self.target.read_bytes(), self.original_map)
+        self.assertEqual(self.source.read_bytes(), self.original_map)
+        self.assertFalse((self.backup / "restart-header.tmp").exists())
+        self.assertTrue((self.backup / "state.json").is_file())
+        self.restore()
+
     def test_interface_removal_failure_keeps_complete_recovery(self):
         interface = self.cfg / "robots" / "iface.txt"
         original = interface.read_bytes()
