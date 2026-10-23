@@ -89,12 +89,16 @@ struct SPlane {
 
     static inline void BuildFromPointNormal(SPlane &out, const D3DXVECTOR3 &pt, const D3DXVECTOR3 &norm) {
         D3DXPlaneFromPointNormal(&out.dxplane, &pt, &norm);
+        out.norm = D3DXVECTOR3(out.dxplane.a, out.dxplane.b, out.dxplane.c);
+        out.dist = out.dxplane.d;
         out.UpdateSignBits();
     }
 
     static inline void BuildFromPoints(SPlane &out, const D3DXVECTOR3 &p0, const D3DXVECTOR3 &p1,
                                               const D3DXVECTOR3 &p2) {
         D3DXPlaneFromPoints(&out.dxplane, &p0, &p1, &p2);
+        out.norm = D3DXVECTOR3(out.dxplane.a, out.dxplane.b, out.dxplane.c);
+        out.dist = out.dxplane.d;
         out.UpdateSignBits();
     }
 
