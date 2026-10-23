@@ -16,6 +16,7 @@
 #include "Interface/MatrixHint.hpp"
 #include "input.hpp"
 #include "loop_script.hpp"
+#include "native_window_containment.hpp"
 #include "StandaloneRuntime.hpp"
 #include <cstring>
 #include <cmath>
@@ -550,6 +551,8 @@ struct RestartLoopForm : CFormMatrixGame {
     CForm *previous = g_FormCur;
     std::vector<int> ticks;
     std::vector<std::string> trace;
+    std::vector<ESysEvent> events;
+    std::vector<bool> held_before_event;
     unsigned draws{}, paused_ticks{};
     uint64_t last_rng_draws{};
     explicit RestartLoopForm(Session &value) : session(value) {
@@ -610,6 +613,16 @@ struct RestartLoopForm : CFormMatrixGame {
         last_rng_draws = random::draw_count();
         trace.push_back(snapshot());
     }
+    void SystemEvent(ESysEvent event) override {
+        held_before_event.push_back(Input::isVKeyPressed(VK_UP));
+        // This CPU scene has no default-pool resources to release on deactivation.
+        // Keep the actual form/input-reset path; native device focus is separate.
+        if (event == SYSEV_DEACTIVATING) RESETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+        CFormMatrixGame::SystemEvent(event);
+        if (event == SYSEV_DEACTIVATING) SETFLAG(g_MatrixMap->m_Flags, MMFLAG_VIDEO_RESOURCES_READY);
+        MG_CHECK(!Input::isVKeyPressed(VK_UP) && g_MatrixMap->m_VKeyDown == 0);
+        events.push_back(event);
+    }
 };
 void loop_key(tests::loop::Round &round, uint8_t key) {
     round.messages.emplace_back(WM_KEYDOWN, key);
@@ -618,7 +631,7 @@ void loop_key(tests::loop::Round &round, uint8_t key) {
 void loop_word(tests::loop::Round &round, const char *word) {
     for (; *word; ++word) loop_key(round, static_cast<uint8_t>(*word));
 }
-void loop_restart_toggles() {
+void loop_restart_toggles_impl(bool focus_after_restart) {
     constexpr bool cheats = MATRIXGAME_SCENARIO_CHEATS != 0;
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         std::vector<std::string> reference;
@@ -629,7 +642,8 @@ void loop_restart_toggles() {
             RestartLoopForm form(session);
             auto *const map = g_MatrixMap;
             auto *const terrain = map->m_Unit;
-            std::cout << session.metadata("loop-restart-toggles-v1") << " repeat=" << repeat << '\n';
+            std::cout << session.metadata(focus_after_restart ? "loop-restart-focus-v1" : "loop-restart-toggles-v1")
+                      << " repeat=" << repeat << std::endl;
             tests::loop::Script script;
             // Give each fresh order time to pass the robot's normal planning cadence.
             for (int index = 1; index <= 99; ++index) script.rounds.push_back({step * index * 1000LL, {}});
@@ -718,6 +732,33 @@ void loop_restart_toggles() {
             loop_word(script.rounds[93], "NEED4SPEED");
             loop_word(script.rounds[93], "KEEPALIVE");
             script.rounds[93].after_messages = move;
+            std::array<std::string, 3> inactive_states;
+            if (focus_after_restart) {
+                for (int index : {39, 71, 94}) script.rounds[index].messages.emplace_back(WM_KEYDOWN, VK_UP);
+                for (int window = 0; window < 3; ++window) {
+                    const int index = window == 0 ? 40 : window == 1 ? 72 : 95;
+                    script.rounds[index].messages.emplace_back(WM_ACTIVATEAPP, FALSE);
+                    script.rounds[index].after_messages = [&, window] {
+                        MG_CHECK(!Input::isVKeyPressed(VK_UP) && map->m_VKeyDown == 0);
+                        const bool keepalive = cheats && window < 2;
+                        MG_CHECK(bool(FLAG(g_Flags, GFLAG_APPACTIVE)) == keepalive);
+                        if (!keepalive) inactive_states[window] = form.snapshot();
+                    };
+                    script.rounds[index + 2].messages.emplace_back(WM_ACTIVATEAPP, TRUE);
+                    script.rounds[index + 2].after_messages = [&] {
+                        MG_CHECK(FLAG(g_Flags, GFLAG_APPACTIVE));
+                        MG_CHECK(!Input::isVKeyPressed(VK_UP) && map->m_VKeyDown == 0);
+                        auto *robot = player_robot();
+                        const int group = robot->GetGroupLogic();
+                        MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+                        MG_CHECK(map->GetPlayerSide()->m_PlayerGroup[group].Order() == mpo_MoveTo);
+                    };
+                }
+                script.on_wait = [&] {
+                    const size_t window = script.round < 60 ? 0 : script.round < 90 ? 1 : 2;
+                    MG_CHECK(!inactive_states[window].empty() && inactive_states[window] == form.snapshot());
+                };
+            }
             script.rounds[98].messages.emplace_back(WM_CLOSE, 0);
             std::string close_state;
             script.rounds[98].after_messages = [&] {
@@ -726,21 +767,50 @@ void loop_restart_toggles() {
             };
             MG_CHECK(L3GRun(script.platform()) == 1);
             MG_CHECK(!close_state.empty() && close_state == form.snapshot());
-            MG_CHECK(restarts == 2 && form.draws == 98 && form.ticks.size() == 98);
-            MG_CHECK(form.paused_ticks == 2 && script.clock_reads == 99);
-            for (int index = 0; index < 93; ++index) MG_CHECK(form.ticks[index] == step * (cheats ? 4 : 1));
-            for (int index = 93; index < 98; ++index) MG_CHECK(form.ticks[index] == step);
+            const unsigned waits = focus_after_restart ? (cheats ? 2 : 6) : 0;
+            MG_CHECK(restarts == 2 && form.draws == 98 - waits && form.ticks.size() == form.draws);
+            MG_CHECK(form.paused_ticks == 2 && script.clock_reads == form.draws + 1);
+            std::vector<int> expected_ticks;
+            int last_active_round = -1;
+            for (int index = 0; index < 98; ++index) {
+                const bool inactive = focus_after_restart && ((index >= 95 && index < 97) ||
+                    (!cheats && ((index >= 40 && index < 42) || (index >= 72 && index < 74))));
+                if (inactive) continue;
+                expected_ticks.push_back(step * (index - last_active_round) * (cheats && index < 93 ? 4 : 1));
+                last_active_round = index;
+            }
+            MG_CHECK(form.ticks == expected_ticks);
             MG_CHECK(session.time() == step * (cheats ? 369 : 96));
             MG_CHECK(!FLAG(g_Flags, GFLAG_4SPEED) && !FLAG(g_Flags, GFLAG_KEEPALIVE));
             MG_CHECK(FLAG(g_Flags, GFLAG_APPCLOSE) && !FLAG(g_Flags, GFLAG_EXITLOOP));
             MG_CHECK(!map->IsPaused());
             const auto *last_robot = player_robot();
             MG_CHECK(std::abs(last_robot->m_PosX - 100) + std::abs(last_robot->m_PosY - 200) > 5);
-            MG_CHECK(script.waits == 0 && script.round == script.rounds.size());
+            MG_CHECK(script.waits == waits && script.round == script.rounds.size());
+            if (focus_after_restart) {
+                const std::vector<ESysEvent> expected_events = cheats ? std::vector<ESysEvent>{SYSEV_INPUT_RESET,
+                    SYSEV_INPUT_RESET, SYSEV_DEACTIVATING, SYSEV_ACTIVATED} : std::vector<ESysEvent>{
+                    SYSEV_DEACTIVATING, SYSEV_ACTIVATED, SYSEV_DEACTIVATING, SYSEV_ACTIVATED,
+                    SYSEV_DEACTIVATING, SYSEV_ACTIVATED};
+                MG_CHECK(form.events == expected_events && form.held_before_event.size() == expected_events.size());
+                for (size_t i = 0; i < expected_events.size(); ++i)
+                    MG_CHECK(form.held_before_event[i] == (expected_events[i] != SYSEV_ACTIVATED));
+                MG_CHECK(!Input::isVKeyPressed(VK_UP) && map->m_VKeyDown == 0);
+            } else MG_CHECK(form.events.empty());
             if (repeat == 0) reference = form.trace;
             else MG_CHECK(form.trace == reference);
         }
     }
+}
+void loop_restart_toggles() { loop_restart_toggles_impl(false); }
+void loop_restart_focus() {
+    tests::NativeWindowContainment containment([](const wchar_t *, const wchar_t *) { MG_CHECK(false); }, false);
+    // Retain the ShowCursor import even though the CPU cursor surrogate does not
+    // call it; the strict adapter requires all cursor operations to be contained.
+    MG_CHECK(std::bit_cast<void *>(&ShowCursor) !=
+        std::bit_cast<void *>(GetProcAddress(GetModuleHandleW(L"user32.dll"), "ShowCursor")));
+    MG_CHECK(containment.parent() && !IsWindowVisible(containment.parent()));
+    loop_restart_toggles_impl(true);
 }
 struct SettingsDirectory {
     std::filesystem::path previous = std::filesystem::current_path();
@@ -847,6 +917,7 @@ void restart_saved_settings() {
 constexpr tests::Case cases[] = {
     {"game.restart.objects_spawners", restart_objects_spawners},
     {"game.loop.restart_toggles", loop_restart_toggles},
+    {"game.loop.restart_focus", loop_restart_focus},
     {"game.restart.saved_settings", restart_saved_settings},
     {"game.restart.retired_group", restart_retired_group},
     {"game.restart.movement", restart_movement},

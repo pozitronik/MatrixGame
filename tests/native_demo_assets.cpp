@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "native_demo_assets.hpp"
 #include "native_session_assets.hpp"
+#include "native_outcome_assets.hpp"
 #include "battle_mesh.hpp"
 #include "test_support.hpp"
 #include "MatrixMap.hpp"
@@ -9,6 +10,40 @@
 #include "CStorage.hpp"
 
 namespace tests {
+void write_native_demo_fights(const std::filesystem::path &path) {
+    write_native_demo_outcome(path, true);
+    CStorage map;
+    MG_CHECK(map.Load(path.c_str()));
+    const float x = 400, y = 300;
+    const BYTE side = 2, zero = 0;
+    const int unused = 0;
+    map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_X, ST_FLOAT)->AddToArray<float>(0, &x, 1);
+    map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_Y, ST_FLOAT)->AddToArray<float>(0, &y, 1);
+    map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_SIDE, ST_BYTE)->AddToArray<BYTE>(0, &side, 1);
+    map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_SHADOW, ST_BYTE)->AddToArray<BYTE>(0, &zero, 1);
+    for (const auto *column : {DATA_ROBOTS_SHADOWSIZE, DATA_ROBOTS_GROUP})
+        map.GetBuf(DATA_ROBOTS, column, ST_INT32)->AddToArray<int>(0, &unused, 1);
+    const std::wstring modules = std::to_wstring(MRT_CHASSIS) + L"," + std::to_wstring(RUK_CHASSIS_WHEEL) +
+        L",0|" + std::to_wstring(MRT_ARMOR) + L"," + std::to_wstring(RUK_ARMOR_DIPLOID);
+    map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_UNITS, ST_WCHAR)->AddWStr(modules);
+    map.Save(path.c_str());
+    CBlockPar data;
+    data.LoadFromTextFile(L"CFG/robots/data.txt");
+    data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Chassis")->ParSetAdd(PAR_SOURCE_CHASSIS2_MOVE_SPEED, L"0");
+    data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Armor")->ParSetAdd(PAR_SOURCE_ARMOR6_STRUCTURE, L"30000");
+    data.BlockGet(PAR_SOURCE_CHARS)->BlockGet(L"Armor")->ParSetAdd(PAR_SOURCE_ARMOR2_STRUCTURE, L"200000");
+    data.BlockGet(PAR_SOURCE_WEAPONS)->BlockGet(PAR_SOURCE_OVERHEAT)
+        ->ParSetAdd(PAR_SOURCE_OVERHEAT_WEAPON_LASER_HEAT, L"0");
+    data.SaveInTextFile(L"CFG/robots/data.txt");
+}
+void write_native_demo_outcome(const std::filesystem::path &path, bool player_wins) {
+    write_native_outcome_map(path, player_wins);
+    CBlockPar data;
+    data.LoadFromTextFile(L"CFG/robots/data.txt");
+    data.BlockGet(PAR_SOURCE_WEAPONS)->BlockGet(PAR_SOURCE_DAMAGES)->BlockGet(PAR_SOURCE_DAMAGES_ROBOT)
+        ->ParSetAdd(L"WEAPON_LASER", L"1000,0,0");
+    data.SaveInTextFile(L"CFG/robots/data.txt");
+}
 void write_native_demo_camera(const std::filesystem::path &path) {
     write_native_session_map(path);
     CStorage map;
