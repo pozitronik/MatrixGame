@@ -17,7 +17,7 @@ The observer remains at (100,200). A stationary friendly robot is placed at (100
 
 The observer receives a real laser assembly with a 160-unit radius, 100 ms cooldown and two internal damage units per pulse. The target starts with 200 internal health units, displayed as 20; the test checks the receiver and exact progression of every damaging pulse. Synthetic heat and rotation settings are explicit in the fixture. A retained object core guards observation after target deletion or combat death.
 
-At time zero, a normal context Move requests (500,100), followed by the production Patrol command to footprint-corner `(48,38)`, centred at (500,400). Patrol derives its From point from the preceding planned Move endpoint, so the current leg remains (500,100) and the other endpoint is (500,400). This is a declared two-command schedule, not a forced tactical place or injected target memory. Ordinary perception starts War; production tactical logic chooses `(16,22)`, centred at (180,240), and changes the actual MoveTo order away from the original leg.
+At time zero, a normal context Move requests (500,100), followed by a direct `PGOrderPatrol` call to footprint-corner `(48,38)`, centred at (500,400). Patrol derives its From point from the preceding planned Move endpoint, so the current leg remains (500,100) and the other endpoint is (500,400). Setup adds a synthetic Patrol chassis-sound entry for that call; the Patrol key, button and click routes are outside this scene. This is a declared two-command schedule, not a forced tactical place or injected target memory. Ordinary perception starts War; production tactical logic chooses `(16,22)`, centred at (180,240), and changes the actual MoveTo order away from the original leg.
 
 ## Cases and assertions
 

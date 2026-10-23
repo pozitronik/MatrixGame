@@ -1,4 +1,4 @@
-﻿// MatrixGame - licensed under GPLv2 or any later version.
+// MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_combat_geometry.hpp"
 #include "test_support.hpp"
