@@ -25,9 +25,13 @@ struct Removal {
     unsigned attempts;
 };
 using SharingFailureObserver = void (*)(const std::error_code &, void *);
+constexpr unsigned deployment_cleanup_attempts = 151;
+constexpr DWORD deployment_cleanup_delay_ms = 20;
+static_assert((deployment_cleanup_attempts - 1) * deployment_cleanup_delay_ms == 3000,
+              "Preserve 3000 ms of requested cleanup delay");
 
-Removal remove_deployment_tree(const std::filesystem::path &root, unsigned max_attempts = 151,
-                               DWORD delay_ms = 20, SharingFailureObserver observer = nullptr,
+Removal remove_deployment_tree(const std::filesystem::path &root, unsigned max_attempts = deployment_cleanup_attempts,
+                               DWORD delay_ms = deployment_cleanup_delay_ms, SharingFailureObserver observer = nullptr,
                                void *context = nullptr) {
     if (!max_attempts) return {std::make_error_code(std::errc::invalid_argument), 0};
     const std::error_code sharing_violation(ERROR_SHARING_VIOLATION, std::system_category());
