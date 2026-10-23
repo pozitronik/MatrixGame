@@ -18,6 +18,7 @@
 #include <array>
 #include <algorithm>
 #include <cwchar>
+#include <exception>
 #include <memory>
 #include <string>
 
@@ -39,7 +40,7 @@ struct MapObservation : CMatrixMap {
     static int status_timestamp(const CMatrixMap &map) { return map.*(&MapObservation::m_PrevTimeCheckStatus); }
     static int result_countdown(const CMatrixMap &map) { return map.*(&MapObservation::m_BeforeWinLooseDialogCount); }
 };
-void snapshot(LONG request) {
+void snapshot(LONG request, bool diagnostic) {
     protocol::Snapshot value;
     value.request = request;
     const bool battle_form = dynamic_cast<CFormMatrixGame *>(g_FormCur) != nullptr;
@@ -52,6 +53,14 @@ void snapshot(LONG request) {
     value.parent_handshake = BattleLoading::has_parent();
     if (g_MatrixMap && battle_form) {
         value.initialized = true;
+        value.map_flags = g_MatrixMap->m_Flags;
+        if (diagnostic) {
+            value.device_status = g_D3DD ? g_D3DD->TestCooperativeLevel() : E_POINTER;
+            value.draw_fps = g_DrawFPS;
+            value.backbuffer_width = g_D3Dpp.BackBufferWidth;
+            value.backbuffer_height = g_D3Dpp.BackBufferHeight;
+            value.device_windowed = g_D3Dpp.Windowed;
+        }
         const auto &settings = StandaloneSettings::current();
         value.settings = SettingsWindow::active();
         value.hints = g_MatrixMap->m_DialogModeHints.size();
@@ -135,7 +144,9 @@ LRESULT CALLBACK messages(int code, WPARAM wp, LPARAM lp) {
 LRESULT CALLBACK queued_messages(int code, WPARAM wp, LPARAM lp) {
     if (code >= 0 && wp == PM_REMOVE) {
         const auto &message = *reinterpret_cast<MSG *>(lp);
-        if (message.message == protocol::snapshot_message && message.hwnd == g_Wnd) snapshot(message.wParam);
+        if (message.hwnd == g_Wnd && (message.message == protocol::snapshot_message ||
+                                     message.message == protocol::diagnostic_snapshot_message))
+            snapshot(message.wParam, message.message == protocol::diagnostic_snapshot_message);
     }
     return CallNextHookEx(nullptr, code, wp, lp);
 }
@@ -160,15 +171,29 @@ struct Runtime {
             }
             if (!observed) ExitProcess(97);
             SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-            windows = std::make_unique<tests::NativeWindowContainment>(diagnostic);
+            const auto mode = protocol::visible_windows ? tests::NativeWindowContainment::WindowMode::Visible :
+                                                         tests::NativeWindowContainment::WindowMode::Hidden;
+            windows = std::make_unique<tests::NativeWindowContainment>(diagnostic, true, mode);
+            if constexpr (protocol::visible_windows)
+                InterlockedExchange(&observed->panel, reinterpret_cast<LONG>(windows->parent()));
             hook = SetWindowsHookExW(WH_CALLWNDPROC, messages, nullptr, GetCurrentThreadId());
             queue_hook = SetWindowsHookExW(WH_GETMESSAGE, queued_messages, nullptr, GetCurrentThreadId());
             if (!hook || !queue_hook) ExitProcess(97);
+        } catch (const std::exception &error) {
+            if constexpr (protocol::visible_windows)
+                if (observed) {
+                    const std::string text = error.what();
+                    const std::wstring message(text.begin(), text.end());
+                    diagnostic(L"Native containment initialization", message.c_str());
+                }
+            ExitProcess(97);
         } catch (...) { ExitProcess(97); }
     }
     ~Runtime() {
         if (hook) UnhookWindowsHookEx(hook);
         if (queue_hook) UnhookWindowsHookEx(queue_hook);
+        if constexpr (protocol::visible_windows)
+            if (observed) InterlockedExchange(&observed->panel, 0);
         windows.reset();
         if (shared) UnmapViewOfFile(shared);
         if (mapping) CloseHandle(mapping);

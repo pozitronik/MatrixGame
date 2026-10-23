@@ -11,7 +11,9 @@ class NativeWindowContainment {
     std::unique_ptr<State> state;
 public:
     using Diagnostic = void (*)(const wchar_t *title, const wchar_t *text);
-    explicit NativeWindowContainment(Diagnostic diagnostic, bool require_documents = true);
+    enum class WindowMode { Hidden, Visible };
+    explicit NativeWindowContainment(Diagnostic diagnostic, bool require_documents = true,
+                                     WindowMode mode = WindowMode::Hidden);
     ~NativeWindowContainment();
     NativeWindowContainment(const NativeWindowContainment &) = delete;
     NativeWindowContainment &operator=(const NativeWindowContainment &) = delete;
