@@ -8,6 +8,7 @@
 
 #include "MatrixRobot.hpp"
 #include "DelayedDamage.hpp"
+#include "NavigationWork.hpp"
 #include "MatrixObjectBuilding.hpp"
 #include "Logic/MatrixRule.h"
 #include "MatrixObjectCannon.hpp"
@@ -2732,6 +2733,8 @@ void HelperT(D3DXVECTOR2 from, D3DXVECTOR2 to) {
 #endif
 
 D3DXVECTOR3 CMatrixRobotAI::SphereRobotToAABBObstacleCollision(D3DXVECTOR3 &corr, const D3DXVECTOR3 &vel) {
+    auto *work = NavigationWork::active();
+    if (work) ++work->terrain_collision_queries;
     D3DXVECTOR2 robot_pos;
     D3DXVECTOR3 vCorrTotal(0, 0, 0);
 
@@ -2781,6 +2784,7 @@ D3DXVECTOR3 CMatrixRobotAI::SphereRobotToAABBObstacleCollision(D3DXVECTOR3 &corr
         SMatrixMapMove *smm = g_MatrixMap->MoveGet(x0, y0);
 
         if (calc_for_x != x0 || calc_for_y != y0) {
+            if (work) work->terrain_mask_cells += std::uint64_t(x1 - x0) * (y1 - y0);
             // recalc corners
 
             SMatrixMapMove *smm0 = smm;
@@ -2801,6 +2805,7 @@ D3DXVECTOR3 CMatrixRobotAI::SphereRobotToAABBObstacleCollision(D3DXVECTOR3 &corr
                 if (corner == 0xFF)
                     continue;
 
+                if (work) ++work->terrain_geometry_tests;
                 D3DXVECTOR3 col = SphereToAABB(robot_pos, smm, CPoint(x, y),
                                                corner);  //, x >= (x1-COLLIDE_FIELD_R), y >= (y1-COLLIDE_FIELD_R));
 
@@ -2896,6 +2901,7 @@ struct CollisionData {
     bool stop;
     int ms;
     bool far_col;
+    NavigationWork::Counters *work;
 };
 
 static bool CollisionCallback(
@@ -2904,6 +2910,7 @@ static bool CollisionCallback(
     uintptr_t user)
 {
     CollisionData *data = (CollisionData *)user;
+    if (data->work) ++data->work->robot_collision_candidates;
 
     const int tm = 2;
 
@@ -3094,6 +3101,8 @@ D3DXVECTOR3 CMatrixRobotAI::RobotToObjectCollision(const D3DXVECTOR3 &vel, int m
     data.stop = false;
     data.ms = ms;
     data.far_col = false;
+    data.work = NavigationWork::active();
+    if (data.work) ++data.work->robot_collision_queries;
     g_MatrixMap->FindObjects(D3DXVECTOR3(m_PosX, m_PosY, m_Core->m_GeoCenter.z), COLLIDE_BOT_R * 3, 1,
                              TRACE_ROBOT | TRACE_CANNON, this, CollisionCallback, (uintptr_t)&data);
 

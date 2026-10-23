@@ -242,6 +242,9 @@ void BattleGeometry::configure(CMatrixMapLogic &map, NavigationLayout layout) {
             case NavigationLayout::MultiRegion:
                 obstacle = overlaps(obstacle_left, obstacle_top, obstacle_right, obstacle_bottom);
                 break;
+            case NavigationLayout::RoadRing:
+                obstacle = overlaps(16, 16, 48, 48) || overlaps(28, 48, 36, 52) || overlaps(28, 56, 36, 62);
+                break;
             case NavigationLayout::Open: break;
             case NavigationLayout::Corridor:
                 obstacle = overlaps(28, 2, 36, 28) || overlaps(28, 32, 36, 62);
@@ -377,6 +380,91 @@ void BattleGeometry::configure(CMatrixMapLogic &map, NavigationLayout layout) {
         }
         for (int y = 0; y < movement_size; ++y) for (int x = 0; x < movement_size; ++x)
             map.MoveGet(x, y)->m_Zone = (x >= 32 ? 1 : 0) + (y >= 32 ? 2 : 0);
+    }
+    if (layout == NavigationLayout::RoadRing) {
+        // Keep the first local-search rectangle on one side of the island.
+        const CRect rectangles[] = {
+            {2, 32, 16, 40}, {2, 24, 16, 32}, {2, 16, 16, 24}, {2, 2, 16, 16},
+            {16, 2, 32, 16}, {32, 2, 48, 16}, {48, 2, 62, 16}, {48, 16, 62, 24},
+            {48, 24, 62, 32}, {48, 32, 62, 40}, {48, 40, 62, 48}, {48, 48, 62, 62},
+            {32, 48, 48, 62}, {16, 48, 32, 62}, {2, 48, 16, 62}, {2, 40, 16, 48}};
+        road.SetZoneCntMax(16);
+        road.m_ZoneCnt = 16;
+        HFree(road.m_Region, g_MatrixHeap);
+        road.m_Region = allocate<SMatrixRegion>(2);
+        road.m_RegionCnt = 2;
+        road.SetPlaceCnt(16);
+        std::array<CMatrixCrotch *, 16> junctions{};
+        for (int i = 0; i < 16; ++i) {
+            const auto &rect = rectangles[i];
+            const int region_id = i >= 5 && i <= 12 ? 1 : 0;
+            auto &zone = road.m_Zone[i];
+            zone = {};
+            zone.m_Rect = rect;
+            zone.m_Center = CPoint((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2);
+            zone.m_Size = (rect.right - rect.left) * (rect.bottom - rect.top);
+            zone.m_Region = region_id;
+            zone.m_PlaceCnt = 1;
+            zone.m_Place[0] = i;
+            zone.m_NearZoneCnt = 2;
+            zone.m_NearZone[0] = i == 0 ? 1 : (i + 15) % 16;
+            zone.m_NearZone[1] = i == 0 ? 15 : (i + 1) % 16;
+            for (int edge = 0; edge < 2; ++edge) {
+                const int other = zone.m_NearZone[edge];
+                zone.m_NearZoneConnectSize[edge] = (i == 12 && other == 13) || (i == 13 && other == 12) ? 4 : 14;
+            }
+            auto &place = road.m_Place[i];
+            place = {};
+            place.m_Empty = false;
+            place.m_Pos = zone.m_Center;
+            place.m_Region = region_id;
+            place.m_NearCnt = 2;
+            place.m_Near[0] = zone.m_NearZone[0];
+            place.m_Near[1] = zone.m_NearZone[1];
+            auto &region = road.m_Region[region_id];
+            region.m_Center = CPoint(region_id ? 55 : 8, 32);
+            region.m_RadiusPlace = 64;
+            region.m_NearCnt = 1;
+            region.m_Near[0] = 1 - region_id;
+            region.m_Place[region.m_PlaceCnt++] = i;
+            region.m_PlaceAll[region.m_PlaceAllCnt++] = i;
+            junctions[i] = road.AddCrotch();
+            junctions[i]->m_Center = zone.m_Center;
+            junctions[i]->m_Region = region_id;
+            junctions[i]->m_Zone = i;
+            region.m_Crotch[region.m_CrotchCnt++] = junctions[i];
+            for (int y = rect.top; y < rect.bottom; ++y) for (int x = rect.left; x < rect.right; ++x)
+                map.MoveGet(x, y)->m_Zone = i;
+        }
+        for (int i = 0; i < 16; ++i) {
+            const int next = (i + 1) % 16;
+            auto *edge = road.AddRoad();
+            edge->m_Start = junctions[i];
+            edge->m_End = junctions[next];
+            edge->m_Start->AddRoad(edge);
+            edge->m_End->AddRoad(edge);
+            const auto from = road.m_Zone[i].m_Center, to = road.m_Zone[next].m_Center;
+            edge->AddPath(from.x, from.y);
+            if (i == 12) {
+                // Movement paths use footprint origins. Bend into the four-cell
+                // opening rather than cutting its wall at the zone-centre Y.
+                edge->AddPath(from.x, 52);
+                edge->AddPath(to.x, 52);
+            }
+            edge->AddPath(to.x, to.y);
+            edge->AddZone(i);
+            edge->AddZone(next);
+            edge->CalcDist();
+            for (int point = 0; point < edge->m_PathCnt; ++point) {
+                const auto position = edge->m_Path[point];
+                MG_CHECK(map.IsAbsenceWall(RUK_CHASSIS_WHEEL - 1, 4, position.x, position.y));
+                if (point) {
+                    const auto previous = edge->m_Path[point - 1];
+                    MG_CHECK(map.CanMoveFromTo(RUK_CHASSIS_WHEEL - 1, 4, previous.x, previous.y,
+                        position.x, position.y, nullptr));
+                }
+            }
+        }
     }
     road.InitPL(movement_size, movement_size);
     map.m_TexUnionDim = 1;

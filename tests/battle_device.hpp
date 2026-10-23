@@ -22,6 +22,7 @@ struct BattleDeviceStats {
     std::uint64_t light_updates{};
     std::uint64_t light_enable_updates{};
     std::uint64_t texture_memory_queries{};
+    std::uint64_t display_mode_queries{};
 };
 
 // A storage/state-only device for the explicitly no-render scenario profile.
@@ -52,6 +53,8 @@ public:
     void cooperative_level(HRESULT status);
     // Explicit CPU-only device boundary for display-controller tests; no native reset/rendering.
     void reset_handler(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler);
+    // Opt-in reply for the VIDEO diagnostic; unscripted display queries still fail.
+    void display_mode(const D3DDISPLAYMODE &mode);
     const BattleDeviceStats &stats() const;
 };
 

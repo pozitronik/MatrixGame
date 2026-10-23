@@ -9,7 +9,7 @@ enum ERobotUnitKind : unsigned int;
 
 namespace tests {
 
-enum class NavigationLayout { CentralObstacle, Open, Corridor, DeadEnd, Disconnected, MultiRegion };
+enum class NavigationLayout { CentralObstacle, Open, Corridor, DeadEnd, Disconnected, MultiRegion, RoadRing };
 
 inline const char *navigation_layout_name(NavigationLayout layout) {
     switch (layout) {
@@ -19,6 +19,7 @@ inline const char *navigation_layout_name(NavigationLayout layout) {
     case NavigationLayout::DeadEnd: return "dead-end-v1";
     case NavigationLayout::Disconnected: return "disconnected-v1";
     case NavigationLayout::MultiRegion: return "multi-region-v1";
+    case NavigationLayout::RoadRing: return "road-ring-v1";
     }
     throw std::runtime_error("Unsupported synthetic navigation layout");
 }

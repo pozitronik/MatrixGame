@@ -30,9 +30,10 @@ class OutcomeFault(unittest.TestCase):
         (self.cfg / "robots.dat").unlink()
         (self.cfg / "standalone.txt").write_bytes(b"temporary settings")
         self.state = {
-            "Version": 3, "SettingsPresent": True, "PackedRemoved": True,
+            "Version": 4, "SettingsPresent": True, "PackedRemoved": True,
             "AlternateMapStaged": True, "MapDirectoryCreated": True,
             "MatrixDirectoryCreated": True, "InterfaceRemoved": False,
+            "AlternateMapMode": "Ordinary",
         }
         self.save_state()
 
@@ -292,21 +293,26 @@ function Get-Process {
         after = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
         self.assertEqual(after, before)
 
-    def test_incomplete_v3_record_refuses_before_restoration(self):
-        for name in ("Version", "InterfaceRemoved"):
-            with self.subTest(name=name):
-                original = self.state.pop(name)
-                self.save_state()
-                try:
-                    before = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
-                    result = preparation.OutcomePreparation.run_helper(self, "-Restore")
-                    self.assertNotEqual(result.returncode, 0)
-                    self.assertIn("Invalid restoration record", result.stderr)
-                    after = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
-                    self.assertEqual(after, before)
-                finally:
-                    self.state[name] = original
+    def test_incomplete_versioned_record_refuses_before_restoration(self):
+        original = self.state.copy()
+        for version in (3, 4):
+            for name in ("Version", "InterfaceRemoved"):
+                with self.subTest(version=version, name=name):
+                    self.state = dict(original, Version=version)
+                    if version == 3:
+                        self.state.pop("AlternateMapMode")
+                    self.state.pop(name)
                     self.save_state()
+                    try:
+                        before = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
+                        result = preparation.OutcomePreparation.run_helper(self, "-Restore")
+                        self.assertNotEqual(result.returncode, 0)
+                        self.assertIn("Invalid restoration record", result.stderr)
+                        after = {p.relative_to(self.build): p.read_bytes() for p in self.build.rglob("*") if p.is_file()}
+                        self.assertEqual(after, before)
+                    finally:
+                        self.state = original.copy()
+                        self.save_state()
 
     def test_failed_header_replacement_removes_only_its_temporary(self):
         # A normal Python read handle permits hashing but denies Windows replacement.
@@ -332,6 +338,24 @@ function Get-Process {
         self.assertTrue(observation["BackupPresent"])
         self.restore()
         self.assertEqual(interface.read_bytes(), original)
+    def test_demo_staging_is_not_an_ordinary_restart_fault_target(self):
+        self.state["AlternateMapMode"] = "Demo"
+        self.save_state()
+        result = self.run_fault()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("no fault already applied", result.stderr)
+        self.assertEqual(self.target.read_bytes(), self.original_map)
+
+    def test_version_three_interface_recovery_remains_supported(self):
+        self.state["Version"] = 3
+        self.state.pop("AlternateMapMode")
+        self.save_state()
+        original = (self.cfg / "robots" / "iface.txt").read_bytes()
+        result = self.run_fault("MissingInterface")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.restore()
+        self.assertEqual((self.cfg / "robots" / "iface.txt").read_bytes(), original)
+        self.assertFalse(self.backup.exists())
 
 
 if __name__ == "__main__":
