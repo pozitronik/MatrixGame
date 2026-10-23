@@ -174,6 +174,19 @@ class NavigationCorpusTests(unittest.TestCase):
         self.mutate_group("crowded", edit)
         self.rejects("missing/duplicate/renumbered actor, including added movers")
 
+    def test_valid_one_file_replay_divergence(self):
+        path = self.directory / self.groups[0][-1][1]
+        records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        # Added actor 5 is outside the original Session's four-robot observation;
+        # this remains semantically valid and must reach the replay comparator.
+        records[2]["formation"]["actors"][4]["x_bits"] ^= 1
+        self.replace(path, "".join(map(encode, records)))
+        self.rejects(r"Divergence at line 3 .*formation\.actors\[4\]\.x_bits")
+
+    def test_consistent_later_group_execution_profile(self):
+        self.mutate_group("trailing-reference", lambda records: records[0].__setitem__("compiler_version", "other"))
+        self.rejects("corpus execution profiles differ")
+
     def test_consistent_terminal_mover_ids(self):
         self.mutate_group("crowded", lambda records: records[-1]["events"]["movers"].reverse())
         self.rejects("terminal movers missing")
