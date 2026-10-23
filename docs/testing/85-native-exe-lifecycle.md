@@ -6,9 +6,10 @@ The `game.session.exe_*` cases link the production `WinMain` into a separate tes
 
 A Windows x86 standalone build, the x86 D3DX9 runtime and a working Direct3D 9 HAL device are required. The graphics checks require the opt-in `MATRIXGAME_NATIVE_EXE_TESTS=ON` option, which defaults to OFF; default CI compiles their controller and probe but does not execute these cases. Hidden containment is the default. A separate visible presentation profile can be selected explicitly; a failed check never changes profile or becomes a silent skip.
 
-Configure the usual Debug and Release standalone test builds with the [build helper](../BUILD_WINDOWS.md). From the repository root, enable the native cases in those existing build directories, build their targets and run them serially:
+Configure the usual Debug and Release standalone test builds with the [build helper](../BUILD_WINDOWS.md). Run each complete PowerShell block as a single command, including its enclosing `. { ... }`; a failure must stop the remaining steps. From the repository root, enable the native cases in those existing build directories, build their targets and run them serially:
 
 ```powershell
+. {
 $cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
 foreach ($configuration in @('Debug', 'Release')) {
     $build = "build/mingw-$($configuration.ToLowerInvariant())-exe"
@@ -26,6 +27,7 @@ foreach ($configuration in @('Debug', 'Release')) {
         if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: default test binaries remain unverified. Rebuild before ordinary tests.' }
     }
 }
+}
 ```
 
 The test helper stages the verified D3DX9 runtime. Use builds with cheats disabled for this suite; no developer command is used. Each native lifecycle case has Text and Packed variants, uses windowed mode and disables shadows. Packed names append `_packed` after the existing case/RNG suffix; names without it retain Text configuration. The materializer stores `da` and `if` in `CFG/robots.dat`, then removes both loose and parked configuration. Each controller launch verifies its deployment profile; relaunch children inherit that deployment. `CFG/standalone.txt` remains separate in both variants. General cases render at 640x480; active-order cases use 1280x720 to keep the destination clear of the HUD. The general lifecycle cases use two unarmed robots on flat generated terrain; the natural-result cases below arm one side. Both installed map entries initially contain the same scene under different filenames. The empty synthetic `robots.pkg` satisfies the standalone package preflight; all actual images, models and map records are generated loose files. The test deployment lives below CTest's working directory and is removed on normal completion or failure. Source configuration and supplied resources remain untouched.
@@ -39,6 +41,7 @@ Some drivers report `S_PRESENT_OCCLUDED` for the hidden parent even while the in
 These commands launch visible windows. Start with the four relaunch checks, while leaving the keyboard and pointer out of the synthetic game:
 
 ```powershell
+. {
 $cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
 $configuration = 'Debug'
 $build = "build/mingw-$($configuration.ToLowerInvariant())-exe"
@@ -55,6 +58,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: native registration remains unverified. Do not run ordinary tests yet.' }
     & $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
     if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: default test binaries remain unverified. Rebuild before ordinary tests.' }
+}
 }
 ```
 
