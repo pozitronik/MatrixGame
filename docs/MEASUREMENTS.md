@@ -113,6 +113,21 @@ Timings are comparable only on the same machine and configuration. Before compar
 
 To refresh the reference, check out the accepted reference revision and build its Release tests, then run the workloads and keep the result outside the repository, for example as a CI artifact or attached to the tracking issue. Measure the candidate on the same host and compare. Reference results are machine-specific; do not commit them as budgets.
 
+## Navigation operation counts
+
+[Scoped navigation work observations](testing/81-navigation-work.md#crowded-scene-consumers-and-reports) now report crowded-destination and opposing-flow scenes through the dedicated `matrixgame_navigation_work_benchmarks` executable, using the same runner and JSON/compatibility rules as the component workloads above. The existing `navigation.crowd_move` component benchmark still reports its search-mark footprint; its workload and results are unchanged.
+
+Build the Release tests and stage the test runtime with the supported helper, then select the new executable explicitly:
+
+```powershell
+.\tools\test.ps1 -Configuration Release -Filter '^game\.navigation\.work_'
+python -B tools/benchmark.py run --executable build/mingw-release-exe/tests/matrixgame_navigation_work_benchmarks.exe --iterations 1 --output build/benchmarks/navigation-work.json
+```
+
+Use `--workload navigation.crowded_destination.park_miller10` to select one profile; `--list` on the executable lists all eight scene/RNG/timestep combinations. The RNG labels have identical zero-draw executions for each scene/step pair, giving four distinct measured workloads. Each iteration starts a fresh fixture outside timing and runs exactly 32,000 simulated milliseconds. Reported `work_per_sample` contains actual completed ticks, elapsed simulation, arrived robots and RNG draws. Timing keeps collection inactive and omits full snapshots, but includes the scene's per-frame contract observations and result bookkeeping; it is not a production frame-cost or collector-overhead claim.
+
+Untimed inspection reruns matching inactive/enabled scenes, compares their complete observations and exports every `NavigationWork::Counters` field directly. Fields use the [ten declared operation units](testing/81-navigation-work.md#counter-units), with `interval_0.*`, `interval_1.*`, `interval_2.*` totals for `(0,4000]`, `(4000,12000]`, `(12000,32000]` ms. Only `Session::advance()` is captured, including its production map tick and existing CPU camera refresh; setup, initial commands, state observation and reporting are excluded. Counts cover the whole map, including stationary opponents, and are not instruction counts. First movement/arrival times, assigned cells, final coordinate bits, minimum-separation bits and a split FNV-64 trajectory digest identify the measured execution. The existing runner requires those inspection values to repeat across fresh processes. Preserve the result identity and raw reports; this consumer does not freeze a historical reference or accept N5/the whole baseline.
+
 ## Native frame measurements
 
 Device-backed frame timing needs supplied resources and a desktop session, so it is a manual measurement. It is not part of CI. Do not use synthetic benchmark results in its place.

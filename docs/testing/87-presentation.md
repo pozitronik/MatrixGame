@@ -68,7 +68,7 @@ The observer reads the foreign dialog's cached caption with `GetWindowTextLength
 
 The additional `game.startup.native_diagnostic_readiness` case starts the test executable itself on a private desktop. Its hidden synthetic dialog publishes its body and sole enabled button before its caption. Named events hold that state until the parent has verified rejection; the child then supplies the caption and the parent requires a complete observation and clean exit. The dialog procedure refuses `WM_GETTEXTLENGTH` and `WM_GETTEXT`, while its Static child handles text messages normally, so successful capture establishes the foreign cached-caption path. This case uses no game resources, graphics device or original game process and does not prove why an earlier CI caption observation failed.
 
-These checks cover native failure dialogs and early initialization in both build configurations. They do not establish successful fresh-release installation, usable packed/text battles, rendered or audible output, full-package corruption recovery, map-argument CalcVis output, menu quit, Alt+F4 or loaded-map teardown. Those P3 requirements remain in the native procedures and validation ledger. The synthetic malformed packages exercise package-open rejection only; they cannot establish behavior for every corrupt archive entry.
+These checks cover native failure dialogs and early initialization in both build configurations. They do not establish successful fresh-release installation, usable packed/text battles, rendered or audible output, full-package corruption recovery, map-argument CalcVis launch/log/exit, menu quit, Alt+F4 or loaded-map teardown. Those P3 requirements remain in the native procedures and validation ledger. The synthetic malformed packages exercise package-open rejection only; they cannot establish behavior for every corrupt archive entry.
 
 ## Settings input, pause and persistence
 
@@ -101,8 +101,8 @@ The [completion checklist](baseline-completion.md) defines the bounded scenarios
 | Family | Available executable evidence | Evidence still required |
 | --- | --- | --- |
 | PRES-01: input, viewport, focus and reset | Existing `game.input.*`, `game.selection.*`, `game.display.*`, `game.device.*`, `game.font.*` exercise dispatch/state/cancellation/reset callbacks. Camera wheel, drag/reset and interruption contracts exercise the actual form handlers and camera matrices; `game.presentation.manual_fire_interface_focus` adds real form/interface alpha hit testing, UI press delivery, manual fire suppression/start/continuation and release. Command-route scenarios provide additional gameplay evidence when integrated | P1: native input/picking/display/reset evidence. D1 has registered clear-rectangle coordinate regressions; native visible appearance remains separate. |
-| PRES-02: scene, text, effects and audio | New button/action/audio contracts and real command-to-audio routes, positional attenuation boundaries, loop silence/re-entry, stale handles and missing-speech behavior; weapon-owned loop updates and retirement; existing audio decoding, bridge, startup/default-map, lifetime and volume tests; settings shadow-pass checks | P2: actual rendered scene/shadows/text/minimap and positional/looping speech/effects across separate optional-audio profiles. |
-| PRES-03: startup and resources | Existing resource/path/startup/package contracts and audio catalog checks; actual standalone startup on a private desktop verifies missing required resources, rejected packed/missing text configuration, invalid RNG early fallback, absent/damaged optional packages, space/Unicode paths and failure exit status | P3: successful fresh archive/package/configuration launches, playable optional-audio profiles, loaded-map exits and CalcVis output provenance. Synthetic early failures do not establish those continuations. P5 retains D7 correction/disposition. |
+| PRES-02: scene, text, effects and audio | New button/action/audio contracts and real command-to-audio routes, positional attenuation boundaries, loop silence/re-entry, stale handles and missing-speech behavior; weapon-owned loop updates and retirement, automatic positional updates through map ticks and loop reuse across repeated shots; existing audio decoding, bridge, startup/default-map, lifetime and volume tests; settings shadow-pass checks | P2: actual rendered scene/shadows/text/minimap and positional/looping speech/effects across separate optional-audio profiles. |
+| PRES-03: startup and resources | Existing resource/path/startup/package contracts and audio catalog checks; actual standalone startup on a private desktop verifies missing required resources, rejected packed/missing text configuration, invalid RNG early fallback, absent/damaged optional packages, space/Unicode paths and failure exit status | P3: successful fresh archive/package/configuration launches, playable optional-audio profiles, loaded-map exits and CalcVis launch/log/exit provenance. Synthetic early failures do not establish those continuations. P5 retains D7 correction/disposition. |
 | PRES-04: settings | Existing settings parsing, persistence, model, runtime and display checks; production menu/form/window contracts for Move/group/cheat interception, paused/resumed simulation, pending edits, Cancel, Apply, failed-save preservation/retry, effective versus saved restart-only settings and queued display rejection/rollback/retry with recovered input and movement | P4: native step 5, including actual button picking, text, small-window/localized layout and audibility. Adapter enumeration and text rasterization are explicit presentation surrogates in the new executable; no production test seam is added. |
 
 The presentation implementation issue owns missing automated contracts, fixtures and exact native procedures/setup. Native execution and reuse of earlier records are tracked in the [validation ledger](native-validation.md) under #191. The implementation issue may close after those implementation deliverables and explicit case handoffs are complete; the complete baseline still requires reviewed native results and its other acceptance evidence.
@@ -138,20 +138,16 @@ Before the source correction, the asymmetric and state cases fail on the vertica
 
 Repeat with `-DLL` for the host-library build. D1 belongs to #87 correction/disposition, with original reproduction in #89 and scaling overlap in #63. This bounded correction does not implement interface scaling or complete the presentation baseline.
 
-## Opt-in defect reproducers
+## Plane regressions
 
-The two unresolved plane probes in `matrixgame_presentation_defect_probes` remain outside CTest. They assert mathematically correct results and return exit code 1 on the current implementation; they are not passing baseline goldens. The same executable also contains the registered clear-rectangle regressions above.
-
-After running the test build, invoke each plane command separately, then repeat with `mingw-release-exe`:
+The [#305 correction](https://github.com/pozitronik/MatrixGame/issues/305) copies both builders' calculated coefficients into `norm`/`dist` before deriving sign bits. The registered `game.presentation.plane_normal` and `game.presentation.plane_points` cases require signed distance 8 and downward intersection parameter 8 for a plane at z = 2 queried from z = 10. Eight additional [plane contracts](305-plane-builders.md) cover winding, side/box queries, reuse, ray semantics and unchanged x86 layout.
 
 ```powershell
-& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_normal
-& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_points
+.\tools\test.ps1 -Configuration Debug -Filter '^(game\.geometry\.plane\.|game\.presentation\.plane_)'
+.\tools\test.ps1 -Configuration Release -Filter '^(game\.geometry\.plane\.|game\.presentation\.plane_)'
 ```
 
-D7 is assigned to #89 for reproduction and #97 for correction/disposition by the [legacy inventory](../research/88-legacy-code-inventory/README.md). Both `SPlane` builders correctly populate `dxplane`, while distance/intersection methods read separate `norm`/`dist` fields. The probes initialize those separate fields explicitly, then build the plane z = 2 and query a ray from z = 10 directed downward. They obtain distance 0 and no intersection instead of distance magnitude 8 and intersection parameter 8. Initialization avoids treating an uninitialized read as a golden value. The test establishes the mathematical inconsistency; it does not establish the visibility output or native impact of the map-argument `CalcVis` path.
-
-The [legacy evidence report](../research/89-legacy-evidence/defects.md) records the original D1/D7 reproductions and D1's implementation follow-up. D7 still requires a separately reviewed correction/disposition before accepting the affected baseline entries. The default test suite does not hide that defect with inverted assertions or a known-failure success status.
+The `probe.presentation.clear_rectangle`, `probe.presentation.plane_normal` and `probe.presentation.plane_points` executable commands remain unregistered aliases for direct invocation. CTest uses the `game.presentation.*` regression names; `ctest -N -R probe` selects none of them. Both D1 and D7 have correct-result automated regressions. The [legacy evidence report](../research/89-legacy-evidence/defects.md) preserves their original reproductions and separate correction histories. Native appearance, Debug diagnostics/flyer input and complete baseline acceptance remain separate.
 
 ## Native preparation
 
@@ -171,6 +167,8 @@ $playtestProcess.ExitCode
 For Release, replace `mingw-debug-exe` with `mingw-release-exe`. Run only one game at a time. This command intentionally opens the interactive game; it is a manual procedure, not part of CTest.
 
 ## Native procedures
+
+Use the [P1-P4 procedure supplement](87-native-procedures.md) for the shared launch/deadline/exit/restoration record, qualified active-loop scenes and exact staged startup-failure substitutions. It reuses the steps below and existing public guides; it records no native execution.
 
 Run the following in each of the four configuration cases. Use the arrow keys for strategic camera scrolling; W is a direct-control key. Record any unavailable scene/target as unperformed rather than passing it.
 
