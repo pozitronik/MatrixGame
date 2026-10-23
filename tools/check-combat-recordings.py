@@ -90,6 +90,10 @@ def validate(records, *, family, rng, step, revision=None, configuration=None, c
         require(integer(command.get("resulting_order")) and integer(command.get("resulting_target"))
                 and isinstance(command.get("resulting_destination"), list) and len(command["resulting_destination"]) == 2
                 and all(integer(x) for x in command["resulting_destination"]), "command result observations missing")
+        # mpo_Attack and the target's footprint destination; removal returns Session's retired state.
+        result = (3, 3, [48, 48]) if command["name"] == "context-target(3)" else (-1, 0, [-1, -1])
+        for field, value in zip(("resulting_order", "resulting_target", "resulting_destination"), result):
+            require(command[field] == value, f"command {command['name']} {field} differs")
     observed_draws = observed_frame = None
     for record in records[1:-1]:
         if record["type"] == "command":
