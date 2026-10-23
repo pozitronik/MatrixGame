@@ -44,6 +44,13 @@ struct SelectionFixture {
         MG_CHECK(CMatrixMapStatic::objects_rite < MAX_OBJECTS_PER_SCREEN);
         CMatrixMapStatic::objects[CMatrixMapStatic::objects_rite++] = object;
     }
+    template <class Identify>
+    std::vector<int> identities(Identify identify) const {
+        std::vector<int> result;
+        for (int i = CMatrixMapStatic::objects_left; i < CMatrixMapStatic::objects_rite; ++i)
+            result.push_back(identify(CMatrixMapStatic::objects[i]));
+        return result;
+    }
     ~SelectionFixture() {
         while (CMultiSelection::m_First) {
             auto *selection = CMultiSelection::m_First;
@@ -1687,9 +1694,11 @@ void mixed_selection_lifecycle() {
                                 visible.append(building.get());
                                 visible.append(cannon);
                             }
+                            const auto identities = visible.identities(id_of);
                             drag(form, CPoint(area.left, area.top), CPoint(area.right, area.bottom));
                             MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
                             MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(cannon));
+                            return identities;
                         };
                         side().Select(NOTHING, nullptr);
                         side().ResetSystemSelection();
@@ -1700,21 +1709,21 @@ void mixed_selection_lifecycle() {
                             const auto center = screen_center(*cannon);
                             const CRect cannon_area(center.x - 20, center.y - 20, center.x + 20, center.y + 20);
                             MG_CHECK(cannon->InRect(cannon_area));
+                            const auto cannon_visible = visible.identities(id_of);
                             drag(form, CPoint(cannon_area.left, cannon_area.top),
                                        CPoint(cannon_area.right, cannon_area.bottom));
                             MG_CHECK(side().m_CurrSel == NOTHING_SELECTED);
                             MG_CHECK(!side().GetCurGroup());
                             MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
-                            command("select-cannon-only", {6}, &cannon_area);
+                            command("select-cannon-only", cannon_visible, &cannon_area);
                             record("cannon-control");
                         }
-                        select_scene(true);
+                        const auto live_visible = select_scene(true);
                         MG_CHECK(side().m_CurrSel == ROBOT_SELECTED);
                         MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == robot);
                         MG_CHECK(side().GetCurSelObject() == robot);
                         MG_CHECK(!side().GetCurGroup()->FindObject(building.get()));
-                        const std::vector<int> mixed_visible = building_first ? std::vector<int>{6, 5, 1} : std::vector<int>{1, 5, 6};
-                        command("select-mixed-live", mixed_visible, &area);
+                        command("select-mixed-live", live_visible, &area);
                         record("live-selected");
 
                         g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {10000, 10000, 0};
@@ -1724,10 +1733,10 @@ void mixed_selection_lifecycle() {
                         MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(robot));
                         command("lethal-damage");
                         record("dying-unselected");
-                        select_scene(true); // The dying object is still visible, but no longer selectable.
+                        const auto dying_visible = select_scene(true); // The dying object is still visible, but no longer selectable.
                         MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
                         MG_CHECK(side().m_ActiveObject == building.get());
-                        command("select-mixed-dying", mixed_visible, &area);
+                        command("select-mixed-dying", dying_visible, &area);
                         record("building-selected-dying");
                         // Selection uses supplied visibility; leave no cached pointer across map retirement.
                         for (int elapsed = 0; elapsed < 6000; elapsed += step_ms) {
@@ -1741,11 +1750,11 @@ void mixed_selection_lifecycle() {
                         MG_CHECK(side().m_CurrSel == NOTHING_SELECTED && side().m_ActiveObject == nullptr);
                         command("clear-after-retirement");
                         record("cleared-retired");
-                        select_scene(false);
+                        const auto retired_visible = select_scene(false);
                         MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
                         MG_CHECK(side().m_ActiveObject == building.get());
                         MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
-                        command("select-after-retirement", building_first ? std::vector<int>{6, 5} : std::vector<int>{5, 6}, &area);
+                        command("select-after-retirement", retired_visible, &area);
                         record("building-selected-retired");
                         side().Select(NOTHING, nullptr);
                         command("clear-final-selection");

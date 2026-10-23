@@ -35,6 +35,8 @@ def validate(records, *, rng, step, building_first, click, revision=None, config
     for key, value in (("revision", revision), ("configuration", configuration), ("compiler", compiler)):
         if value is not None:
             expected[key] = value
+    if revision is not None:
+        expected["dirty"] = 0
     for key, value in (("build_exe", None if target is None else target == "EXE"), ("cheats", cheats), ("trace", traced)):
         if value is not None:
             expected[key] = value

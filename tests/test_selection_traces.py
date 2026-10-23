@@ -1,11 +1,13 @@
 """Contract checks for retained selection observations, independent of replay equality."""
 import copy
+import contextlib
 import importlib.util
 import io
 import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 spec = importlib.util.spec_from_file_location("selection_traces", Path(__file__).resolve().parents[1] / "tools/check-selection-traces.py")
@@ -18,7 +20,7 @@ def recording(profile):
     ticks = 6000 // step
     header = dict(type="header", schema=1, fixture=selection.FIXTURE, rng=profile["rng"], seed=80,
                   step_ms=step, configuration="Release", compiler="MinGW", revision="candidate",
-                  precision_control=131072, building_first=profile["building_first"], click=profile["click"],
+                  precision_control=131072, dirty=0, building_first=profile["building_first"], click=profile["click"],
                   actor_ids={"robot": 1, "building": 5, "cannon": 6}, audio="unavailable",
                   build_exe=True, cheats=False, trace=False,
                   area=[100, 200, 101, 201] if profile["click"] else [70, 170, 130, 230])
@@ -69,6 +71,17 @@ def recording(profile):
     return records
 
 
+def write_recording(path, records):
+    path.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+
+
+def write_corpus(directory):
+    directory.mkdir(parents=True, exist_ok=True)
+    for name, profile in selection.inventory():
+        for replay in (0, 1):
+            write_recording(directory / f"{name}-{replay}.jsonl", recording(profile))
+
+
 class SelectionTraceTests(unittest.TestCase):
     profile = dict(rng="ParkMiller", step=16, building_first=False, click=True)
 
@@ -98,6 +111,65 @@ class SelectionTraceTests(unittest.TestCase):
             bad = {**identity, key: wrong}
             with self.subTest(key=key), self.assertRaises(selection.trace.TraceError):
                 selection.validate(records, **self.profile, **bad)
+
+    def test_revision_requires_clean_integer_dirty_marker(self):
+        for dirty in (1, -1, True, False, None):
+            records = recording(self.profile)
+            records[0]["dirty"] = dirty
+            with self.subTest(dirty=dirty), self.assertRaisesRegex(selection.trace.TraceError, r"header\.dirty"):
+                selection.validate(records, **self.profile, revision="candidate")
+        records = recording(self.profile)
+        del records[0]["dirty"]
+        with self.assertRaisesRegex(selection.trace.TraceError, r"header\.dirty"):
+            selection.validate(records, **self.profile, revision="candidate")
+        records[0]["dirty"] = 1
+        self.checked(records)  # Unpinned source observations remain inspectable.
+
+    def reject_correlated_change(self, change, message):
+        """Both replay files have the same defect, so equality cannot reject it."""
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            write_corpus(directory)
+            name, profile = next(selection.inventory())
+            for replay in (0, 1):
+                records = recording(profile)
+                change(records)
+                write_recording(directory / f"{name}-{replay}.jsonl", records)
+            with self.assertRaisesRegex(selection.trace.TraceError, message):
+                selection.check_directory(directory)
+
+    def test_correlated_area_width_requires_selected_route(self):
+        def widen(records):
+            records[0]["area"][2] += 1
+            for record in records:
+                if record.get("name") in ("select-mixed-live", "select-mixed-dying", "select-after-retirement"):
+                    record["area"] = records[0]["area"].copy()
+        self.reject_correlated_change(widen, "selection area does not match route")
+
+    def test_correlated_phase_name_requires_schedule(self):
+        def rename(records):
+            record = next(record for record in records if record.get("selection", {}).get("phase") == "cleared-initial")
+            record["selection"]["phase"] = "renamed-cleared"
+        self.reject_correlated_change(rename, "selection phase schedule differs")
+
+    def test_correlated_tick_boundary_requires_exact_frame(self):
+        def shift(records):
+            state = next(record["state"] for record in records if record.get("selection", {}).get("phase") == "retirement-tick" and record["state"]["frame"] == 50)
+            state["frame"] += 1
+            state["time_ms"] += records[0]["step_ms"]
+        self.reject_correlated_change(shift, "snapshot boundary differs")
+
+    def test_correlated_dying_phase_requires_dying_state(self):
+        def revive_state(records):
+            next(record for record in records if record.get("selection", {}).get("phase") == "dying-unselected")["selection"]["actor_state"] = 2
+        self.reject_correlated_change(revive_state, "dying actor lifetime differs")
+
+    def test_correlated_final_phases_require_prior_retirement(self):
+        def retain_core(records):
+            for record in records:
+                if record.get("selection", {}).get("phase") in ("retirement-tick", *selection.PHASES[6:]):
+                    record["selection"].update(core_object=1, actor_state=5)
+        self.reject_correlated_change(retain_core, "actor did not retire before final selection")
 
     def test_boolean_does_not_substitute_for_identity(self):
         for where in ("header", "command", "robot", "selection"):
@@ -173,6 +245,51 @@ class SelectionTraceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as name:
             with self.assertRaisesRegex(selection.trace.TraceError, "inventory"):
                 selection.check_directory(Path(name))
+
+    def test_main_accepts_complete_corpus_with_build_identity(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            write_corpus(directory)
+            output = io.StringIO()
+            arguments = ["check-selection-traces.py", str(directory), "--revision", "candidate",
+                         "--configuration", "Release", "--compiler", "MinGW", "--target", "EXE",
+                         "--cheats", "false", "--trace", "false"]
+            with mock.patch.object(selection.sys, "argv", arguments), contextlib.redirect_stdout(output):
+                self.assertEqual(selection.main(), 0)
+            self.assertEqual(output.getvalue(), "Validated 32 mixed-selection recordings and 16 exact session replay pairs.\n")
+
+    def test_directory_rejects_replay_divergence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            write_corpus(directory)
+            name, profile = next(selection.inventory())
+            records = recording(profile)
+            records[1]["state"]["extra_observation"] = 1
+            write_recording(directory / f"{name}-1.jsonl", records)
+            with self.assertRaisesRegex(selection.trace.TraceError, "replay divergence: .*extra_observation"):
+                selection.check_directory(directory)
+
+    def test_directory_rejects_reference_divergence(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory, reference = Path(temporary) / "candidate", Path(temporary) / "reference"
+            write_corpus(directory)
+            write_corpus(reference)
+            self.assertEqual(selection.check_directory(directory, reference=reference), 32)
+            name, profile = next(selection.inventory())
+            records = recording(profile)
+            records[1]["state"]["extra_observation"] = 1
+            write_recording(reference / f"{name}-0.jsonl", records)
+            with self.assertRaisesRegex(selection.trace.TraceError, "reference divergence: .*extra_observation"):
+                selection.check_directory(directory, reference=reference)
+
+    def test_directory_rejects_incomplete_reference_inventory(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory, reference = Path(temporary) / "candidate", Path(temporary) / "reference"
+            write_corpus(directory)
+            write_corpus(reference)
+            next(reference.glob("*.jsonl")).unlink()
+            with self.assertRaisesRegex(selection.trace.TraceError, "reference inventory differs"):
+                selection.check_directory(directory, reference=reference)
 
     def test_shared_session_observations_cannot_be_dropped(self):
         for field in ("robots", "player_groups", "x_bits", "queue"):
