@@ -184,6 +184,13 @@ jobs:
           if ('${{ matrix.cheats }}' -eq 'true') { $testParameters.Cheats = $true }
           if ('${{ matrix.trace }}' -eq 'true') { $testParameters.Trace = $true }
           ./tools/test.ps1 @testParameters
+      - name: Validate real auto-order recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          python -B tests/check_player_auto_traces.py "build/$buildName/tests/scenario-traces"
+          if ($LASTEXITCODE -ne 0) { throw 'Auto-order trace validation failed.' }
       - name: Upload engine test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
