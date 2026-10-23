@@ -484,7 +484,7 @@ void __stdcall tick() {
         throw;
     }
 }
-enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, RepeatedPneumaticCleanup };
+enum class ConfigurationProfile { Text, Packed, InvalidPackedHeader, PackedMissingHint, RepeatedPneumaticCleanup };
 void demo_assets() {
     for (auto demo : {DemoProfile::Reinforcement, DemoProfile::NoReinforcement, DemoProfile::CameraFights})
         for (bool packed : {false, true}) {
@@ -624,10 +624,15 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
         host = &observed;
         if (failing) {
             if (packed) {
-                fs::rename(L"CFG/robots.dat", L"parked-valid-config");
-                std::ofstream broken(L"CFG/robots.dat", std::ios::binary);
-                broken.write("BAD!", 4);
-                MG_CHECK(broken.good());
+                if (profile == ConfigurationProfile::PackedMissingHint) {
+                    fs::copy_file(L"CFG/robots.dat", L"parked-valid-config");
+                    tests::write_native_packed_missing_hint();
+                } else {
+                    fs::rename(L"CFG/robots.dat", L"parked-valid-config");
+                    std::ofstream broken(L"CFG/robots.dat", std::ios::binary);
+                    broken.write("BAD!", 4);
+                    MG_CHECK(broken.good());
+                }
             } else fs::rename(L"CFG/robots/iface.txt", L"CFG/robots/iface.saved");
         }
         SRobotGameState result{41,42,43,44,45,46};
@@ -672,16 +677,19 @@ void native_run_lifetimes_impl(const SessionOptions &options) {
         if (!observed.failure.empty()) throw std::runtime_error(observed.failure);
         MG_CHECK(observed.restarts == (building_restart && !failing ? 2 : 0));
         MG_CHECK(exit == expected_exit);
-        if (failing && packed) MG_CHECK(observed.progress == 0 && !observed.map_observed && observed.ticks == 0);
+        if (failing && packed && profile != ConfigurationProfile::PackedMissingHint)
+            MG_CHECK(observed.progress == 0 && !observed.map_observed && observed.ticks == 0);
         else MG_CHECK(observed.progress > 0 && observed.map_observed);
         MG_CHECK(observed.initial_cheat_flags == 0);
         MG_CHECK(observed.toggles_observed == observed.type_toggles);
         MG_CHECK(observed.begins == (failing ? 0 : 1));
         if (failing) {
+            MG_CHECK(observed.ticks == 0);
             MG_CHECK(std::memcmp(&result, &unchanged, sizeof(result)) == 0);
             std::ifstream errors("matrixgame-dll-errors.log", std::ios::binary);
             const std::string diagnostic((std::istreambuf_iterator<char>(errors)), {});
-            MG_CHECK(diagnostic.find(packed ? "Invalid packed configuration: cfg\\robots.dat" :
+            MG_CHECK(diagnostic.find(profile == ConfigurationProfile::PackedMissingHint ? "Hint bitmap not found:native-missing-hint.png" :
+                packed ? "Invalid packed configuration: cfg\\robots.dat" :
                 "Error open file: cfg\\robots\\iface.txt") != std::string::npos);
         }
         else if (observed.demo != DemoProfile::None) {
@@ -727,6 +735,7 @@ void native_demo_packed_camera_fights() {
 }
 void native_run_lifetimes() { native_run_lifetimes_impl({}); }
 void native_packed_lifetimes() { native_run_lifetimes_impl({.profile = ConfigurationProfile::Packed}); }
+void native_packed_hint_failure() { native_run_lifetimes_impl({.profile = ConfigurationProfile::PackedMissingHint}); }
 void native_packed_header_failure() { native_run_lifetimes_impl({.profile = ConfigurationProfile::InvalidPackedHeader}); }
 void pneumatic_retirement() { native_run_lifetimes_impl({.profile = ConfigurationProfile::RepeatedPneumaticCleanup}); }
 void native_held_input_retirement() { native_run_lifetimes_impl({.leave_key_held = true}); }
@@ -783,6 +792,7 @@ int main(int argc, char **argv) {
         {"game.session.native_demo_packed_win", native_demo_packed_win},
         {"game.session.native_demo_packed_loss", native_demo_packed_loss},
         {"game.session.native_packed_lifetimes", native_packed_lifetimes},
+        {"game.session.native_packed_hint_failure", native_packed_hint_failure},
         {"game.session.native_packed_header_failure", native_packed_header_failure},
         {"game.session.pneumatic_retirement", pneumatic_retirement},
         {"game.session.held_input_retirement", native_held_input_retirement}};
