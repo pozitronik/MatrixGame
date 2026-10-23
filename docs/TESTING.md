@@ -118,11 +118,13 @@ The [synthetic material fixtures](testing/material-fixtures.md) describe CPU tex
 
 The [synthetic reinforcement fixtures](testing/reinforcement-fixtures.md) cover real request, carrier flight, cargo landing and retirement under an explicit unavailable-icon-renderer profile.
 
+The [physical delivery approach controls](testing/81-carrier-approach.md) compare low and tall buildings using production geometry and traces, retain the observed penetration and verify the delivery continuation in both RNG modes and frame schedules.
+
 The [construction and production contracts](testing/83-production.md) cover queue ownership and refunds, income, AI and player purchase, and reinforcement gates. They distinguish tested callbacks and components from remaining rendered UI and strategic coverage.
 
 The [combat contracts](testing/82-combat.md) describe firing, damage, status and object lifetime oracles; select them with `^game\.combat\.`.
 
-The [navigation contracts](testing/81-navigation.md) describe alternate topology, local movement and carrier lifetime; select them with `^game\.navigation\.`.
+The [navigation contracts](testing/81-navigation.md) describe alternate topology, local movement and carrier lifetime; select them with `^game\.navigation\.`. The [road-ring journeys](testing/81-road-guided-journeys.md) add paired regional-guidance and damage-driven blocker controls with complete-session replay.
 
 The [presentation evidence guide](testing/87-presentation.md) maps PRES-01 through PRES-04 to interface/audio contracts, registered clear-rectangle and plane regressions, unregistered legacy command aliases and native procedures.
 
@@ -271,6 +273,8 @@ The lifecycle suite also checks visibility requests before cursor images are loa
 Construction, rendering, lifecycle, audible/device audio behavior and the gameplay effects of corrected random ranges need additional regressions and playtests. Passing these tests establishes only the contracts listed above.
 
 Selection cases link production multi-selection and game-form input. Synthetic visible buildings count rectangle hit tests without meshes, packages or a device. They verify queued movement and final release through the real form, plus pending refresh, membership, masks, limits and cancellation in the selection implementation. They do not invoke the rendered frame/device path; native queue-load measurements and [Selection dragging](PLAYTESTING.md#selection-dragging) cover that integration separately. Debug rejects tracked allocation leaks and test crashes do not open native dialogs.
+
+The [controlled standalone demo exporter](testing/85-native-demo-export.md) prepares six independent ordinary/reinforcement/no-reinforcement/win/loss/changing-fight scenes in Text and Packed configurations for NV-05-1. Its eight `game.session.demo_export_*` cases validate generated map declarations/configuration/packages, destination ownership, failed-export cleanup and the actual Unicode CLI in EXE and DLL test builds. Each layout case checks one profile in both formats within the default 30-second timeout. The CLI case has a 90-second outer timeout and a 15-second deadline for each console child, allowing its own termination and cleanup path to run. These checks launch only the console exporter, without initializing a game, creating a graphics device or recording a native gameplay pass. Running an exported standalone scene remains a separate operator action.
 
 ## Wire layouts and the host contract
 
