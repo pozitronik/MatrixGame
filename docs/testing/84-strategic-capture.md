@@ -1,0 +1,40 @@
+# Strategic capture journeys
+
+`game.ai.strategic_capture.*` follows computer-side expansion from a high-level regional decision to individual capture orders, physical travel and completed factory ownership. It covers the two-region journey and action-time objective/base-loss selection in A1 / AI-01; it does not change AI priorities or production code.
+
+```powershell
+.\tools\test.ps1 -Configuration Debug -Filter '^game\.ai\.strategic_capture\.'
+.\tools\test.ps1 -Configuration Release -Filter '^game\.ai\.strategic_capture\.'
+.\tools\test.ps1 -Configuration Debug -DLL -Filter '^game\.ai\.strategic_capture\.'
+.\tools\test.ps1 -Configuration Release -DLL -Filter '^game\.ai\.strategic_capture\.'
+```
+
+## Scene and production boundary
+
+The shared `MultiRegion` geometry supplies two connected regions and real zones, places, roads and the central obstacle. Seed 84, ParkMiller/LegacyCRT and independent 10/16 ms schedules produce four profiles. Each session runs 48,000 ms through `Session::advance()` and the full production map tick. No human command or direct `TaktHL`, `TaktTL`, movement, capture or ownership call starts the journey.
+
+All four unarmed wheel robots retain their original fixture positions and geometry: two player robots at (100,200)/(100,260), and two computer robots at (500,500)/(540,540). Player movement speed is zero; the computer retains its ordinary three-team configuration, regrouping and empty-team redistribution. The scene adds a computer base at (500,100), a neutral titanium factory at (100,500) and a neutral energy factory at (200,100). Buildings use generated, loaded meshes and normal `OnLoad` registration. The initial logic list matches the native loader's building-before-robot order. Setup checks that geometric centres match robot positions: factory proximity uses those centres, so relocating a robot without refreshing its cached geometry would invalidate the scene.
+
+Two valid AI designs cost 180 and 120 of each resource; turret prices are 1,000 per resource. The computer starts with no resources, and base/factory income intervals are 100,000 ms, beyond the scene horizon. Ordinary production decisions remain enabled, but the test requires zero balances, an empty surviving base queue, exactly the original four robots and no turrets. Purchasing/deployment has its own scenarios; this scene isolates expansion without bypassing strategy or replacing its action selection.
+
+## Assertions
+
+| Case | Intervention | Required continuation |
+| --- | --- | --- |
+| `control` | None | The first high-level pass selects Forward into region 0, with regional path `[1,0]` and a populated road route. A robot physically enters region 0, the team selects Capture, individual capture orders appear, and both factories become computer-owned. |
+| `objective_loss` | At 6,000 ms, delete the titanium factory through `StaticDelete`. | Before deletion at least one computer robot already targets that exact factory; it is still neutral and has no painted points. Its retained core retires. A former capturer receives a real order for the energy factory after deletion, and that replacement is captured. No deleted target survives in observed capture orders. |
+| `home_loss` | At the same boundary, delete the computer base. | All nine registered base cells release their reference. Occupied teams report no nearest base by 6,500 ms. The original capture still completes at the same first-paint and ownership times as the intact-base control, and the energy factory is also captured. |
+
+Every tick checks live stable robot identities, finite in-bounds positions, legal team/group indices, production exclusion and known capture-target identities. The primary factory must receive an individual capture order no later than the first occupied-team Capture action. Observations include every team's action, region, regional path and cached counts; each robot's team, actual group, region and individual capture target; occupied group counts/actions; and all buildings' presence, ownership, paint and colour. Redistribution may clear a robot's group until the next high-level regroup; the trace retains that interval and rejects an absence lasting 200 ms. Cached team/group counts are recorded separately from actual membership rather than silently repaired by the fixture.
+
+An individual capture order can originate in the team's tactical dispatch or in a robot's timed capture-candidate processing. The latter can precede the regional Capture action: the LegacyCRT 10 ms profiles require the primary order strictly before that action, pinning the observed candidate route. The suite preserves both routes rather than assuming that the first regional decision is always the source of the robot's order. Checking only an eventual order allowed the tactical-dispatch omission control to survive; the ordering assertion above distinguishes its delay in every profile except LegacyCRT 10 ms, where candidate processing supplies the primary order first.
+
+The last three simulated seconds require every surviving factory to remain side 2, fully painted with all 14 points in the computer colour, and every robot's capture order to be released. A late occupied-team Defence action is required. The titanium factory must involve a nonzero painting interval before ownership changes; the energy factory requires an order before completed ownership, without a separate painting-interval assertion. The replacement order must precede its completed capture. These assertions distinguish a strategic assignment from the building's independent proximity-capture mechanism; final ownership alone would not establish that the AI selected the building.
+
+Each of the twelve control/loss cases repeats its complete session and compares every frame exactly, including raw floating-point position/health bits, all order-queue entries, observed AI/building state and the shared RNG draw count. Both loss cases additionally run the intact control and require exact equality through 6,000 ms, before intervention, and different terminal state as a deletion guard: a missing building and changed nearest-base metadata already distinguish that state, so this comparison does not establish changed capture timing. That is eight sessions per RNG/timestep profile, 32 sessions per build configuration. Two additional `rng_sensitivity.step10`/`step16` cases each run both modes and require different energy-factory ownership times. This demonstrates an effect on gameplay rather than merely different RNG state; the total is 14 cases and 36 sessions per build configuration. Observations are checked not to consume RNG. Headers identify the revision, dirty state, compiler/configuration, compatibility options, fixture, RNG, seed and schedule; periodic decision records and final event times support diagnosis. These replay comparisons establish same-profile determinism, not an approved historical reference revision.
+
+## Sensitivity and limitations
+
+Source controls temporarily suppress the computer's high-level pass, its tactical capture-order dispatch, or the neutral factory's ownership assignment. Respectively, the initial strategic action, timely selected-objective order and late completion assertions must fail. Production bytes must be restored and the positive cases rebuilt afterward; these mutations are never part of the committed change.
+
+The scene uses the surrogate device and unavailable audio, with no drawing or desktop input. It establishes neither native presentation nor original-host integration. Loss is explicit deletion at a fixed time, not combat damage. Only two unarmed computer robots, neutral factories, the declared synthetic topology and current compatibility defaults are covered. Existing choice-only ties, group-count/redistribution regressions and other combat/production scenarios retain their separate scope. The proposed catalog mapping of member loss to "team leader" loss still needs review: this engine fixture supplies no explicit leader identity. This increment does not complete AI-01, issue #84, or the whole-game baseline acceptance gate.
