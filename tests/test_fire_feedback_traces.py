@@ -10,11 +10,15 @@ SPEC.loader.exec_module(CHECK)
 
 
 def observation():
-    robots = [{"id": i, "alive": True, "health_bits": 1120403456} for i in (1, 2, 3)] + [{"id": 4, "alive": False}]
+    robots = [{"id": i, "alive": True, "x_bits": 1120403456, "y_bits": 1128792064, "side": 1 if i < 3 else 2,
+               "state": 2, "health_bits": 1120403456, "in_place": False, "group": 0 if i < 3 else -1,
+               "order": 1 if i < 3 else -1, "target": 0, "target_is_null": True, "destination": [8, 8],
+               "queue": [[1, 0, 1090519040, 1090519040, 0]]} for i in (1, 2, 3)] + [{"id": 4, "alive": False}]
     feedback = [{"id": i, "place": -1, "place_not_found": -1000000, "bad_places": [], "enemy_count": 0,
                  "target": -1, "attack_target": 0, "target_change": 0, "last_fire": 0, "last_hit": 0,
                  "health_bits": 1120403456, "moving": False, "move": [-1, -1]} for i in (1, 2, 3)]
-    return {"type": "snapshot", "state": {"frame": 2, "time_ms": 20, "robots": robots}, "feedback": feedback, "war": False, "ally_on_ray": False}
+    return {"type": "snapshot", "state": {"frame": 2, "time_ms": 20, "rng_draws": 300, "robots": robots,
+            "player_groups": [{"slot": 0, "stored_count": 2, "members": 2, "order": 1, "target": 0}]}, "feedback": feedback, "war": False, "ally_on_ray": False}
 
 
 def terminal():
@@ -57,6 +61,43 @@ class FeedbackSemantics(unittest.TestCase):
         for key in ("id", "last_fire"):
             value = observation()
             value["feedback"][0][key] = True
+            with self.assertRaises(ValueError):
+                CHECK.observations(value)
+
+    def test_both_equal_files_missing_live_position_queue_or_group_fail(self):
+        for field in ("x_bits", "queue", "group"):
+            left, right = observation(), observation()
+            del left["state"]["robots"][0][field]
+            del right["state"]["robots"][0][field]
+            self.assertEqual(left, right)
+            for value in (left, right):
+                with self.assertRaisesRegex(ValueError, "missing live Session actor field"):
+                    CHECK.observations(value)
+
+    def test_both_equal_files_missing_player_groups_or_group_fields_fail(self):
+        for field in ("player_groups", "members", "order"):
+            left, right = observation(), observation()
+            for value in (left, right):
+                if field == "player_groups":
+                    del value["state"][field]
+                else:
+                    del value["state"]["player_groups"][0][field]
+            self.assertEqual(left, right)
+            for value in (left, right):
+                with self.assertRaisesRegex(ValueError, "missing Session"):
+                    CHECK.observations(value)
+
+    def test_live_session_types_full_queues_and_group_inventory_are_required(self):
+        edits = (lambda r: r["state"]["robots"][0].__setitem__("x_bits", True),
+                 lambda r: r["state"]["robots"][0].__setitem__("side", "1"),
+                 lambda r: r["state"]["robots"][0].__setitem__("destination", [8]),
+                 lambda r: r["state"]["robots"][0].__setitem__("queue", [[1, 0, 0, 0]]),
+                 lambda r: r["state"]["robots"][0].__setitem__("queue", [[1, 0, True, 0, 0]]),
+                 lambda r: r["state"].__setitem__("player_groups", []),
+                 lambda r: r["state"]["player_groups"][0].__setitem__("members", True))
+        for edit in edits:
+            value = observation()
+            edit(value)
             with self.assertRaises(ValueError):
                 CHECK.observations(value)
 
