@@ -592,9 +592,10 @@ add_matrix_test_executable(matrixgame_native_demo_export native_demo_export.cpp 
     native_outcome_assets.cpp native_session_assets.cpp native_packed_config.cpp battle_geometry.cpp)
 target_link_libraries(matrixgame_native_demo_export PRIVATE MatrixGameInternal shell32)
 target_compile_definitions(matrixgame_native_demo_export PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
-foreach(contract layout ownership cli)
+foreach(contract layout_ordinary layout_reinforcement layout_no_reinforcement layout_win layout_loss layout_fights ownership cli)
     add_matrix_test(game.session.demo_export_${contract} matrixgame_native_demo_export startup ai storage)
 endforeach()
+set_tests_properties(game.session.demo_export_cli PROPERTIES TIMEOUT 90)
 
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_dll_host_tests dll_host_tests.cpp)

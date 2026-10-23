@@ -14,6 +14,12 @@
 #include <array>
 #include <algorithm>
 #include <cstring>
+#include <cstdint>
+#include <exception>
+#include <iostream>
+#include <iterator>
+#include <string>
+#include <string_view>
 #include <shellapi.h>
 
 namespace fs = std::filesystem;
@@ -100,6 +106,15 @@ void validate(std::wstring_view profile, bool packed) {
         MG_CHECK(fs::is_regular_file(file) && fs::file_size(file) > 0);
     MG_CHECK(!fs::exists(L"MatrixGame.exe"));
     MG_CHECK(fs::is_regular_file(map_path(profile)));
+    std::ifstream settings_text(L"CFG/standalone.txt");
+    MG_CHECK(settings_text.good());
+    const std::string written{std::istreambuf_iterator<char>(settings_text), {}};
+    for (const auto *expected : {"RandomGenerator=ParkMiller", "WindowMode=Windowed", "BattleBonus=None"}) {
+        const auto line = std::string(expected) + '\n';
+        const auto offset = written.find(line);
+        MG_CHECK(offset != std::string::npos && (offset == 0 || written[offset - 1] == '\n'));
+        MG_CHECK(written.find(line, offset + line.size()) == std::string::npos);
+    }
     const auto options = StandaloneSettings::load();
     MG_CHECK(options.invalid.empty() && options.values.random == random::Mode::ParkMiller);
     MG_CHECK(options.values.display.mode == Display::Mode::Windowed);
@@ -193,9 +208,9 @@ void export_to(std::wstring_view profile, const fs::path &target, bool packed, v
     validate(profile, packed);
     destination.close(true);
 }
-void export_layout() {
+void export_layout(std::wstring_view profile) {
     Directory fixture("demo-layout-" + std::to_string(GetCurrentProcessId()));
-    for (const auto *profile : profiles) for (bool packed : {false,true}) {
+    for (bool packed : {false,true}) {
         const auto destination = fixture.root / (std::wstring(profile) + (packed ? L"-packed" : L"-text"));
         export_to(profile, destination, packed);
         MG_CHECK(fs::current_path() == fixture.root);
@@ -214,6 +229,10 @@ void export_ownership() {
     bool refused = false;
     try { export_to(L"ordinary", L"existing", false); } catch (const std::exception &) { refused = true; }
     MG_CHECK(refused && bytes(L"existing/sentinel") == "retained");
+    MG_CHECK(fs::create_directory(L"existing-empty"));
+    refused = false;
+    try { export_to(L"ordinary", L"existing-empty", false); } catch (const std::exception &) { refused = true; }
+    MG_CHECK(refused && fs::is_directory(L"existing-empty") && fs::is_empty(L"existing-empty"));
     refused = false;
     try { export_to(L"ordinary", L"missing-parent/export", false); } catch (const std::exception &) { refused = true; }
     MG_CHECK(refused && !fs::exists(L"missing-parent"));
@@ -252,11 +271,11 @@ DWORD run_cli(std::initializer_list<std::wstring> arguments) {
     MG_CHECK(CreateProcessW(executable.c_str(), command.data(), nullptr, nullptr, FALSE, CREATE_NO_WINDOW,
         nullptr, nullptr, &startup, &process));
     struct Process { PROCESS_INFORMATION value; ~Process() { CloseHandle(value.hThread); CloseHandle(value.hProcess); } } owned{process};
-    const auto waited = WaitForSingleObject(process.hProcess, 30000);
+    const auto waited = WaitForSingleObject(process.hProcess, 15000);
     if (waited != WAIT_OBJECT_0) {
         TerminateProcess(process.hProcess, 99);
         MG_CHECK(WaitForSingleObject(process.hProcess, 5000) == WAIT_OBJECT_0);
-        throw std::runtime_error("Demo export child did not finish within 30 seconds");
+        throw std::runtime_error("Demo export child did not finish within 15 seconds");
     }
     DWORD exit = 0; MG_CHECK(GetExitCodeProcess(process.hProcess, &exit)); return exit;
 }
@@ -265,6 +284,10 @@ void export_cli() {
     for (const auto *mode : {L"Text",L"Packed"}) {
         const auto destination = fixture.root / (std::wstring(mode) + L"-\u0416 \u03bb");
         MG_CHECK(run_cli({L"--export",L"fights",destination.wstring(),mode}) == 0);
+        const bool packed = std::wstring_view(mode) == L"Packed";
+        MG_CHECK(fs::is_regular_file(destination / L"CFG/robots.dat") == packed);
+        MG_CHECK(fs::is_directory(destination / L"CFG/robots") == !packed);
+        MG_CHECK(fs::is_directory(destination / L"parked-text-config") == packed);
         const auto map = destination / map_path(L"fights");
         const auto original = bytes(map);
         MG_CHECK(run_cli({L"--export",L"ordinary",destination.wstring(),mode}) == 1);
@@ -301,7 +324,13 @@ int main(int argc, char **argv) {
             std::cout << "Synthetic demo export complete; no game launched.\n"; result = 0;
         } catch (const std::exception &error) { std::cerr << error.what() << '\n'; result = 1; }
     } else {
-        const tests::Case cases[] = {{"game.session.demo_export_layout",export_layout},
+        const tests::Case cases[] = {
+            {"game.session.demo_export_layout_ordinary", [] { export_layout(L"ordinary"); }},
+            {"game.session.demo_export_layout_reinforcement", [] { export_layout(L"reinforcement"); }},
+            {"game.session.demo_export_layout_no_reinforcement", [] { export_layout(L"no-reinforcement"); }},
+            {"game.session.demo_export_layout_win", [] { export_layout(L"win"); }},
+            {"game.session.demo_export_layout_loss", [] { export_layout(L"loss"); }},
+            {"game.session.demo_export_layout_fights", [] { export_layout(L"fights"); }},
             {"game.session.demo_export_ownership",export_ownership}, {"game.session.demo_export_cli",export_cli}};
         result = tests::run(argc, argv, cases);
     }
