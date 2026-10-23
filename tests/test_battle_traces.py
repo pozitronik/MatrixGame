@@ -208,6 +208,16 @@ class TraceContracts(unittest.TestCase):
             with self.subTest(records=records), self.assertRaises(TRACES.TraceError):
                 validated(records)
 
+    def test_completion_preserves_and_compares_milestone_evidence(self):
+        records = trace()
+        records[-1].update(paint_ms=10, terminal_x_bits=1073741824)
+        self.assertIsNone(TRACES.compare_records(validated(records), validated(records)))
+        changed = records[:-1] + [dict(records[-1], paint_ms=11)]
+        self.assertIn("$.paint_ms", TRACES.compare_records(validated(records), validated(changed)))
+        obsolete = records[:-1] + [dict(records[-1], type="milestones")]
+        with self.assertRaisesRegex(TRACES.TraceError, "unexpected record type 'milestones'"):
+            validated(obsolete)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -32,7 +32,7 @@ The controls keep their auto programs. In the measured scene, auto-attack approa
 
 ## Observations and test strength
 
-JSONL files under the normal build's `tests/scenario-traces/` directory have distinct scene, main/control, RNG, schedule and replay names. Headers record source/profile identity, the auto key, comparison boundary, requested manual destination and stationary-opponent setup. Records include the complete shared session snapshot, selected identities, actual Move/fire orders, group intent/target/War, enemy memory and hit/fire times, current/additional place, resource balances, and factory owner/paint/color/last processed capturer, actor assignment and the opponent's competing capture assignment/order. Building ID 5 is explicit; `-3` identifies a retained raw reference to retired scenario robot 3, while the shared session snapshot retains its own documented null/external identity convention. A final milestone record preserves timing and terminal state independently of shortened CTest output.
+JSONL files under the normal build's `tests/scenario-traces/` directory have distinct scene, main/control, RNG, schedule and replay names. Headers record source/profile identity, the auto key, comparison boundary, requested manual destination and stationary-opponent setup. Records include the complete shared session snapshot, selected identities, actual Move/fire orders, group intent/target/War, enemy memory and hit/fire times, current/additional place, resource balances, and factory owner/paint/color/last processed capturer, actor assignment and the opponent's competing capture assignment/order. Building ID 5 is explicit; `-3` identifies a retained raw reference to retired scenario robot 3, while the shared session snapshot retains its own documented null/external identity convention. The final schema-1 `complete` record matches the last snapshot's frame/time and preserves every milestone timing and terminal-state field independently of shortened CTest output; a missing completion makes a truncated recording invalid to the [strict common comparator](../../tools/compare-battle-traces.py).
 
 Observation checks that the raw RNG draw count stays unchanged. Main/control prefixes and repeated fresh-session state vectors compare exactly. Command records are emitted after the corresponding state assertions; `accepted` reports the observed resulting contract, not a return value from the void production handler. Selection is supplied through production group operations; screen picking is not claimed.
 
@@ -50,5 +50,14 @@ Four temporary source controls verify the important paths. Omitting actual auto-
 ```
 
 Keep cheats off. Use the supported build/test helpers so DLL-linked tests receive their imported runtime DLLs. A single independent control can be selected with `^game\.player\.auto_order\.defence_control_park_miller_10$`.
+
+After all 24 cases run, validate the 72 generated recordings and 36 exact fresh-session replay pairs with the [post-engine check](../../tests/check_player_auto_traces.py):
+
+```powershell
+python -B tests/check_player_auto_traces.py build/mingw-debug-exe/tests/scenario-traces
+python -B tests/check_player_auto_traces.py build/mingw-release-exe/tests/scenario-traces
+```
+
+The Windows build matrix runs this check after engine tests for each EXE/DLL, compiler, cheats and trace profile. The check uses the common parser/comparator, requires every milestone field, rejects missing completion, whole-record truncation, obsolete `milestones` records and records after completion, and detects deliberate milestone changes. To compare fresh processes, copy only these 72 JSONL files to a separate evidence directory before the next full run overwrites them, then pass that directory as `--reference-directory` to the check on the new output. Keep the build, scenario and execution profile identical; no comparison tolerances are applied. This recording adapter does not change gameplay assertions, commands, time steps, RNG draws or reference selection, and does not establish integrated baseline acceptance.
 
 The suite uses synthetic geometry and the CPU device. It does not establish screen-input delivery, rendered flag indicators, native audio, original-host integration, arbitrary autonomous-program combinations or every chassis. The existing empty-world/flag-toggle cases retain no-target behavior; the shared capture, combat and strategy suites retain their separate boundaries. Integrated compiler/DLL validation, native execution and whole-catalog acceptance remain at their existing gates. This C4 increment does not close the complete command work package by itself.
