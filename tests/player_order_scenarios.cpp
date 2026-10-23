@@ -17,6 +17,8 @@
 #include "input.hpp"
 #include "cheats.hpp"
 #include <algorithm>
+#include <bit>
+#include <sstream>
 #include <cmath>
 #include <initializer_list>
 #include <csignal>
@@ -894,141 +896,263 @@ struct ManualTrackEffects {
     void install() { previous = ManualTrackEffectAccess::install(); installed = true; }
     ~ManualTrackEffects() { if (installed) ManualTrackEffectAccess::restore(previous); }
 };
-void manual_chassis_lifecycle(ERobotUnitKind chassis) {
-    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
-    for (int step : {10, 16}) for (bool moving_target : {false, true}) {
-        tests::BattleCombatAssets assets;
-        ManualTrackEffects tracks;
-        Profile profile{mode, 80, step, 3000, false, false};
-        profile.layout = tests::NavigationLayout::Open;
-        Session session(profile);
-        assets.install();
-        tracks.install();
-        const bool tracked = chassis == RUK_CHASSIS_TRACK;
-        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SPEED : CHASSIS4_MOVE_SPEED] = tracked ? .5f : .7f;
-        g_Config.m_ItemChars[tracked ? CHASSIS3_ROTATION_SPEED : CHASSIS4_ROTATION_SPEED] = .04f;
-        g_Config.m_ItemChars[tracked ? CHASSIS3_STRUCTURE : CHASSIS4_STRUCTURE] = 1000;
-        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_WATER_CORR : CHASSIS4_MOVE_WATER_CORR] = .5f;
-        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SLOPE_CORR_DOWN : CHASSIS4_MOVE_SLOPE_CORR_DOWN] = 2.5f;
-        g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SLOPE_CORR_UP : CHASSIS4_MOVE_SLOPE_CORR_UP] = .7f;
-        auto *robot = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200, chassis);
-        MG_CHECK(session.remove(1) && session.remove(2));
-        CMatrixRobotAI *distant_enemy = nullptr;
-        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
-            if (object->IsLiveRobot() && session.matches(4, object->AsRobot())) distant_enemy = object->AsRobot();
-        MG_CHECK(distant_enemy);
-        distant_enemy->m_PosX = 540; distant_enemy->m_PosY = 540;
-        distant_enemy->MapPosCalc(); distant_enemy->RChange(MR_Matrix);
-        distant_enemy->RNeed(MR_Matrix); distant_enemy->JoinToGroup();
-        distant_enemy->SetMaxSpeed(0);
-        distant_enemy->m_GroupSpeed = 0;
-        CMatrixRobotAI *target = nullptr;
-        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
-            if (object->IsLiveRobot() && session.matches(3, object->AsRobot())) target = object->AsRobot();
-        MG_CHECK(target && session.matches(3, target));
-        target->m_PosX = 300; target->m_PosY = 250;
-        target->MapPosCalc(); target->RChange(MR_Matrix);
-        target->RNeed(MR_Matrix); target->JoinToGroup();
-        target->SetMaxSpeed(moving_target ? .15f : 0);
-        target->m_GroupSpeed = target->GetMaxSpeed();
-        target->InitMaxHitpoint(1000);
-        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 250;
-        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
-        g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {2, 0, 10};
-        g_Config.m_Overheat[WEAPON_LASER_HEAT] = 10;
-        g_Config.m_Overheat[WEAPON_LASER_COOL] = 10;
-        g_Config.m_Overheat[WCP_LASER] = 100;
-        g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = .04f;
-        tests::arm_battle_robot(*robot, RUK_WEAPON_LASER);
-        side().CreateGroupFromCurrent(robot);
-        side().Select(ROBOT, nullptr);
-        CFormMatrixGame form;
-        const float speed = robot->GetMaxSpeed();
-        MG_CHECK(speed == (tracked ? .5f : .7f));
-        press(form, VK_RETURN);
-        MG_CHECK(side().GetArcadedObject() == robot && side().IsRobotMode());
-        MG_CHECK(robot->m_Unit[0].u1.s1.m_Kind == chassis && robot->GetMaxSpeed() == speed * 1.1f);
-        std::cout << session.metadata("manual-chassis-lifecycle-v1") << " chassis=" << int(chassis)
-                  << " moving_target=" << moving_target << std::endl;
-        auto advance = [&](int duration) {
-            const int until = session.time() + duration;
-            while (session.time() < until) {
-                // World picking is supplied; moving targets get a fresh aim point each tick.
-                if (target) {
-                    g_MatrixMap->m_TraceStopObj = target;
-                    g_MatrixMap->m_TraceStopPos = target->GetGeoCenter();
-                }
-                session.advance();
-                MG_CHECK(robot->IsLiveRobot());
-                if (target) MG_CHECK(target->IsLiveRobot());
-                MG_CHECK(distant_enemy->m_PosX == 540 && distant_enemy->m_PosY == 540);
-                MG_CHECK(std::isfinite(robot->m_PosX) && std::isfinite(robot->m_PosY));
+enum class ManualEnemyContinuation { Original, Removed, Live };
+struct ManualEnemyResult {
+    std::vector<std::string> frames;
+    size_t prefix_frames = 0;
+    int exit_time = 0, retry_time = 0;
+};
+ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode, int step,
+                                       bool moving_target, ManualEnemyContinuation continuation) {
+    tests::BattleCombatAssets assets;
+    ManualTrackEffects tracks;
+    Profile profile{mode, 80, step, 3000, false, false};
+    profile.layout = tests::NavigationLayout::Open;
+    Session session(profile);
+    assets.install();
+    tracks.install();
+    const bool tracked = chassis == RUK_CHASSIS_TRACK;
+    g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SPEED : CHASSIS4_MOVE_SPEED] = tracked ? .5f : .7f;
+    g_Config.m_ItemChars[tracked ? CHASSIS3_ROTATION_SPEED : CHASSIS4_ROTATION_SPEED] = .04f;
+    g_Config.m_ItemChars[tracked ? CHASSIS3_STRUCTURE : CHASSIS4_STRUCTURE] = 1000;
+    g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_WATER_CORR : CHASSIS4_MOVE_WATER_CORR] = .5f;
+    g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SLOPE_CORR_DOWN : CHASSIS4_MOVE_SLOPE_CORR_DOWN] = 2.5f;
+    g_Config.m_ItemChars[tracked ? CHASSIS3_MOVE_SLOPE_CORR_UP : CHASSIS4_MOVE_SLOPE_CORR_UP] = .7f;
+    auto *robot = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 200, chassis);
+    MG_CHECK(session.remove(1) && session.remove(2));
+    CMatrixRobotAI *distant_enemy = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot() && session.matches(4, object->AsRobot())) distant_enemy = object->AsRobot();
+    MG_CHECK(distant_enemy);
+    distant_enemy->m_PosX = 540; distant_enemy->m_PosY = 540;
+    distant_enemy->MapPosCalc(); distant_enemy->RChange(MR_Matrix);
+    distant_enemy->RNeed(MR_Matrix); distant_enemy->JoinToGroup();
+    distant_enemy->SetMaxSpeed(0);
+    distant_enemy->m_GroupSpeed = 0;
+    CMatrixRobotAI *target = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot() && session.matches(3, object->AsRobot())) target = object->AsRobot();
+    MG_CHECK(target && session.matches(3, target));
+    target->m_PosX = 300; target->m_PosY = 250;
+    target->MapPosCalc(); target->RChange(MR_Matrix);
+    target->RNeed(MR_Matrix); target->JoinToGroup();
+    if (continuation != ManualEnemyContinuation::Original) {
+        target->m_CalcBoundsLastTime = g_MatrixMap->GetTime() - 100;
+        target->JoinToGroup();
+        MG_CHECK(std::abs(target->GetGeoCenter().x - 300) < .001f);
+        MG_CHECK(std::abs(target->GetGeoCenter().y - 250) < .001f);
+    }
+    target->SetMaxSpeed(moving_target ? .15f : 0);
+    target->m_GroupSpeed = target->GetMaxSpeed();
+    target->InitMaxHitpoint(1000);
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 250;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {2, 0, 10};
+    g_Config.m_Overheat[WEAPON_LASER_HEAT] = 10;
+    g_Config.m_Overheat[WEAPON_LASER_COOL] = 10;
+    g_Config.m_Overheat[WCP_LASER] = 100;
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = .04f;
+    tests::arm_battle_robot(*robot, RUK_WEAPON_LASER);
+    side().CreateGroupFromCurrent(robot);
+    side().Select(ROBOT, nullptr);
+    CFormMatrixGame form;
+    const float speed = robot->GetMaxSpeed();
+    MG_CHECK(speed == (tracked ? .5f : .7f));
+    press(form, VK_RETURN);
+    MG_CHECK(side().GetArcadedObject() == robot && side().IsRobotMode());
+    MG_CHECK(robot->m_Unit[0].u1.s1.m_Kind == chassis && robot->GetMaxSpeed() == speed * 1.1f);
+    std::cout << session.metadata(continuation == ManualEnemyContinuation::Original
+        ? "manual-chassis-lifecycle-v1" : "manual-live-enemy-continuation-v1") << " chassis=" << int(chassis)
+              << " moving_target=" << moving_target << " continuation=" << int(continuation) << std::endl;
+    const bool recording = continuation != ManualEnemyContinuation::Original;
+    ManualEnemyResult result;
+    auto observe = [&](const char *event) {
+        if (!recording) return;
+        const auto draws = random::draw_count();
+        auto &env = *robot->GetEnv();
+        const auto &order = side().m_PlayerGroup[robot->GetGroupLogic()];
+        if (order.Order() == mpo_MoveTo) MG_CHECK(!order.IsWar());
+        CPoint move(-1, -1); const bool moving = robot->GetMoveToCoords(move);
+        std::ostringstream out;
+        out << session.snapshot() << "\n{\"event\":\"" << event << "\",\"robot\":5,\"position_bits\":["
+            << std::bit_cast<uint32_t>(robot->m_PosX) << ',' << std::bit_cast<uint32_t>(robot->m_PosY)
+            << "],\"health_bits\":" << std::bit_cast<uint32_t>(robot->GetHitPoint())
+            << ",\"speed_bits\":" << std::bit_cast<uint32_t>(robot->GetMaxSpeed())
+            << ",\"forward_bits\":[" << std::bit_cast<uint32_t>(robot->m_Forward.x) << ','
+            << std::bit_cast<uint32_t>(robot->m_Forward.y) << "],\"group\":" << robot->GetGroupLogic()
+            << ",\"intent\":" << int(order.Order()) << ",\"destination\":[" << order.m_To.x << ',' << order.m_To.y
+            << "],\"war\":" << order.IsWar() << ",\"manual\":" << (side().GetArcadedObject() == robot)
+            << ",\"place\":" << env.m_Place << ",\"place_add\":[" << env.m_PlaceAdd.x << ',' << env.m_PlaceAdd.y
+            << "],\"in_place\":" << robot->PLIsInPlace() << ",\"moving\":" << moving
+            << ",\"move\":[" << move.x << ',' << move.y << "],\"enemy_count\":" << env.GetEnemyCnt()
+            << ",\"target_is_enemy\":" << (target && env.m_Target == target)
+            << ",\"attack_target_is_enemy\":" << (target && env.m_TargetAttack == target)
+            << ",\"held_forward\":" << Input::isVKeyPressed(g_Config.m_KeyActions[KA_UNIT_FORWARD])
+            << ",\"orders\":[";
+        for (int i = 0; i < robot->GetOrdersInPool(); ++i) {
+            if (i) out << ',';
+            const auto &entry = *robot->GetOrder(i);
+            auto *object = entry.m_ObjCore ? entry.m_ObjCore->m_Object : nullptr;
+            const int id = !object ? 0 : object == robot ? 5 : object == target ? 3 : object == distant_enemy ? 4 : -1;
+            MG_CHECK(id >= 0);
+            out << '[' << int(entry.m_OrderType) << ',' << int(entry.m_OrderPhase) << ','
+                << std::bit_cast<uint32_t>(entry.m_Param1) << ',' << std::bit_cast<uint32_t>(entry.m_Param2) << ',' << id << ']';
+        }
+        out << "]}";
+        result.frames.push_back(out.str());
+        MG_CHECK(random::draw_count() == draws);
+    };
+    auto advance = [&](int duration) {
+        const int until = session.time() + duration;
+        while (session.time() < until) {
+            // World picking is supplied; moving targets get a fresh aim point each tick.
+            if (target) {
+                g_MatrixMap->m_TraceStopObj = target;
+                g_MatrixMap->m_TraceStopPos = target->GetGeoCenter();
             }
-        };
-        const uint8_t forward = g_Config.m_KeyActions[KA_UNIT_FORWARD];
-        const uint8_t right = g_Config.m_KeyActions[KA_UNIT_RIGHT];
-        const float start_x = robot->m_PosX;
-        form.Keyboard(true, forward);
-        advance(200);
-        MG_CHECK(robot->m_PosX > start_x + 5);
-        form.Keyboard(false, forward);
-        advance(100);
-        MG_CHECK(!robot->FindOrderLikeThat(ROT_MOVE_TO));
-        const auto direction = robot->m_Forward;
-        form.Keyboard(true, right);
-        advance(100);
-        form.Keyboard(false, right);
-        MG_CHECK(direction.x * robot->m_Forward.y - direction.y * robot->m_Forward.x > 0);
-        const float target_x = target->m_PosX, target_y = target->m_PosY;
-        const float health = target->GetHitPoint();
-        form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
-        advance(1000);
-        MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE));
-        MG_CHECK(target->GetHitPoint() < health);
-        MG_CHECK((target->m_PosX != target_x || target->m_PosY != target_y) == moving_target);
-        form.MouseKey(B_UP, VK_LBUTTON, 640, 360);
-        const float stopped_health = target->GetHitPoint();
-        advance(200);
-        MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() == stopped_health);
-        form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
-        advance(200);
-        MG_CHECK(target->GetHitPoint() < stopped_health);
-        form.SystemEvent(SYSEV_INPUT_RESET);
-        const float reset_health = target->GetHitPoint();
-        advance(200);
-        MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON) && !robot->FindOrderLikeThat(ROT_FIRE));
-        MG_CHECK(target->GetHitPoint() == reset_health);
-        const float driving_x = robot->m_PosX;
-        form.Keyboard(true, forward);
-        advance(100);
-        MG_CHECK(robot->m_PosX > driving_x + 1);
-        press(form, VK_RETURN);
-        MG_CHECK(!side().IsArcadeMode() && !side().GetArcadedObject());
-        MG_CHECK(Input::isVKeyPressed(forward) && robot->GetMaxSpeed() == speed);
-        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_Attack);
-        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
-        // Remove the nearby enemy before testing arrival, so autonomous combat
-        // cannot replace the movement with a firing position after manual exit.
+            session.advance();
+            MG_CHECK(robot->IsLiveRobot());
+            if (target) MG_CHECK(target->IsLiveRobot());
+            MG_CHECK(distant_enemy->m_PosX == 540 && distant_enemy->m_PosY == 540);
+            MG_CHECK(std::isfinite(robot->m_PosX) && std::isfinite(robot->m_PosY));
+            observe("tick");
+        }
+    };
+    const uint8_t forward = g_Config.m_KeyActions[KA_UNIT_FORWARD];
+    const uint8_t right = g_Config.m_KeyActions[KA_UNIT_RIGHT];
+    const float start_x = robot->m_PosX;
+    form.Keyboard(true, forward);
+    advance(200);
+    MG_CHECK(robot->m_PosX > start_x + 5);
+    form.Keyboard(false, forward);
+    advance(100);
+    MG_CHECK(!robot->FindOrderLikeThat(ROT_MOVE_TO));
+    const auto direction = robot->m_Forward;
+    form.Keyboard(true, right);
+    advance(100);
+    form.Keyboard(false, right);
+    MG_CHECK(direction.x * robot->m_Forward.y - direction.y * robot->m_Forward.x > 0);
+    const float target_x = target->m_PosX, target_y = target->m_PosY;
+    const float health = target->GetHitPoint();
+    form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+    advance(1000);
+    MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE));
+    MG_CHECK(target->GetHitPoint() < health);
+    MG_CHECK((target->m_PosX != target_x || target->m_PosY != target_y) == moving_target);
+    form.MouseKey(B_UP, VK_LBUTTON, 640, 360);
+    const float stopped_health = target->GetHitPoint();
+    advance(200);
+    MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() == stopped_health);
+    form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+    advance(200);
+    MG_CHECK(target->GetHitPoint() < stopped_health);
+    form.SystemEvent(SYSEV_INPUT_RESET);
+    const float reset_health = target->GetHitPoint();
+    advance(200);
+    MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON) && !robot->FindOrderLikeThat(ROT_FIRE));
+    MG_CHECK(target->GetHitPoint() == reset_health);
+    const float driving_x = robot->m_PosX;
+    form.Keyboard(true, forward);
+    advance(100);
+    MG_CHECK(robot->m_PosX > driving_x + 1);
+    press(form, VK_RETURN);
+    MG_CHECK(!side().IsArcadeMode() && !side().GetArcadedObject());
+    MG_CHECK(Input::isVKeyPressed(forward) && robot->GetMaxSpeed() == speed);
+    MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_Attack);
+    MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
+    observe("manual-exit");
+    result.prefix_frames = result.frames.size();
+    result.exit_time = session.time();
+    if (recording) {
+        MG_CHECK(target->GetEnv()->m_Place == 0);
+        MG_CHECK(g_MatrixMap->m_RN.m_Place[0].m_Pos == CPoint(8, 8));
+    }
+    if (continuation != ManualEnemyContinuation::Live) {
         MG_CHECK(session.remove(3));
         target = nullptr;
-        const float exit_y = robot->m_PosY;
-        session.ground_command(100, 100);
-        const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
-        MG_CHECK(group.Order() == mpo_MoveTo);
-        const auto destination = group.m_To;
-        advance(1000);
-        MG_CHECK(Input::isVKeyPressed(forward));
-        MG_CHECK(robot->m_PosY < exit_y - 10);
-        form.Keyboard(false, forward);
-        MG_CHECK(!Input::isVKeyPressed(forward));
-        advance(12000);
-        MG_CHECK(group.Order() == mpo_MoveTo && group.m_To == destination);
-        MG_CHECK(robot->PLIsInPlace());
+    }
+    const float exit_y = robot->m_PosY;
+    session.ground_command(100, 100);
+    const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
+    MG_CHECK(group.Order() == mpo_MoveTo && group.m_To == CPoint(8, 8));
+    const auto destination = group.m_To;
+    if (continuation == ManualEnemyContinuation::Live) {
+        CPoint actual;
+        MG_CHECK(robot->GetMoveToCoords(actual) && actual == CPoint(4, 4));
+        MG_CHECK(robot->GetEnv()->m_Place == -1 && robot->GetEnv()->m_PlaceAdd == CPoint(4, 4));
+        MG_CHECK(!group.IsWar());
+    }
+    observe("move-command");
+    advance(1000);
+    MG_CHECK(Input::isVKeyPressed(forward));
+    MG_CHECK(robot->m_PosY < exit_y - 10);
+    form.Keyboard(false, forward);
+    MG_CHECK(!Input::isVKeyPressed(forward));
+    advance(12000);
+    MG_CHECK(group.Order() == mpo_MoveTo && group.m_To == destination);
+    MG_CHECK(robot->PLIsInPlace());
+    if (continuation == ManualEnemyContinuation::Live) {
+        MG_CHECK(target && target->IsLiveRobot());
+        MG_CHECK(robot->GetEnv()->m_Place == -1 && robot->GetEnv()->m_PlaceAdd == CPoint(4, 4));
+        MG_CHECK(robot->m_PosX == 60 && robot->m_PosY == 60);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_MOVE_TO) && robot->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(!group.IsWar());
+        std::cout << "reserved-goal time=" << session.time() << " intended=8,8 assigned=4,4 actual=60,60"
+                  << " enemy=" << target->m_PosX << ',' << target->m_PosY << " health=" << target->GetHitPoint() << '\n';
+        MG_CHECK(session.remove(3));
+        target = nullptr;
+    } else {
         MG_CHECK(robot->GetEnv()->m_Place == 0);
         MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 100);
         MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE));
     }
+    if (recording) {
+        const D3DXVECTOR2 settled(robot->m_PosX, robot->m_PosY);
+        advance(500);
+        MG_CHECK(robot->m_PosX == settled.x && robot->m_PosY == settled.y);
+        MG_CHECK(!robot->GetEnv()->m_Target && !robot->GetEnv()->m_TargetAttack);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_To == CPoint(8, 8));
+        result.retry_time = session.time();
+        session.ground_command(100, 100);
+        if (continuation == ManualEnemyContinuation::Live) {
+            MG_CHECK(distant_enemy->GetEnv()->m_Place == 0);
+            MG_CHECK(robot->GetEnv()->m_Place == -1 && robot->GetEnv()->m_PlaceAdd == CPoint(4, 4));
+        } else MG_CHECK(robot->GetEnv()->m_Place == 0);
+        observe("retry-move");
+        advance(500);
+        MG_CHECK(robot->m_PosX == settled.x && robot->m_PosY == settled.y);
+        session.ground_command(100, 300);
+        CPoint free_move;
+        MG_CHECK(robot->GetMoveToCoords(free_move) && free_move == CPoint(8, 28));
+        observe("free-move");
+        advance(9000);
+        MG_CHECK(robot->PLIsInPlace() && robot->m_PosX == 100 && robot->m_PosY == 300);
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_MOVE_TO) && !robot->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_MoveTo);
+        MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_To == CPoint(8, 28));
+        std::cout << "free-move-complete time=" << session.time() << " retry_at=" << result.retry_time << " actual=100,300\n";
+    }
+    return result;
 }
+void manual_chassis_lifecycle(ERobotUnitKind chassis) {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+    for (int step : {10, 16}) for (bool moving : {false, true})
+        manual_chassis_scene(chassis, mode, step, moving, ManualEnemyContinuation::Original);
+}
+template<ERobotUnitKind Chassis, random::Mode Mode, int Step, bool Moving>
+void manual_enemy_continuation() {
+    const auto live = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Live);
+    const auto replay = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Live);
+    MG_CHECK(live.frames == replay.frames);
+    const auto control = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Removed);
+    const auto control_replay = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Removed);
+    MG_CHECK(control.frames == control_replay.frames);
+    MG_CHECK(live.prefix_frames == control.prefix_frames && live.exit_time == control.exit_time);
+    MG_CHECK(std::equal(live.frames.begin(), live.frames.begin() + live.prefix_frames, control.frames.begin()));
+    MG_CHECK(live.frames[live.prefix_frames] != control.frames[control.prefix_frames]);
+}
+
 void manual_track_lifecycle() { manual_chassis_lifecycle(RUK_CHASSIS_TRACK); }
 void manual_hovercraft_lifecycle() { manual_chassis_lifecycle(RUK_CHASSIS_HOVERCRAFT); }
 
@@ -1755,6 +1879,22 @@ void manual_control() {
     MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_Obj == nullptr);
 }
 constexpr tests::Case cases[] = {
+    {"game.ai.manual_exit_track_stationary.park_miller10", manual_enemy_continuation<RUK_CHASSIS_TRACK, random::Mode::ParkMiller, 10, false>},
+    {"game.ai.manual_exit_track_moving.park_miller10", manual_enemy_continuation<RUK_CHASSIS_TRACK, random::Mode::ParkMiller, 10, true>},
+    {"game.ai.manual_exit_track_stationary.park_miller16", manual_enemy_continuation<RUK_CHASSIS_TRACK, random::Mode::ParkMiller, 16, false>},
+    {"game.ai.manual_exit_track_moving.park_miller16", manual_enemy_continuation<RUK_CHASSIS_TRACK, random::Mode::ParkMiller, 16, true>},
+    {"game.ai.manual_exit_track_stationary.legacy10", manual_enemy_continuation<RUK_CHASSIS_TRACK, random::Mode::LegacyCRT, 10, false>},
+    {"game.ai.manual_exit_track_moving.legacy10", manual_enemy_continuation<RUK_CHASSIS_TRACK, random::Mode::LegacyCRT, 10, true>},
+    {"game.ai.manual_exit_track_stationary.legacy16", manual_enemy_continuation<RUK_CHASSIS_TRACK, random::Mode::LegacyCRT, 16, false>},
+    {"game.ai.manual_exit_track_moving.legacy16", manual_enemy_continuation<RUK_CHASSIS_TRACK, random::Mode::LegacyCRT, 16, true>},
+    {"game.ai.manual_exit_hovercraft_stationary.park_miller10", manual_enemy_continuation<RUK_CHASSIS_HOVERCRAFT, random::Mode::ParkMiller, 10, false>},
+    {"game.ai.manual_exit_hovercraft_moving.park_miller10", manual_enemy_continuation<RUK_CHASSIS_HOVERCRAFT, random::Mode::ParkMiller, 10, true>},
+    {"game.ai.manual_exit_hovercraft_stationary.park_miller16", manual_enemy_continuation<RUK_CHASSIS_HOVERCRAFT, random::Mode::ParkMiller, 16, false>},
+    {"game.ai.manual_exit_hovercraft_moving.park_miller16", manual_enemy_continuation<RUK_CHASSIS_HOVERCRAFT, random::Mode::ParkMiller, 16, true>},
+    {"game.ai.manual_exit_hovercraft_stationary.legacy10", manual_enemy_continuation<RUK_CHASSIS_HOVERCRAFT, random::Mode::LegacyCRT, 10, false>},
+    {"game.ai.manual_exit_hovercraft_moving.legacy10", manual_enemy_continuation<RUK_CHASSIS_HOVERCRAFT, random::Mode::LegacyCRT, 10, true>},
+    {"game.ai.manual_exit_hovercraft_stationary.legacy16", manual_enemy_continuation<RUK_CHASSIS_HOVERCRAFT, random::Mode::LegacyCRT, 16, false>},
+    {"game.ai.manual_exit_hovercraft_moving.legacy16", manual_enemy_continuation<RUK_CHASSIS_HOVERCRAFT, random::Mode::LegacyCRT, 16, true>},
     {"game.player.manual_track_lifecycle", manual_track_lifecycle},
     {"game.player.manual_hovercraft_lifecycle", manual_hovercraft_lifecycle},
     {"game.player.control_group_reassignment", control_group_reassignment},
