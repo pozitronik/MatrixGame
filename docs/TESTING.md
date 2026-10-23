@@ -124,7 +124,7 @@ The [combat contracts](testing/82-combat.md) describe firing, damage, status and
 
 The [navigation contracts](testing/81-navigation.md) describe alternate topology, local movement and carrier lifetime; select them with `^game\.navigation\.`.
 
-The [presentation evidence guide](testing/87-presentation.md) maps PRES-01 through PRES-04 to interface/audio contracts, the opt-in ClearRect/SPlane probes and native procedures.
+The [presentation evidence guide](testing/87-presentation.md) maps PRES-01 through PRES-04 to interface/audio contracts, registered clear-rectangle and plane regressions, unregistered legacy command aliases and native procedures.
 
 The [capture and battle outcome guide](testing/85-battle-outcomes.md) describes capture transitions, survival and objective rules, transport lifetime and result/pause boundaries.
 
