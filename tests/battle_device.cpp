@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <map>
 #include <new>
+#include <optional>
 #include <vector>
 #include <utility>
 
@@ -234,6 +235,7 @@ class BattleDevice::Device final : public IDirect3DDevice9 {
     BOOL cursor_visible_{};
 public:
     std::function<HRESULT(D3DPRESENT_PARAMETERS *)> reset_handler;
+    std::optional<D3DDISPLAYMODE> display_mode;
     BattleDeviceStats statistics;
     IconTargets icon_targets_;
     explicit Device(IconTargets icon_targets) : icon_targets_(icon_targets) {
@@ -282,8 +284,12 @@ public:
     HRESULT STDMETHODCALLTYPE GetDeviceCaps(D3DCAPS9*) override {
         unsupported("GetDeviceCaps");
     }
-    HRESULT STDMETHODCALLTYPE GetDisplayMode(UINT, D3DDISPLAYMODE*) override {
-        unsupported("GetDisplayMode");
+    HRESULT STDMETHODCALLTYPE GetDisplayMode(UINT swapchain, D3DDISPLAYMODE *mode) override {
+        if (!display_mode) unsupported("unscripted GetDisplayMode");
+        ++statistics.display_mode_queries;
+        if (swapchain != 0 || !mode) return D3DERR_INVALIDCALL;
+        *mode = *display_mode;
+        return D3D_OK;
     }
     HRESULT STDMETHODCALLTYPE GetCreationParameters(D3DDEVICE_CREATION_PARAMETERS *) override {
         unsupported("GetCreationParameters");
@@ -734,6 +740,10 @@ void BattleDevice::cooperative_level(HRESULT status) {
 const BattleDeviceStats &BattleDevice::stats() const { return device_->statistics; }
 void BattleDevice::reset_handler(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler) {
     device_->reset_handler = std::move(handler);
+}
+void BattleDevice::display_mode(const D3DDISPLAYMODE &mode) {
+    if (!mode.Width || !mode.Height) unsupported("empty scripted display mode");
+    device_->display_mode = mode;
 }
 
 } // namespace tests
