@@ -8,13 +8,15 @@ The packed case runs two successful battles using the same borrowed host window 
 
 The text case separately tests a missing-interface initialization failure between its successful battles. `game.session.native_packed_header_failure` tests the earlier failure boundary: after the first successful packed session, it replaces the generated storage with a four-byte invalid tag. Production must return 100 before any progress callback, preserve the caller's output state, report `Invalid packed configuration: cfg\robots.dat`, and retire all owned state. Restoring the valid packed file must allow another successful battle and fresh movement. This catches a stale pneumatic animation buffer left by the preceding successful cleanup.
 
+`game.session.native_packed_hint_failure` covers the later packed-initialization boundary. Between successful lifetimes it preserves a valid archive, changes one generated hint-bitmap reference inside its data tree and keeps the interface tree intact. Progress callbacks must observe the 32-cell map during loading before initialization reports `Hint bitmap not found:native-missing-hint.png` and returns 100. This observation does not independently establish that terrain preparation finished; the production call order places hint preloading after map preparation. The host's Begin/tick callbacks must not run and its result buffer must stay unchanged. The usual alias/list/allocation, window-procedure and borrowed-device checks apply after failure; restoring the original archive must allow a fresh Move and normal close. The loose trees remain parked throughout, so this cannot be a text-configuration fallback.
+
 `game.session.pneumatic_retirement` also calls `CMatrixRobot::DestroyPneumaticData` again after each successful packed battle. This explicit cleanup boundary must be harmless, and the following real initialization must rebuild the animation data. Before the pointer-retirement correction, this case crashes Debug; Release can appear to pass despite the double free. Both configurations remain required.
 
-Enable `MATRIXGAME_NATIVE_SESSION_TESTS` in the existing DLL build as described in the native-session guide, then run:
+Native execution uses the [test-window containment helper](native-window-containment.md) and the integrated [presentation-status handling](../DEVICE_RECOVERY.md). Enable `MATRIXGAME_NATIVE_SESSION_TESTS` in the existing DLL build as described in the native-session guide, then run serially:
 
 ```powershell
-.\tools\test.ps1 -Configuration Debug -DLL -NoBuild -Filter '^game.session.(native_(run|packed)_lifetimes|native_packed_header_failure|pneumatic_retirement)$'
-.\tools\test.ps1 -Configuration Release -DLL -NoBuild -Filter '^game.session.(native_(run|packed)_lifetimes|native_packed_header_failure|pneumatic_retirement)$'
+.\tools\test.ps1 -Configuration Debug -DLL -NoBuild -Jobs 1 -Filter '^game\.session\.(native_(run|packed)_lifetimes|native_packed_(header|hint)_failure|pneumatic_retirement)$'
+.\tools\test.ps1 -Configuration Release -DLL -NoBuild -Jobs 1 -Filter '^game\.session\.(native_(run|packed)_lifetimes|native_packed_(header|hint)_failure|pneumatic_retirement)$'
 ```
 
 These opt-in tests require a local Direct3D 9 HAL device and run inside an invisible borrowed child window. Packed/text equivalence is scoped to the declared introduction, movement and cleanup observations. It does not establish every original packed resource, language configuration, host implementation or visible presentation profile. The full baseline and remaining native validation retain their existing acceptance requirements.
