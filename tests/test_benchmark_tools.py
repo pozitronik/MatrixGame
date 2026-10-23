@@ -8,6 +8,7 @@ import random
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
+from unittest.mock import patch
 
 PROJECT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("benchmark", PROJECT / "tools/benchmark.py")
@@ -159,6 +160,41 @@ class BenchmarkToolTests(unittest.TestCase):
         self.assertEqual(problems, [])
         self.assertTrue(any(note.startswith("os differs") for note in notes))
         self.assertTrue(any(note.startswith("runner.repetitions differs") for note in notes))
+
+    def test_run_records_selected_executable_without_changing_default_command(self):
+        base = PROJECT / "build/benchmark-tests"
+        base.mkdir(parents=True, exist_ok=True)
+        for selection in ("implicit-default", "explicit-default", "custom"):
+            with self.subTest(selection=selection), tempfile.TemporaryDirectory(dir=base) as temporary:
+                build = Path(temporary)
+                binary = build / "tests" / ("custom-navigation.exe" if selection == "custom" else "matrixgame_benchmarks.exe")
+                binary.parent.mkdir()
+                binary.write_bytes(b"synthetic benchmark; never executed")
+                (binary.parent / "d3dx9_43.dll").write_bytes(b"synthetic runtime; never loaded")
+                (build / "CMakeCache.txt").write_text(
+                    "CMAKE_BUILD_TYPE:STRING=Release\nMATRIXGAME_BUILD_DLL:BOOL=OFF\n"
+                    "MATRIXGAME_CHEATS:BOOL=OFF\nMATRIXGAME_COVERAGE:BOOL=OFF\n", encoding="utf-8")
+                output = build / "combined.json"
+                launched = []
+
+                def fake_process(command, **kwargs):
+                    launched.append(command[0])
+                    path = Path(command[command.index("--output") + 1])
+                    path.write_text(json.dumps(process_report([1.0, 2.0])), encoding="utf-8")
+                    return benchmark.subprocess.CompletedProcess(command, 0, "", "")
+
+                arguments = ["run", "--build-dir", str(build), "--output", str(output),
+                             "--processes", "2", "--repetitions", "2"]
+                if selection != "implicit-default":
+                    arguments += ["--executable", str(binary)]
+                with patch.object(benchmark.subprocess, "run", side_effect=fake_process), \
+                        patch.object(benchmark, "revision", return_value={"commit": "synthetic", "dirty": False}), \
+                        redirect_stdout(io.StringIO()):
+                    self.assertEqual(benchmark.main(arguments), 0)
+                report = json.loads(output.read_text(encoding="utf-8"))
+                self.assertEqual(launched, [str(binary), str(binary)])
+                self.assertEqual(report["executable"]["name"], binary.name)
+                self.assertEqual(report["command"][0], binary.stem)
 
     def test_compare_command_exit_status(self):
         base = PROJECT / "build/benchmark-tests"

@@ -1108,7 +1108,7 @@ foreach(step 10 16)
     add_matrix_test(game.ai.strategic_capture.rng_sensitivity.step${step} matrixgame_ai_strategic_capture_scenarios gameplay ai)
 endforeach()
 
-add_matrix_test_executable(matrixgame_navigation_work_tests navigation_work_tests.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_navigation_work_tests navigation_work_tests.cpp navigation_work_scene.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_navigation_work_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_work_tests matrixgame_scenario_identity)
@@ -1121,6 +1121,26 @@ foreach(contract scopes search avoidance)
 endforeach()
 foreach(profile park_miller10 park_miller16 legacy10 legacy16)
     add_matrix_test(game.navigation.work_preservation.${profile} matrixgame_navigation_work_tests gameplay ai navigation)
+    foreach(scene crowded opposing)
+        add_matrix_test(game.navigation.work_${scene}.${profile} matrixgame_navigation_work_tests gameplay ai navigation)
+    endforeach()
+endforeach()
+
+add_matrix_test_executable(matrixgame_navigation_work_benchmarks navigation_work_benchmarks.cpp benchmark_support.cpp
+    navigation_work_scene.cpp battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_navigation_work_benchmarks PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_navigation_work_benchmarks matrixgame_scenario_identity)
+target_include_directories(matrixgame_navigation_work_benchmarks PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_navigation_work_benchmarks PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(scene crowded_destination opposing_flow)
+    foreach(profile park_miller10 park_miller16 legacy10 legacy16)
+        add_test(NAME game.benchmark.navigation_work.${scene}.${profile}
+            COMMAND matrixgame_navigation_work_benchmarks --smoke --workload navigation.${scene}.${profile})
+        set_tests_properties(game.benchmark.navigation_work.${scene}.${profile} PROPERTIES
+            LABELS "engine;asset-free;benchmark;navigation" TIMEOUT 30)
+    endforeach()
 endforeach()
 
 add_matrix_test_executable(matrixgame_player_auto_order_scenarios player_auto_order_scenarios.cpp battle_scenario.cpp
