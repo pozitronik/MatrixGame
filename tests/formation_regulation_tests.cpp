@@ -247,7 +247,7 @@ void allowance_case(const char *label, Axis axis, const std::array<float, Count>
 }
 
 void intermediate_allowance() {
-    // Logic-list order is leader, trailer, intermediate: production must sort it.
+    // Logic-list order is leader, trailer, intermediate; trailing layouts distinguish sorting.
     // Reference 100, intermediate 400 and leader 520 give factors 1, .8 and .6.
     for (Axis axis : axes)
         allowance_case<3>("intermediate", axis, {520, 100, 400}, {.6f, .5f, .3f}, {.36f, .5f, .24f});

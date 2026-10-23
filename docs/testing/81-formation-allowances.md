@@ -6,7 +6,7 @@
 
 Each case creates an Open-layout Session, retains the two selected wheel robots and adds one or three synthetic wheel robots. A context Move establishes the common player logic group. Setup then supplies exact positions, positive per-unit maximum speeds and matching low-level Move destinations. It refreshes map membership and bounds, requires no Return order or known enemy, and checks the actual group membership and intent before the observed call. No production seam, friend accessor or replacement algorithm is added.
 
-All layouts run along positive and negative X and Y. The input values below are distances along that movement axis, in logic-list member order; reversed layouts mirror them around 640. Destinations are world 620 or 20 on the active axis and 200 on the other axis, corresponding to the declared movement-cell corners. The mean destination is far enough from the mean position to enter production regulation. Positions and logic-list order differ, so the case cannot substitute enumeration order for sorted projections.
+All layouts run along positive and negative X and Y. The input values below are distances along that movement axis, in logic-list member order; reversed layouts map each value v to 640 - v. Destinations are world 620 or 20 on the active axis and 200 on the other axis, corresponding to the declared movement-cell corners. The mean destination is far enough from the mean position to enter production regulation. The trailing layouts distinguish sorted projections from enumeration order; the three-member intermediate layout alone does not.
 
 The fixture calls `CalcMaxSpeed` twice without advancing a map frame. Each call must leave positions, maximum speeds, Move coordinates and group intent unchanged, return finite expected allowances, consume no RNG draws and leave frame/time unchanged. The second call also requires resetting allowances to each member's maximum before scaling rather than compounding the previous reduction. Actual and expected allowance vectors are printed before checking them, with a tolerance of 0.000001 for arithmetic rounding.
 
@@ -14,7 +14,7 @@ These are direct component boundaries, not timed journeys. The fixed profile met
 
 ## Intermediate member
 
-Three members have axis positions `[520,100,400]`, maxima `[0.6,0.5,0.3]` and required allowances `[0.36,0.5,0.24]`. The first member is the leader, the second is the trailer and the third is intermediate despite their enumeration order.
+Three members have axis positions `[520,100,400]`, maxima `[0.6,0.5,0.3]` and required allowances `[0.36,0.5,0.24]`. The first member is the leader, the second is the trailer and the third has the intermediate position. This three-member layout establishes the interpolated allowance; it does not independently establish sorting.
 
 Source inspection explains the expected intermediate factor: the reference is at 100, the leader's relative projection is 420 and the intermediate projection is 300. At the 180-unit threshold, those declared values give an intermediate factor of 0.8, between the leader's 0.6 and the trailer's full allowance. The test asserts the literal output vector through production logic rather than implementing the selection/interpolation algorithm in the fixture. Replacing every reduced allowance with the leading endpoint's 0.6 factor must fail this case.
 
