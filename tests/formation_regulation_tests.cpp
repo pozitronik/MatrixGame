@@ -6,6 +6,7 @@
 #include <array>
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
 #include <iostream>
 
 namespace {
@@ -170,6 +171,104 @@ void journey(random::Mode mode, int step) {
     std::cout << "arrival=" << arrival << " minimum_separation=" << formation.minimum_separation
               << " maximum_separation=" << formation.maximum_separation << " final_separation=" << formation.separation() << std::endl;
 }
+enum class Axis { PositiveX, NegativeX, PositiveY, NegativeY };
+constexpr std::array axes{Axis::PositiveX, Axis::NegativeX, Axis::PositiveY, Axis::NegativeY};
+
+template<std::size_t Count>
+void allowance_case(const char *label, Axis axis, const std::array<float, Count> &projections,
+                    const std::array<float, Count> &maximum, const std::array<float, Count> &expected) {
+    Profile profile{random::Mode::ParkMiller, 81, 10, 1, false, true};
+    profile.layout = NavigationLayout::Open;
+    Session session(profile);
+    auto &side = *g_MatrixMap->GetPlayerSide();
+    auto *selected = side.GetCurSelGroup();
+    MG_CHECK(selected && selected->GetObjectsCnt() == 2);
+    std::array<CMatrixRobotAI *, Count> units{};
+    for (std::size_t i = 0; i < Count; ++i) {
+        if (i < 2) units[i] = selected->GetObjectByN(static_cast<int>(i))->AsRobot();
+        else {
+            units[i] = BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 320 + 40 * (i - 2));
+            selected->AddObject(units[i], -4);
+        }
+    }
+    MG_CHECK(selected->GetObjectsCnt() == Count);
+    const bool vertical = axis == Axis::PositiveY || axis == Axis::NegativeY;
+    const bool reverse = axis == Axis::NegativeX || axis == Axis::NegativeY;
+    const int end = reverse ? 20 : 620;
+    const CPoint destination(vertical ? 18 : reverse ? 0 : 60, vertical ? reverse ? 0 : 60 : 18);
+    session.ground_command(vertical ? 200 : end, vertical ? end : 200);
+    const int group = units[0]->GetGroupLogic();
+    MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
+    const auto &intent = side.m_PlayerGroup[group];
+    MG_CHECK(intent.Order() == mpo_MoveTo && intent.m_To == destination && intent.m_RobotCnt == Count);
+    std::array<D3DXVECTOR2, Count> positions{};
+    for (std::size_t i = 0; i < Count; ++i) {
+        auto &unit = *units[i];
+        const float along = reverse ? 640 - projections[i] : projections[i];
+        unit.m_PosX = vertical ? 200 : along;
+        unit.m_PosY = vertical ? along : 200;
+        positions[i] = D3DXVECTOR2(unit.m_PosX, unit.m_PosY);
+        unit.MapPosCalc();
+        unit.RChange(MR_Matrix);
+        unit.RNeed(MR_Matrix);
+        unit.JoinToGroup();
+        unit.SetMaxSpeed(maximum[i]);
+        unit.MoveTo(destination.x, destination.y);
+        CPoint move, returned;
+        MG_CHECK(unit.GetGroupLogic() == group && unit.GetMoveToCoords(move) && move == destination);
+        MG_CHECK(!unit.GetReturnCoords(returned) && unit.GetEnv()->GetEnemyCnt() == 0);
+    }
+    std::cout << session.metadata("formation-allowance-component-v1") << " case=" << label
+              << " axis=" << static_cast<int>(axis) << " projections=";
+    for (float value : projections) std::cout << value << ',';
+    std::cout << std::endl;
+    const auto draws = random::draw_count();
+    const int time = session.time();
+    // Repeat the production call to require resetting allowances before scaling.
+    for (int pass = 0; pass < 2; ++pass) {
+        side.CalcMaxSpeed();
+        std::cout << "allowance pass=" << pass << " actual=";
+        for (auto *unit : units) std::cout << unit->m_GroupSpeed << ',';
+        std::cout << " expected=";
+        for (float value : expected) std::cout << value << ',';
+        std::cout << std::endl;
+        for (std::size_t i = 0; i < Count; ++i) {
+            MG_CHECK(std::isfinite(units[i]->m_GroupSpeed));
+            MG_CHECK(std::abs(units[i]->m_GroupSpeed - expected[i]) < .000001f);
+            MG_CHECK(units[i]->GetMaxSpeed() == maximum[i]);
+            MG_CHECK(units[i]->m_PosX == positions[i].x && units[i]->m_PosY == positions[i].y);
+            CPoint move;
+            MG_CHECK(units[i]->GetMoveToCoords(move) && move == destination);
+            MG_CHECK(units[i]->GetGroupLogic() == group);
+        }
+        MG_CHECK(intent.Order() == mpo_MoveTo && intent.m_To == destination && intent.m_RobotCnt == Count);
+        MG_CHECK(random::draw_count() == draws && session.time() == time && session.frame() == 0);
+    }
+}
+
+void intermediate_allowance() {
+    // Logic-list order is leader, trailer, intermediate: production must sort it.
+    // Reference 100, intermediate 400 and leader 520 give factors 1, .8 and .6.
+    for (Axis axis : axes)
+        allowance_case<3>("intermediate", axis, {520, 100, 400}, {.6f, .5f, .3f}, {.36f, .5f, .24f});
+}
+
+void trailing_reference() {
+    for (Axis axis : axes) {
+        for (int gap : {125, 126, 127, 140}) {
+            // Sorted positions: 40, 100, 100+gap, 400, 520. The first gap
+            // strictly above 126 chooses 100, otherwise it chooses 100+gap.
+            const float middle = gap <= 126 ? .3f : .24f;
+            allowance_case<5>("trailing-gap", axis, {520, 100, 400, 40, float(100 + gap)},
+                              {.6f, .5f, .3f, .4f, .2f}, {.36f, .5f, middle, .4f, .2f});
+        }
+        // No gap exceeds 126: reference is the front of the connected cluster,
+        // so a 480-unit total spread alone does not reduce any allowance.
+        allowance_case<5>("connected-cluster", axis, {520, 160, 400, 40, 280},
+                          {.6f, .5f, .3f, .4f, .2f}, {.6f, .5f, .3f, .4f, .2f});
+    }
+}
+
 void regulation() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (int step : {10, 16}) journey(mode, step);
@@ -180,7 +279,11 @@ int main(int argc, char **argv) {
     Base::CMain::BaseInit();
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
-    const tests::Case cases[] = {{"game.navigation.mixed_formation_regulation", regulation}};
+    const tests::Case cases[] = {
+        {"game.navigation.mixed_formation_regulation", regulation},
+        {"game.navigation.formation_intermediate_allowance", intermediate_allowance},
+        {"game.navigation.formation_trailing_reference", trailing_reference},
+    };
     int result = tests::run(argc, argv, cases);
 #ifdef MEM_SPY_ENABLE
     if (Base::SMemHeader::first_mem_block != nullptr) result = EXIT_FAILURE;
