@@ -1,5 +1,5 @@
 // MatrixGame - licensed under GPLv2 or any later version.
-// Opt-in correctness probes: known failures are not approved baseline goldens.
+// Clear-rectangle regressions and opt-in, unresolved plane correctness probes.
 #include "test_support.hpp"
 #include "command_world.hpp"
 #include "Interface/CIFaceElement.h"
@@ -42,7 +42,7 @@ public:
     HRESULT STDMETHODCALLTYPE AddDirtyRect(const RECT *) override { unsupported(); }
 };
 
-void clear_rectangle() {
+D3DRECT clear_rectangle_at(float x, float y, const CRect &rectangle, IFaceElementState state, bool enabled) {
     tests::CommandWorld world;
     struct InterfaceScope {
         CIFaceList *previous = g_IFaceList;
@@ -56,22 +56,60 @@ void clear_rectangle() {
         CTextureManaged texture;
         texture.Set(&native); // Production wrapper owns the single reference.
         auto element = tests::make_engine_object<CIFaceElement>();
-        element->SetState(IFACE_NORMAL);
-        element->m_StateImages[IFACE_NORMAL].pImage = &texture;
-        element->m_StateImages[IFACE_NORMAL].m_Geom[1].p.x = 100;
-        element->m_StateImages[IFACE_NORMAL].m_Geom[1].p.y = 200;
-        element->m_ClearRect = CRect(3, 11, 20, 30);
-        element->SetClearRect();
+        element->SetState(state);
+        // The active image geometry, not the element origin or another state, is authoritative.
+        element->m_xPos = 900;
+        element->m_yPos = 700;
+        for (int i = 0; i < MAX_STATES; ++i) {
+            element->m_StateImages[i].pImage = &texture;
+            element->m_StateImages[i].m_Geom[1].p.x = 600;
+            element->m_StateImages[i].m_Geom[1].p.y = 400;
+        }
+        element->m_StateImages[state].m_Geom[1].p.x = x;
+        element->m_StateImages[state].m_Geom[1].p.y = y;
+        element->m_ClearRect = rectangle;
+        MG_CHECK(!element->HasClearRect());
+        if (enabled) element->SetClearRect();
         CInterface::ClearRects_Clear();
         element->BeforeRender();
-        MG_CHECK(native.preloads == 1 && CInterface::ClearRects_GetCount() == 1);
-        actual = CInterface::ClearRects_Get()[0];
+        MG_CHECK(native.preloads == 1);
+        MG_CHECK(CInterface::ClearRects_GetCount() == (enabled ? 1 : 0));
+        if (enabled) actual = CInterface::ClearRects_Get()[0];
+        CInterface::ClearRects_Clear();
+        MG_CHECK(CInterface::ClearRects_GetCount() == 0);
     }
     MG_CHECK(native.references == 0);
+    return actual;
+}
+void check_rectangle(const D3DRECT &actual, const D3DRECT &expected) {
+    MG_CHECK(actual.x1 == expected.x1 && actual.x2 == expected.x2 && actual.y2 == expected.y2);
+    MG_CHECK(actual.y1 == expected.y1);
+}
+void clear_rectangle() {
+    const auto actual = clear_rectangle_at(100, 200, CRect(3, 11, 20, 30), IFACE_NORMAL, true);
     std::cout << "ClearRect actual=" << actual.x1 << ',' << actual.y1 << ',' << actual.x2 << ',' << actual.y2
               << " expected=103,211,120,230\n";
-    MG_CHECK(actual.x1 == 103 && actual.x2 == 120 && actual.y2 == 230);
-    MG_CHECK(actual.y1 == 211); // Top offset, not the left offset.
+    check_rectangle(actual, {103, 211, 120, 230});
+}
+void clear_rectangle_states() {
+    struct Sample { float x, y; CRect rectangle; D3DRECT expected; };
+    const Sample samples[]{
+        {100, 200, {3, 11, 20, 30}, {103, 211, 120, 230}},
+        {640, 480, {11, 3, 20, 30}, {651, 483, 660, 510}},
+        {800, 600, {-20, -40, 0, 0}, {780, 560, 800, 600}},
+        {-10, 50, {20, -10, 40, 10}, {10, 40, 30, 60}},
+        {320, 240, {0, 0, 40, 80}, {320, 240, 360, 320}},
+        {100, 200, {7, 7, 17, 27}, {107, 207, 117, 227}},
+    };
+    for (int state = 0; state < MAX_STATES; ++state)
+        for (const auto &sample : samples)
+            check_rectangle(clear_rectangle_at(sample.x, sample.y, sample.rectangle,
+                static_cast<IFaceElementState>(state), true), sample.expected);
+}
+void clear_rectangle_disabled() {
+    for (int state = 0; state < MAX_STATES; ++state)
+        check_rectangle(clear_rectangle_at(100, 200, {3, 11, 20, 30},
+            static_cast<IFaceElementState>(state), false), {});
 }
 
 void plane_intersection(bool points) {
@@ -98,6 +136,9 @@ void plane_points() { plane_intersection(true); }
 
 const tests::Case cases[] = {
     {"probe.presentation.clear_rectangle", clear_rectangle},
+    {"game.presentation.clear_rectangle", clear_rectangle},
+    {"game.presentation.clear_rectangle_states", clear_rectangle_states},
+    {"game.presentation.clear_rectangle_disabled", clear_rectangle_disabled},
     {"probe.presentation.plane_normal", plane_normal},
     {"probe.presentation.plane_points", plane_points},
 };
