@@ -17,6 +17,8 @@ First run the main guide's path setup and settings preparation. They supply abso
     if (Test-Path -LiteralPath $nextSnapshot) { throw 'Do not overwrite an earlier snapshot.' }
     $cacheQualificationActive = $true
     $cacheQualificationReady = $false
+    $qualifiedCacheName = $null
+    $qualificationRecordPath = $null
     $qualificationCopies = [Collections.Generic.List[object]]::new()
     $qualificationSnapshot = $nextSnapshot
     New-Item -ItemType Directory -Path $qualificationSnapshot -ErrorAction Stop | Out-Null
@@ -61,15 +63,19 @@ This copy can take space proportional to the existing caches. A failed copy cann
 
 Use the main guide's launch block; it permits qualification only after the snapshot is complete and only in Debug. Choose the one intended installed map/bonus, reach its introduction within 60 seconds, dismiss it and inspect the minimap. Do not select another map, Restart or take screenshots during qualification. Quit normally, require exit 0, then run the separate post-quit/log-excerpt block. Its `$newLog` contains only bytes appended by this launch. Qualification does not replace any P1-P4 observation.
 
-A procedure using the supported `playtest-outcomes.ps1` may instead retain the actual child PowerShell helper process. That adapter must protect settings first, retain the helper handle, require its exit 0, verify that its `.native-outcome-backup` is gone and that no MatrixGame process remains, and only then mark launch completion for restoration. The helper owns/verifies its game-process handles internally. A fake process object, an unresolved helper error or a still-running game cannot satisfy the adapter. The adapter must capture the game's append-only log offset before invoking the helper. Use the same staged map filename and command that the later record uses; a renamed copy has a different cache key even if its contents match.
+A procedure using the supported `playtest-outcomes.ps1` may instead retain the actual child PowerShell helper process. That adapter must protect settings first, retain the helper handle, require its exit 0, verify that its `.native-outcome-backup` is gone and that no MatrixGame process remains, and only then mark launch completion for restoration. Helper exit 0 does not establish native exit 0: the ordinary route prints `Exit code: N`, while `-WatchRelaunches` prints `Process ID: <pid>; exit code: N`. Qualification permits exactly one owned game process, with `-ExpectedProcesses 1` for monitoring. Parse exactly one matching native exit row from that invocation's stdout, require native exit 0 and set `$gameExitCode` to that value. Do not take it from the helper's `ExitCode`. The helper owns/verifies its game-process handles internally. A fake process object, an unresolved helper error or a still-running game cannot satisfy the adapter. Before invoking the helper, clear `$newLog`, `$newLogProcessId` and `$gameExitCode` and capture the game's append-only log offset. Only after the owned helper has exited and that invocation's log excerpt is completely read may the adapter bind `$newLogProcessId = $process.Id`, using the retained helper handle. Use the same staged map filename and command that the later record uses; a renamed copy has a different cache key even if its contents match.
 
 Debug logs `Found minimap cache file at` or `Storing minimap into cache file at`. Release suppresses both debug messages, so it cannot discover a key this way. Both messages name the path before the corresponding read/write; a reported write failure is not a successful cache or rendering check. If no single path is reported, retain the snapshot and investigate; do not guess `.0` or delete a wildcard of entries.
 
 ```powershell
 . {
     $ErrorActionPreference = 'Stop'
-    if (-not $cacheQualificationReady -or -not $launchSucceeded -or $null -eq $process -or -not $process.HasExited) {
+    $qualifiedCacheName = $null
+    if (-not $cacheQualificationReady -or -not $launchAttempted -or -not $launchSucceeded -or $null -eq $process -or -not $process.HasExited) {
         throw 'Finish the owned qualification launch and log excerpt first.'
+    }
+    if ($null -eq $newLog -or $null -eq $newLogProcessId -or $newLogProcessId -ne $process.Id -or $null -eq $gameExitCode) {
+        throw 'Read and bind the current owned launch log and native exit code before qualification.'
     }
     $reported = @([regex]::Matches($newLog, '(?m)\|DEBUG\| (?:Found minimap cache file at|Storing minimap into cache file at) ([^|\r\n]+?) \| [^\r\n]+:\d+\r?$') |
         ForEach-Object {
@@ -100,14 +106,25 @@ Debug logs `Found minimap cache file at` or `Storing minimap into cache file at`
             [IO.File]::GetAttributes($selected) -ne $qualificationBefore[0].Attributes) { throw 'Cache restoration differs.' }
     } elseif (Test-Path -LiteralPath $selected) { throw 'Original cache absence was not restored.' }
     $observedCacheName = $selected.Substring($matchingRoots[0].Path.Length + 1)
-    $qualificationExitCode = $process.ExitCode
+    $qualificationExitCode = $gameExitCode
     $qualificationRecord = [ordered]@{
         procedure='87-cache-qualification.md'; version=1; cacheName=$observedCacheName
         exitCode=$qualificationExitCode; qualified=($null -ne $qualificationExitCode -and $qualificationExitCode -eq 0)
+        logProcessId=$newLogProcessId
         observedRoot=$matchingRoots[0].Name; debugBinarySHA256=(Get-FileHash -LiteralPath $exe -Algorithm SHA256).Hash
     }
-    [IO.File]::WriteAllText((Join-Path $caseBackup 'cache-key.json'),
-        ($qualificationRecord | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+    $qualificationJson = $qualificationRecord | ConvertTo-Json
+    $qualificationRecordPath = Join-Path $game ('playtest-cache-key-' + [guid]::NewGuid().ToString('N') + '.json')
+    $keyStream = [IO.File]::Open($qualificationRecordPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    $keyWriter = $null
+    try {
+        $keyWriter = [IO.StreamWriter]::new($keyStream, [Text.UTF8Encoding]::new($false))
+        $keyWriter.Write($qualificationJson)
+    } finally {
+        if ($keyWriter) { $keyWriter.Dispose() } else { $keyStream.Dispose() }
+    }
+    $qualificationRecordPath
+    $qualificationJson
     $cacheQualificationReady = $false
     $cacheQualificationActive = $false
     $qualifiedCacheName = $null
@@ -116,7 +133,7 @@ Debug logs `Found minimap cache file at` or `Storing minimap into cache file at`
 }
 ```
 
-Attach the key record to the installed filename, map/resource identities and Debug execution record before cleanup. Require its successful qualification and the stated scene observations before reuse; a nonzero exit still restores the known entry but cannot supply accepted qualification evidence. The name keeps the map extension and uppercase unpadded hexadecimal uniqueness and does not depend on Debug/Release. Reuse it only with those same inputs. If the reported relative name has path separators, restoration above still protects that exact entry, but the main guide's leaf-key recipe needs separate review for that unusual map path. Leave those cases pending rather than flattening the path. The same applies to links, missing output access or an ambiguous log.
+The block prints the JSON and writes a uniquely named `playtest-cache-key-<id>.json` beside the executable, outside the recursively cleaned backup. Retain that exact record with the installed filename, map/resource identities and Debug execution evidence; cleanup leaves it intact. Require its successful qualification and the stated scene observations before reuse; a nonzero native exit still restores the known entry but cannot supply accepted qualification evidence. The name keeps the map extension and uppercase unpadded hexadecimal uniqueness and does not depend on Debug/Release. Reuse it only with those same inputs. If the reported relative name has path separators, restoration above still protects that exact entry, but the main guide's leaf-key recipe needs separate review for that unusual map path. Leave those cases pending rather than flattening the path. The same applies to links, missing output access or an ambiguous log.
 
 Restore settings using the main guide, then run its guarded record cleanup. That removes the copied snapshot only after the original selected entry is restored; it leaves all unrelated caches and screenshots in place. Shared cache directories created by the game may remain, as in the existing [special-scene procedure](85-native-special-scenes.md#preserve-and-restore-the-minimap-cache).
 

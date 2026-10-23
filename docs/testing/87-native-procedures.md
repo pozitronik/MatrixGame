@@ -64,11 +64,19 @@ if ($cacheQualificationReady -and $configuration -ne 'Debug') { throw 'Cache qua
 if ($soundOverrideActive -and -not $soundOverrideReady) { throw 'Resolve the unfinished sound-override preparation.' }
 if ($faultActive -and -not $faultReady) { throw 'Resolve the unfinished fault preparation.' }
 if ($process -and -not $process.HasExited) { throw 'The previous owned process is still running.' }
+$currentGame = (Resolve-Path -LiteralPath $game).Path
+if ([IO.Path]::GetFullPath($exe) -ine (Join-Path $currentGame 'MatrixGame.exe')) { throw 'Run path setup for the current game before preparing this record.' }
+$fallbackRoots = @($cacheRoots | Where-Object Name -eq 'Fallback')
+if ($fallbackRoots.Count -ne 1 -or $fallbackRoots[0].Path -ine (Join-Path $currentGame 'Cache')) { throw 'The fallback cache does not belong to this game; run path setup again.' }
+if ($settings -ine (Join-Path $currentGame 'CFG/standalone.txt') -or $caseBackup -ine (Join-Path $currentGame '.playtest-presentation-backup')) { throw 'The protected settings record belongs to another game.' }
 $launchDirectory = (Resolve-Path -LiteralPath $launchDirectory).Path
 $logPath = Join-Path $launchDirectory 'test.log'
 $logBeforeLength = if (Test-Path -LiteralPath $logPath -PathType Leaf) {
     (Get-Item -LiteralPath $logPath -ErrorAction Stop).Length
 } else { 0L }
+$newLog = $null
+$newLogProcessId = $null
+$gameExitCode = $null
 $process = $null
 $launchSucceeded = $false
 $launchAttempted = $true
@@ -85,10 +93,13 @@ Perform one case, then initiate its specified quit route or dismiss its expected
 ```powershell
 . {
 if (-not $launchSucceeded -or $null -eq $process) { throw 'No verified launch; exit evidence is incomplete.' }
+$newLog = $null
+$newLogProcessId = $null
+$gameExitCode = $null
 if (-not $process.WaitForExit(30000)) { throw 'Exit timed out; retain the PID and diagnose before restoring files.' }
 $process.Refresh()
-$process.ExitCode
-$newLog = ''
+$observedGameExitCode = $process.ExitCode
+if ($null -eq $observedGameExitCode) { throw 'The native exit code is unavailable.' }
 if (-not (Test-Path -LiteralPath $logPath -PathType Leaf)) { throw 'The owned launch has no log; evidence is incomplete.' }
 if (Test-Path -LiteralPath $logPath -PathType Leaf) {
     $stream = [IO.File]::OpenRead($logPath)
@@ -102,6 +113,9 @@ if (Test-Path -LiteralPath $logPath -PathType Leaf) {
         if ($reader) { $reader.Dispose() } else { $stream.Dispose() }
     }
 }
+$gameExitCode = $observedGameExitCode
+$newLogProcessId = $process.Id
+$gameExitCode
 $newLog
 }
 ```
@@ -214,35 +228,40 @@ foreach ($name in $cacheNames) {
         throw 'Require distinct confirmed leaf keys; do not infer a filename.'
     }
 }
-$cacheActive = $true
-$cacheReady = $false
-$cacheEntries = [Collections.Generic.List[object]]::new()
-New-Item -ItemType Directory -Path $nextCacheBackup -ErrorAction Stop | Out-Null
+$validatedCacheEntries = [Collections.Generic.List[object]]::new()
 foreach ($root in $cacheRoots) {
-  if (Test-Path -LiteralPath $root.Path) {
-    $rootItem = Get-Item -LiteralPath $root.Path -Force -ErrorAction Stop
-    if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
-        throw 'Cache root links or non-directories need separate preparation.'
+    if (Test-Path -LiteralPath $root.Path) {
+        $rootItem = Get-Item -LiteralPath $root.Path -Force -ErrorAction Stop
+        if (-not $rootItem.PSIsContainer -or ($rootItem.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+            throw 'Cache root links or non-directories need separate preparation.'
+        }
     }
-  }
-  foreach ($name in $cacheNames) {
-    $cached = Join-Path $root.Path $name
-    $entry = [pscustomobject]@{Path=$cached; Saved=(Join-Path $nextCacheBackup ($root.Name + '-' + $cacheEntries.Count))
-        Present=(Test-Path -LiteralPath $cached -PathType Leaf); Hash=$null; Attributes=$null; Parked=$false}
-    $cacheEntries.Add($entry)
-    if ((Test-Path -LiteralPath $cached) -and -not $entry.Present) { throw 'Cache entry is not a regular file.' }
+    foreach ($name in $cacheNames) {
+        $cached = Join-Path $root.Path $name
+        $entry = [pscustomobject]@{Path=$cached; Saved=(Join-Path $nextCacheBackup ($root.Name + '-' + $validatedCacheEntries.Count))
+            Present=(Test-Path -LiteralPath $cached -PathType Leaf); Hash=$null; Attributes=$null; Parked=$false}
+        if ((Test-Path -LiteralPath $cached) -and -not $entry.Present) { throw 'Cache entry is not a regular file.' }
+        if ($entry.Present) {
+            $entry.Attributes = [IO.File]::GetAttributes($cached)
+            if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Cache links need separate preparation.' }
+            $entry.Hash = (Get-FileHash -LiteralPath $cached -Algorithm SHA256 -ErrorAction Stop).Hash
+        }
+        $validatedCacheEntries.Add($entry)
+    }
+}
+$cacheEntries = $validatedCacheEntries
+$cacheReady = $false
+$cacheActive = $true
+New-Item -ItemType Directory -Path $nextCacheBackup -ErrorAction Stop | Out-Null
+foreach ($entry in $cacheEntries) {
     if ($entry.Present) {
-        if ([IO.File]::GetAttributes($cached) -band [IO.FileAttributes]::ReparsePoint) { throw 'Cache links need separate preparation.' }
-        $entry.Hash = (Get-FileHash -LiteralPath $cached -Algorithm SHA256 -ErrorAction Stop).Hash
-        $entry.Attributes = [IO.File]::GetAttributes($cached)
-        Move-Item -LiteralPath $cached -Destination $entry.Saved -ErrorAction Stop
+        Move-Item -LiteralPath $entry.Path -Destination $entry.Saved -ErrorAction Stop
         $entry.Parked = $true
         if ((Get-FileHash -LiteralPath $entry.Saved -Algorithm SHA256 -ErrorAction Stop).Hash -ne $entry.Hash) {
             throw 'Parked cache differs; preserve it and stop.'
         }
     }
-    if (Test-Path -LiteralPath $cached) { throw 'Cache was not parked; do not launch.' }
-  }
+    if (Test-Path -LiteralPath $entry.Path) { throw 'Cache was not parked; do not launch.' }
 }
 $cacheReady = $true
 }
@@ -252,25 +271,35 @@ After exit, record which protected entry now exists. A case that reached its bat
 
 ```powershell
 . {
-if (-not $cacheReady) { throw 'No verified cache preparation; inspect the retained files.' }
-if ($launchAttempted -and (-not $launchSucceeded -or $null -eq $process -or -not $process.HasExited)) {
+if (-not $cacheActive -or -not $cacheEntries -or $cacheEntries.Count -eq 0) { throw 'No complete cache ownership record; leave its files unchanged.' }
+if ($launchAttempted -and (-not $cacheReady -or -not $launchSucceeded -or $null -eq $process -or -not $process.HasExited)) {
     throw 'Resolve the owned launch before restoring cache.'
 }
-$createdCachePaths = @($cacheEntries | Where-Object { Test-Path -LiteralPath $_.Path -PathType Leaf } | ForEach-Object Path)
+$createdCachePaths = if ($launchAttempted) { @($cacheEntries | Where-Object { Test-Path -LiteralPath $_.Path -PathType Leaf } | ForEach-Object Path) } else { @() }
 $createdCachePaths
 foreach ($entry in $cacheEntries) {
-    if ($entry.Present -and (-not $entry.Parked -or
-        (Get-FileHash -LiteralPath $entry.Saved -Algorithm SHA256 -ErrorAction Stop).Hash -ne $entry.Hash)) {
+    if ($entry.Present -and -not $entry.Parked) {
+        if ($launchAttempted -or -not (Test-Path -LiteralPath $entry.Path -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $entry.Path -Algorithm SHA256 -ErrorAction Stop).Hash -ne $entry.Hash -or
+            [IO.File]::GetAttributes($entry.Path) -ne $entry.Attributes) { throw 'An unparked original differs; preserve the retained state.' }
+        continue
+    }
+    if ($entry.Present -and
+        (Get-FileHash -LiteralPath $entry.Saved -Algorithm SHA256 -ErrorAction Stop).Hash -ne $entry.Hash) {
         throw 'Verified original cache backup is unavailable.'
     }
     if (Test-Path -LiteralPath $entry.Path) {
-        if (-not $launchSucceeded -or -not (Test-Path -LiteralPath $entry.Path -PathType Leaf)) {
-            throw 'This record does not own the unexpected cache entry.'
-        }
-        Remove-Item -LiteralPath $entry.Path -Force -ErrorAction Stop
+        if (-not (Test-Path -LiteralPath $entry.Path -PathType Leaf) -or
+            ([IO.File]::GetAttributes($entry.Path) -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unexpected cache entry type.' }
+        if (-not $launchAttempted) {
+            if (-not $entry.Present -or
+                (Get-FileHash -LiteralPath $entry.Path -Algorithm SHA256 -ErrorAction Stop).Hash -ne $entry.Hash) {
+                throw 'No launch owns the unexpected cache entry.'
+            }
+        } else { Remove-Item -LiteralPath $entry.Path -Force -ErrorAction Stop }
     }
     if ($entry.Present) {
-        [IO.File]::Copy($entry.Saved, $entry.Path, $false)
+        if (-not (Test-Path -LiteralPath $entry.Path)) { [IO.File]::Copy($entry.Saved, $entry.Path, $false) }
         [IO.File]::SetAttributes($entry.Path, $entry.Attributes)
         if ((Get-FileHash -LiteralPath $entry.Path -Algorithm SHA256 -ErrorAction Stop).Hash -ne $entry.Hash -or
             [IO.File]::GetAttributes($entry.Path) -ne $entry.Attributes) { throw 'Cache restoration differs.' }
@@ -281,7 +310,9 @@ $cacheActive = $false
 }
 ```
 
-Keep the per-record backup until settings, cache and any faulted files are restored. Use [guarded cleanup](#complete-a-record) after retaining the evidence and any qualified key. Do not upload cached images or private settings. Unknown keys, failed preparation, shared-game activity and unsafe filesystem states remain named gaps requiring inspection; do not clear their active flags to delete the backup.
+All roots and entries are validated and hashed before parking becomes active. If validation fails before `$cacheActive`, no original moved: restore the prepared settings and use guarded cleanup. If parking fails after activation but no launch was attempted, run the same cache-restoration block: it returns each verified parked original and verifies every unparked original in place, including its attributes. It never deletes a no-launch entry that does not match the recorded original. Keep the backup if those checks fail; do not clear active flags manually.
+
+Keep the per-record backup until settings, cache and any faulted files are restored. Use [guarded cleanup](#complete-a-record) after retaining the evidence and the separately stored qualified-key JSON. Do not upload cached images or private settings. Unknown keys, shared-game activity and unsafe filesystem states remain named gaps requiring inspection.
 
 ## Complete a record
 
@@ -334,7 +365,7 @@ Before P3's first record in an output directory, use the sound-override preparat
 
 For a fresh release archive, follow [release contents and verification](../RELEASING.md), extract the reviewed ZIP into a new local directory with spaces and non-ASCII characters, verify its supplied checksum, then add only locally supplied resources and the required x86 runtime using [Windows builds](../BUILD_WINDOWS.md). Set `$game = (Resolve-Path -LiteralPath '<extracted directory>').Path` and `$configuration = 'Release'`, then run the path setup again to bind its EXE and fallback cache. For the different-working-directory variant, after path setup set `$launchDirectory = (Resolve-Path -LiteralPath '.').Path` while PowerShell is in the repository root. Retain the handle, perform the case, then use the separate post-quit/log-excerpt block. Record archive/binary hashes; a build-directory launch does not prove archive completeness. Debug uses its staged build directory, not an invented Debug release artifact.
 
-The [logger](../../MatrixLib/Base/stupid_logger.hpp) opens `test.log` in append mode before [WinMain](../../MatrixGame/src/MatrixGame.cpp) changes the working directory. Ordinary launches append beside the EXE; the different-working-directory launch appends in the repository root. Debug includes info/debug messages, including `Started as EXE` and cache paths. Release records warning/error/fatal messages and suppresses those markers. Both builds use the byte offset saved immediately before launch and the post-exit `$newLog` excerpt; an empty Release excerpt is valid for an otherwise successful case. Required startup-error diagnostics must still occur in their expected cases. Cache qualification uses Debug, and ordinary records verify the confirmed entry's creation rather than requiring Release debug lines. Keep the caller/log path, before/after byte boundaries and case observations separate from older appended output.
+The [logger](../../MatrixLib/Base/stupid_logger.hpp) opens `test.log` in append mode before [WinMain](../../MatrixGame/src/MatrixGame.cpp) changes the working directory. Ordinary launches append beside the EXE; the different-working-directory launch appends in the repository root. Debug includes ordinary info/debug messages, including `Started as EXE` and cache paths. Release keeps warning/error/fatal and unconditional `notice` entries while suppressing ordinary info/debug calls. Every launch reaching `CGame::Init` writes the notice `Battle random generator:` at INFO even in Release; an empty excerpt does not establish initialization. Both builds use the byte offset saved immediately before launch and the post-exit `$newLog` bound to that owned process. Required startup-error diagnostics must still occur in their expected cases. Cache qualification uses Debug, and ordinary records verify the confirmed entry's creation rather than requiring Release debug lines. Keep the caller/log path, before/after byte boundaries and case observations separate from older appended output.
 
 The override is independent of `$target`/`$backup` used by fault staging. An accidental rerun refuses an existing backup before changing ownership state. A failed park cannot authorize P3 startup. These blocks do not inspect or modify a root-level supplied `sounds.txt`.
 
@@ -353,14 +384,18 @@ The override is independent of `$target`/`$backup` used by fault staging. An acc
     if ($soundOverridePresent -and ([IO.File]::GetAttributes($soundOverridePath) -band [IO.FileAttributes]::ReparsePoint)) {
         throw 'Override links need separate preparation.'
     }
-    $soundOverrideActive = $true
-    $soundOverrideReady = $false
     $soundOverrideHash = $null
     $soundOverrideAttributes = $null
     if ($soundOverridePresent) {
         $soundOverrideHash = (Get-FileHash -LiteralPath $soundOverridePath -Algorithm SHA256 -ErrorAction Stop).Hash
         $soundOverrideAttributes = [IO.File]::GetAttributes($soundOverridePath)
+    }
+    $soundOverrideReady = $false
+    $soundOverrideParked = $false
+    $soundOverrideActive = $true
+    if ($soundOverridePresent) {
         Move-Item -LiteralPath $soundOverridePath -Destination $soundOverrideBackup -ErrorAction Stop
+        $soundOverrideParked = $true
         if ((Get-FileHash -LiteralPath $soundOverrideBackup -Algorithm SHA256 -ErrorAction Stop).Hash -ne $soundOverrideHash) {
             throw 'Parked override differs; stop.'
         }
@@ -370,25 +405,32 @@ The override is independent of `$target`/`$backup` used by fault staging. An acc
 }
 ```
 
-After the P3 series, restore the override with this block. It refuses to overwrite an unexpected new mapping; keep the parked original if another build or writer re-created the target.
+After the P3 series, restore the override with this block. It also recovers a failed park before any launch by verifying an original that never moved. It refuses to overwrite an unexpected new mapping; keep the parked original if another build or writer re-created the target.
 
 ```powershell
 . {
-    if (-not $soundOverrideReady -or $settingsReady -or $cacheActive -or $cacheQualificationActive -or $faultActive) {
+    if (-not $soundOverrideActive -or $settingsReady -or $cacheActive -or $cacheQualificationActive -or $faultActive) {
         throw 'Finish all P3 records before returning the override.'
     }
     if ($launchAttempted -and (-not $launchSucceeded -or $null -eq $process -or -not $process.HasExited)) {
         throw 'Resolve the owned launch first.'
     }
-    if (Test-Path -LiteralPath $soundOverridePath) { throw 'Unexpected override; preserve both files for inspection.' }
-    if ($soundOverridePresent) {
+    if ($soundOverridePresent -and -not $soundOverrideParked) {
+        if ((Test-Path -LiteralPath $soundOverrideBackup) -or -not (Test-Path -LiteralPath $soundOverridePath -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $soundOverridePath -Algorithm SHA256 -ErrorAction Stop).Hash -ne $soundOverrideHash -or
+            [IO.File]::GetAttributes($soundOverridePath) -ne $soundOverrideAttributes) { throw 'The unparked override differs; preserve it.' }
+    } else {
+      if (Test-Path -LiteralPath $soundOverridePath) { throw 'Unexpected override; preserve both files for inspection.' }
+      if ($soundOverridePresent) {
         if ((Get-FileHash -LiteralPath $soundOverrideBackup -Algorithm SHA256 -ErrorAction Stop).Hash -ne $soundOverrideHash) {
             throw 'Override backup changed.'
         }
         Move-Item -LiteralPath $soundOverrideBackup -Destination $soundOverridePath -ErrorAction Stop
+        $soundOverrideParked = $false
         [IO.File]::SetAttributes($soundOverridePath, $soundOverrideAttributes)
         if ((Get-FileHash -LiteralPath $soundOverridePath -Algorithm SHA256 -ErrorAction Stop).Hash -ne $soundOverrideHash -or
             [IO.File]::GetAttributes($soundOverridePath) -ne $soundOverrideAttributes) { throw 'Override restoration differs.' }
+      }
     }
     $soundOverrideReady = $false
     $soundOverrideActive = $false
@@ -405,24 +447,28 @@ if (Test-Path -LiteralPath $nextFaultBackup) { throw 'Existing backup must be re
 if ($faultActive -or $launchAttempted -or -not $settingsReady -or -not $cacheReady -or -not $soundOverrideReady) {
     throw 'Require a fresh prepared P3 record before fault staging.'
 }
-$target = $nextFaultTarget
-$backup = $nextFaultBackup
-$faultActive = $true
 $makeReplacement = $true
 $replacementBytes = [byte[]](83,84,82,71,2,0,0,0)
+$nextHadOriginal = Test-Path -LiteralPath $nextFaultTarget -PathType Leaf
+if ((Test-Path -LiteralPath $nextFaultTarget) -and -not $nextHadOriginal) { throw 'Fault target is not a regular file.' }
+$nextOriginalHash = $null
+$nextOriginalAttributes = $null
+if ($nextHadOriginal) {
+    $nextOriginalAttributes = [IO.File]::GetAttributes($nextFaultTarget)
+    if ($nextOriginalAttributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Fault-target links need separate preparation.' }
+    $nextOriginalHash = (Get-FileHash -LiteralPath $nextFaultTarget -Algorithm SHA256 -ErrorAction Stop).Hash
+}
+$target = $nextFaultTarget
+$backup = $nextFaultBackup
+$hadOriginal = $nextHadOriginal
+$originalHash = $nextOriginalHash
+$originalAttributes = $nextOriginalAttributes
 $faultParked = $false
 $faultCreated = $false
 $faultReady = $false
-$hadOriginal = Test-Path -LiteralPath $target -PathType Leaf
-if ((Test-Path -LiteralPath $target) -and -not $hadOriginal) { throw 'Fault target is not a regular file.' }
-if ($hadOriginal -and ([IO.File]::GetAttributes($target) -band [IO.FileAttributes]::ReparsePoint)) {
-    throw 'Fault-target links need separate preparation.'
-}
-$originalHash = $null
-$originalAttributes = $null
+$faultHash = $null
+$faultActive = $true
 if ($hadOriginal) {
-    $originalHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash
-    $originalAttributes = [IO.File]::GetAttributes($target)
     Move-Item -LiteralPath $target -Destination $backup -ErrorAction Stop
     $faultParked = $true
     if ((Get-FileHash -LiteralPath $backup -Algorithm SHA256 -ErrorAction Stop).Hash -ne $originalHash) {
@@ -430,12 +476,14 @@ if ($hadOriginal) {
     }
 }
 if (Test-Path -LiteralPath $target) { throw 'Target was not parked; do not write a replacement.' }
-$faultHash = $null
 if ($makeReplacement) {
     $stream = [IO.File]::Open($target, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
     $faultCreated = $true
-    try { $stream.Write($replacementBytes, 0, $replacementBytes.Length) } finally { $stream.Dispose() }
-    $faultHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash
+    try { $stream.Write($replacementBytes, 0, $replacementBytes.Length) }
+    finally {
+        $stream.Dispose()
+        $faultHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash
+    }
 }
 $faultReady = $true
 # Launch and retain $process as above; observe/dismiss the diagnostic and require exit 1.
@@ -457,35 +505,45 @@ After termination, restore an invalid-configuration or optional-package substitu
 
 ```powershell
 . {
-if (-not $faultReady) { throw 'Staging failed; inspect originals/backups without removing the target.' }
-if ($launchAttempted -and (-not $launchSucceeded -or $null -eq $process -or -not $process.HasExited)) {
+if (-not $faultActive) { throw 'No active fault preparation; leave its files unchanged.' }
+if ($launchAttempted -and (-not $faultReady -or -not $launchSucceeded -or $null -eq $process -or -not $process.HasExited)) {
     throw 'Resolve the owned launch before fault restoration.'
 }
-if ($hadOriginal -and (-not $faultParked -or
-    (Get-FileHash -LiteralPath $backup -Algorithm SHA256 -ErrorAction Stop).Hash -ne $originalHash)) {
-    throw 'Verified original backup is unavailable.'
-}
-if (Test-Path -LiteralPath $target) {
-    if (-not $faultCreated -or -not (Test-Path -LiteralPath $target -PathType Leaf) -or
-        (Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash -ne $faultHash) {
-        throw "Target is not this record's unchanged synthetic file; stop."
+if ($hadOriginal -and -not $faultParked) {
+    if (Test-Path -LiteralPath $backup) { throw 'An unclaimed fault backup needs inspection.' }
+    if ($launchAttempted -or $faultCreated -or -not (Test-Path -LiteralPath $target -PathType Leaf) -or
+        (Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash -ne $originalHash -or
+        [IO.File]::GetAttributes($target) -ne $originalAttributes) { throw 'The unparked original differs; preserve it.' }
+} else {
+    if ($hadOriginal -and
+        (Get-FileHash -LiteralPath $backup -Algorithm SHA256 -ErrorAction Stop).Hash -ne $originalHash) {
+        throw 'Verified original backup is unavailable.'
     }
-    Remove-Item -LiteralPath $target -ErrorAction Stop
-}
-if ($hadOriginal) {
-    Move-Item -LiteralPath $backup -Destination $target -ErrorAction Stop
-    [IO.File]::SetAttributes($target, $originalAttributes)
-    if ((Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash -ne $originalHash -or
-        [IO.File]::GetAttributes($target) -ne $originalAttributes) {
-        throw 'Restored bytes differ from the original.'
+    if (Test-Path -LiteralPath $target) {
+        if (-not (Test-Path -LiteralPath $target -PathType Leaf) -or
+            ([IO.File]::GetAttributes($target) -band [IO.FileAttributes]::ReparsePoint)) { throw 'Unexpected fault-target type.' }
+        $targetHash = (Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash
+        if (-not ($hadOriginal -and $targetHash -eq $originalHash)) {
+            if (-not $faultCreated -or $null -eq $faultHash -or $targetHash -ne $faultHash) {
+                throw "Target is not this record's unchanged synthetic file; stop."
+            }
+            Remove-Item -LiteralPath $target -ErrorAction Stop
+        }
     }
-} elseif (Test-Path -LiteralPath $target) { throw 'Original absence was not restored.' }
+    if ($hadOriginal) {
+        if (-not (Test-Path -LiteralPath $target)) { [IO.File]::Copy($backup, $target, $false) }
+        [IO.File]::SetAttributes($target, $originalAttributes)
+        if ((Get-FileHash -LiteralPath $target -Algorithm SHA256 -ErrorAction Stop).Hash -ne $originalHash -or
+            [IO.File]::GetAttributes($target) -ne $originalAttributes) { throw 'Restored bytes/attributes differ.' }
+        Remove-Item -LiteralPath $backup -Force -ErrorAction Stop
+    } elseif (Test-Path -LiteralPath $target) { throw 'Original absence was not restored.' }
+}
 $faultReady = $false
 $faultActive = $false
 }
 ```
 
-The same restoration block returns a missing-required package without deleting an unowned target. If parking, writing or launching failed, stop at the retained state rather than running later blocks blindly; an unsuccessful parking attempt must never cause removal of the still-original target. Restore settings and the selected minimap cache too. Prepare and restore a separate fresh recovery record before moving to the next fault. Keep each launch's exit code and latest appended log section distinct.
+The same restoration block returns a missing-required package without deleting an unowned target. Validation and hashing precede `$faultActive`; a rejected target has not moved, so restore the already prepared cache/settings without running fault restoration. After activation, a parking or replacement-write failure before any launch can use the fault-restoration block even while `$faultReady` is false. It verifies the still-unparked original, or the parked backup and any owned partial synthetic file, before returning the original bytes/attributes or absence. Unknown or changed files keep the record active for inspection. An uncertain attempted launch must be resolved before any restoration. Restore settings and the selected minimap cache too. Prepare and restore a separate fresh recovery record before moving to the next fault. Keep each launch's native exit code and bound latest log excerpt distinct.
 
 The existing `game.startup.native_*` cases independently assert early failure diagnostics and exits, including malformed optional packages followed by deliberately rejected configuration. They do not establish playable continuation after a malformed optional package above. Real-device failure, malformed entries inside otherwise valid packages and unavailable original resources retain their gaps. CalcVis is excluded: follow the [plane-consumer boundary](305-plane-builders.md#observable-consumers-and-native-evidence) and retain NV-03's launch/log/runtime/diagnostic obligations without running the unsafe path here. Original-host lifetime stays [NV-07](native-validation.md).
 
