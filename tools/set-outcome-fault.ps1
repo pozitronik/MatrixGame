@@ -30,7 +30,7 @@ if (-not (Test-Path -LiteralPath $SourceMapFile -PathType Leaf) -or
 }
 if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) { throw 'Start a staged tools/playtest-outcomes.ps1 run first.' }
 $state = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json
-if ($state.Version -ne 3 -or $state.AlternateMapStaged -isnot [bool] -or -not $state.AlternateMapStaged -or
+if ($state.Version -notin @(3, 4) -or ($state.Version -eq 4 -and $state.AlternateMapMode -ne 'Ordinary') -or $state.AlternateMapStaged -isnot [bool] -or -not $state.AlternateMapStaged -or
     $state.InterfaceRemoved -isnot [bool] -or $state.InterfaceRemoved -or
     $state.SettingsPresent -isnot [bool] -or $state.PackedRemoved -isnot [bool] -or
     $state.MapDirectoryCreated -isnot [bool] -or $state.MatrixDirectoryCreated -isnot [bool]) {
