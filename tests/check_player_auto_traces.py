@@ -57,6 +57,7 @@ def must_reject(records, description):
 
 def check(directory, reference=None):
     count = 0
+    fault_scenes = set()
     for names in expected_pairs():
         pair = [load(directory, name) for name in names]
         difference = TRACES.compare_records(*pair)
@@ -67,20 +68,26 @@ def check(directory, reference=None):
                 difference = TRACES.compare_records(load(reference, name), records)
                 if difference:
                     raise ValueError(f"fresh-process {name}: {difference}")
-            must_reject(records[:-1], f"missing completion in {name}")
-            must_reject(records[:len(records) // 2], f"well-formed truncation in {name}")
-            old_tail = dict(records[-1], type="milestones")
-            old_tail.pop("frame")
-            must_reject(records[:-1] + [old_tail], f"obsolete milestone record in {name}")
-            must_reject(records + [{"type": "unexpected"}], f"tail after completion in {name}")
-            field = MILESTONES[count % len(MILESTONES)]
-            changed = records[:-1] + [dict(records[-1], **{field: records[-1][field] + 1})]
-            difference = TRACES.compare_records(records, validated(changed))
-            if not difference or "$." + field not in difference:
-                raise ValueError(f"comparison missed milestone mutation {name}: {field}")
+            # Every real file is parsed above. Exercise derived parser faults on
+            # one actual recording per scene, rather than reparsing every replay.
+            scene = records[0]["auto_order"]
+            if scene not in fault_scenes:
+                must_reject(records[:-1], f"missing completion in {name}")
+                must_reject(records[:len(records) // 2], f"well-formed truncation in {name}")
+                old_tail = dict(records[-1], type="milestones")
+                old_tail.pop("frame")
+                must_reject(records[:-1] + [old_tail], f"obsolete milestone record in {name}")
+                must_reject(records + [{"type": "unexpected"}], f"tail after completion in {name}")
+                field = MILESTONES[len(fault_scenes)]
+                changed = records[:-1] + [dict(records[-1], **{field: records[-1][field] + 1})]
+                difference = TRACES.compare_records(records, validated(changed))
+                if not difference or "$." + field not in difference:
+                    raise ValueError(f"comparison missed milestone mutation {name}: {field}")
+                fault_scenes.add(scene)
             count += 1
     print(f"Validated {count} real traces, {count // 2} exact replay pairs, "
-          f"{count * 4} rejected incomplete/obsolete tails and {count} milestone mutations"
+          f"{len(fault_scenes)} scene representatives with {len(fault_scenes) * 4} rejected incomplete/obsolete tails "
+          f"and {len(fault_scenes)} milestone mutations"
           + (f", {count} exact fresh-process comparisons" if reference else ""))
 
 

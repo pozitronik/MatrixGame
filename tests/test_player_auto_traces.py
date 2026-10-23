@@ -34,8 +34,9 @@ class AutoTraceContracts(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
             return CHECK.main([str(self.directory), *extra])
 
-    def overwrite(self, records):
-        (self.directory / self.names[0]).write_text(text(records), encoding="utf-8")
+    def overwrite(self, records, both=False):
+        for name in self.names[:2 if both else 1]:
+            (self.directory / name).write_text(text(records), encoding="utf-8")
 
     def test_complete_inventory_and_matching_reference_pass(self):
         self.assertEqual(72, len(set(self.names)))
@@ -62,17 +63,43 @@ class AutoTraceContracts(unittest.TestCase):
             with self.subTest(field=field):
                 completion = dict(self.records[-1])
                 del completion[field]
-                self.overwrite(self.records[:-1] + [completion])
+                self.overwrite(self.records[:-1] + [completion], both=True)
                 self.assertEqual(1, self.run_cli())
 
     def test_terminal_state_mismatch_fails(self):
-        self.overwrite(self.records[:-1] + [dict(self.records[-1], terminal_order=1)])
-        self.assertEqual(1, self.run_cli())
+        for field in ("terminal_order", "terminal_x_bits", "terminal_y_bits"):
+            with self.subTest(field=field):
+                completion = dict(self.records[-1], **{field: self.records[-1][field] + 1})
+                self.overwrite(self.records[:-1] + [completion], both=True)
+                self.assertEqual(1, self.run_cli())
 
     def test_wrong_file_profile_fails(self):
-        self.records[0]["rng"] = "LegacyCRT"
-        self.overwrite(self.records)
+        for field, value in (("rng", "LegacyCRT"), ("auto_order", "attack"),
+                             ("manual_override", False), ("step_ms", 16)):
+            with self.subTest(field=field):
+                records = [dict(self.records[0], **{field: value}), *self.records[1:]]
+                self.overwrite(records, both=True)
+                self.assertEqual(1, self.run_cli())
+
+    def test_wrong_fixture_fails_even_when_both_replays_match(self):
+        records = [dict(self.records[0], fixture="another-nonempty-fixture"), *self.records[1:]]
+        self.overwrite(records, both=True)
         self.assertEqual(1, self.run_cli())
+
+    def test_noninteger_milestones_fail_even_when_both_replays_match(self):
+        for field in CHECK.MILESTONES:
+            for value in (float(self.records[-1][field]), bool(self.records[-1][field])):
+                with self.subTest(field=field, value=value):
+                    self.overwrite(self.records[:-1] + [dict(self.records[-1], **{field: value})], both=True)
+                    self.assertEqual(1, self.run_cli())
+
+    def test_every_milestone_difference_is_compared(self):
+        left = CHECK.validated(self.records)
+        for field in CHECK.MILESTONES:
+            with self.subTest(field=field):
+                changed = self.records[:-1] + [dict(self.records[-1], **{field: self.records[-1][field] + 1})]
+                difference = CHECK.TRACES.compare_records(left, CHECK.validated(changed))
+                self.assertIn("$." + field, difference)
 
     def test_milestone_replay_mismatch_fails(self):
         self.overwrite(self.records[:-1] + [dict(self.records[-1], paint_ms=1)])
