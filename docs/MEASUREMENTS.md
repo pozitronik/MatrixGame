@@ -113,6 +113,10 @@ Timings are comparable only on the same machine and configuration. Before compar
 
 To refresh the reference, check out the accepted reference revision and build its Release tests, then run the workloads and keep the result outside the repository, for example as a CI artifact or attached to the tracking issue. Measure the candidate on the same host and compare. Reference results are machine-specific; do not commit them as budgets.
 
+## Navigation operation counts
+
+[Scoped navigation work observations](testing/81-navigation-work.md) expose completed local-search volume and actual avoidance candidates through caller-owned counters. The current benchmark above still reports its existing search-mark footprint. Integrate the new observation boundary separately before using its counts in crowded-scene reports; declare the captured interval and each unit, and keep counting overhead separate from uninstrumented timing.
+
 ## Native frame measurements
 
 Device-backed frame timing needs supplied resources and a desktop session, so it is a manual measurement. It is not part of CI. Do not use synthetic benchmark results in its place.

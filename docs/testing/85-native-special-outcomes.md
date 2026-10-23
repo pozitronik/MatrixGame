@@ -1,6 +1,6 @@
 # Native special-object outcomes
 
-These optional native tests extend the [synthetic special-scene handoff](85-native-special-scenes.md) through objective destruction and the DLL result contract. They consume the exported map/configuration format through `CGame::Init`, use a real Direct3D 9 device under an invisible parent window and advance the normal game loop. The post-conversion Terron owner validation correction is part of the current integration baseline. Native execution also needs the successful-presentation-status correction tracked in [Rendering: preserve successful presentation statuses](https://github.com/pozitronik/MatrixGame/issues/270); successful occlusion is not a game-loop failure.
+These optional native tests extend the [synthetic special-scene handoff](85-native-special-scenes.md) through objective destruction and the DLL result contract. They consume the exported map/configuration format through `CGame::Init`, use a real Direct3D 9 device under an invisible parent window and advance the normal game loop. The post-conversion Terron owner validation correction is part of the current integration baseline. Successful [presentation-status classification](../DEVICE_RECOVERY.md) is also part of the integration baseline; accepted occlusion is not evidence of visible output.
 
 ## Input boundary and outcome paths
 

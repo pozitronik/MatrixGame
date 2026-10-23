@@ -1,5 +1,5 @@
 // MatrixGame - licensed under GPLv2 or any later version.
-// Clear-rectangle regressions and opt-in, unresolved plane correctness probes.
+// Clear-rectangle and plane regressions, with unregistered legacy command aliases.
 #include "test_support.hpp"
 #include "command_world.hpp"
 #include "Interface/CIFaceElement.h"
@@ -139,6 +139,8 @@ const tests::Case cases[] = {
     {"game.presentation.clear_rectangle", clear_rectangle},
     {"game.presentation.clear_rectangle_states", clear_rectangle_states},
     {"game.presentation.clear_rectangle_disabled", clear_rectangle_disabled},
+    {"game.presentation.plane_normal", plane_normal},
+    {"game.presentation.plane_points", plane_points},
     {"probe.presentation.plane_normal", plane_normal},
     {"probe.presentation.plane_points", plane_points},
 };
