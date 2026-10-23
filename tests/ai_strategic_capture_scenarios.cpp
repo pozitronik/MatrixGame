@@ -127,6 +127,8 @@ Journey capture_journey(random::Mode mode, int step, Loss loss) {
             MG_CHECK(assigned > 0 && primary->m_TrueColor.m_ColoredCnt == 0 && primary->GetSide() == 0);
             MG_CHECK(forward && capture && crossed);
             MG_CHECK(result.primary_order > 0 && result.primary_order <= first_capture_action);
+            if (mode == random::Mode::LegacyCRT && step == 10)
+                MG_CHECK(result.primary_order < first_capture_action);
             if (loss == Loss::Objective) map.StaticDelete(primary);
             if (loss == Loss::Home) map.StaticDelete(home);
             MG_CHECK(bool(primary_core->m_Object) == (loss != Loss::Objective));
