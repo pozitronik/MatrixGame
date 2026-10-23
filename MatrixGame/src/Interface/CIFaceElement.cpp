@@ -145,7 +145,7 @@ void CIFaceElement::BeforeRender(void) {
         int x = Float2Int(m_StateImages[m_CurState].m_Geom[1].p.x);
         int y = Float2Int(m_StateImages[m_CurState].m_Geom[1].p.y);
         r.x1 = m_ClearRect.left + x;
-        r.y1 = m_ClearRect.left + y;
+        r.y1 = m_ClearRect.top + y;
         r.x2 = m_ClearRect.right + x;
         r.y2 = m_ClearRect.bottom + y;
         CInterface::ClearRects_Add(r);

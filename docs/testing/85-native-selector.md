@@ -1,6 +1,6 @@
 # Native selector and relaunch procedures
 
-Procedure version: **2**. These cases prepare the bounded ordinary-map portions of NV-06-2. They share the [native timing/session setup](85-native-outcomes.md#build-and-preserve-the-candidate), including the build, source/binary identity, resource/configuration profiles and restoration rules. Native execution remains pending. Natural victory/defeat and NV-06-3's pending-result trigger remain explicitly unprepared below.
+Procedure version: **3**. These cases prepare the bounded ordinary-map portions of NV-06-2. They share the [native timing/session setup](85-native-outcomes.md#build-and-preserve-the-candidate), including the build, source/binary identity, resource/configuration profiles and restoration rules. Visible execution remains pending. Natural victory/defeat and the pending-result trigger have automated Text/cheats-off setup in the [contained lifecycle suite](85-native-exe-lifecycle.md); their visible observations remain open below.
 
 ## Inputs and process observations
 
@@ -77,7 +77,7 @@ These two additional cases require a freshly rebuilt `-Cheats` candidate and `-C
 
 Run the two launches separately. Start the common scene, deselect robots, keep the pointer over bare terrain and leave the developer console closed. Type `IAMLOOSER` using an English keyboard layout. Despite its spelling, this code immediately opens the **victory** dialog and sets exit state 3. Confirm that dialog, inspect the resulting statistics, then press Enter once to reach the selector. In W1 accept the same map with None; in W2 accept **native-outcome-alternate** with None. Verify destination readiness and close through menu Exit/statistics. Each run requires two observed code-0 exits.
 
-W1/W2 establish the real victory-dialog callbacks, statistics, selector and relaunch route reached by this code. They do **not** establish natural victory, defeated-side detection or the result scheduler's pending interval. There is no equivalent supported cheat here that reliably prepares the loss dialog; Surrender is a separate exit-state-4 route. Natural win/loss preparation remains open.
+W1/W2 establish the real victory-dialog callbacks, statistics, selector and relaunch route reached by this code. They do **not** establish natural victory, defeated-side detection or the result scheduler's pending interval. There is no equivalent supported cheat here that reliably prepares the loss dialog; Surrender is a separate exit-state-4 route. Natural win/loss setup is in the contained lifecycle suite; W1/W2 do not substitute for it.
 
 ### E0: Exit control
 
