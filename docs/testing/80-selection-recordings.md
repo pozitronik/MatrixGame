@@ -9,12 +9,19 @@ Named commands retain their actual frame/time, supplied visibility order and mou
 Run the producer and validate its actual output in each configuration:
 
 ```powershell
-.\tools\test.ps1 -Configuration Debug -Filter '^game\.player\.mixed_selection_lifecycle$'
-python -B tools/check-selection-traces.py build/mingw-debug-exe/tests/scenario-traces --configuration Debug --compiler MinGW --target EXE --cheats false --trace false
-.\tools\test.ps1 -Configuration Release -Filter '^game\.player\.mixed_selection_lifecycle$'
-python -B tools/check-selection-traces.py build/mingw-release-exe/tests/scenario-traces --configuration Release --compiler MinGW --target EXE --cheats false --trace false
+. {
+    $ErrorActionPreference = 'Stop'
+    .\tools\test.ps1 -Configuration Debug -Filter '^game\.player\.mixed_selection_lifecycle$'
+    if ($LASTEXITCODE -ne 0) { throw 'Debug selection producer failed.' }
+    python -B tools/check-selection-traces.py build/mingw-debug-exe/tests/scenario-traces --configuration Debug --compiler MinGW --target EXE --cheats false --trace false
+    if ($LASTEXITCODE -ne 0) { throw 'Debug selection recordings failed validation.' }
+    .\tools\test.ps1 -Configuration Release -Filter '^game\.player\.mixed_selection_lifecycle$'
+    if ($LASTEXITCODE -ne 0) { throw 'Release selection producer failed.' }
+    python -B tools/check-selection-traces.py build/mingw-release-exe/tests/scenario-traces --configuration Release --compiler MinGW --target EXE --cheats false --trace false
+    if ($LASTEXITCODE -ne 0) { throw 'Release selection recordings failed validation.' }
+}
 ```
 
-Check each command's exit status before continuing. Direct CTest execution requires the matching built target and runtime DLLs described in [Testing](../TESTING.md). Normal CI validates all 32 files and sixteen exact replay pairs after uploading the engine results, with the actual checked-out revision, compiler, configuration, EXE/DLL role, cheats and trace profile. The repository check runs `test_selection_traces.py`; its malformed recordings test semantic validation independently of equality between two files. The shared strict parser rejects malformed/truncated JSONL and mismatched completion boundaries without a schema exception or numeric tolerance.
+Run the whole block as one statement; it stops on a producer or validator failure before continuing. Direct CTest execution requires the matching built target and runtime DLLs described in [Testing](../TESTING.md). Normal CI validates all 32 files and sixteen exact replay pairs after uploading the engine results, with the actual checked-out revision, compiler, configuration, EXE/DLL role, cheats and trace profile. The repository check runs `test_selection_traces.py`; its malformed recordings test semantic validation independently of equality between two files. The shared strict parser rejects malformed/truncated JSONL and mismatched completion boundaries without a schema exception or numeric tolerance.
 
 For fresh-process or reference/candidate comparisons, retain the 32 files in a separate directory before rerunning the producer, then pass that directory with `--reference <directory>`. The validator compares every corresponding file and reports the first difference, while retaining strict fixture/build-profile matching. `--revision <commit>` additionally checks the candidate's recorded source identity; the common comparator ignores source revision and dirty markers only, so provenance changes do not hide behavior differences. Repeatability of a current candidate does not select or accept a historical reference. The complete manifest, required process campaign, comparison policy, native evidence and exact-revision acceptance remain with the [whole-game baseline](baseline-completion.md#integrated-acceptance-evidence).
