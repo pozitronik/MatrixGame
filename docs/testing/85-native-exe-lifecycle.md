@@ -12,12 +12,19 @@ Configure the usual Debug and Release standalone test builds with the [build hel
 $cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
 foreach ($configuration in @('Debug', 'Release')) {
     $build = "build/mingw-$($configuration.ToLowerInvariant())-exe"
-    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=ON -DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=OFF -DMATRIXGAME_CHEATS=OFF
-    if ($LASTEXITCODE -ne 0) { throw 'Native test configuration failed.' }
-    & $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
-    if ($LASTEXITCODE -ne 0) { throw 'Native test build failed.' }
-    .\tools\test.ps1 -Configuration $configuration -NoBuild -Jobs 1 -Filter '^game\.session\.exe_'
-    if ($LASTEXITCODE -ne 0) { throw 'Native executable lifecycle check failed.' }
+    try {
+        & $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=ON -DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=OFF -DMATRIXGAME_CHEATS=OFF
+        if ($LASTEXITCODE -ne 0) { throw 'Native test configuration failed.' }
+        & $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
+        if ($LASTEXITCODE -ne 0) { throw 'Native test build failed.' }
+        .\tools\test.ps1 -Configuration $configuration -NoBuild -Jobs 1 -Filter '^game\.session\.exe_'
+        if ($LASTEXITCODE -ne 0) { throw 'Native executable lifecycle check failed.' }
+    } finally {
+        & $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=OFF -DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=OFF
+        if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: native registration remains unverified. Do not run ordinary tests yet.' }
+        & $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
+        if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: default test binaries remain unverified. Rebuild before ordinary tests.' }
+    }
 }
 ```
 
@@ -33,16 +40,25 @@ These commands launch visible windows. Start with the four relaunch checks, whil
 
 ```powershell
 $cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
-$build = 'build/mingw-debug-exe'
-& $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=ON -DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=ON -DMATRIXGAME_CHEATS=OFF
-if ($LASTEXITCODE -ne 0) { throw 'Visible native configuration failed.' }
-& $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
-if ($LASTEXITCODE -ne 0) { throw 'Visible native build failed.' }
-.\tools\test.ps1 -Configuration Debug -NoBuild -Jobs 1 -Filter '^game\.session\.exe_(same_map|different_map)(_packed)?$'
-if ($LASTEXITCODE -ne 0) { throw 'Visible relaunch checks failed.' }
+$configuration = 'Debug'
+$build = "build/mingw-$($configuration.ToLowerInvariant())-exe"
+$filter = '^game\.session\.exe_(same_map|different_map)(_packed)?$'
+try {
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=ON -DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=ON -DMATRIXGAME_CHEATS=OFF
+    if ($LASTEXITCODE -ne 0) { throw 'Visible native configuration failed.' }
+    & $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
+    if ($LASTEXITCODE -ne 0) { throw 'Visible native build failed.' }
+    .\tools\test.ps1 -Configuration $configuration -NoBuild -Jobs 1 -Filter $filter
+    if ($LASTEXITCODE -ne 0) { throw 'Visible native checks failed.' }
+} finally {
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=OFF -DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=OFF
+    if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: native registration remains unverified. Do not run ordinary tests yet.' }
+    & $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
+    if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: default test binaries remain unverified. Rebuild before ordinary tests.' }
+}
 ```
 
-If those pass, run the complete prefix selection above in this explicitly configured build, then repeat the setup for Release. Visible cases carry an additional `visible-window` label. Record the selected visibility profile, both native CMake options, source/configuration identities and probe/controller hashes; keep hidden and visible results distinct. The controller waits for the owned window to become visible before posting its first observation. Both profiles still require a real successful `Present` and subsequent simulation, and retain their existing 90/150-second case deadlines. Restore both options to OFF after the run so an ordinary test invocation does not launch cached visible cases.
+If those pass, rerun the entire visible block with `$filter = '^game\.session\.exe_'` for the complete selection, then repeat it with `$configuration = 'Release'`. Each run restores both options to OFF and rebuilds the default controller/probe, including on failure. Visible cases carry an additional `visible-window` label. Record the selected visibility profile, both native CMake options, source/configuration identities and probe/controller hashes; keep hidden and visible results distinct. The controller waits for the owned window to become visible before posting its first observation. Both profiles still require a real successful `Present` and subsequent simulation, and retain their existing 90/150-second case deadlines.
 
 ## Cases and assertions
 
