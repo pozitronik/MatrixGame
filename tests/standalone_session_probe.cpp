@@ -18,6 +18,7 @@
 #include <array>
 #include <algorithm>
 #include <cwchar>
+#include <exception>
 #include <memory>
 #include <string>
 
@@ -173,14 +174,26 @@ struct Runtime {
             const auto mode = protocol::visible_windows ? tests::NativeWindowContainment::WindowMode::Visible :
                                                          tests::NativeWindowContainment::WindowMode::Hidden;
             windows = std::make_unique<tests::NativeWindowContainment>(diagnostic, true, mode);
+            if constexpr (protocol::visible_windows)
+                InterlockedExchange(&observed->panel, reinterpret_cast<LONG>(windows->parent()));
             hook = SetWindowsHookExW(WH_CALLWNDPROC, messages, nullptr, GetCurrentThreadId());
             queue_hook = SetWindowsHookExW(WH_GETMESSAGE, queued_messages, nullptr, GetCurrentThreadId());
             if (!hook || !queue_hook) ExitProcess(97);
+        } catch (const std::exception &error) {
+            if constexpr (protocol::visible_windows)
+                if (observed) {
+                    const std::string text = error.what();
+                    const std::wstring message(text.begin(), text.end());
+                    diagnostic(L"Native containment initialization", message.c_str());
+                }
+            ExitProcess(97);
         } catch (...) { ExitProcess(97); }
     }
     ~Runtime() {
         if (hook) UnhookWindowsHookEx(hook);
         if (queue_hook) UnhookWindowsHookEx(queue_hook);
+        if constexpr (protocol::visible_windows)
+            if (observed) InterlockedExchange(&observed->panel, 0);
         windows.reset();
         if (shared) UnmapViewOfFile(shared);
         if (mapping) CloseHandle(mapping);

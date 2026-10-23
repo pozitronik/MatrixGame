@@ -1078,6 +1078,10 @@ if(NOT MATRIXGAME_BUILD_DLL)
         game.session.exe_configuration_assets $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
     set_tests_properties(game.session.exe_configuration_assets PROPERTIES
         LABELS "engine;asset-free;startup;storage" TIMEOUT 30)
+    add_test(NAME game.session.exe_pointer_guard_policy COMMAND matrixgame_standalone_session_tests
+        game.session.exe_pointer_guard_policy $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
+    set_tests_properties(game.session.exe_pointer_guard_policy PROPERTIES
+        LABELS "engine;asset-free;startup;input" TIMEOUT 30)
     option(MATRIXGAME_NATIVE_EXE_TESTS "Run contained native Direct3D 9 executable lifecycle checks" OFF)
     option(MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS "Show bounded nonactivating windows for native EXE tests" OFF)
     if(MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS AND NOT MATRIXGAME_NATIVE_EXE_TESTS)

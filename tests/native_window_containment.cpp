@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "native_window_containment.hpp"
 #include "native_cursor_state.hpp"
+#include "native_pointer_guard.hpp"
 #include <array>
 #include <bit>
 #include <cstring>
@@ -202,9 +203,12 @@ NativeWindowContainment::NativeWindowContainment(Diagnostic diagnostic, bool req
     if (state->imports.empty()) throw std::runtime_error("No test window imports adapted");
     if (require_documents && !documents_adapted) throw std::runtime_error("Test Documents lookup was not contained");
     if (!cursor_adapted || !cursor_count_adapted || !clip_adapted) throw std::runtime_error("Test cursor presentation was not contained");
-    if (visible && !SetWindowPos(hidden_parent, HWND_TOPMOST, 50, 50, 640, 480,
-                                 SWP_NOACTIVATE | SWP_SHOWWINDOW))
-        throw std::runtime_error("Cannot show bounded native test parent");
+    if (visible) {
+        require_pointer_outside_panel(true, [](POINT &point) { return GetCursorPos(&point); },
+            [](RECT &rectangle) { return GetWindowRect(hidden_parent, &rectangle); });
+        if (!SetWindowPos(hidden_parent, HWND_TOPMOST, 50, 50, 640, 480, SWP_NOACTIVATE | SWP_SHOWWINDOW))
+            throw std::runtime_error("Cannot show bounded native test parent");
+    }
 }
 NativeWindowContainment::~NativeWindowContainment() = default;
 HWND NativeWindowContainment::parent() const { return hidden_parent; }

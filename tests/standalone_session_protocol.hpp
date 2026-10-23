@@ -7,7 +7,7 @@ namespace tests::native_session {
 inline constexpr UINT snapshot_message = WM_APP + 0x385;
 inline constexpr UINT diagnostic_snapshot_message = snapshot_message + 1;
 inline constexpr wchar_t environment[] = L"MATRIXGAME_NATIVE_TEST";
-inline constexpr LONG version = 4;
+inline constexpr LONG version = 5;
 #if defined(MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS) && MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS
 inline constexpr bool visible_windows = true;
 #else
@@ -35,7 +35,7 @@ struct Snapshot {
     int draw_fps{}, backbuffer_width{}, backbuffer_height{}, device_windowed{};
 };
 struct Process {
-    volatile LONG id{}, window{}, diagnostics{}, snapshot_generation{}, request{};
+    volatile LONG id{}, window{}, panel{}, diagnostics{}, snapshot_generation{}, request{};
     wchar_t diagnostic_title[80]{}, diagnostic_text[2048]{};
     Snapshot snapshot;
 };

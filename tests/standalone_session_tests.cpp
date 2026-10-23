@@ -3,6 +3,7 @@
 #include "native_session_assets.hpp"
 #include "native_outcome_assets.hpp"
 #include "native_packed_config.hpp"
+#include "native_pointer_guard.hpp"
 #include "standalone_session_protocol.hpp"
 #include "CMain.hpp"
 #include "StandaloneSettings.hpp"
@@ -95,7 +96,17 @@ struct Deployment {
         }
     }
 };
+void same_tree(const Base::CBlockPar &left, const Base::CBlockPar &right) {
+    MG_CHECK(left.ParCount() == right.ParCount() && left.BlockCount() == right.BlockCount());
+    for (int i = 0; i < left.ParCount(); ++i)
+        MG_CHECK(left.ParGetName(i) == right.ParGetName(i) && left.ParGet(i) == right.ParGet(i));
+    for (int i = 0; i < left.BlockCount(); ++i) {
+        MG_CHECK(left.BlockGetName(i) == right.BlockGetName(i));
+        same_tree(*left.BlockGet(i), *right.BlockGet(i));
+    }
+}
 void configuration_assets() {
+    Base::CBlockPar text_data, text_interface;
     for (auto profile : {ConfigurationProfile::Text, ConfigurationProfile::Packed}) {
         Deployment deployment(profile);
         Base::CBlockPar data, interface_config;
@@ -111,10 +122,41 @@ void configuration_assets() {
             MG_CHECK(!fs::exists(config / "robots.dat"));
             data.LoadFromTextFile((config / "robots/data.txt").c_str());
             interface_config.LoadFromTextFile((config / "robots/iface.txt").c_str());
+            text_data.LoadFromTextFile((config / "robots/data.txt").c_str());
+            text_interface.LoadFromTextFile((config / "robots/iface.txt").c_str());
         }
         MG_CHECK(data.BlockGet(L"Config")->ParGet(L"SoftwareCursor") == L"1");
         MG_CHECK(interface_config.BlockCount() > 0);
+        same_tree(text_data, data);
+        same_tree(text_interface, interface_config);
     }
+}
+void pointer_guard_policy() {
+    const RECT panel{50, 50, 690, 530};
+    int cursor_queries{}, panel_queries{};
+    const auto check = [&](bool visible, POINT point, bool cursor_ok = true, bool panel_ok = true,
+                           RECT rectangle = RECT{50, 50, 690, 530}) {
+        tests::require_pointer_outside_panel(visible, [&](POINT &result) {
+            ++cursor_queries; result = point; return cursor_ok;
+        }, [&](RECT &result) { ++panel_queries; result = rectangle; return panel_ok; });
+    };
+    check(false, POINT{50, 50}, false, false);
+    MG_CHECK(cursor_queries == 0 && panel_queries == 0);
+    for (auto point : {POINT{49, 50}, POINT{50, 49}, POINT{panel.right, 50}, POINT{50, panel.bottom}})
+        check(true, point);
+    const auto rejected = [&](POINT point, bool cursor_ok, bool panel_ok, RECT rectangle, const char *message) {
+        bool failed = false;
+        try { check(true, point, cursor_ok, panel_ok, rectangle); }
+        catch (const std::runtime_error &error) { failed = std::string_view(error.what()).find(message) != std::string_view::npos; }
+        MG_CHECK(failed);
+    };
+    for (auto point : {POINT{50, 50}, POINT{689, 529}, POINT{300, 200}})
+        rejected(point, true, true, panel, "Physical pointer entered");
+    rejected(POINT{0, 0}, false, true, panel, "Cannot read physical pointer");
+    rejected(POINT{0, 0}, true, false, panel, "panel rectangle");
+    rejected(POINT{0, 0}, true, true, RECT{50, 50, 50, 530}, "panel rectangle");
+    rejected(POINT{0, 0}, true, true, RECT{50, 530, 690, 50}, "panel rectangle");
+    MG_CHECK(cursor_queries == 11 && panel_queries == 10);
 }
 struct Process {
     HANDLE handle{};
@@ -167,7 +209,32 @@ struct Harness {
             MG_CHECK(resumed != DWORD(-1));
         } catch (...) { cleanup(); throw; }
     }
-    bool pump(DWORD timeout = 10) {
+    void check_pointer() {
+        if constexpr (protocol::visible_windows) {
+            for (auto &entry : shared->processes) {
+                const auto panel_value = InterlockedCompareExchange(&entry.panel, 0, 0);
+                if (!panel_value) continue; // The probe checks before showing, and clears before destruction.
+                const auto panel = reinterpret_cast<HWND>(panel_value);
+                const auto pid = DWORD(InterlockedCompareExchange(&entry.id, 0, 0));
+                if (const auto found = processes.find(pid); found != processes.end() &&
+                    (found->second.exited || WaitForSingleObject(found->second.handle, 0) == WAIT_OBJECT_0)) continue;
+                DWORD owner{};
+                const auto thread = GetWindowThreadProcessId(panel, &owner);
+                RECT rectangle{};
+                const bool valid = thread && owner == pid && GetWindowRect(panel, &rectangle);
+                if (!valid) {
+                    if (InterlockedCompareExchange(&entry.panel, 0, 0) == 0) continue;
+                    if (const auto found = processes.find(pid); found != processes.end() &&
+                        WaitForSingleObject(found->second.handle, 0) == WAIT_OBJECT_0) continue;
+                    throw std::runtime_error("Cannot verify owned visible native test panel");
+                }
+                tests::require_pointer_outside_panel(true, [](POINT &point) { return GetCursorPos(&point); },
+                    [&](RECT &result) { result = rectangle; return true; });
+            }
+        }
+    }
+    bool pump(DWORD timeout = 10, bool guard_pointer = true) {
+        if (guard_pointer) check_pointer();
         DEBUG_EVENT event{};
         if (!WaitForDebugEvent(&event, timeout)) return false;
         DWORD disposition = DBG_CONTINUE;
@@ -214,6 +281,7 @@ struct Harness {
         } else {
             MG_CHECK(!IsWindowVisible(target));
         }
+        check_pointer();
         return PostMessageW(target, code, wp, lp) != 0;
     }
     std::optional<protocol::Snapshot> snapshot(DWORD pid, bool diagnostic = false) {
@@ -295,7 +363,7 @@ struct Harness {
             bool active = root_pid && !processes.contains(root_pid);
             for (const auto &[id, child] : processes) if (!child.exited) active = true;
             if (!active) break;
-            try { pump(); } catch (...) { break; }
+            try { pump(10, false); } catch (...) { break; }
         }
         for (const auto &[id, child] : processes) {
             WaitForSingleObject(child.handle, 1000);
@@ -741,6 +809,7 @@ int main(int argc, char **argv) {
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
     tests::Case cases[] = {{"game.session.exe_configuration_assets", configuration_assets},
+        {"game.session.exe_pointer_guard_policy", pointer_guard_policy},
         {"game.session.exe_startup_selector_close", startup_selector_close},
         {"game.session.exe_surrender_close", [] { battle_end(true, true, true); }},
         {"game.session.exe_startup_cancel", startup_cancel}, {"game.session.exe_startup_battle", startup_battle},
