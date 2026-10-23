@@ -210,6 +210,15 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $sourceRevision) { throw 'Cannot identify the N5 producer source revision.' }
           python -B tests/check_navigation_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --revision $sourceRevision
           if ($LASTEXITCODE -ne 0) { throw 'N5 producer/parser validation failed.' }
+      - name: Validate existing armed-combat recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify combat recording revision.' }
+          python -B tools/check-combat-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Armed-combat recording validation failed.' }
       - name: Prepare the minimal standalone package
         if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         shell: pwsh
