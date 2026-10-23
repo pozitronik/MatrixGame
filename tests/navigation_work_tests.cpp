@@ -174,9 +174,9 @@ void write_work_states(std::ofstream &trace, const tests::navigation_work::Repor
         trace << "{\"type\":\"snapshot\",\"state\":" << std::string_view(state.data(), separator)
               << ",\"navigation\":" << std::string_view(state.data() + separator + 1, state.size() - separator - 1)
               << "}\n";
-        trace.flush();
-        MG_CHECK(trace.good());
     }
+    trace.flush();
+    MG_CHECK(trace.good());
     MG_CHECK(random::draw_count() == draws);
 }
 

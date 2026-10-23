@@ -135,7 +135,7 @@ def changed(records, index, edit):
     return result
 
 
-def controls(path, records, description, arguments):
+def controls(path, records, description, arguments, check_tails):
     family, physical, rng, step = description
     first = next(i for i, record in enumerate(records) if record["type"] == "snapshot")
     def mutate_position(record):
@@ -162,7 +162,7 @@ def controls(path, records, description, arguments):
             pass
         else:
             raise ValueError("two equally incomplete/invalid actor exports could pass")
-    for tail in ("missing", "invalid", "duplicate", "boundary"):
+    for tail in (("missing", "invalid", "duplicate", "boundary") if check_tails else ()):
         with path.open(encoding="utf-8") as stream:
             if tail == "missing":
                 lines = itertools.islice(stream, len(records) - 1)
@@ -177,7 +177,7 @@ def controls(path, records, description, arguments):
                 pass
             else:
                 raise ValueError("invalid/incomplete tail was accepted: " + tail)
-    return 9
+    return 5 + (4 if check_tails else 0)
 
 
 def main():
@@ -209,7 +209,8 @@ def main():
             common_profile = profile
             if baseline is None:
                 baseline = records
-                sensitivity += controls(path, records, (family, physical, rng, step), arguments)
+                # Tail parsing is profile-independent: retain one representative per scene.
+                sensitivity += controls(path, records, (family, physical, rng, step), arguments, rng == "pm" and step == 10)
             else:
                 difference = TRACES.compare_records(baseline, records)
                 require(difference is None, str(path) + ": " + str(difference))
