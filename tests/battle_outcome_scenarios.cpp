@@ -8,6 +8,7 @@
 #include "battle_mesh.hpp"
 #include "MatrixObject.hpp"
 #include <array>
+#include <bit>
 #include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include "test_support.hpp"
 #include "command_world.hpp"
@@ -2183,6 +2184,166 @@ void transport_context_rejection() {
         MG_CHECK(first == transport_context_rejection_run(mode, step, after_landing));
     }
 }
+enum class TransportOpponent { Delivery, EmptyCarrier, GroundRobot };
+std::vector<std::string> transport_ai_acquisition_run(random::Mode mode, int step, TransportOpponent opponent) {
+    tests::BattleMaterialProfile materials;
+    tests::BattleCombatAssets assets;
+    Session session(transport_outcome_profile(mode, step));
+    assets.install();
+    DialogData dialog;
+    MG_CHECK(session.remove(1) && session.remove(4));
+    CMatrixRobotAI *attacker = nullptr, *sentinel = nullptr;
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+        if (object->IsLiveRobot()) {
+            if (session.matches(3, object->AsRobot())) attacker = object->AsRobot();
+            if (session.matches(2, object->AsRobot())) sentinel = object->AsRobot();
+        }
+    MG_CHECK(attacker && sentinel);
+    auto attacker_core = retain_core(*attacker);
+    auto sentinel_core = retain_core(*sentinel);
+    g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 500;
+    g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+    g_Config.m_RobotDamages[Weap2Index(WEAPON_LASER)] = {1, 0, 0};
+    // One heat unit per emission, no cooling or overheat within this bounded run.
+    // IsFireWas() is a consuming query used by production; never sample it here.
+    g_Config.m_Overheat[WEAPON_LASER_HEAT] = 1;
+    g_Config.m_Overheat[WEAPON_LASER_COOL] = 0;
+    g_Config.m_Overheat[WCP_LASER] = 100;
+    g_Config.m_ItemChars[ARMOR1_ROTATION_SPEED] = 0.04f;
+    g_MatrixMap->m_Difficulty.k_damage_enemy_to_player = 1;
+    tests::arm_battle_robot(*attacker, RUK_WEAPON_LASER);
+    auto place = [](CMatrixRobotAI &robot, float x, float y) {
+        robot.m_PosX = x; robot.m_PosY = y;
+        robot.SetMaxSpeed(0); robot.m_GroupSpeed = 0;
+        robot.MapPosCalc(); robot.RChange(MR_Matrix); robot.RNeed(MR_Matrix);
+        robot.m_CalcBoundsLastTime = -100; robot.JoinToGroup();
+    };
+    place(*attacker, 80, 100);
+    // Keep the player active in the empty-carrier control, outside perception range.
+    place(*sentinel, 600, 600);
+    const float sentinel_health = sentinel->GetHitPoint();
+    auto *carrier = order_outcome_transport(PLAYER_SIDE, true);
+    auto carrier_core = retain_core(*carrier);
+    auto *cargo = carrier->GetCarryingRobot()->AsRobot();
+    auto cargo_core = retain_core(*cargo);
+    MG_CHECK(cargo->m_AimProtect == 0 && carrier->GetSide() != attacker->GetSide());
+    CMatrixRobotAI *target = cargo;
+    if (opponent != TransportOpponent::Delivery) {
+        g_MatrixMap->StaticDelete(cargo); // Initial negative-control fixture, before the first tick.
+        MG_CHECK(!cargo_core->m_Object && !carrier->CarryingRobot());
+        target = nullptr;
+        if (opponent == TransportOpponent::GroundRobot) {
+            target = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 200, 300);
+            target->InitMaxHitpoint(1500);
+            place(*target, 200, 300);
+        }
+    }
+    auto target_core = target ? retain_core(*target) : OutcomeCore(nullptr, [](SObjectCore *core) { core->Release(); });
+    if (target) MG_CHECK(target->m_AimProtect == 0);
+    const float health = target ? target->GetHitPoint() : 0;
+    int acquired = 0, targeted = 0, fired = 0, emitted = 0, damaged = 0, released = 0, landed = 0;
+    int previous_heat = 0;
+    float max_attacker_displacement = 0, max_sentinel_displacement = 0;
+    std::vector<std::string> trace;
+    std::cout << session.metadata("transport-ai-acquisition-v1") << " opponent=" << int(opponent) << std::endl;
+    auto role = [&](CMatrixMapStatic *object) {
+        if (!object) return 0;
+        if (object == target) return 1;
+        if (object == carrier) return 2;
+        if (object == sentinel) return 3;
+        MG_CHECK(false); // No unclassified or stale target is accepted as null.
+        return -1;
+    };
+    while (session.time() < (opponent == TransportOpponent::Delivery ? 12000 : 2000)) {
+        session.advance();
+        MG_CHECK(!carrier_core->m_Object || carrier_core->m_Object == carrier);
+        MG_CHECK(attacker_core->m_Object == attacker && sentinel_core->m_Object == sentinel);
+        MG_CHECK(attacker->IsLiveRobot() && sentinel->IsLiveRobot());
+        max_attacker_displacement = std::max(max_attacker_displacement,
+            std::max(std::abs(attacker->m_PosX - 80), std::abs(attacker->m_PosY - 100)));
+        max_sentinel_displacement = std::max(max_sentinel_displacement,
+            std::max(std::abs(sentinel->m_PosX - 600), std::abs(sentinel->m_PosY - 600)));
+        MG_CHECK(sentinel->GetHitPoint() == sentinel_health);
+        MG_CHECK(side().GetStatus() == SS_ACTIVE && !g_MatrixMap->IsPaused() && !g_MatrixMap->m_DialogModeName);
+        auto &env = *attacker->GetEnv();
+        MG_CHECK(!env.SearchEnemy(carrier) && env.m_TargetAttack != carrier && env.m_Target != carrier);
+        MG_CHECK(!env.SearchEnemy(sentinel));
+        if (target) {
+            MG_CHECK(target_core->m_Object == target && target->IsLiveRobot());
+            MG_CHECK(env.m_EnemyCnt == int(env.SearchEnemy(target) != nullptr));
+            if (!acquired && env.SearchEnemy(target)) acquired = session.time();
+            if (!targeted && env.m_TargetAttack == target) targeted = session.time();
+            if (!damaged && target->GetHitPoint() < health) damaged = session.time();
+            if (opponent == TransportOpponent::Delivery) {
+                MG_CHECK(cargo->m_CurrState == ROBOT_CARRYING || cargo->m_CurrState == ROBOT_FALLING ||
+                         cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD);
+                if (carrier_core->m_Object)
+                    MG_CHECK(carrier->CarryingRobot() == (cargo->m_CurrState == ROBOT_CARRYING));
+                if (!released && cargo->m_CurrState != ROBOT_CARRYING) released = session.time();
+                if (!landed && cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) landed = session.time();
+                if (landed) MG_CHECK(cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD);
+            }
+        }
+        if (!fired && attacker->FindOrderLikeThat(ROT_FIRE)) fired = session.time();
+        const int heat = attacker->GetWeapon(0).m_Heat;
+        MG_CHECK(heat >= previous_heat && heat < WEAPON_MAX_HEAT);
+        if (!emitted && heat > 0) emitted = session.time();
+        previous_heat = heat;
+        std::ostringstream frame;
+        frame << session.snapshot() << ":enemy=" << env.m_EnemyCnt << ":attack=" << role(env.m_TargetAttack)
+              << ":target=" << role(env.m_Target) << ":heat=" << heat;
+        auto vector = [&](const D3DXVECTOR3 &value) {
+            frame << ':' << std::bit_cast<uint32_t>(value.x) << ',' << std::bit_cast<uint32_t>(value.y)
+                  << ',' << std::bit_cast<uint32_t>(value.z);
+        };
+        for (int i = 0; i < attacker->GetOrdersInPool(); ++i) {
+            const auto *order = attacker->GetOrder(i);
+            if (order->m_OrderType != ROT_FIRE) continue;
+            MG_CHECK(target && env.m_Target == target && target_core->m_Object == target);
+            const auto aim = target->GetGeoCenter() + D3DXVECTOR3(0, 0, 5);
+            MG_CHECK(order->m_Param1 == aim.x && order->m_Param2 == aim.y && order->m_Param3 == aim.z);
+            vector(aim);
+        }
+        if (target) {
+            vector(target->GetGeoCenter());
+            frame << ":health=" << std::bit_cast<uint32_t>(target->GetHitPoint()) << ":state=" << target->m_CurrState;
+        }
+        frame << ":carrier=" << bool(carrier_core->m_Object);
+        if (carrier_core->m_Object) {
+            vector(carrier->GetPos());
+            frame << ":carrying=" << carrier->CarryingRobot() << ":health=" << std::bit_cast<uint32_t>(carrier->GetHitPoint());
+        }
+        trace.push_back(frame.str());
+    }
+    std::cout << "acquired=" << acquired << " targeted=" << targeted << " fired=" << fired << " damaged=" << damaged
+              << " released=" << released << " landed=" << landed << " health=" << (target ? target->GetHitPoint() : 0)
+              << " carrier=" << bool(carrier_core->m_Object) << " emitted=" << emitted << " heat=" << previous_heat
+              << " attacker_displacement=" << max_attacker_displacement << " sentinel_displacement=" << max_sentinel_displacement << std::endl;
+    if (target) {
+        MG_CHECK(acquired && targeted && fired && emitted && damaged);
+        MG_CHECK(acquired == (100 / step + 1) * step && targeted == acquired + step);
+        MG_CHECK(targeted == fired && fired < emitted && emitted == damaged);
+        if (opponent == TransportOpponent::Delivery) {
+            MG_CHECK(targeted < released && released < landed && landed < emitted && emitted < landed + 1000);
+            MG_CHECK(!carrier_core->m_Object && cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD);
+        } else {
+            MG_CHECK(emitted < 1000);
+        }
+    } else {
+        MG_CHECK(!acquired && !targeted && !fired && !emitted && !damaged && previous_heat == 0);
+        MG_CHECK(carrier_core->m_Object == carrier && attacker->GetEnv()->m_EnemyCnt == 0);
+    }
+    MG_CHECK(side().GetStatValue(STAT_ROBOT_KILL) == 0);
+    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 0);
+    return trace;
+}
+void transport_ai_acquisition() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (auto opponent : {TransportOpponent::Delivery, TransportOpponent::EmptyCarrier, TransportOpponent::GroundRobot}) {
+        const auto first = transport_ai_acquisition_run(mode, step, opponent);
+        MG_CHECK(first == transport_ai_acquisition_run(mode, step, opponent));
+    }
+}
 void transport_projectile_outcomes() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
     for (bool cargo : {false, true}) for (bool after_landing : {false, true}) {
@@ -3830,6 +3991,7 @@ constexpr tests::Case cases[] = {
     {"game.outcome.armed_flyer_does_not_prevent_elimination", armed_flyer_does_not_prevent_elimination},
     {"game.outcome.transport_projectile_outcomes", transport_projectile_outcomes},
     {"game.outcome.transport_context_rejection", transport_context_rejection},
+    {"game.outcome.transport_ai_acquisition", transport_ai_acquisition},
     {"game.outcome.transported_robot_removal", transported_robot_removal_outcome},
     {"game.outcome.carrier_removal", carrier_removal_outcome},
     {"game.outcome.carrier_damage", carrier_damage_outcome},

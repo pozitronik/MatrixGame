@@ -130,6 +130,8 @@ The [presentation evidence guide](testing/87-presentation.md) maps PRES-01 throu
 
 The [capture and battle outcome guide](testing/85-battle-outcomes.md) describes capture transitions, survival and objective rules, transport lifetime and result/pause boundaries.
 
+The [autonomous transport targeting case](testing/85-transport-ai.md) distinguishes carried-robot acquisition and aiming from actual firing after landing, with empty-carrier rejection, a ground-combat control and both-RNG replay.
+
 The [standalone selector continuation cases](testing/85-map-window-continuations.md) connect the battle menu and win/loss/surrender statistics to actual selector input, cancellation and persisted same/different-map choices. They stop at the relaunch request; full process startup and the parent/child handshake remain separate lifecycle checks.
 
 The [owned-session cleanup and Restart failure guide](testing/85-restart-failures.md) distinguishes the passing loop/teardown control from two opt-in terminating failure probes. Missing-map callback containment and corrupt-storage recovery remain separate correction prerequisites. Debug leaks during production cleanup can still show the engine's modal leak report, as documented in that guide.
