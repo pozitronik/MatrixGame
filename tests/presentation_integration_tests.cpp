@@ -137,8 +137,8 @@ struct BattleSound {
     std::shared_ptr<audio_fixture::DeviceState> device = std::make_shared<audio_fixture::DeviceState>();
     std::vector<std::wstring> loaded;
     std::vector<std::wstring> reported;
-    explicit BattleSound(random::Mode mode, bool enabled = true, bool speech = true)
-      : session({mode, 87, 10, 1000, false, true}) {
+    explicit BattleSound(random::Mode mode, bool enabled = true, bool speech = true, int step = 10)
+      : session({mode, 87, step, 1000, false, true}) {
         CSound::Init();
         Audio::Mapping mapping;
         for (const auto *name : {L"Sound.Synthetic", L"s_ord_attack", L"s_ord_inprogress1",
@@ -159,6 +159,14 @@ struct BattleSound {
                 }, [this](const std::wstring &name, const std::string &) { reported.push_back(name); }));
     }
     ~BattleSound() { CSound::Clear(); SoundBridge::shutdown(); }
+    std::string loop_metadata(std::string_view fixture) const {
+        auto metadata = session.metadata(fixture);
+        const std::string base_audio = "\"audio\":\"unavailable\"";
+        const auto position = metadata.find(base_audio);
+        MG_CHECK(position != std::string::npos);
+        metadata.replace(position, base_audio.size(), "\"audio\":\"synthetic-continuous-loop\"");
+        return metadata;
+    }
 };
 
 void battle_acknowledgements() {
@@ -373,6 +381,115 @@ void weapon_positional_loop(bool stop_before_retirement) {
 }
 void weapon_positional_loop_stop() { weapon_positional_loop(true); }
 void weapon_positional_loop_retirement() { weapon_positional_loop(false); }
+
+void automatic_positional_camera() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        BattleSound sound(mode, true, true, step);
+        std::cout << sound.loop_metadata("automatic-positional-camera-v1") << std::endl;
+        auto &camera = g_MatrixMap->m_Camera;
+        // Exact sound-grid coordinates avoid quantization changes in the update route.
+        const D3DXVECTOR3 source(400, 400, 400);
+        auto place_camera = [&](float offset) {
+            const auto center = camera.GetFrustumCenter();
+            const auto right = camera.GetRight();
+            const auto xy = camera.GetXYStrategy();
+            camera.SetXYStrategy(xy + D3DXVECTOR2(source.x - center.x - right.x * offset,
+                                                source.y - center.y - right.y * offset));
+            camera.Takt(0);
+            camera.BeforeDraw();
+        };
+        auto update = [&] {
+            // CSound::Takt has a process-retained phase and a strict >100 ms gate.
+            // Cross a complete update interval without resetting its private clock.
+            const int deadline = sound.session.time() + 120;
+            while (sound.session.time() < deadline) sound.session.advance();
+        };
+        auto expected = [&](const std::shared_ptr<audio_fixture::State> &voice) {
+            float pan, volume;
+            CSound::CalcPanVol(source, 0.001f, -1, 1, 0, 1, &pan, &volume);
+            MG_CHECK(std::abs(voice->pan - pan) < 0.00001f);
+            MG_CHECK(std::abs(voice->volume - volume) < 0.00001f);
+        };
+        place_camera(700);
+        CSound::AddSound(S_WEAPON_LASER, source);
+        MG_CHECK(sound.device->voices.size() == 1);
+        auto voice = sound.device->voices.front();
+        MG_CHECK(voice->playing && voice->loop && voice->destroyed == 0);
+        expected(voice);
+        const auto initial_pan = voice->pan, initial_volume = voice->volume;
+        place_camera(-300);
+        MG_CHECK(voice->pan == initial_pan && voice->volume == initial_volume);
+        update();
+        expected(voice);
+        MG_CHECK(voice->pan < 0 && initial_pan > 0 && voice->volume > initial_volume);
+        MG_CHECK(sound.device->voices.size() == 1 && voice->destroyed == 0);
+        place_camera(2000);
+        update();
+        MG_CHECK(!voice->playing && voice->destroyed == 1);
+        place_camera(300);
+        update();
+        MG_CHECK(sound.device->voices.size() == 1 && !voice->playing && voice->destroyed == 1);
+        CSound::AddSound(S_WEAPON_LASER, source);
+        MG_CHECK(sound.device->voices.size() == 2);
+        const auto replacement = sound.device->voices.back();
+        MG_CHECK(replacement != voice && replacement->playing && replacement->loop);
+        expected(replacement);
+        CSound::Clear();
+        update();
+        MG_CHECK(!replacement->playing && replacement->destroyed == 1 && voice->destroyed == 1);
+        MG_CHECK(sound.device->voices.size() == 2 && sound.reported.empty());
+        MG_CHECK(sound.loaded == std::vector<std::wstring>{L"wlaser"});
+        std::cout << "map_ticks=" << sound.session.frame() << " voices=2 destroyed=2\n";
+    }
+}
+
+void repeated_weapon_loop() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
+        BattleSound sound(mode, true, true, step);
+        std::cout << sound.loop_metadata("repeated-weapon-loop-v1") << std::endl;
+        g_MatrixData->BlockGet(L"Sounds")->BlockGet(L"wlaser")->ParSetAdd(L"attn", L"10");
+        g_Config.m_WeaponRadius[Weap2Index(WEAPON_LASER)] = 1;
+        g_Config.m_WeaponCooldown[Weap2Index(WEAPON_LASER)] = 100;
+        const auto center = g_MatrixMap->m_Camera.GetFrustumCenter();
+        const auto right = g_MatrixMap->m_Camera.GetRight();
+        const D3DXVECTOR3 direction(0, 0, 1), speed(0, 0, 0);
+        auto release = [](CMatrixEffectWeapon *effect) { effect->Release(); };
+        std::unique_ptr<CMatrixEffectWeapon, decltype(release)> weapon(
+            static_cast<CMatrixEffectWeapon *>(CMatrixEffect::CreateWeapon(
+                center + right * 25, direction, 0, nullptr, WEAPON_LASER)), release);
+        weapon->FireBegin(speed, nullptr);
+        const auto draws = random::draw_count();
+        std::shared_ptr<audio_fixture::State> voice;
+        for (int tick = 0; tick < 64; ++tick) {
+            const float distance = tick < 16 ? 25 : tick < 32 ? 260 : -225;
+            weapon->Modify(center + right * distance, direction, speed);
+            weapon->Takt(float(step));
+            MG_CHECK(weapon->GetFireCount() == 1 + tick * step / 100);
+            MG_CHECK(sound.device->voices.size() == 1);
+            if (!voice) voice = sound.device->voices.front();
+            MG_CHECK(sound.device->voices.front() == voice && voice->playing && voice->loop && voice->destroyed == 0);
+            if (tick < 16) MG_CHECK(voice->pan > 0.999f && voice->volume == 1);
+            else if (tick < 32) MG_CHECK(voice->volume == 0);
+            else MG_CHECK(voice->pan < -0.999f && std::abs(voice->volume - 0.5f) < 0.00001f);
+        }
+        const int shots = weapon->GetFireCount();
+        MG_CHECK(shots > 5 && sound.loaded == std::vector<std::wstring>{L"wlaser"});
+        weapon->FireEnd();
+        MG_CHECK(!voice->playing && voice->destroyed == 1);
+        weapon->FireBegin(speed, nullptr);
+        weapon->Takt(100);
+        MG_CHECK(weapon->GetFireCount() == shots + 1 && sound.device->voices.size() == 2);
+        const auto replacement = sound.device->voices.back();
+        MG_CHECK(replacement != voice && replacement->playing && replacement->loop && replacement->destroyed == 0);
+        MG_CHECK(sound.loaded == std::vector<std::wstring>{L"wlaser"});
+        weapon.reset();
+        MG_CHECK(!replacement->playing && replacement->destroyed == 1 && voice->destroyed == 1);
+        CSound::Clear();
+        MG_CHECK(sound.device->voices.size() == 2 && replacement->destroyed == 1 && voice->destroyed == 1);
+        MG_CHECK(sound.reported.empty() && random::draw_count() == draws);
+        std::cout << "weapon_ticks=64+1x100ms map_ticks=0 shots_before_restart=" << shots << " voices=2 destroyed=2\n";
+    }
+}
 
 void missing_speech_mapping() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
@@ -660,6 +777,8 @@ void camera_input_interruption() {
     }
 }
 constexpr tests::Case cases[]{
+    {"game.presentation.automatic_positional_camera", automatic_positional_camera},
+    {"game.presentation.repeated_weapon_loop", repeated_weapon_loop},
     {"game.presentation.weapon_positional_loop_stop", weapon_positional_loop_stop},
     {"game.presentation.weapon_positional_loop_retirement", weapon_positional_loop_retirement},
     {"game.presentation.manual_fire_interface_focus", manual_fire_interface_focus},
