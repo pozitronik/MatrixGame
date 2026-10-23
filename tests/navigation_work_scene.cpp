@@ -81,7 +81,8 @@ struct Scene::Impl {
 
     static battle::Profile profile(Options options) {
         battle::Profile profile{options.mode, 81, options.step_ms, horizon / options.step_ms, false, true};
-        profile.layout = options.kind == Kind::OpposingFlow ? NavigationLayout::Open : NavigationLayout::CentralObstacle;
+        profile.layout = options.kind == Kind::OpposingFlow ? NavigationLayout::Open
+                                                         : NavigationLayout::CentralObstacle;
         return profile;
     }
 

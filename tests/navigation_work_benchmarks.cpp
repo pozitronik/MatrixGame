@@ -4,6 +4,7 @@
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <float.h>
 #include <iostream>
 #include <limits>
@@ -61,8 +62,11 @@ public:
         }
         std::uint64_t hash = 14695981039346656037ull;
         for (const auto &state : collected.states) {
-            for (unsigned char byte : state) { hash ^= byte; hash *= 1099511628211ull; }
-            hash ^= 0; hash *= 1099511628211ull;
+            for (unsigned char byte : state) {
+                hash ^= byte;
+                hash *= 1099511628211ull;
+            }
+            hash *= 1099511628211ull; // A zero-byte separator between snapshots.
         }
         count(details, "trajectory_fnv64_low", static_cast<std::uint32_t>(hash));
         count(details, "trajectory_fnv64_high", hash >> 32);
