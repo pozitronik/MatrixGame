@@ -122,7 +122,7 @@ The [construction and production contracts](testing/83-production.md) cover queu
 
 The [combat contracts](testing/82-combat.md) describe firing, damage, status and object lifetime oracles; select them with `^game\.combat\.`.
 
-The [navigation contracts](testing/81-navigation.md) describe alternate topology, local movement and carrier lifetime; select them with `^game\.navigation\.`.
+The [navigation contracts](testing/81-navigation.md) describe alternate topology, local movement and carrier lifetime; select them with `^game\.navigation\.`. The [road-ring journeys](testing/81-road-guided-journeys.md) add paired regional-guidance and damage-driven blocker controls with complete-session replay.
 
 The [presentation evidence guide](testing/87-presentation.md) maps PRES-01 through PRES-04 to interface/audio contracts, registered clear-rectangle and plane regressions, unregistered legacy command aliases and native procedures.
 

@@ -1,5 +1,7 @@
 # Player-command legacy findings
 
+Source reference: `662693fb6b6dcfcfd5749625e5af9e61d160e8a5`. This identifies the current implementation examined by this supplemental note, not an accepted behavior-baseline reference.
+
 This supplemental inventory records the disposition owner for the player-command finding below. It changes no production behavior or accepted baseline reference. The existing [player-command work package #80](https://github.com/pozitronik/MatrixGame/issues/80) owns the pending decision; no separate correction issue or completed disposition is claimed.
 
 ## Special-target reference loss
@@ -8,4 +10,4 @@ Classification: **Legacy quirk (Q), pending separate disposition**. The [special
 
 The passing null-reference expectation characterizes this quirk pending a gameplay/reference decision; it does not establish correct targeted Attack or classify the behavior as a reproduced corruption defect. Before any correction, #80 must review downstream target consumers and the intended special-object contract, obtain the maintainer's gameplay/reference decision and provide focused regression evidence. Changing `IsLive` globally would extend unrelated actor-type contracts and is not authorized by this inventory.
 
-This finding is distinct from the source-derived exhausted cheat logic-slot out-of-bounds hazard. No unsafe exhausted-slot execution, new defect registration or correction is part of these special-object cases. The command package and complete-baseline gate remain open.
+This finding is distinct from the [source-derived exhausted cheat logic-slot out-of-bounds hazard](80-cheat-findings.md#exhausted-logic-group-slots). No unsafe exhausted-slot execution, new defect registration or correction is part of these special-object cases. The command package and complete-baseline gate remain open.

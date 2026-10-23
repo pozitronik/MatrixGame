@@ -764,6 +764,19 @@ foreach(contract shorted_route_blocker dying_route_blocker shorted_movement_reco
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_tests gameplay ai navigation)
 endforeach()
 
+add_matrix_test_executable(matrixgame_navigation_road_scenarios navigation_road_scenarios.cpp battle_combat_geometry.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_navigation_road_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_navigation_road_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_navigation_road_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_navigation_road_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(profile park_miller10 park_miller16 legacy10 legacy16)
+    add_matrix_test(game.navigation.road_guided_journey.${profile} matrixgame_navigation_road_scenarios gameplay ai navigation)
+    add_matrix_test(game.navigation.road_destroyed_blocker.${profile} matrixgame_navigation_road_scenarios gameplay ai navigation)
+endforeach()
+
 add_matrix_test_executable(matrixgame_navigation_boundary_tests navigation_boundary_tests.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_navigation_boundary_tests PRIVATE MatrixGameInternal)
@@ -1090,4 +1103,23 @@ foreach(contract scopes search avoidance)
 endforeach()
 foreach(profile park_miller10 park_miller16 legacy10 legacy16)
     add_matrix_test(game.navigation.work_preservation.${profile} matrixgame_navigation_work_tests gameplay ai navigation)
+endforeach()
+
+add_matrix_test_executable(matrixgame_player_auto_order_scenarios player_auto_order_scenarios.cpp battle_scenario.cpp
+    battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_player_auto_order_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_player_auto_order_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_player_auto_order_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_player_auto_order_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(mode park_miller legacy_crt)
+    foreach(step 10 16)
+        foreach(scene capture attack defence)
+            foreach(control "" _control)
+                add_matrix_test(game.player.auto_order.${scene}${control}_${mode}_${step}
+                    matrixgame_player_auto_order_scenarios gameplay input ai)
+            endforeach()
+        endforeach()
+    endforeach()
 endforeach()
