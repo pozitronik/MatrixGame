@@ -978,3 +978,20 @@ if(NOT MATRIXGAME_BUILD_DLL)
         endforeach()
     endif()
 endif()
+
+add_matrix_test_executable(matrixgame_ai_strategic_capture_scenarios ai_strategic_capture_scenarios.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_ai_strategic_capture_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_ai_strategic_capture_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_ai_strategic_capture_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_ai_strategic_capture_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(profile park_miller10 park_miller16 legacy10 legacy16)
+    foreach(scene control objective_loss home_loss)
+        add_matrix_test(game.ai.strategic_capture.${scene}.${profile} matrixgame_ai_strategic_capture_scenarios gameplay ai)
+    endforeach()
+endforeach()
+foreach(step 10 16)
+    add_matrix_test(game.ai.strategic_capture.rng_sensitivity.step${step} matrixgame_ai_strategic_capture_scenarios gameplay ai)
+endforeach()
