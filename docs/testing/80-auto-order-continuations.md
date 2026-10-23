@@ -1,0 +1,54 @@
+# Player auto-order continuations
+
+The `game.player.auto_order.*` cases implement C4 / CMD-04 through ordinary form commands and complete production map ticks. They complement the short `auto_modes`, `auto_target_retirement` and `mixed_auto_selection` cases: enabling a flag or choosing a target alone does not establish completed capture, actual combat, or a subsequent manual order taking effect. The computer-side strategic capture journey has different ownership and is not used as a substitute for player auto-capture.
+
+## Scene and profiles
+
+All three scenes use the synthetic open 64 by 64 movement grid, seed 80 and unavailable audio. Four wheel robots retain production AI. The player actor starts at world `(100,200)`; its unarmed ally is moved to `(300,40)` during setup and remains uninvolved. Opponents have zero configured maximum/group speed, so their planning and perception continue while they remain physically stationary. Relocation refreshes map membership, matrices and cached bounds before the first tick. No enemy memory, targeting, War flag, capture progress or orders are injected after setup.
+
+ParkMiller and LegacyCRT run independently with 10 and 16 ms steps. Each scene observes the full 25-second window, ending at 25,000 or 25,008 ms. The three modes, two RNGs, two schedules and separately runnable controls produce 24 cases. Each main case runs its manual-override scene twice and its retained-program control twice; each independent control case runs twice. That gives 72 fresh sessions per build configuration. Exact comparisons apply within a profile, with the entire main/control prefix required to agree through the last boundary before manual intervention. These cases do not establish RNG-dependent gameplay divergence or cross-compiler trajectory equivalence.
+
+## Auto-capture through ownership
+
+The scene registers a neutral titanium factory at `(160,200)` using the shared building fixture. It retains the production loader's buildings-before-starting-robots order. A `C` press through `CFormMatrixGame::Keyboard`, outside any menu, enables the player group's auto-capture program; the program finds the factory and assigns the actual capture order. The actor approaches, paints and acquires the building through normal map ticks. No test calls `Capture`, supplies painting ticks or assigns ownership to complete the journey.
+
+Assertions distinguish the first paint point, full paint, ownership and release of the actor's capture order. The factory must become player-owned with all fourteen points in the player's color; the auto-capture group subsequently stops after finding no further eligible objective. The observed 10/16 ms profiles first paint at 630/640 ms, change owner at 7,530/7,536 ms and stop at 7,610/7,632 ms. These are measured profile observations; the journey assertions require their ordering and completion before the comparison boundary rather than copying one schedule's exact times into another.
+
+The building's `m_Capturer` is a separate reservation/publication field. In this scene it points to stationary opponent 3 while the nearby player actor performs capture. The test checks that measured identity separately from the actor's actual capture order and the resulting player ownership. It does not clear the opponent's reservation to make the scene simpler, or treat the field as proof of who painted. Resource periods are 100,000 ms, outside the window; income continuity is established by the separate outcome contracts, not by this scene.
+
+At the first boundary at or after 9,000 ms, the main scene clears selection, resets system selection, selects the surviving actor again and submits an ordinary context Move to `(100,400)`. It must reach that exact point, report arrival and retain the manual destination afterward. The control issues no replacement: it stays stopped at the captured factory. Both continue through the full observation window with retained player ownership.
+
+## Auto-attack and auto-defence during combat
+
+The actor carries a real synthetic laser with range 220, cooldown 100 ms and two internal damage units per pulse. Its first stationary enemy is at `(260,200)` with 200 internal health, exposed as 20 by `GetHitPoint`; a second enemy remains at `(540,540)` with exposed health 200. The high second health prevents a late victory from truncating the comparison. The uninvolved ally cannot obstruct the initial firing line.
+
+`U` and `D` enter auto-attack and auto-defence through the form. Each scene must enter War, aim at the first enemy, hold a fire order, receive a real impact callback and reduce that enemy's health. At the first damaging boundary, the fixture retires this still-living target through `Session::remove` and production `StaticDelete`. This is a declared target-removal event, not a weapon kill. A retained core must immediately lose its object, the actor's enemy references must clear, and the auto program must select live enemy 4. Neither side receives a robot kill statistic from the removal.
+
+The observed first hits occur at 120/144 ms for auto-attack and 200/224 ms for auto-defence. Replacement is observed at 210/240 ms in both programs. The tests require real damage, retirement and subsequent retargeting before the intervention, with an independent first-hit deadline. They do not supply these timestamps to the engine.
+
+At 1,600 ms, after retargeting and before damaging the distant opponent, the main scene clears and restores selection and gives the same manual Move to `(100,400)`. Assertions retain Move intent, the requested footprint `(8,38)`, a null group target, no War and the second enemy's unchanged health. The actor must physically arrive before 20 seconds and stay there for at least another 600 ms, with observation continuing to the full deadline. Checking the queued order alone cannot satisfy this case.
+
+The controls keep their auto programs. In the measured scene, auto-attack approaches `(500,500)` and resumes fighting enemy 4; auto-defence retains the distant objective but settles at `(100,500)` without entering another engagement. Both remain physically distinct from the requested manual endpoint. This bounded difference preserves the existing program behavior; it does not require defence to pursue every distant enemy or improve obedience.
+
+## Observations and test strength
+
+JSONL files under the normal build's `tests/scenario-traces/` directory have distinct scene, main/control, RNG, schedule and replay names. Headers record source/profile identity, the auto key, comparison boundary, requested manual destination and stationary-opponent setup. Records include the complete shared session snapshot, selected identities, actual Move/fire orders, group intent/target/War, enemy memory and hit/fire times, current/additional place, resource balances, and factory owner/paint/color/reservation/actor assignment. Building ID 5 is explicit; `-3` identifies a retained raw reference to retired scenario robot 3, while the shared session snapshot retains its own documented null/external identity convention. A final milestone record preserves timing and terminal state independently of shortened CTest output.
+
+Observation checks that the raw RNG draw count stays unchanged. Main/control prefixes and repeated fresh-session state vectors compare exactly. Command records are emitted after the corresponding state assertions; `accepted` reports the observed resulting contract, not a return value from the void production handler. Selection is supplied through production group operations; screen picking is not claimed.
+
+The fixture has no populated auto-program widgets. Raw interface-list auto bits are recorded and initial key dispatch is asserted, but those bits alone do not describe current intent after a context Move: in these combat scenes they can retain the earlier auto bit while the actual group is moving manually. The tests assert the group's current program and physical action. Native widget indicators and pointer interaction remain separate presentation evidence; this observation is not a demonstrated visible UI defect.
+
+Four temporary source controls verify the important paths. Omitting actual auto-capture assignment fails all eight capture cases while sixteen combat cases pass. Preventing later attack/defence target searches fails all sixteen combat cases while eight capture cases pass. Ignoring the manual context handler fails all twelve main cases while all twelve independent controls pass. Suppressing physical `MoveToHigh` only for manual Move groups likewise fails all twelve main cases with all controls passing. Production bytes are restored after every experiment and the full positive set rebuilt. An initial target-search control began at 250 ms and survived because replacement had already occurred at 210/240 ms; the effective control starts after initial acquisition, at 100 ms. A surviving mutation is not reported as evidence of test strength.
+
+## Reproduce and limits
+
+```powershell
+.\tools\test.ps1 -Configuration Debug -Filter '^game\.player\.auto_order\.'
+.\tools\test.ps1 -Configuration Release -Filter '^game\.player\.auto_order\.'
+.\tools\test.ps1 -Configuration Debug -DLL -Filter '^game\.player\.auto_order\.'
+.\tools\test.ps1 -Configuration Release -DLL -Filter '^game\.player\.auto_order\.'
+```
+
+Keep cheats off. Use the supported build/test helpers so DLL-linked tests receive their imported runtime DLLs. A single independent control can be selected with `^game\.player\.auto_order\.defence_control_park_miller_10$`.
+
+The suite uses synthetic geometry and the CPU device. It does not establish screen-input delivery, rendered flag indicators, native audio, original-host integration, arbitrary autonomous-program combinations or every chassis. The existing empty-world/flag-toggle cases retain no-target behavior; the shared capture, combat and strategy suites retain their separate boundaries. Integrated compiler/DLL validation, native execution and whole-catalog acceptance remain at their existing gates. This C4 increment does not close the complete command work package by itself.

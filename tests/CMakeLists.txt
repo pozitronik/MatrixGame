@@ -978,3 +978,22 @@ if(NOT MATRIXGAME_BUILD_DLL)
         endforeach()
     endif()
 endif()
+
+add_matrix_test_executable(matrixgame_player_auto_order_scenarios player_auto_order_scenarios.cpp battle_scenario.cpp
+    battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_player_auto_order_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_player_auto_order_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_player_auto_order_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_player_auto_order_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(mode park_miller legacy_crt)
+    foreach(step 10 16)
+        foreach(scene capture attack defence)
+            foreach(control "" _control)
+                add_matrix_test(game.player.auto_order.${scene}${control}_${mode}_${step}
+                    matrixgame_player_auto_order_scenarios gameplay input ai)
+            endforeach()
+        endforeach()
+    endforeach()
+endforeach()
