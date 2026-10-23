@@ -761,6 +761,14 @@ foreach(contract mixed_selection_lifecycle manual_track_lifecycle manual_hovercr
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
 
+foreach(chassis track hovercraft)
+    foreach(profile park_miller10 park_miller16 legacy10 legacy16)
+        foreach(target stationary moving)
+            add_matrix_test(game.ai.manual_exit_${chassis}_${target}.${profile} matrixgame_player_order_scenarios gameplay ai input)
+        endforeach()
+    endforeach()
+endforeach()
+
 add_matrix_test_executable(matrixgame_player_command_lifecycles player_command_lifecycle_tests.cpp
     battle_scenario.cpp battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp
     battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -1004,11 +1012,3 @@ if(NOT MATRIXGAME_BUILD_DLL)
         endforeach()
     endif()
 endif()
-
-foreach(chassis track hovercraft)
-    foreach(profile park_miller10 park_miller16 legacy10 legacy16)
-        foreach(target stationary moving)
-            add_matrix_test(game.ai.manual_exit_${chassis}_${target}.${profile} matrixgame_player_order_scenarios gameplay ai)
-        endforeach()
-    endforeach()
-endforeach()

@@ -996,7 +996,8 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
             const int id = !object ? 0 : object == robot ? 5 : object == target ? 3 : object == distant_enemy ? 4 : -1;
             MG_CHECK(id >= 0);
             out << '[' << int(entry.m_OrderType) << ',' << int(entry.m_OrderPhase) << ','
-                << std::bit_cast<uint32_t>(entry.m_Param1) << ',' << std::bit_cast<uint32_t>(entry.m_Param2) << ',' << id << ']';
+                << std::bit_cast<uint32_t>(entry.m_Param1) << ',' << std::bit_cast<uint32_t>(entry.m_Param2) << ','
+                << entry.m_Param4 << ',' << id << ']';
         }
         out << "]}";
         result.frames.push_back(out.str());
@@ -1095,7 +1096,15 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
         MG_CHECK(target && target->IsLiveRobot());
         MG_CHECK(robot->GetEnv()->m_Place == -1 && robot->GetEnv()->m_PlaceAdd == CPoint(4, 4));
         MG_CHECK(robot->m_PosX == 60 && robot->m_PosY == 60);
-        MG_CHECK(!robot->FindOrderLikeThat(ROT_MOVE_TO) && robot->FindOrderLikeThat(ROT_FIRE));
+        MG_CHECK(!robot->FindOrderLikeThat(ROT_MOVE_TO));
+        int fire_orders = 0;
+        for (int i = 0; i < robot->GetOrdersInPool(); ++i) {
+            const auto &entry = *robot->GetOrder(i);
+            if (entry.m_OrderType != ROT_FIRE) continue;
+            MG_CHECK(entry.m_Param4 == (moving_target ? 0 : 2));
+            ++fire_orders;
+        }
+        MG_CHECK(fire_orders == 1);
         MG_CHECK(!group.IsWar());
         std::cout << "reserved-goal time=" << session.time() << " intended=8,8 assigned=4,4 actual=60,60"
                   << " enemy=" << target->m_PosX << ',' << target->m_PosY << " health=" << target->GetHitPoint() << '\n';
