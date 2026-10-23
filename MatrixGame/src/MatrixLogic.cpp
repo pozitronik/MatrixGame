@@ -15,6 +15,7 @@
 #include "MatrixGameDll.hpp"
 #include "MatrixMultiSelection.hpp"
 #include "PlaceContainment.hpp"
+#include "NavigationWork.hpp"
 #include "SoundBridge.hpp"
 
 #include <random.hpp>
@@ -1311,6 +1312,8 @@ int CMatrixMapLogic::FindLocalPath(int nsh, int size, int mx, int my,  // Нач
                                    int *other_path_cnt,  // Список кол-во элементов в других путях
                                    CPoint *other_des,  // Список конечных точек в других путях
                                    [[maybe_unused]] bool test) {
+    auto *work = NavigationWork::active();
+    if (work) ++work->local_searches;
     SMatrixMapMove *smm2, *smm;
     int i, u, x, y, sme, cnt, next, level, findok, findbest;
     CPoint tp, tpfind;
@@ -1506,6 +1509,11 @@ int CMatrixMapLogic::FindLocalPath(int nsh, int size, int mx, int my,  // Нач
         }
     }
 
+    if (work) {
+        work->local_cells_initialized += std::uint64_t(re.right - re.left) * (re.bottom - re.top);
+        work->local_queue_entries += cnt;
+        if (!findok) ++work->local_failures;
+    }
     if (!findok)
         return 0;
 
@@ -1591,6 +1599,7 @@ void CMatrixMapLogic::SetZoneAccess(int *list, int cnt, bool value) {
 int CMatrixMapLogic::FindPathInZone(int nsh, int zstart, int zend, const CMatrixRoadRoute *route, int routeno,
                                     int *path,
                                     [[maybe_unused]] bool test) {
+    if (auto *work = NavigationWork::active()) ++work->zone_searches;
 #if (defined _DEBUG) && !(defined _RELDEBUG)
     if (test && !g_TestLocal)
         CHelper::DestroyByGroup(100);
