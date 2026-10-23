@@ -24,7 +24,7 @@ After every lifetime the test checks that game/map/configuration/cache/graphics 
 
 The fixture records its version, lifetime number, result, movement observation, tick count and the interval containing the DLL's time-based seed. The DLL contract chooses `ParkMiller` and seeds from `time(nullptr)` inside Run; this test does not replace that clock or claim a fixed-seed golden trace. Movement is checked as a bounded invariant. CTest imposes a 30-second process limit, and the host callback rejects 5,000 ticks without completing the journey.
 
-The [packed-configuration and pneumatic cleanup cases](85-native-packed-sessions.md) extend this fixture with isolated packed loading, invalid-header recovery and repeated animation-data retirement. They retain the same borrowed-host ownership checks.
+The [packed-configuration and pneumatic cleanup cases](85-native-packed-sessions.md) extend this fixture with isolated packed loading, invalid-header recovery, late missing-hint failure/recovery and repeated animation-data retirement. They retain the same borrowed-host ownership checks.
 
 The [populated native Restart cases](85-native-population-restart.md) check base/factory and stored-cannon reconstruction, partially queued-cannon retirement and restored terrain/slot ownership, and execute minimap drawing. Both text and isolated packed variants perform repeated menu-confirmed reloads and full Run recovery; image fidelity is not observed.
 

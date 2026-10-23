@@ -342,6 +342,9 @@ endforeach()
 add_matrix_test(game.production.constructor_assembly matrixgame_production_scenarios gameplay ai memory)
 add_matrix_test(game.production.constructor_capacity matrixgame_production_scenarios gameplay ai memory)
 add_matrix_test(game.production.constructor_deployment matrixgame_production_scenarios gameplay ai memory)
+foreach(contract strategic_deployment strategic_wait_base_removed strategic_paid_base_removed)
+    add_matrix_test(game.production.${contract} matrixgame_production_scenarios gameplay ai memory)
+endforeach()
 
 add_matrix_test_executable(matrixgame_combat_scenarios combat_scenario_tests.cpp battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
@@ -706,6 +709,7 @@ add_matrix_test(game.outcome.armed_transport_survival matrixgame_battle_outcome_
 add_matrix_test(game.outcome.armed_flyer_does_not_prevent_elimination matrixgame_battle_outcome_scenarios gameplay)
 add_matrix_test(game.outcome.transport_projectile_outcomes matrixgame_battle_outcome_scenarios gameplay combat)
 add_matrix_test(game.outcome.transport_context_rejection matrixgame_battle_outcome_scenarios gameplay input)
+add_matrix_test(game.outcome.transport_ai_acquisition matrixgame_battle_outcome_scenarios gameplay ai)
 add_matrix_test(game.outcome.rival_armed_capture matrixgame_battle_outcome_scenarios gameplay input)
 
 foreach(contract typed_statistics_continuation result_command_boundary legacy_loss_confirmation pending_result_menu menu_exit_surrender_callbacks statistics_cheat_dismissal result_confirmation_callbacks menu_confirmation_cancel base_capture_interruption protected_base_command full_auto_escape legacy_loss_cheat paused_orders)
@@ -751,6 +755,16 @@ foreach(contract terrain_transient_response terrain_ramp_transitions terrain_lat
     add_matrix_test(game.navigation.${contract} matrixgame_navigation_boundary_tests gameplay ai navigation)
 endforeach()
 add_matrix_test(game.navigation.formation_speed_boundaries matrixgame_navigation_boundary_tests gameplay ai navigation)
+
+add_matrix_test_executable(matrixgame_formation_regulation_tests formation_regulation_tests.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_formation_regulation_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_formation_regulation_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_formation_regulation_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_formation_regulation_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.navigation.mixed_formation_regulation matrixgame_formation_regulation_tests gameplay ai navigation)
 add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_player_order_scenarios PRIVATE MatrixGameInternal)
@@ -918,6 +932,8 @@ if(MATRIXGAME_BUILD_DLL)
         add_matrix_test(game.session.native_demo_packed_win matrixgame_native_session_fixture gameplay startup ai native native-process)
         add_matrix_test(game.session.native_demo_packed_loss matrixgame_native_session_fixture gameplay startup ai native native-process)
         add_matrix_test(game.session.native_packed_lifetimes matrixgame_native_session_fixture gameplay startup native native-process)
+        add_matrix_test(game.session.native_packed_hint_failure matrixgame_native_session_fixture gameplay startup memory native native-process current-desktop)
+        set_tests_properties(game.session.native_packed_hint_failure PROPERTIES RUN_SERIAL TRUE)
         add_matrix_test(game.session.native_packed_header_failure matrixgame_native_session_fixture gameplay startup memory native native-process)
         add_matrix_test(game.session.pneumatic_retirement matrixgame_native_session_fixture gameplay startup memory native native-process)
         add_matrix_test(game.session.held_input_retirement matrixgame_native_session_fixture gameplay startup input native native-process)
