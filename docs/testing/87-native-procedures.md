@@ -54,10 +54,11 @@ Resolve the paths after choosing the build, or after choosing an extracted archi
 }
 ```
 
-Use one process at a time. For an ordinary visible launch, retain the process object in PowerShell:
+Use one process at a time and only one launch attempt per prepared record. A failed or uncertain start still consumes that attempt: resolve it and restore the record before preparing another; do not retry this block or clear its flags. For an ordinary visible launch, retain the process object in PowerShell:
 
 ```powershell
 . {
+if ($launchAttempted) { throw 'One launch attempt per prepared record; resolve and restore it before preparing another.' }
 if (-not $settingsReady -or ($cacheReady -eq $cacheQualificationReady)) { throw 'Require exactly one prepared cache route.' }
 if ($cacheQualificationReady -and $configuration -ne 'Debug') { throw 'Cache qualification requires Debug.' }
 if ($soundOverrideActive -and -not $soundOverrideReady) { throw 'Resolve the unfinished sound-override preparation.' }
