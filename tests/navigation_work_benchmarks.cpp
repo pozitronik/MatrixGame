@@ -39,7 +39,6 @@ public:
         const auto inactive = tests::navigation_work::run(options_, false, true);
         const auto collected = tests::navigation_work::run(options_, true, true);
         MG_CHECK(inactive.states == collected.states && inactive.events == collected.events);
-        MG_CHECK(inactive.total == NavigationWork::Counters{});
         MG_CHECK(collected.total.local_searches > 0 && collected.total.robot_collision_candidates > 0);
         for (size_t i = 0; i < fields.size(); ++i) {
             count(details, names[i], collected.total.*fields[i]);

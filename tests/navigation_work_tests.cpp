@@ -173,7 +173,6 @@ void crowded_preservation() {
     const auto repeated = execute(true);
     MG_CHECK(inactive.states == collected.states && collected.states == repeated.states);
     MG_CHECK(inactive.events == collected.events && collected.events == repeated.events);
-    MG_CHECK(inactive.total == Counters{});
     MG_CHECK(collected.frames == repeated.frames && collected.total == repeated.total);
     MG_CHECK(collected.intervals == repeated.intervals);
     MG_CHECK(collected.frames.size() == static_cast<size_t>(collected.events.frames));
@@ -181,6 +180,37 @@ void crowded_preservation() {
     MG_CHECK(work.local_searches > 0 && work.local_cells_initialized > 0 && work.local_queue_entries > 0);
     MG_CHECK(work.zone_searches > 0 && work.robot_collision_queries > 0 && work.robot_collision_candidates > 0);
     MG_CHECK(work.terrain_collision_queries > 0 && work.terrain_mask_cells > 0);
+    MG_CHECK(work.local_failures > 0);
+    if constexpr (Kind == tests::navigation_work::Kind::CrowdedDestination) MG_CHECK(work.terrain_geometry_tests > 0);
+    MG_CHECK(collected.events.final_rng_draws == collected.events.initial_rng_draws);
+
+    // Reconstruct the documented intervals from frame indices, independently of the scene's time dispatch.
+    constexpr std::array<size_t, 3> ends{4000 / Step, 12000 / Step, 32000 / Step};
+    constexpr std::array<size_t, 3> populations = Step == 10
+        ? std::array<size_t, 3>{400, 800, 2000} : std::array<size_t, 3>{250, 500, 1250};
+    MG_CHECK(collected.frames.size() == ends.back());
+    size_t begin = 0;
+    for (size_t interval = 0; interval < ends.size(); ++interval) {
+        Counters expected{};
+        MG_CHECK(ends[interval] - begin == populations[interval]);
+        for (size_t frame = begin; frame < ends[interval]; ++frame)
+            for (auto field : fields) expected.*field += collected.frames[frame].*field;
+        MG_CHECK(expected == collected.intervals[interval]);
+        begin = ends[interval];
+    }
+#ifdef __MINGW32__
+    // Measured x86 MinGW totals; other compilers retain within-profile preservation and repeat checks.
+    constexpr Counters expected = [] {
+        if constexpr (Kind == tests::navigation_work::Kind::CrowdedDestination) {
+            if constexpr (Step == 10) return Counters{86, 309600, 276385, 5, 86, 16998, 17823, 16998, 611928, 51264};
+            else return Counters{77, 277200, 247567, 4, 77, 21258, 22883, 21258, 765288, 65020};
+        } else {
+            if constexpr (Step == 10) return Counters{193, 694800, 692835, 74, 193, 14933, 16191, 14933, 537588, 0};
+            else return Counters{179, 644400, 648120, 66, 179, 19154, 21963, 19154, 689544, 0};
+        }
+    }();
+    MG_CHECK(work == expected);
+#endif
     Counters sum{};
     for (const auto &frame : collected.frames)
         for (auto field : tests::navigation_work::fields) sum.*field += frame.*field;

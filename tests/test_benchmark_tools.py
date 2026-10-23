@@ -164,10 +164,10 @@ class BenchmarkToolTests(unittest.TestCase):
     def test_run_records_selected_executable_without_changing_default_command(self):
         base = PROJECT / "build/benchmark-tests"
         base.mkdir(parents=True, exist_ok=True)
-        for custom in (False, True):
-            with self.subTest(custom=custom), tempfile.TemporaryDirectory(dir=base) as temporary:
+        for selection in ("implicit-default", "explicit-default", "custom"):
+            with self.subTest(selection=selection), tempfile.TemporaryDirectory(dir=base) as temporary:
                 build = Path(temporary)
-                binary = build / "tests" / ("custom-navigation.exe" if custom else "matrixgame_benchmarks.exe")
+                binary = build / "tests" / ("custom-navigation.exe" if selection == "custom" else "matrixgame_benchmarks.exe")
                 binary.parent.mkdir()
                 binary.write_bytes(b"synthetic benchmark; never executed")
                 (binary.parent / "d3dx9_43.dll").write_bytes(b"synthetic runtime; never loaded")
@@ -185,7 +185,7 @@ class BenchmarkToolTests(unittest.TestCase):
 
                 arguments = ["run", "--build-dir", str(build), "--output", str(output),
                              "--processes", "2", "--repetitions", "2"]
-                if custom:
+                if selection != "implicit-default":
                     arguments += ["--executable", str(binary)]
                 with patch.object(benchmark.subprocess, "run", side_effect=fake_process), \
                         patch.object(benchmark, "revision", return_value={"commit": "synthetic", "dirty": False}), \
@@ -194,7 +194,7 @@ class BenchmarkToolTests(unittest.TestCase):
                 report = json.loads(output.read_text(encoding="utf-8"))
                 self.assertEqual(launched, [str(binary), str(binary)])
                 self.assertEqual(report["executable"]["name"], binary.name)
-                self.assertEqual(report["command"][0], binary.name if custom else "matrixgame_benchmarks")
+                self.assertEqual(report["command"][0], binary.stem)
 
     def test_compare_command_exit_status(self):
         base = PROJECT / "build/benchmark-tests"

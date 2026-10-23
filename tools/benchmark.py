@@ -159,7 +159,7 @@ def run(arguments):
         'cmake': cmake,
         'executable': {'name': executable.name, 'sha256': file_hash(executable)},
         'os': platform.platform(),
-        'command': [executable.name if arguments.executable else 'matrixgame_benchmarks', *options],
+        'command': [executable.stem, *options],
         'generated_utc': datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat(),
     })
 
