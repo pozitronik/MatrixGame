@@ -118,6 +118,8 @@ The [synthetic material fixtures](testing/material-fixtures.md) describe CPU tex
 
 The [synthetic reinforcement fixtures](testing/reinforcement-fixtures.md) cover real request, carrier flight, cargo landing and retirement under an explicit unavailable-icon-renderer profile.
 
+The [physical delivery approach controls](testing/81-carrier-approach.md) compare low and tall buildings using production geometry and traces, retain the observed penetration and verify the delivery continuation in both RNG modes and frame schedules.
+
 The [construction and production contracts](testing/83-production.md) cover queue ownership and refunds, income, AI and player purchase, and reinforcement gates. They distinguish tested callbacks and components from remaining rendered UI and strategic coverage.
 
 The [combat contracts](testing/82-combat.md) describe firing, damage, status and object lifetime oracles; select them with `^game\.combat\.`.
