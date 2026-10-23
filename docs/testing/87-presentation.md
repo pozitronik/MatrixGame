@@ -124,7 +124,7 @@ Remaining checks include reuse of a weapon's loop across repeated shots and came
 
 ## Opt-in defect reproducers
 
-`matrixgame_presentation_defect_probes` is built with the test executables but is deliberately not registered in CTest. Its three probes assert the geometrically correct results and currently return exit code 1 on the reference implementation. They document catalog candidates D1 and D7; they are not accepted baseline goldens or passing regression coverage. After a separately reviewed correction, their assertions can become regular CTest contracts.
+`matrixgame_presentation_defect_probes` contains the original correct-result checks for catalog findings D1 and D7. Before their corrections, all three returned exit code 1. The #305 plane correction registers `plane_normal` and `plane_points` as ordinary CTest regressions. The clear-rectangle probe remains opt-in here, under its separate D1 correction scope. None of these component checks establishes native presentation or whole-baseline acceptance.
 
 After running the test build, invoke each command separately, then repeat with `mingw-release-exe`:
 
@@ -136,9 +136,9 @@ After running the test build, invoke each command separately, then repeat with `
 
 D1 is assigned to #89 for reproduction and #87 for correction/disposition by the [legacy inventory](../research/88-legacy-code-inventory/README.md); #63 also identifies this coordinate error. A real interface element at (100, 200) with clear rectangle (3, 11, 20, 30) submits (103, 203, 120, 230); its top should be 211. `CIFaceElement::BeforeRender` uses the left offset for the vertical start. A minimal texture object acknowledges `PreLoad` only, and rejects other device operations; the production coordinate calculation and clear-rectangle buffer are unchanged. No rendered artifact is inferred from this component result.
 
-D7 is assigned to #89 for reproduction and #97 for correction/disposition by the legacy inventory. Both `SPlane` builders correctly populate `dxplane`, while distance/intersection methods read separate `norm`/`dist` fields. The probes initialize those separate fields explicitly, then build the plane z = 2 and query a ray from z = 10 directed downward. They obtain distance 0 and no intersection instead of distance magnitude 8 and intersection parameter 8. Initialization avoids treating an uninitialized read as a golden value. The test establishes the mathematical inconsistency; it does not establish the visibility output or native impact of the map-argument `CalcVis` path.
+D7 was reproduced under #89 and initially assigned to #97. Its functional correction is now separated into [#305](https://github.com/pozitronik/MatrixGame/issues/305): both `SPlane` builders copy their calculated coefficients into `norm`/`dist` before deriving sign bits. The two plane probes now run as ordinary registered regressions and require signed distance 8 and downward intersection parameter 8 for the plane z = 2 queried from z = 10. Eight additional [plane contracts](305-plane-builders.md) cover orientation, side/box queries, reuse, ray semantics and unchanged x86 layout. The mathematical checks do not establish native visibility output or the Debug flyer command; those observations remain separate.
 
-The [legacy evidence report](../research/89-legacy-evidence/defects.md) reconciles D1/D7 with these existing probes and preserves their unresolved status. Both defects still require a separate correction/disposition before accepting the affected baseline entries. The default test suite does not hide them with inverted assertions or a known-failure success status.
+The [legacy evidence report](../research/89-legacy-evidence/defects.md) preserves the original D1/D7 reproductions and their separate correction scopes. D7 now has correct-result automated regressions; D1 retains its independently reviewed correction/disposition requirement. Neither native validation nor complete baseline acceptance follows from these component results. The default suite does not invert failed expectations or treat known failures as success.
 
 ## Native preparation
 
