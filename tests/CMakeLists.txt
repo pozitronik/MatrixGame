@@ -920,6 +920,24 @@ target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
 
+add_matrix_test_executable(matrixgame_battle_benchmarks battle_benchmarks.cpp benchmark_support.cpp
+    battle_scenario.cpp battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp
+    battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_benchmarks PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_battle_benchmarks matrixgame_scenario_identity)
+target_include_directories(matrixgame_battle_benchmarks PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_battle_benchmarks PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(family combat.laser_tick strategy.capture_tick)
+    foreach(profile park_miller10 park_miller16 legacy10 legacy16)
+        add_test(NAME game.benchmark.${family}.${profile}
+            COMMAND matrixgame_battle_benchmarks --smoke --workload ${family}.${profile})
+        set_tests_properties(game.benchmark.${family}.${profile} PROPERTIES
+            LABELS "engine;asset-free;benchmark;gameplay;ai" TIMEOUT 30)
+    endforeach()
+endforeach()
+
 add_matrix_test_executable(matrixgame_battle_restart_scenarios battle_restart_scenarios.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_restart_scenarios PRIVATE MatrixGameInternal matrixgame_native_window_containment)

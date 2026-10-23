@@ -113,6 +113,33 @@ Timings are comparable only on the same machine and configuration. Before compar
 
 To refresh the reference, check out the accepted reference revision and build its Release tests, then run the workloads and keep the result outside the repository, for example as a CI artifact or attached to the tracking issue. Measure the candidate on the same host and compare. Reference results are machine-specific; do not commit them as budgets.
 
+## Active combat and computer strategy
+
+The dedicated `matrixgame_battle_benchmarks` executable adds two bounded CPU workload families through the same runner, report schema and comparison rules above. Each has independent ParkMiller/LegacyCRT and 10/16 ms profiles. These representatives complement the existing movement/idle-player-side measurements; selecting them does not accept a final reference or establish complete G4, native frame cost, all weapon types, arbitrary army sizes or every strategy branch.
+
+`combat.laser_tick.{park_miller|legacy}{10|16}` reuses the [laser scenario](../tests/combat_scenario_tests.cpp)'s active prefix: seed 82, the original four wheel robots and obstacle geometry, one player laser, range 600, cooldown 100 ms, and a target with 50 internal health units. The normal context-target command runs during untimed setup. The timed interval is exactly 100 advances/1,000 ms at 10 ms or 62 advances/992 ms at 16 ms, preserving the original integer-loop boundary. It requires nine/eight real health decreases of two internal units at the established exact impact times, positive fire/hit state and a retained live target. The later shooter-removal and inactive continuation remain in the original regression test and are excluded from this active workload.
+
+`strategy.capture_tick.{park_miller|legacy}{10|16}` reuses the [no-loss strategic capture journey](testing/84-strategic-capture.md): seed 84, two stationary player robots, two computer robots, the ordinary three-team configuration, a computer base and two neutral factories on `MultiRegion`. The full 48,000 ms interval contains actual computer Forward movement into the adjacent region, Capture action and orders, paint, both ownership transitions and later Defence. There are no injected human commands or team actions. Zero resources and 100,000 ms income intervals keep the initial population fixed while ordinary strategy remains enabled; purchasing/deployment and armed AI combat are separate scopes. Candidate processing can supply an individual capture order before regional Capture, so the workload preserves that route rather than imposing a new dispatch order.
+
+`prepare()` destroys the previous fixture, seeds/rebuilds the next one and issues its initial command outside timing. `run()` measures complete production map ticks through `Session::advance()` plus the declared fixed scalar observations, assertions and typed hash updates. It includes the fixture's CPU camera/frustum and synthetic sound bookkeeping, excludes native draw/audio, and performs no trace serialization or trace/report I/O. Observation overhead is part of the measured cost; the results do not isolate pure production subsystem time. Fixed population and frame limits, the existing per-Session wall guard and the wrapper's process timeout bound execution. Smoke registrations use the ordinary 30-second timeout; these are failure bounds rather than accepted performance budgets.
+
+Work counters report actual hit counts/times, damage, RNG draws and typed state hashes, or occupied-team phase frame counts, physical region crossing and actual capture/paint/ownership times. Phase counts are observations in simulated frames, can include multiple occupied teams per frame, and are not separate CPU timings. Untimed inspection checks that retaining a typed trajectory preserves work/RNG observations, then compares two complete fresh-session typed trajectories exactly and reports their word count. Hashes provide compact work diagnostics; the direct typed comparison supplies the repeatability oracle. The existing runner requires equal work across every iteration/sample and equal work/inspection across fresh processes. `--iterations 2` exercises fixture reset; it doubles the measured journey work rather than continuing the previous world.
+
+Build and measure the selected executable explicitly; stop after any failed preparation/run so a stale report is not compared:
+
+```powershell
+.\tools\test.ps1 -Configuration Release -Filter '^game\.benchmark\.(combat\.laser_tick|strategy\.capture_tick)\.'
+if ($LASTEXITCODE -ne 0) { throw 'Active workload smoke checks failed.' }
+python -B tools/benchmark.py run --executable build/mingw-release-exe/tests/matrixgame_battle_benchmarks.exe --processes 3 --iterations 1 --output build/benchmarks/active-a.json
+if ($LASTEXITCODE -ne 0) { throw 'First active workload measurement failed.' }
+python -B tools/benchmark.py run --executable build/mingw-release-exe/tests/matrixgame_battle_benchmarks.exe --processes 3 --iterations 1 --output build/benchmarks/active-b.json
+if ($LASTEXITCODE -ne 0) { throw 'Second active workload measurement failed.' }
+python -B tools/benchmark.py compare build/benchmarks/active-a.json build/benchmarks/active-b.json
+if ($LASTEXITCODE -ne 0) { throw 'Active workload comparison failed.' }
+```
+
+Inspect every A/A verdict: exit zero also permits `inconclusive`, which does not establish the required `no material change` condition. Keep the existing comparison policy; final integrated measurements, accepted historical reference selection and native execution remain separate gates. These synthetic scenes do not replace them.
+
 ## Navigation operation counts
 
 [Scoped navigation work observations](testing/81-navigation-work.md#crowded-scene-consumers-and-reports) now report crowded-destination and opposing-flow scenes through the dedicated `matrixgame_navigation_work_benchmarks` executable, using the same runner and JSON/compatibility rules as the component workloads above. The existing `navigation.crowd_move` component benchmark still reports its search-mark footprint; its workload and results are unchanged.
