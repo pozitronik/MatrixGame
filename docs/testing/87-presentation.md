@@ -168,6 +168,8 @@ For Release, replace `mingw-debug-exe` with `mingw-release-exe`. Run only one ga
 
 ## Native procedures
 
+Use the [P1-P4 procedure supplement](87-native-procedures.md) for the shared launch/deadline/exit/restoration record, qualified active-loop scenes and exact staged startup-failure substitutions. It reuses the steps below and existing public guides; it records no native execution.
+
 Run the following in each of the four configuration cases. Use the arrow keys for strategic camera scrolling; W is a direct-control key. Record any unavailable scene/target as unperformed rather than passing it.
 
 1. Start windowed at 1280×720 with both audio packages and no loose `CFG/sounds.txt`. In the startup menu choose New battle, select the scenario map and bonus explicitly, and start it. Record `Map`, `BattleBonus` and the effective difficulty multipliers; use None unless the scenario specifies another bonus. Confirm map, robot/building geometry, text, minimap and introductory controls. Dismiss the introduction, select a friendly robot, press M and click nearby open terrain. Verify the selection/move acknowledgement, visible order and arrival. Trigger a reachable attack and observe projectiles, damage and battle audio.
