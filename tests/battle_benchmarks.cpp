@@ -220,6 +220,8 @@ public:
         initial_draws_ = random::draw_count();
     }
     void run(bench::Counters &work) {
+        MG_CHECK(session_.frame() == 0 && session_.time() == 0 && forward_frames_ == 0 &&
+            capture_frames_ == 0 && capture_action_ < 0);
         auto &map = *g_MatrixMap;
         auto &side = *map.GetSideById(2);
         while (session_.frame() < 48000 / options_.step) {
