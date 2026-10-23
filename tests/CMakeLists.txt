@@ -800,7 +800,7 @@ target_include_directories(matrixgame_presentation_integration_tests PRIVATE "${
 target_compile_definitions(matrixgame_presentation_integration_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract weapon_positional_loop_stop weapon_positional_loop_retirement positional_attenuation_boundaries positional_loop_reentry push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech textured_button_hit_testing)
+foreach(contract automatic_positional_camera repeated_weapon_loop weapon_positional_loop_stop weapon_positional_loop_retirement positional_attenuation_boundaries positional_loop_reentry push_sounds preset_matching disabled optional_audio interface_layer battle_acknowledgements silent_battle_commands positional_loop missing_speech textured_button_hit_testing)
     add_matrix_test(game.presentation.${contract} matrixgame_presentation_integration_tests ui audio input)
 endforeach()
 
@@ -842,7 +842,7 @@ set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;b
 
 add_matrix_test_executable(matrixgame_battle_restart_scenarios battle_restart_scenarios.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
-target_link_libraries(matrixgame_battle_restart_scenarios PRIVATE MatrixGameInternal)
+target_link_libraries(matrixgame_battle_restart_scenarios PRIVATE MatrixGameInternal matrixgame_native_window_containment)
 add_dependencies(matrixgame_battle_restart_scenarios matrixgame_scenario_identity)
 target_include_directories(matrixgame_battle_restart_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
 target_compile_definitions(matrixgame_battle_restart_scenarios PRIVATE
@@ -852,6 +852,7 @@ foreach(contract movement pending_win pending_loss retired_group objects_spawner
     add_matrix_test(game.restart.${contract} matrixgame_battle_restart_scenarios gameplay startup)
 endforeach()
 add_matrix_test(game.loop.restart_toggles matrixgame_battle_restart_scenarios gameplay input startup)
+add_matrix_test(game.loop.restart_focus matrixgame_battle_restart_scenarios gameplay input startup current-desktop)
 if(NOT MATRIXGAME_BUILD_DLL)
     add_matrix_test(game.restart.saved_settings matrixgame_battle_restart_scenarios gameplay settings startup)
 endif()
@@ -986,6 +987,12 @@ if(NOT MATRIXGAME_BUILD_DLL)
             set_tests_properties(game.session.exe_${contract} PROPERTIES LABELS "engine;asset-free;startup;native;native-process;current-desktop" TIMEOUT 90 RUN_SERIAL TRUE)
         endforeach()
         foreach(mode park_miller legacy_crt)
+            foreach(destination same different)
+                set(contract "game.session.exe_active_order_${destination}_${mode}")
+                add_test(NAME ${contract} COMMAND matrixgame_standalone_session_tests
+                    ${contract} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
+                set_tests_properties(${contract} PROPERTIES LABELS "engine;asset-free;startup;gameplay;input;native;native-process;current-desktop" TIMEOUT 90 RUN_SERIAL TRUE)
+            endforeach()
             foreach(outcome win loss)
                 foreach(action "" _restart _exit)
                     set(contract "game.session.exe_natural_${outcome}${action}_${mode}")

@@ -6,7 +6,7 @@
 namespace tests::native_session {
 inline constexpr UINT snapshot_message = WM_APP + 0x385;
 inline constexpr wchar_t environment[] = L"MATRIXGAME_NATIVE_TEST";
-inline constexpr LONG version = 2;
+inline constexpr LONG version = 3;
 inline constexpr int capacity = 16;
 struct Snapshot {
     LONG request{};
@@ -16,6 +16,11 @@ struct Snapshot {
     int friendly_robots{}, enemy_robots{}, friendly_weapons{}, enemy_weapons{}, pending_result{}, win{};
     int status_scan_timestamp{}, result_countdown{};
     float friendly_health{}, enemy_health{};
+    float friendly_x{}, friendly_y{}, destination_x{}, destination_y{}, trace_x{}, trace_y{};
+    int selected{}, friendly_move{}, move_preorder{}, interface_focus{};
+    int trace_land{}, relaunch_requested{};
+    float order_x{}, order_y{};
+    int client_width{}, client_height{}, render_width{}, render_height{}, cursor_x{}, cursor_y{};
     int hints{}, settings{}, saved_camera{}, saved_skybox{}, saved_random{}, runtime_skybox{}, runtime_random{}, restart_pending{};
     float runtime_camera{};
     DWORD flags{};
