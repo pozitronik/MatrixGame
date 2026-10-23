@@ -34,14 +34,26 @@ bool ally_on_ray(CMatrixRobotAI &observer, CMatrixRobotAI &ally, CMatrixRobotAI 
 
 struct Result {
     std::vector<std::string> states;
+    std::filesystem::path trace_path;
+    int final_frame = 0, final_time = 0;
     int first_bad = 0;
     int first_recovery_hit = 0;
     int first_relocation = 0;
     float final_health = 0;
 };
 
-Result journey(random::Mode mode, int step, Engagement engagement, bool intervention, int replay) {
+Result journey(random::Mode mode, int step, Engagement engagement, bool intervention, int replay, bool standalone_control = false) {
     const bool obstructed = engagement == Engagement::Obstructed;
+    const auto name = std::string(obstructed ? "fire-obstructed" : "fire-ineffective") +
+        (intervention ? "-moving" : "-control");
+    const auto directory = std::filesystem::current_path() / "scenario-traces";
+    std::filesystem::create_directories(directory);
+    const auto path = directory / (name + (mode == random::Mode::ParkMiller ? "-pm-" : "-crt-") +
+        std::to_string(step) + "-" + std::to_string(replay) + ".jsonl");
+    std::ofstream file(path, std::ios::trunc);
+    MG_CHECK(file.good());
+    Result result;
+    result.trace_path = path;
     BattleCombatAssets assets;
     Profile profile{mode, 84, step, 3000, false};
     profile.layout = NavigationLayout::Open;
@@ -94,23 +106,16 @@ Result journey(random::Mode mode, int step, Engagement engagement, bool interven
     arm_battle_robot(*observer, obstructed ? RUK_WEAPON_LASER : RUK_WEAPON_PLASMA);
     g_MatrixData->BlockGet(L"Chars")->BlockGet(L"ChassisSounds")->BlockGet(L"2")->ParSetAdd(L"Patrol", L"Sound.Synthetic");
 
-    const auto name = std::string(obstructed ? "fire-obstructed" : "fire-ineffective") +
-        (intervention ? "-moving" : "-control");
-    const auto directory = std::filesystem::current_path() / "scenario-traces";
-    std::filesystem::create_directories(directory);
-    const auto path = directory / (name + (mode == random::Mode::ParkMiller ? "-pm-" : "-crt-") +
-        std::to_string(step) + "-" + std::to_string(replay) + ".jsonl");
-    std::ofstream file(path, std::ios::trunc);
-    MG_CHECK(file.good());
     auto header = session.metadata("moving-target-fire-feedback-v1");
     header.pop_back();
-    header += ",\"scenario\":\"" + name + "\",\"target_speed_bits\":" +
+    header += ",\"scenario\":\"" + name + "\",\"session_context\":\"" +
+        (standalone_control ? "standalone-control" : "main-case") + "\",\"target_speed_bits\":" +
         std::to_string(std::bit_cast<uint32_t>(target->GetMaxSpeed())) + "}";
     file << header << '\n';
     file.flush();
+    MG_CHECK(file.good());
     std::cerr << "Fire feedback profile: " << header << "\nTrace: " << path.string() << std::endl;
 
-    Result result;
     const auto id_of = [&](CMatrixMapStatic *object) {
         if (!object) return 0;
         for (unsigned id = 1; id <= robots.size(); ++id)
@@ -151,6 +156,7 @@ Result journey(random::Mode mode, int step, Engagement engagement, bool interven
         MG_CHECK(file.good());
     };
     const auto move_ally = [&](float x, float y, const char *label) {
+        const int frame = session.frame(), time = session.time();
         const auto before = random::draw_count();
         side.CreateGroupFromCurrent(ally);
         side.Select(ROBOT, nullptr);
@@ -160,21 +166,41 @@ Result journey(random::Mode mode, int step, Engagement engagement, bool interven
         MG_CHECK(session.robot(2).destination_y == int(y / 10) - 2);
         side.CreateGroupFromCurrent(observer);
         side.Select(ROBOT, nullptr);
-        file << "{\"type\":\"command\",\"time_ms\":" << session.time() << ",\"name\":\"" << label
+        const auto after = random::draw_count();
+        MG_CHECK(session.frame() == frame && session.time() == time);
+        file << "{\"type\":\"command\",\"frame\":" << frame << ",\"time_ms\":" << time << ",\"name\":\"" << label
             << "\",\"world\":[" << x << ',' << y << "],\"rng_draws_before\":" << before
-            << ",\"rng_draws_after\":" << random::draw_count() << "}\n";
+            << ",\"rng_draws_after\":" << after << "}\n";
+        file.flush();
+        MG_CHECK(file.good() && random::draw_count() == after);
     };
     move_ally(220, 40, "hold-alternative-place");
+    const auto move_before = random::draw_count();
+    const int move_frame = session.frame(), move_time = session.time();
     session.ground_command(100, 100);
+    const auto move_after = random::draw_count();
+    MG_CHECK(session.frame() == move_frame && session.time() == move_time);
+    file << "{\"type\":\"command\",\"frame\":" << move_frame << ",\"time_ms\":" << move_time
+         << ",\"name\":\"initial-firing-place\",\"world\":[100,100],\"rng_draws_before\":" << move_before
+         << ",\"rng_draws_after\":" << move_after << "}\n";
+    file.flush();
+    MG_CHECK(file.good() && random::draw_count() == move_after);
     record();
     while (session.time() < 200) { session.advance(); record(); }
     MG_CHECK(observer->GetEnv()->m_Place == 0 && ally->GetEnv()->m_Place == 2);
+    const int patrol_frame = session.frame(), patrol_time = session.time();
+    const auto patrol_before = random::draw_count();
     side.PGOrderPatrol(side.RobotToLogicGroup(observer), CPoint(48, 8));
+    const auto patrol_after = random::draw_count();
+    MG_CHECK(session.frame() == patrol_frame && session.time() == patrol_time);
     const auto &initial = side.m_PlayerGroup[observer->GetGroupLogic()];
     MG_CHECK(initial.Order() == mpo_Patrol);
     MG_CHECK(initial.m_From == CPoint(8, 8) && initial.m_To == CPoint(48, 8));
-    file << "{\"type\":\"command\",\"time_ms\":" << session.time()
-        << ",\"name\":\"patrol\",\"from\":[8,8],\"to\":[48,8]}\n";
+    file << "{\"type\":\"command\",\"frame\":" << patrol_frame << ",\"time_ms\":" << patrol_time
+        << ",\"name\":\"patrol\",\"from\":[8,8],\"to\":[48,8],\"rng_draws_before\":" << patrol_before
+        << ",\"rng_draws_after\":" << patrol_after << "}\n";
+    file.flush();
+    MG_CHECK(file.good() && random::draw_count() == patrol_after);
     record();
 
     bool commanded = false, alternate_reached = false;
@@ -277,17 +303,34 @@ Result journey(random::Mode mode, int step, Engagement engagement, bool interven
     if (obstructed || intervention)
         MG_CHECK(std::hypot(target->m_PosX - target_start.x, target->m_PosY - target_start.y) > 50);
     session.check_running();
+    result.final_frame = session.frame();
+    result.final_time = session.time();
     std::cout << "Feedback milestones: scenario=" << name << " first_bad=" << result.first_bad
         << " relocation=" << result.first_relocation << " recovery_hit=" << result.first_recovery_hit
         << " final_health=" << result.final_health << '\n';
     return result;
 }
 
+void complete(const Result &result) {
+    const auto draws = random::draw_count();
+    std::ofstream file(result.trace_path, std::ios::app);
+    MG_CHECK(file.good());
+    file << "{\"type\":\"complete\",\"frame\":" << result.final_frame << ",\"time_ms\":" << result.final_time
+         << ",\"feedback_result\":{\"first_bad\":" << result.first_bad
+         << ",\"first_relocation\":" << result.first_relocation
+         << ",\"first_recovery_hit\":" << result.first_recovery_hit
+         << ",\"final_health_bits\":" << std::bit_cast<std::uint32_t>(result.final_health) << "}}\n";
+    file.flush();
+    MG_CHECK(file.good() && random::draw_count() == draws);
+}
+
 template<random::Mode Mode, int Step, Engagement EngagementType> void run() {
     const auto main = journey(Mode, Step, EngagementType, true, 0);
-    MG_CHECK(main.states == journey(Mode, Step, EngagementType, true, 1).states);
+    const auto main_replay = journey(Mode, Step, EngagementType, true, 1);
+    MG_CHECK(main.states == main_replay.states);
     const auto control = journey(Mode, Step, EngagementType, false, 0);
-    MG_CHECK(control.states == journey(Mode, Step, EngagementType, false, 1).states);
+    const auto control_replay = journey(Mode, Step, EngagementType, false, 1);
+    MG_CHECK(control.states == control_replay.states);
     if constexpr (EngagementType == Engagement::Obstructed) {
         // Initial setup and every boundary before the ordinary ally command agree exactly.
         const std::size_t prefix = (1000 + Step - 1) / Step + 2;
@@ -295,11 +338,16 @@ template<random::Mode Mode, int Step, Engagement EngagementType> void run() {
         MG_CHECK(std::equal(main.states.begin(), main.states.begin() + prefix, control.states.begin()));
         MG_CHECK(control.first_bad == 0 || control.first_bad > main.first_bad + 4000);
     }
+    // Complete only after every journey, replay and cross-scene assertion succeeds.
+    for (const auto *result : {&main, &main_replay, &control, &control_replay}) complete(*result);
 }
 
 template<random::Mode Mode, int Step, Engagement EngagementType> void control() {
-    const auto first = journey(Mode, Step, EngagementType, false, 2);
-    MG_CHECK(first.states == journey(Mode, Step, EngagementType, false, 3).states);
+    const auto first = journey(Mode, Step, EngagementType, false, 2, true);
+    const auto second = journey(Mode, Step, EngagementType, false, 3, true);
+    MG_CHECK(first.states == second.states);
+    complete(first);
+    complete(second);
 }
 
 constexpr Case cases[]{
