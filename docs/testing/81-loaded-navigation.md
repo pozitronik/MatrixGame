@@ -1,6 +1,6 @@
 # Navigation through loaded terrain
 
-`game.navigation.loaded_map_assets` and the four opt-in `game.navigation.native_loaded_masks.*` cases connect a generated CStorage map to the real `CGame::Init`/`PrepareMap` loader, production pathfinding and a wheel robot's context Move. They extend N1's loading/preparation boundary and N3's impassable destination in the [completion checklist](baseline-completion.md#navigation). They do not modify production code or require original game resources.
+`game.navigation.loaded_map_assets` and the four opt-in `game.navigation.native_loaded_masks.*` cases connect a generated CStorage map to the real `CGame::Init`/`PrepareMap` loader, production pathfinding and a wheel robot's context Move. They extend N1's loading/preparation boundary and N3's impassable destination in the [completion checklist](baseline-completion.md#navigation). They do not modify production code or require original game resources. Default CI runs only the serialized fixture check; runtime loader, route and fallback evidence comes from the opt-in native cases.
 
 ## Map compilation boundary
 
@@ -23,7 +23,7 @@ The map has 32 by 32 terrain cells and 64 by 64 movement cells. Terrain vertices
 
 Band boundaries can contain the connecting terrain triangles. These are declared test inputs, not a claim about original maps or the original editor's thresholds. Restrictions are expanded for footprint sizes one through five and a two-cell outer border. The four road places preserve vertical connections; their horizontal edges carry the pneumatic/wheel/track restriction because they cross the deep-water band. This keeps the serialized road and cell restrictions consistent.
 
-Shallow land remains `CELLFLAG_LAND` at negative height. The deep band is `CELLFLAG_WATER`: `GetZ` returns its existing -1000 no-land-plane sentinel, while the stored point still has height -40. The loader cases distinguish both states rather than treating that sentinel as a seabed height. At the ramp midpoint, generated normals must have the expected uphill direction and unit slope; the interpolated height is 28 within 0.0001 world units for plane-arithmetic rounding. Four open marker subcells carry distinct sphere/directional values to detect swapped offsets. Their stop bits remain clear, so the markers cannot alter route choice.
+Shallow land remains `CELLFLAG_LAND` at negative height. The deep band is `CELLFLAG_WATER`: `GetZ` returns its existing -1000 no-land-plane sentinel, while the stored point still has height -40. The loader cases distinguish both states rather than treating that sentinel as a seabed height. At the ramp midpoint, generated normals must match the 0.6 gradient's unit normal; the interpolated height is 28 within 0.0001 world units for plane-arithmetic rounding. Four open marker subcells carry distinct sphere/directional values to detect swapped offsets. Their stop bits remain clear, so the markers cannot alter route choice.
 
 The ordinary asset case validates the serialized dimensions, height/flag declarations, four marker records, every footprint's deep/slope mask and the road-edge restrictions. It runs in the default engine suite without creating a window or device. It verifies the fixture's format, not runtime loading.
 
