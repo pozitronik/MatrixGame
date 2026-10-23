@@ -800,6 +800,8 @@ target_compile_definitions(matrixgame_formation_regulation_tests PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 add_matrix_test(game.navigation.mixed_formation_regulation matrixgame_formation_regulation_tests gameplay ai navigation)
+add_matrix_test(game.navigation.formation_intermediate_allowance matrixgame_formation_regulation_tests gameplay ai navigation)
+add_matrix_test(game.navigation.formation_trailing_reference matrixgame_formation_regulation_tests gameplay ai navigation)
 
 add_matrix_test_executable(matrixgame_formation_movement_scenarios formation_movement_scenarios.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
