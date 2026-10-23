@@ -1212,3 +1212,19 @@ foreach(profile park_miller10 park_miller16 legacy10 legacy16)
         add_matrix_test(game.ai.war_detour.${scene}.${profile} matrixgame_ai_war_detour_scenarios gameplay ai)
     endforeach()
 endforeach()
+
+add_matrix_test_executable(matrixgame_ai_fire_feedback_scenarios ai_fire_feedback_scenarios.cpp battle_scenario.cpp
+    battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_ai_fire_feedback_scenarios PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_ai_fire_feedback_scenarios matrixgame_scenario_identity)
+target_include_directories(matrixgame_ai_fire_feedback_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_ai_fire_feedback_scenarios PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(mode park_miller legacy_crt)
+    foreach(step 10 16)
+        foreach(scene ineffective obstructed ineffective_control obstructed_control)
+            add_matrix_test(game.ai.fire_feedback.${scene}_${mode}_${step} matrixgame_ai_fire_feedback_scenarios gameplay ai)
+        endforeach()
+    endforeach()
+endforeach()
