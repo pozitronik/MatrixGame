@@ -4,7 +4,7 @@ The `game.session.exe_*` cases link the production `WinMain` into a separate tes
 
 ## Running the checks
 
-A Windows x86 standalone build, the x86 D3DX9 runtime and a working Direct3D 9 HAL device are required. The graphics checks require the opt-in `MATRIXGAME_NATIVE_EXE_TESTS=ON` option, which defaults to OFF; default CI compiles their controller and probe but does not execute these cases. A missing device or a failed initialization fails the test; there is no visible-window fallback and no silent skip.
+A Windows x86 standalone build, the x86 D3DX9 runtime and a working Direct3D 9 HAL device are required. The graphics checks require the opt-in `MATRIXGAME_NATIVE_EXE_TESTS=ON` option, which defaults to OFF; default CI compiles their controller and probe but does not execute these cases. Hidden containment is the default. A separate visible presentation profile can be selected explicitly; a failed check never changes profile or becomes a silent skip.
 
 Configure the usual Debug and Release standalone test builds with the [build helper](../BUILD_WINDOWS.md). From the repository root, enable the native cases in those existing build directories, build their targets and run them serially:
 
@@ -12,7 +12,7 @@ Configure the usual Debug and Release standalone test builds with the [build hel
 $cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
 foreach ($configuration in @('Debug', 'Release')) {
     $build = "build/mingw-$($configuration.ToLowerInvariant())-exe"
-    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=ON
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=ON -DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=OFF -DMATRIXGAME_CHEATS=OFF
     if ($LASTEXITCODE -ne 0) { throw 'Native test configuration failed.' }
     & $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
     if ($LASTEXITCODE -ne 0) { throw 'Native test build failed.' }
@@ -23,7 +23,26 @@ foreach ($configuration in @('Debug', 'Release')) {
 
 The test helper stages the verified D3DX9 runtime. Use builds with cheats disabled for this suite; no developer command is used. Each native lifecycle case has Text and Packed variants, uses windowed mode and disables shadows. Packed names append `_packed` after the existing case/RNG suffix; names without it retain Text configuration. The materializer stores `da` and `if` in `CFG/robots.dat`, then removes both loose and parked configuration. Each controller launch verifies its deployment profile; relaunch children inherit that deployment. `CFG/standalone.txt` remains separate in both variants. General cases render at 640x480; active-order cases use 1280x720 to keep the destination clear of the HUD. The general lifecycle cases use two unarmed robots on flat generated terrain; the natural-result cases below arm one side. Both installed map entries initially contain the same scene under different filenames. The empty synthetic `robots.pkg` satisfies the standalone package preflight; all actual images, models and map records are generated loose files. The test deployment lives below CTest's working directory and is removed on normal completion or failure. Source configuration and supplied resources remain untouched.
 
-The normal build still compiles the controller and probe when the option is off. The always-registered `game.session.exe_configuration_assets` case materializes both profiles and parses their data/interface trees, checking the generated software-cursor setting and the absence of loose/parked fallback in Packed form. It copies the probe but starts no child process, window or device. Enabling the option registers 58 native cases in addition to this asset check. Each optional case has the `native-process` and `current-desktop` labels and runs serially within its CTest invocation; do not run separate native suites concurrently. To remove these native cases from subsequent CTest selections, reconfigure each build with `-DMATRIXGAME_NATIVE_EXE_TESTS=OFF`.
+The normal build still compiles the controller and probe when the option is off. The always-registered `game.session.exe_configuration_assets` case materializes both profiles and parses their data/interface trees, checking the generated software-cursor setting and the absence of loose/parked fallback in Packed form. It copies the probe but starts no child process, window or device. Enabling the option registers 58 native cases in addition to this asset check. Each optional case has the `native-process` and `current-desktop` labels and runs serially within its CTest invocation; do not run separate native suites concurrently. To remove these native cases from subsequent CTest selections, reconfigure each build with both `-DMATRIXGAME_NATIVE_EXE_TESTS=OFF` and `-DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=OFF`.
+
+### Explicit visible presentation profile
+
+Some drivers report `S_PRESENT_OCCLUDED` for the hidden parent even while the initialized game continues drawing. Such a run fails the strict first-`S_OK` readiness check. When desktop windows are acceptable, `MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=ON` selects a separate, default-off test profile and requires `MATRIXGAME_NATIVE_EXE_TESTS=ON`. It shows a 640x480 topmost, nonactivating parent at (50,50), positions its game child at the parent origin, and keeps the existing cursor, clipping, diagnostic and Documents containment. Active-order backbuffers remain 1280x720 and can be clipped by this small panel. Input is posted only to recorded owned game windows; no global input is synthesized.
+
+These commands launch visible windows. Start with the four relaunch checks, while leaving the keyboard and pointer out of the synthetic game:
+
+```powershell
+$cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
+$build = 'build/mingw-debug-exe'
+& $cmake -S . -B $build -DMATRIXGAME_NATIVE_EXE_TESTS=ON -DMATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=ON -DMATRIXGAME_CHEATS=OFF
+if ($LASTEXITCODE -ne 0) { throw 'Visible native configuration failed.' }
+& $cmake --build $build --target matrixgame_standalone_session_tests --parallel 2
+if ($LASTEXITCODE -ne 0) { throw 'Visible native build failed.' }
+.\tools\test.ps1 -Configuration Debug -NoBuild -Jobs 1 -Filter '^game\.session\.exe_(same_map|different_map)(_packed)?$'
+if ($LASTEXITCODE -ne 0) { throw 'Visible relaunch checks failed.' }
+```
+
+If those pass, run the complete prefix selection above in this explicitly configured build, then repeat the setup for Release. Visible cases carry an additional `visible-window` label. Record the selected visibility profile, both native CMake options, source/configuration identities and probe/controller hashes; keep hidden and visible results distinct. The controller waits for the owned window to become visible before posting its first observation. Both profiles still require a real successful `Present` and subsequent simulation, and retain their existing 90/150-second case deadlines. Restore both options to OFF after the run so an ordinary test invocation does not launch cached visible cases.
 
 ## Cases and assertions
 
@@ -89,6 +108,6 @@ A readiness timeout reports the native device's cooperative status, map resource
 
 ## Coverage limits
 
-The permanently invisible parent deliberately changes window presentation. The suite does not prove visible startup, loading-screen continuity, focus/minimization, cursor confinement, fullscreen transitions, text readability or a driver's visible output. In particular, production `BattleLoading::show` does not create its visible loading screen for the contained window. Its child-process readiness handshake is exercised, while the loading-screen display and Escape-to-hide behavior remain native presentation checks.
+The containment profile deliberately changes window presentation. Hidden mode supplies no visible output; visible mode uses a bounded panel with posted input and adapted cursor operations. Neither establishes ordinary foreground focus/minimization, physical cursor confinement, fullscreen transitions, text readability or the original resource profile. Production `BattleLoading::show` does not create its loading screen for a contained child in either mode. Its child-process readiness handshake is exercised, while the loading-screen display and Escape-to-hide behavior remain native presentation checks.
 
 Cheats-enabled behavior and a host's DLL lifetime require their own coverage. Each Text/Packed variant requires its own recorded execution; materialization and compilation do not establish a successful native handoff. These cases do not replace those requirements or complete the whole-game baseline. Their accepted execution and remaining native presentation requirements belong in the [native validation ledger](native-validation.md).

@@ -12,6 +12,7 @@
 namespace tests {
 namespace {
 HWND hidden_parent;
+NativeWindowContainment::WindowMode parent_mode = NativeWindowContainment::WindowMode::Hidden;
 NativeWindowContainment::Diagnostic report;
 struct Api {
     HMODULE user32 = GetModuleHandleW(L"user32.dll");
@@ -73,6 +74,9 @@ BOOL WINAPI contained_show(HWND window, int command) {
         // Fail before any show if another change bypassed the containment contract.
         if (GetParent(window) != hidden_parent || !(GetWindowLongW(window, GWL_STYLE) & WS_CHILD))
             TerminateProcess(GetCurrentProcess(), 98);
+        if (parent_mode == NativeWindowContainment::WindowMode::Visible &&
+            !SetWindowPos(window, nullptr, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE))
+            TerminateProcess(GetCurrentProcess(), 98);
         command = command == SW_HIDE ? SW_HIDE : SW_SHOWNOACTIVATE;
     }
     return api().show(window, command);
@@ -80,7 +84,7 @@ BOOL WINAPI contained_show(HWND window, int command) {
 BOOL WINAPI contained_clip(const RECT *) { return TRUE; }
 BOOL WINAPI contained_track_mouse(LPTRACKMOUSEEVENT tracking) {
     // Posted client input has its own explicit leave events. The desktop
-    // pointer cannot enter this invisible child and must not cancel a drag.
+    // pointer must not change the posted drag's leave-event schedule.
     if (tracking && tracking->cbSize == sizeof(*tracking) && tracking->dwFlags == TME_LEAVE &&
         game_window(tracking->hwndTrack) && GetParent(tracking->hwndTrack) == hidden_parent)
         return TRUE;
@@ -152,15 +156,20 @@ struct NativeWindowContainment::State {
         }
         if (hidden_parent) DestroyWindow(hidden_parent);
         hidden_parent = nullptr; report = nullptr;
+        parent_mode = WindowMode::Hidden;
     }
 };
-NativeWindowContainment::NativeWindowContainment(Diagnostic diagnostic, bool require_documents) {
+NativeWindowContainment::NativeWindowContainment(Diagnostic diagnostic, bool require_documents, WindowMode mode) {
     static_assert(sizeof(void *) == 4, "Native EXE baseline currently targets x86");
     if (hidden_parent) throw std::runtime_error("Window containment already active");
     state = std::make_unique<State>();
     native_window::cursor = {};
-    hidden_parent = api().create_w(WS_EX_NOACTIVATE, L"STATIC", L"Invisible native-test parent", WS_POPUP,
-        0, 0, 2048, 2048, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+    parent_mode = mode;
+    const bool visible = mode == WindowMode::Visible;
+    hidden_parent = api().create_w(WS_EX_NOACTIVATE | (visible ? WS_EX_TOOLWINDOW : 0), L"STATIC",
+        visible ? L"MatrixGame native test" : L"Invisible native-test parent", WS_POPUP,
+        visible ? 50 : 0, visible ? 50 : 0, visible ? 640 : 2048, visible ? 480 : 2048,
+        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hidden_parent || IsWindowVisible(hidden_parent)) throw std::runtime_error("Cannot create invisible test parent");
     report = diagnostic;
     auto *base = reinterpret_cast<BYTE *>(GetModuleHandleW(nullptr));
@@ -193,6 +202,9 @@ NativeWindowContainment::NativeWindowContainment(Diagnostic diagnostic, bool req
     if (state->imports.empty()) throw std::runtime_error("No test window imports adapted");
     if (require_documents && !documents_adapted) throw std::runtime_error("Test Documents lookup was not contained");
     if (!cursor_adapted || !cursor_count_adapted || !clip_adapted) throw std::runtime_error("Test cursor presentation was not contained");
+    if (visible && !SetWindowPos(hidden_parent, HWND_TOPMOST, 50, 50, 640, 480,
+                                 SWP_NOACTIVATE | SWP_SHOWWINDOW))
+        throw std::runtime_error("Cannot show bounded native test parent");
 }
 NativeWindowContainment::~NativeWindowContainment() = default;
 HWND NativeWindowContainment::parent() const { return hidden_parent; }

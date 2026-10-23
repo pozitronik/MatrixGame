@@ -139,7 +139,8 @@ struct Harness {
             MG_CHECK(fs::is_regular_file(application / "CFG/robots/data.txt") == !packed);
             MG_CHECK(fs::is_regular_file(application / "CFG/robots/iface.txt") == !packed);
             MG_CHECK(!fs::exists(application / "parked-text-config"));
-            std::cout << "configuration=" << (packed ? "Packed" : "Text") << '\n' << std::flush;
+            std::cout << "configuration=" << (packed ? "Packed" : "Text")
+                      << "; containment=" << (protocol::visible_windows ? "Visible" : "Hidden") << '\n' << std::flush;
             MG_CHECK(mapping);
             shared = static_cast<protocol::Shared *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(protocol::Shared)));
             MG_CHECK(shared); new (shared) protocol::Shared{};
@@ -208,7 +209,11 @@ struct Harness {
         DWORD owner{};
         GetWindowThreadProcessId(target, &owner);
         if (owner != pid) return false;
-        MG_CHECK(!IsWindowVisible(target));
+        if constexpr (protocol::visible_windows) {
+            if (!IsWindowVisible(target)) return false; // Creation can precede the first ShowWindow.
+        } else {
+            MG_CHECK(!IsWindowVisible(target));
+        }
         return PostMessageW(target, code, wp, lp) != 0;
     }
     std::optional<protocol::Snapshot> snapshot(DWORD pid, bool diagnostic = false) {

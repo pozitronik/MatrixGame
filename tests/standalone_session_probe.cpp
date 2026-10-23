@@ -170,7 +170,9 @@ struct Runtime {
             }
             if (!observed) ExitProcess(97);
             SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
-            windows = std::make_unique<tests::NativeWindowContainment>(diagnostic);
+            const auto mode = protocol::visible_windows ? tests::NativeWindowContainment::WindowMode::Visible :
+                                                         tests::NativeWindowContainment::WindowMode::Hidden;
+            windows = std::make_unique<tests::NativeWindowContainment>(diagnostic, true, mode);
             hook = SetWindowsHookExW(WH_CALLWNDPROC, messages, nullptr, GetCurrentThreadId());
             queue_hook = SetWindowsHookExW(WH_GETMESSAGE, queued_messages, nullptr, GetCurrentThreadId());
             if (!hook || !queue_hook) ExitProcess(97);

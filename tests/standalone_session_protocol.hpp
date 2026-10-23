@@ -8,6 +8,11 @@ inline constexpr UINT snapshot_message = WM_APP + 0x385;
 inline constexpr UINT diagnostic_snapshot_message = snapshot_message + 1;
 inline constexpr wchar_t environment[] = L"MATRIXGAME_NATIVE_TEST";
 inline constexpr LONG version = 4;
+#if defined(MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS) && MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS
+inline constexpr bool visible_windows = true;
+#else
+inline constexpr bool visible_windows = false;
+#endif
 inline constexpr int capacity = 16;
 struct Snapshot {
     LONG request{};
