@@ -811,10 +811,13 @@ add_matrix_test(game.presentation.settings_display_rollback matrixgame_settings_
 
 
 
-# Manual correctness probes for catalog defect candidates, intentionally outside
-# CTest until separately reviewed fixes establish the expected invariants.
+# Clear-rectangle regressions are registered; unresolved plane correctness probes
+# remain outside CTest until a separately reviewed correction establishes their contract.
 add_matrix_test_executable(matrixgame_presentation_defect_probes presentation_defect_probes.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_presentation_defect_probes PRIVATE MatrixGameInternal)
+foreach(contract clear_rectangle clear_rectangle_states clear_rectangle_disabled)
+    add_matrix_test(game.presentation.${contract} matrixgame_presentation_defect_probes ui rendering)
+endforeach()
 # Performance workloads. The executable is a measurement tool, not a
 # timing test: CTest only runs a short smoke pass that checks repeatable work.
 add_matrix_test_executable(matrixgame_benchmarks benchmarks.cpp benchmark_support.cpp benchmark_support.hpp
