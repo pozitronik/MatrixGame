@@ -39,7 +39,7 @@ For loss before release, elimination occurs at 2020/2032 ms and the paused loss 
 
 ## Coverage boundary
 
-The cases supply O3's selected weapon-attached carrier and transport collision outcomes, and a reusable body-plus-weapon fixture for N6. The separate [autonomous targeting cases](85-transport-ai.md) now establish carrier rejection, carried-robot acquisition/aiming and firing after landing without a supplied target or shot. Physical approach obstacles and other multipart models, native portraits and presentation retain their own coverage obligations. Successful map initialization/restart, selector relaunches and original-host reentry remain separate lifecycle contracts. Baseline acceptance still requires the reviewed integration evidence.
+The cases supply O3's selected weapon-attached carrier and transport collision outcomes, and a reusable body-plus-weapon fixture for N6. The separate [autonomous targeting cases](85-transport-ai.md) now establish carrier rejection, carried-robot acquisition/aiming and firing after landing without a supplied target or shot. The [physical approach obstacle cases](81-carrier-approach.md) separately characterize a body-only carrier crossing a narrow building despite its height response; defect disposition remains open. Other multipart models, native portraits and presentation retain their own coverage obligations. Successful map initialization/restart, selector relaunches and original-host reentry remain separate lifecycle contracts. Baseline acceptance still requires the reviewed integration evidence.
 
 ## Validation
 
