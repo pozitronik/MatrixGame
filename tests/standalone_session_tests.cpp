@@ -349,7 +349,7 @@ struct Harness {
         while (std::chrono::steady_clock::now() < deadline) {
             pump();
             if (processes.contains(pid) && processes.at(pid).exited) {
-                if (expected == 0) check_diagnostics(pid);
+                if (expected == 0 || processes.at(pid).exit != expected) check_diagnostics(pid);
                 MG_CHECK(processes.at(pid).exit == expected);
                 return;
             }
