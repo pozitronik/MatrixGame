@@ -99,7 +99,7 @@ The [completion checklist](baseline-completion.md) defines the bounded scenarios
 
 | Family | Available executable evidence | Evidence still required |
 | --- | --- | --- |
-| PRES-01: input, viewport, focus and reset | Existing `game.input.*`, `game.selection.*`, `game.display.*`, `game.device.*`, `game.font.*` exercise dispatch/state/cancellation/reset callbacks. Camera wheel, drag/reset and interruption contracts exercise the actual form handlers and camera matrices; `game.presentation.manual_fire_interface_focus` adds real form/interface alpha hit testing, UI press delivery, manual fire suppression/start/continuation and release. Command-route scenarios provide additional gameplay evidence when integrated | P1: native input/picking/display/reset evidence. P5 retains D1 correction/disposition; the reproducer is not a passing golden. |
+| PRES-01: input, viewport, focus and reset | Existing `game.input.*`, `game.selection.*`, `game.display.*`, `game.device.*`, `game.font.*` exercise dispatch/state/cancellation/reset callbacks. Camera wheel, drag/reset and interruption contracts exercise the actual form handlers and camera matrices; `game.presentation.manual_fire_interface_focus` adds real form/interface alpha hit testing, UI press delivery, manual fire suppression/start/continuation and release. Command-route scenarios provide additional gameplay evidence when integrated | P1: native input/picking/display/reset evidence. D1 has registered clear-rectangle coordinate regressions; native visible appearance remains separate. |
 | PRES-02: scene, text, effects and audio | New button/action/audio contracts and real command-to-audio routes, positional attenuation boundaries, loop silence/re-entry, stale handles and missing-speech behavior; weapon-owned loop updates and retirement; existing audio decoding, bridge, startup/default-map, lifetime and volume tests; settings shadow-pass checks | P2: actual rendered scene/shadows/text/minimap and positional/looping speech/effects across separate optional-audio profiles. |
 | PRES-03: startup and resources | Existing resource/path/startup/package contracts and audio catalog checks; actual standalone startup on a private desktop verifies missing required resources, rejected packed/missing text configuration, invalid RNG early fallback, absent/damaged optional packages, space/Unicode paths and failure exit status | P3: successful fresh archive/package/configuration launches, playable optional-audio profiles, loaded-map exits and CalcVis output provenance. Synthetic early failures do not establish those continuations. P5 retains D7 correction/disposition. |
 | PRES-04: settings | Existing settings parsing, persistence, model, runtime and display checks; production menu/form/window contracts for Move/group/cheat interception, paused/resumed simulation, pending edits, Cancel, Apply, failed-save preservation/retry, effective versus saved restart-only settings and queued display rejection/rollback/retry with recovered input and movement | P4: native step 5, including actual button picking, text, small-window/localized layout and audibility. Adapter enumeration and text rasterization are explicit presentation surrogates in the new executable; no production test seam is added. |
@@ -122,23 +122,35 @@ The stop case calls `FireEnd` twice and requires one immediate voice destruction
 
 Remaining checks include reuse of a weapon's loop across repeated shots and camera-driven updates of `AddSound` positional sounds through `CSound::Takt`. The current weapon cases produce one shot and exercise their owner's `ChangePos` path; they do not establish those two additional paths.
 
-## Opt-in defect reproducers
+## Clear-rectangle regression
 
-`matrixgame_presentation_defect_probes` is built with the test executables but is deliberately not registered in CTest. Its three probes assert the geometrically correct results and currently return exit code 1 on the reference implementation. They document catalog candidates D1 and D7; they are not accepted baseline goldens or passing regression coverage. After a separately reviewed correction, their assertions can become regular CTest contracts.
+D1's vertical-start error is corrected in `CIFaceElement::BeforeRender`: a depth-clear rectangle uses its configured `top` offset for `y1`. At element image position `(100,200)`, `ClearRect=(3,11,20,30)` now submits `(103,211,120,230)` instead of `(103,203,120,230)`. The configuration parser already reads separate left/top/right/bottom values; the correction changes one coordinate expression, without changing configuration formats, class layouts, simulation or command dispatch. It applies to EXE and host DLL rendering, including external interface configurations with unequal left/top offsets.
 
-After running the test build, invoke each command separately, then repeat with `mingw-release-exe`:
+Three registered `game.presentation.*` cases call the production method and inspect its actual clear-rectangle buffer. `clear_rectangle` retains the original asymmetric correct-result reproducer. `clear_rectangle_states` checks six explicit position/offset combinations in all five image states: left smaller/larger than top, negative local offsets, a negative element origin with a positive resulting rectangle, zero offsets and equal offsets. Other image-state positions and the element origin deliberately differ, so the active image geometry must be used. `clear_rectangle_disabled` checks all five states without the flag: the texture is still preloaded, but no clear rectangle is appended. Every sample verifies texture-reference release and clearing the submission buffer.
+
+Before the source correction, the asymmetric and state cases fail on the vertical coordinate while the disabled control passes. Afterwards all three pass. `PreloadedTexture` acknowledges residency notification only and aborts on other resource operations; no drawing or texture upload is simulated. These assertions establish the submitted rectangle, not visible corruption in supplied assets. The renderer consumes this buffer in its Z/stencil clear paths; actual native appearance remains separate presentation evidence. The legacy command `probe.presentation.clear_rectangle` is retained as an alias and now succeeds.
 
 ```powershell
-& .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.clear_rectangle
+.\tools\test.ps1 -Configuration Debug -Filter '^game\.presentation\.clear_rectangle'
+.\tools\test.ps1 -Configuration Release -Filter '^game\.presentation\.clear_rectangle'
+```
+
+Repeat with `-DLL` for the host-library build. D1 belongs to #87 correction/disposition, with original reproduction in #89 and scaling overlap in #63. This bounded correction does not implement interface scaling or complete the presentation baseline.
+
+## Opt-in defect reproducers
+
+The two unresolved plane probes in `matrixgame_presentation_defect_probes` remain outside CTest. They assert mathematically correct results and return exit code 1 on the current implementation; they are not passing baseline goldens. The same executable also contains the registered clear-rectangle regressions above.
+
+After running the test build, invoke each plane command separately, then repeat with `mingw-release-exe`:
+
+```powershell
 & .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_normal
 & .\build\mingw-debug-exe\tests\matrixgame_presentation_defect_probes.exe probe.presentation.plane_points
 ```
 
-D1 is assigned to #89 for reproduction and #87 for correction/disposition by the [legacy inventory](../research/88-legacy-code-inventory/README.md); #63 also identifies this coordinate error. A real interface element at (100, 200) with clear rectangle (3, 11, 20, 30) submits (103, 203, 120, 230); its top should be 211. `CIFaceElement::BeforeRender` uses the left offset for the vertical start. A minimal texture object acknowledges `PreLoad` only, and rejects other device operations; the production coordinate calculation and clear-rectangle buffer are unchanged. No rendered artifact is inferred from this component result.
+D7 is assigned to #89 for reproduction and #97 for correction/disposition by the [legacy inventory](../research/88-legacy-code-inventory/README.md). Both `SPlane` builders correctly populate `dxplane`, while distance/intersection methods read separate `norm`/`dist` fields. The probes initialize those separate fields explicitly, then build the plane z = 2 and query a ray from z = 10 directed downward. They obtain distance 0 and no intersection instead of distance magnitude 8 and intersection parameter 8. Initialization avoids treating an uninitialized read as a golden value. The test establishes the mathematical inconsistency; it does not establish the visibility output or native impact of the map-argument `CalcVis` path.
 
-D7 is assigned to #89 for reproduction and #97 for correction/disposition by the legacy inventory. Both `SPlane` builders correctly populate `dxplane`, while distance/intersection methods read separate `norm`/`dist` fields. The probes initialize those separate fields explicitly, then build the plane z = 2 and query a ray from z = 10 directed downward. They obtain distance 0 and no intersection instead of distance magnitude 8 and intersection parameter 8. Initialization avoids treating an uninitialized read as a golden value. The test establishes the mathematical inconsistency; it does not establish the visibility output or native impact of the map-argument `CalcVis` path.
-
-The [legacy evidence report](../research/89-legacy-evidence/defects.md) reconciles D1/D7 with these existing probes and preserves their unresolved status. Both defects still require a separate correction/disposition before accepting the affected baseline entries. The default test suite does not hide them with inverted assertions or a known-failure success status.
+The [legacy evidence report](../research/89-legacy-evidence/defects.md) records the original D1/D7 reproductions and D1's implementation follow-up. D7 still requires a separately reviewed correction/disposition before accepting the affected baseline entries. The default test suite does not hide that defect with inverted assertions or a known-failure success status.
 
 ## Native preparation
 

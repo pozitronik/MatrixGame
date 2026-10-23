@@ -3,6 +3,7 @@
 #include "CBlockPar.hpp"
 #include "CStorage.hpp"
 #include "test_support.hpp"
+#include "StringConstants.hpp"
 #include <filesystem>
 
 namespace tests {
@@ -22,4 +23,21 @@ void pack_native_session_configuration() {
     fs::rename(L"CFG/robots", L"parked-text-config");
     MG_CHECK(!fs::exists(L"CFG/robots/data.txt") && !fs::exists(L"CFG/robots/iface.txt"));
 }
+void write_native_packed_missing_hint() {
+    Base::CStorage source;
+    MG_CHECK(source.Load(L"CFG/robots.dat"));
+    Base::CBlockPar data, interface_config;
+    source.RestoreBlockPar(L"da", data);
+    source.RestoreBlockPar(L"if", interface_config);
+    auto *bitmaps = data.BlockGet(PAR_SOURCE_HINTS)->BlockGet(PAR_SOURCE_HINTS_BITMAPS);
+    MG_CHECK(bitmaps->ParCount() > 0);
+    const auto first = bitmaps->ParGetName(0);
+    bitmaps->ParSetAdd(first, L"native-missing-hint.png");
+    MG_CHECK(!std::filesystem::exists(L"native-missing-hint.png"));
+    Base::CStorage changed;
+    changed.StoreBlockPar(L"da", data);
+    changed.StoreBlockPar(L"if", interface_config);
+    changed.Save(L"CFG/robots.dat", true);
+}
+
 }
