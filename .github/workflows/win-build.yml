@@ -194,6 +194,13 @@ jobs:
           path: |
             build/**/test-results.xml
             build/**/scenario-traces/*.jsonl
+      - name: Validate complete N5 navigation recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          python -B tests/check_navigation_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --revision (git rev-parse HEAD)
+          if ($LASTEXITCODE -ne 0) { throw 'N5 producer/parser validation failed.' }
       - name: Prepare the minimal standalone package
         if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         shell: pwsh

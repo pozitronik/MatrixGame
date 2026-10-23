@@ -6,6 +6,9 @@
 #include "navigation_work_scene.hpp"
 
 #include <array>
+#include <filesystem>
+#include <fstream>
+#include <string_view>
 #include <vector>
 
 namespace {
@@ -157,14 +160,64 @@ void preservation() {
     MG_CHECK(work.terrain_collision_queries > 0 && work.terrain_mask_cells > 0 && work.terrain_geometry_tests > 0);
 }
 
+void write_work_states(std::ofstream &trace, const tests::navigation_work::Report &report) {
+    const auto draws = random::draw_count();
+    auto header = report.metadata;
+    MG_CHECK(!header.empty() && header.back() == '}');
+    header.pop_back();
+    trace << header << ",\"navigation_observation\":\"work-actors-v1\"}\n";
+    for (const auto &command : report.commands) trace << command << '\n';
+    for (const auto &state : report.states) {
+        const auto separator = state.find('\n');
+        MG_CHECK(separator != std::string::npos && state.find('\n', separator + 1) == std::string::npos);
+        // Keep both already observed objects byte-for-byte; never resample a live scene.
+        trace << "{\"type\":\"snapshot\",\"state\":" << std::string_view(state.data(), separator)
+              << ",\"navigation\":" << std::string_view(state.data() + separator + 1, state.size() - separator - 1)
+              << "}\n";
+        trace.flush();
+        MG_CHECK(trace.good());
+    }
+    MG_CHECK(random::draw_count() == draws);
+}
+
+void complete_work(std::ofstream &trace, const tests::navigation_work::Events &events) {
+    trace << "{\"type\":\"complete\",\"frame\":" << events.frames << ",\"time_ms\":" << events.time_ms
+          << ",\"events\":{\"initial_rng_draws\":" << events.initial_rng_draws
+          << ",\"final_rng_draws\":" << events.final_rng_draws
+          << ",\"minimum_separation_bits\":" << events.minimum_separation_bits << ",\"movers\":[";
+    for (size_t i = 0; i < events.first_arrival.size(); ++i) {
+        trace << (i ? "," : "") << "{\"id\":" << (i < 2 ? i + 1 : i + 3)
+              << ",\"first_movement_ms\":" << events.first_movement[i]
+              << ",\"first_arrival_ms\":" << events.first_arrival[i]
+              << ",\"assigned\":[" << events.assigned_cells[2 * i] << ',' << events.assigned_cells[2 * i + 1]
+              << "],\"x_bits\":" << events.final_position_bits[2 * i]
+              << ",\"y_bits\":" << events.final_position_bits[2 * i + 1] << '}';
+    }
+    trace << "]}}\n";
+    trace.flush();
+    MG_CHECK(trace.good());
+}
+
 template<tests::navigation_work::Kind Kind, random::Mode Mode, int Step>
 void crowded_preservation() {
     using namespace tests::navigation_work;
     const Options options{Kind, Mode, Step};
+    const auto directory = std::filesystem::current_path() / "scenario-traces";
+    std::filesystem::create_directories(directory);
+    const auto prefix = std::string("n5-work-") + (Kind == tests::navigation_work::Kind::CrowdedDestination ? "crowded-" : "opposing-") +
+        (Mode == random::Mode::ParkMiller ? "pm-" : "crt-") + std::to_string(Step) + '-';
+    std::array<std::ofstream, 3> traces;
+    const std::array roles{"inactive", "capture0", "capture1"};
+    for (size_t i = 0; i < traces.size(); ++i) {
+        traces[i].open(directory / (prefix + roles[i] + ".jsonl"), std::ios::trunc);
+        MG_CHECK(traces[i].good());
+    }
+    size_t recording = 0;
     const auto execute = [&](bool collect) {
         Scene scene(options);
         std::cout << scene.metadata() << "\ncollect=" << collect << std::endl;
         auto result = scene.run(collect, true);
+        write_work_states(traces[recording++], result);
         print(result);
         return result;
     };
@@ -219,6 +272,10 @@ void crowded_preservation() {
     for (const auto &interval : collected.intervals)
         for (auto field : tests::navigation_work::fields) sum.*field += interval.*field;
     MG_CHECK(sum == work);
+    MG_CHECK(recording == traces.size());
+    complete_work(traces[0], inactive.events);
+    complete_work(traces[1], collected.events);
+    complete_work(traces[2], repeated.events);
 }
 
 constexpr tests::Case cases[]{
