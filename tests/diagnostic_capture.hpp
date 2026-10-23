@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #pragma once
 #include "MatrixDebugInfo.hpp"
+#include <vector>
 
 namespace tests {
 struct DiagnosticEvent {
