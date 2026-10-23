@@ -162,7 +162,9 @@ Result journey(random::Mode mode, int step, AutoOrder order, bool override_order
         if (factory)
             out << ",\"factory\":{\"owner\":" << factory->GetSide() << ",\"paint\":" << factory->m_TrueColor.m_ColoredCnt
                 << ",\"color\":" << factory->m_TrueColor.m_Color << ",\"capturer\":" << id_of(factory->m_Capturer)
-                << ",\"actor_capture\":" << (actor->GetCaptureFactory() == factory) << '}';
+                << ",\"actor_capture\":" << (actor->GetCaptureFactory() == factory)
+                << ",\"opponent_capture\":" << (target->GetCaptureFactory() == factory)
+                << ",\"opponent_capture_order\":" << target->FindOrderLikeThat(ROT_CAPTURE_FACTORY) << '}';
         out << ",\"resources\":[";
         for (int side_id = 1; side_id <= 2; ++side_id)
             for (int resource = 0; resource < MAX_RESOURCES; ++resource) {
@@ -208,6 +210,8 @@ Result journey(random::Mode mode, int step, AutoOrder order, bool override_order
                 MG_CHECK(factory->m_TrueColor.m_ColoredCnt == 1);
                 record();
                 MG_CHECK(actor->GetCaptureFactory() == factory);
+                MG_CHECK(target->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+                MG_CHECK(target->GetCaptureFactory() == factory);
                 MG_CHECK(factory->m_Capturer == target);
             }
             if (!result.ownership && factory->GetSide() == PLAYER_SIDE) {
@@ -258,6 +262,8 @@ Result journey(random::Mode mode, int step, AutoOrder order, bool override_order
             if (capture) {
                 MG_CHECK(result.paint > 0 && result.ownership > result.paint && result.stopped >= result.ownership);
                 MG_CHECK(session.robot(1).order == mpo_Stop && !actor->GetCaptureFactory());
+                MG_CHECK(target->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+                MG_CHECK(target->GetCaptureFactory() == factory);
                 MG_CHECK(factory->m_Capturer == target);
             }
             else {
