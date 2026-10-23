@@ -130,6 +130,8 @@ For `--iterations N` above one, every `work_per_sample` counter is summed across
 Build and measure the selected executable explicitly; stop after any failed preparation/run so a stale report is not compared:
 
 ```powershell
+. {
+$ErrorActionPreference = 'Stop'
 .\tools\test.ps1 -Configuration Release -Filter '^game\.benchmark\.(combat\.laser_tick|strategy\.capture_tick)\.'
 if ($LASTEXITCODE -ne 0) { throw 'Active workload smoke checks failed.' }
 python -B tools/benchmark.py run --executable build/mingw-release-exe/tests/matrixgame_battle_benchmarks.exe --processes 3 --iterations 1 --output build/benchmarks/active-a.json
@@ -138,6 +140,7 @@ python -B tools/benchmark.py run --executable build/mingw-release-exe/tests/matr
 if ($LASTEXITCODE -ne 0) { throw 'Second active workload measurement failed.' }
 python -B tools/benchmark.py compare build/benchmarks/active-a.json build/benchmarks/active-b.json
 if ($LASTEXITCODE -ne 0) { throw 'Active workload comparison failed.' }
+}
 ```
 
 Inspect every A/A verdict: exit zero also permits `inconclusive`, which does not establish the required `no material change` condition. Keep the existing comparison policy; final integrated measurements, accepted historical reference selection and native execution remain separate gates. These synthetic scenes do not replace them.
