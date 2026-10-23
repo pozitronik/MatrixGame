@@ -362,7 +362,7 @@ void natural_fights_tick() {
         // the second fight. Observe both the camera and its retained target.
         if (D3DXVec3Length(&delta) < 2 && host->camera_cores[2]->m_Ref >= 3) {
             MG_CHECK(host->first_camera);
-            MG_CHECK(host->camera_cores[1]->m_Ref == 1 && host->camera_cores[2]->m_Ref >= 3);
+            MG_CHECK(host->camera_cores[1]->m_Ref == 1);
             MG_CHECK(g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) == 1);
             host->observed_draws = random::draw_count() - host->initial_draws;
             for (auto &core : host->camera_cores) core.reset();
@@ -592,9 +592,16 @@ void demo_assets() {
                 auto *column = map.GetBuf(DATA_ROBOTS, name, type);
                 MG_CHECK(column && column->GetArraysCount() == 1 && column->GetArrayLength(0) == actors);
             }
+            const auto *sides = map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_SIDE, ST_BYTE)->GetFirst<BYTE>(0);
+            MG_CHECK(sides[0] == 1 && sides[1] == 2);
+            if (actors == 3) MG_CHECK(sides[2] == 2);
             auto *units = map.GetBuf(DATA_ROBOTS, DATA_ROBOTS_UNITS, ST_WCHAR);
             MG_CHECK(units && units->GetArraysCount() == actors);
             const auto laser = L"|" + std::to_wstring(MRT_WEAPON) + L"," + std::to_wstring(RUK_WEAPON_LASER);
+            if (fights) {
+                const auto diploid = L"|" + std::to_wstring(MRT_ARMOR) + L"," + std::to_wstring(RUK_ARMOR_DIPLOID);
+                MG_CHECK(units->GetAsWStr(2).find(diploid) != std::wstring::npos);
+            }
             if (camera || reinforcement)
                 for (DWORD i = 0; i < actors; ++i) MG_CHECK(units->GetAsWStr(i) == units->GetAsWStr(0));
             for (DWORD i = 0; i < actors; ++i) {
