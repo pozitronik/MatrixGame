@@ -3,6 +3,7 @@
 #include "test_support.hpp"
 #include "NavigationWork.hpp"
 #include "MatrixRobot.hpp"
+#include "navigation_work_scene.hpp"
 
 #include <array>
 #include <vector>
@@ -156,6 +157,40 @@ void preservation() {
     MG_CHECK(work.terrain_collision_queries > 0 && work.terrain_mask_cells > 0 && work.terrain_geometry_tests > 0);
 }
 
+template<tests::navigation_work::Kind Kind, random::Mode Mode, int Step>
+void crowded_preservation() {
+    using namespace tests::navigation_work;
+    const Options options{Kind, Mode, Step};
+    const auto execute = [&](bool collect) {
+        Scene scene(options);
+        std::cout << scene.metadata() << "\ncollect=" << collect << std::endl;
+        auto result = scene.run(collect, true);
+        print(result);
+        return result;
+    };
+    const auto inactive = execute(false);
+    const auto collected = execute(true);
+    const auto repeated = execute(true);
+    MG_CHECK(inactive.states == collected.states && collected.states == repeated.states);
+    MG_CHECK(inactive.events == collected.events && collected.events == repeated.events);
+    MG_CHECK(inactive.total == Counters{});
+    MG_CHECK(collected.frames == repeated.frames && collected.total == repeated.total);
+    MG_CHECK(collected.intervals == repeated.intervals);
+    MG_CHECK(collected.frames.size() == static_cast<size_t>(collected.events.frames));
+    const auto &work = collected.total;
+    MG_CHECK(work.local_searches > 0 && work.local_cells_initialized > 0 && work.local_queue_entries > 0);
+    MG_CHECK(work.zone_searches > 0 && work.robot_collision_queries > 0 && work.robot_collision_candidates > 0);
+    MG_CHECK(work.terrain_collision_queries > 0 && work.terrain_mask_cells > 0);
+    Counters sum{};
+    for (const auto &frame : collected.frames)
+        for (auto field : tests::navigation_work::fields) sum.*field += frame.*field;
+    MG_CHECK(sum == work);
+    sum = {};
+    for (const auto &interval : collected.intervals)
+        for (auto field : tests::navigation_work::fields) sum.*field += interval.*field;
+    MG_CHECK(sum == work);
+}
+
 constexpr tests::Case cases[]{
     {"game.navigation.work_scopes", scopes},
     {"game.navigation.work_search", search_work},
@@ -164,6 +199,22 @@ constexpr tests::Case cases[]{
     {"game.navigation.work_preservation.park_miller16", preservation<random::Mode::ParkMiller, 16>},
     {"game.navigation.work_preservation.legacy10", preservation<random::Mode::LegacyCRT, 10>},
     {"game.navigation.work_preservation.legacy16", preservation<random::Mode::LegacyCRT, 16>},
+    {"game.navigation.work_crowded.park_miller10",
+     crowded_preservation<tests::navigation_work::Kind::CrowdedDestination, random::Mode::ParkMiller, 10>},
+    {"game.navigation.work_crowded.park_miller16",
+     crowded_preservation<tests::navigation_work::Kind::CrowdedDestination, random::Mode::ParkMiller, 16>},
+    {"game.navigation.work_crowded.legacy10",
+     crowded_preservation<tests::navigation_work::Kind::CrowdedDestination, random::Mode::LegacyCRT, 10>},
+    {"game.navigation.work_crowded.legacy16",
+     crowded_preservation<tests::navigation_work::Kind::CrowdedDestination, random::Mode::LegacyCRT, 16>},
+    {"game.navigation.work_opposing.park_miller10",
+     crowded_preservation<tests::navigation_work::Kind::OpposingFlow, random::Mode::ParkMiller, 10>},
+    {"game.navigation.work_opposing.park_miller16",
+     crowded_preservation<tests::navigation_work::Kind::OpposingFlow, random::Mode::ParkMiller, 16>},
+    {"game.navigation.work_opposing.legacy10",
+     crowded_preservation<tests::navigation_work::Kind::OpposingFlow, random::Mode::LegacyCRT, 10>},
+    {"game.navigation.work_opposing.legacy16",
+     crowded_preservation<tests::navigation_work::Kind::OpposingFlow, random::Mode::LegacyCRT, 16>},
 };
 }  // namespace
 
