@@ -207,7 +207,10 @@ struct Harness {
         }
         std::cerr << "Observed slot=" << slot(pid) << " window=" << window(pid) << '\n';
         if (auto state = snapshot(pid)) std::wcerr << L"Last form=" << state->form << L" flags=" << state->flags
-            << L" time=" << state->time << L" friendly health=" << state->friendly_health << L" enemy health=" << state->enemy_health << '\n';
+            << L" time=" << state->time << L" friendly health=" << state->friendly_health << L" enemy health=" << state->enemy_health
+            << L" selected=" << state->selected << L" preorder=" << state->move_preorder << L" moving=" << state->friendly_move
+            << L" position=" << state->friendly_x << L"," << state->friendly_y << L" trace=" << state->trace_x << L"," << state->trace_y
+            << L" trace land=" << state->trace_land << L" focus=" << state->interface_focus << '\n';
         throw std::runtime_error("Timed out waiting for " + std::string(description));
     }
     void key(DWORD pid, WPARAM key) { MG_CHECK(message(pid, WM_KEYDOWN, key)); MG_CHECK(message(pid, WM_KEYUP, key)); }
@@ -467,6 +470,112 @@ void battle_end(bool surrender, bool cancel, bool close_selector = false) {
     MG_CHECK(run.processes.size() == 2);
 }
 enum class PendingAction { None, Restart, Exit };
+protocol::Snapshot submit_native_move(Harness &run, DWORD pid) {
+    run.key(pid, VK_OEM_PERIOD); // Production next-robot selection and camera centering.
+    auto selected = run.wait(pid, [](const auto &state) { return state.selected == 1; }, "friendly robot selected");
+    run.key(pid, 'M');
+    run.wait(pid, [](const auto &state) { return state.move_preorder; }, "Move command cursor");
+    const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(10);
+    bool aimed = false;
+    LPARAM point{};
+    protocol::Snapshot last{};
+    while (std::chrono::steady_clock::now() < deadline) {
+        const auto state = run.wait(pid, [](const auto &state) { return state.initialized; }, "movement destination projection");
+        last = state;
+        if (!std::isfinite(state.destination_x) || !std::isfinite(state.destination_y)) continue;
+        MG_CHECK(state.render_width > 0 && state.render_height > 0 && state.client_width > 0 && state.client_height > 0);
+        // Invert Display::map_mouse in the posting caller's client-coordinate space.
+        // Windows virtualizes GetClientRect according to this controller's DPI context.
+        RECT client{};
+        MG_CHECK(GetClientRect(run.window(pid), &client));
+        const int x = int(std::lround(state.destination_x * client.right / state.render_width));
+        const int y = int(std::lround(state.destination_y * client.bottom / state.render_height));
+        if (x <= 5 || x >= client.right - 5 || y <= 5 || y >= client.bottom - 5) continue;
+        point = MAKELPARAM(x, y);
+        MG_CHECK(run.message(pid, WM_MOUSEMOVE, 0, point));
+        const auto traced = run.wait(pid, [](const auto &state) { return state.initialized; }, "movement destination trace");
+        if (traced.interface_focus == 0 && traced.trace_land && std::abs(traced.trace_x - 200) < 10 && std::abs(traced.trace_y - 100) < 10) {
+            aimed = true;
+            break;
+        }
+        run.pump();
+    }
+    if (!aimed) {
+        RECT client{}; GetClientRect(run.window(pid), &client);
+        std::cerr << "Destination projection=" << last.destination_x << ',' << last.destination_y
+                  << " trace=" << last.trace_x << ',' << last.trace_y << " focus=" << last.interface_focus
+                  << " client=" << client.right << 'x' << client.bottom
+                  << " native client=" << last.client_width << 'x' << last.client_height
+                  << " cursor=" << last.cursor_x << ',' << last.cursor_y << '\n';
+    }
+    MG_CHECK(aimed);
+    MG_CHECK(run.message(pid, WM_LBUTTONDOWN, MK_LBUTTON, point));
+    MG_CHECK(run.message(pid, WM_LBUTTONUP, 0, point));
+    const auto moving = run.wait(pid, [&](const auto &state) {
+        return state.friendly_move && std::hypot(state.friendly_x - selected.friendly_x, state.friendly_y - selected.friendly_y) > 1;
+    }, "accepted Move and actual displacement");
+    return moving;
+}
+void active_order_relaunch(bool different, random::Mode mode) {
+    Deployment deployment;
+    const auto settings_path = deployment.app / "CFG/standalone.txt";
+    auto settings = StandaloneSettings::load(settings_path.c_str()).values;
+    settings.random = mode;
+    settings.display.width = 1280;
+    settings.display.height = 720;
+    std::string save_error;
+    MG_CHECK(StandaloneSettings::save(settings, save_error, settings_path.c_str()));
+    Harness run(deployment);
+    start_battle(run);
+    const auto parent = run.root_pid;
+    const auto before = StandaloneSettings::load(settings_path.c_str()).values;
+    submit_native_move(run, parent);
+    run.key(parent, VK_ESCAPE);
+    const auto menu = run.wait(parent, [](const auto &state) { return std::wstring(state.dialog) == L"Menu" && state.paused; }, "active-order menu");
+    std::cout << "Menu Move=" << menu.friendly_move << " selected=" << menu.selected << " position=" << menu.friendly_x << ',' << menu.friendly_y << '\n';
+    MG_CHECK(menu.friendly_move && menu.selected == 0 && menu.runtime_random == static_cast<int>(mode));
+    run.key(parent, 'N');
+    const auto selector = run.wait(parent, [](const auto &state) { return state.selector; }, "active-order selector");
+    MG_CHECK(selector.paused && selector.friendly_move && selector.time == menu.time);
+    MG_CHECK(selector.friendly_x == menu.friendly_x && selector.friendly_y == menu.friendly_y);
+    MG_CHECK(selector.order_x == menu.order_x && selector.order_y == menu.order_y);
+    const auto hold_until = std::chrono::steady_clock::now() + std::chrono::milliseconds(300);
+    while (std::chrono::steady_clock::now() < hold_until) run.pump();
+    run.key(parent, VK_ESCAPE);
+    const auto canceled = run.wait(parent, [](const auto &state) { return !state.selector; }, "active-order selector canceled");
+    MG_CHECK(std::wstring(canceled.dialog) == L"Menu" && canceled.paused && canceled.friendly_move && canceled.selected == menu.selected);
+    MG_CHECK(canceled.time == menu.time && canceled.friendly_x == menu.friendly_x && canceled.friendly_y == menu.friendly_y);
+    MG_CHECK(canceled.order_x == menu.order_x && canceled.order_y == menu.order_y);
+    MG_CHECK(!canceled.relaunch_requested && run.processes.size() == 1);
+    const auto after = StandaloneSettings::load(settings_path.c_str()).values;
+    MG_CHECK(after.map == before.map && after.battle_bonus == before.battle_bonus);
+    run.key(parent, VK_ESCAPE);
+    run.wait(parent, [&](const auto &state) {
+        return !state.paused && state.friendly_move && state.order_x == menu.order_x && state.order_y == menu.order_y &&
+            std::hypot(state.friendly_x - menu.friendly_x, state.friendly_y - menu.friendly_y) > 1;
+    }, "same Move resumes after selector Cancel");
+    run.key(parent, VK_ESCAPE);
+    run.wait(parent, [](const auto &state) { return state.paused && state.friendly_move; }, "resumed active-order menu");
+    run.key(parent, 'N');
+    run.wait(parent, [](const auto &state) { return state.selector; }, "active-order selector reopened");
+    run.key(parent, different ? VK_END : VK_HOME);
+    run.key(parent, VK_RETURN);
+    const auto child = run.child(parent);
+    const auto loaded = run.wait(child, [](const auto &state) { return state.initialized; }, "active-order next battle");
+    MG_CHECK(std::wstring(loaded.map) == (different ? L"Matrix\\Map\\second.cmap" : L"Matrix\\Map\\first.cmap"));
+    MG_CHECK(loaded.direct_start && loaded.robots == 2 && loaded.runtime_random == static_cast<int>(mode));
+    MG_CHECK(!loaded.friendly_move && loaded.selected == 0 && loaded.friendly_x == 100 && loaded.friendly_y == 100);
+    MG_CHECK(loaded.result_countdown == 0 && !loaded.win);
+    MG_CHECK(run.message(child, WM_ACTIVATEAPP, TRUE));
+    run.wait(child, [](const auto &state) { return !state.parent_handshake; }, "active-order child first Present");
+    run.exit(parent, 0);
+    run.key(child, VK_RETURN);
+    run.wait(child, [](const auto &state) { return !state.paused && !state.dialog[0] && state.time > 100; }, "active-order child simulation");
+    submit_native_move(run, child);
+    MG_CHECK(run.message(child, WM_CLOSE));
+    run.exit(child, 0);
+    MG_CHECK(run.processes.size() == 2);
+}
 void natural_result(bool player_wins, random::Mode mode, PendingAction action = PendingAction::None) {
     Deployment deployment;
     tests::write_native_outcome_map(deployment.app / "Matrix/Map/first.cmap", player_wins);
@@ -579,6 +688,10 @@ int main(int argc, char **argv) {
         {"game.session.exe_surrender_cancel", [] { battle_end(true, true); }},
         {"game.session.exe_surrender_next", [] { battle_end(true, false); }},
         {"game.session.exe_menu_exit", [] { battle_end(false, false); }},
+        {"game.session.exe_active_order_same_park_miller", [] { active_order_relaunch(false, random::Mode::ParkMiller); }},
+        {"game.session.exe_active_order_different_park_miller", [] { active_order_relaunch(true, random::Mode::ParkMiller); }},
+        {"game.session.exe_active_order_same_legacy_crt", [] { active_order_relaunch(false, random::Mode::LegacyCRT); }},
+        {"game.session.exe_active_order_different_legacy_crt", [] { active_order_relaunch(true, random::Mode::LegacyCRT); }},
         {"game.session.exe_natural_win_park_miller", [] { natural_result(true, random::Mode::ParkMiller, PendingAction::None); }},
         {"game.session.exe_natural_win_restart_park_miller", [] { natural_result(true, random::Mode::ParkMiller, PendingAction::Restart); }},
         {"game.session.exe_natural_win_exit_park_miller", [] { natural_result(true, random::Mode::ParkMiller, PendingAction::Exit); }},

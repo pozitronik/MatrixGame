@@ -7,11 +7,14 @@
 #include "MatrixRobot.hpp"
 #include "MatrixFormGame.hpp"
 #include "MapWindow.hpp"
+#include "MapSelection.hpp"
 #include "StartupMenu.hpp"
 #include "BattleLoading.hpp"
 #include "SettingsWindow.hpp"
 #include "StandaloneRuntime.hpp"
 #include "MatrixConfig.hpp"
+#include "Interface/CInterface.h"
+#include "Logic/MatrixAIGroup.h"
 #include <array>
 #include <algorithm>
 #include <cwchar>
@@ -44,6 +47,7 @@ void snapshot(LONG request) {
     value.flags = g_Flags;
     value.exit_state = g_ExitState;
     value.selector = MapWindow::active();
+    value.relaunch_requested = MapSelection::relaunch_requested();
     value.direct_start = StartupMenu::direct_start();
     value.parent_handshake = BattleLoading::has_parent();
     if (g_MatrixMap && battle_form) {
@@ -65,16 +69,46 @@ void snapshot(LONG request) {
         value.win = FLAG(g_MatrixMap->m_Flags, MMFLAG_WIN);
         value.status_scan_timestamp = MapObservation::status_timestamp(*g_MatrixMap);
         value.result_countdown = MapObservation::result_countdown(*g_MatrixMap);
+        if (auto *group = g_MatrixMap->GetPlayerSide()->GetCurGroup()) value.selected = group->GetObjectsCnt();
+        value.move_preorder = FLAG(g_IFaceList->m_IfListFlags, PREORDER_MOVE);
+        value.interface_focus = g_IFaceList->m_InFocus;
+        RECT client{};
+        GetClientRect(g_Wnd, &client);
+        value.client_width = client.right;
+        value.client_height = client.bottom;
+        value.render_width = g_ScreenX;
+        value.render_height = g_ScreenY;
+        value.cursor_x = g_MatrixMap->m_Cursor.GetPosX();
+        value.cursor_y = g_MatrixMap->m_Cursor.GetPosY();
+        D3DXMATRIX identity;
+        D3DXMatrixIdentity(&identity);
+        const auto destination = g_MatrixMap->m_Camera.Project(D3DXVECTOR3(200, 100, 10), identity);
+        value.destination_x = destination.x;
+        value.destination_y = destination.y;
+        value.trace_x = g_MatrixMap->m_TraceStopPos.x;
+        value.trace_y = g_MatrixMap->m_TraceStopPos.y;
+        value.trace_land = g_MatrixMap->m_TraceStopObj == TRACE_STOP_LANDSCAPE;
         for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
             if (!object->IsLiveRobot()) continue;
             ++value.robots;
-            const auto *robot = object->AsRobot();
+            auto *robot = object->AsRobot();
             int weapons = 0;
             for (int i = 0; i < robot->m_UnitCnt; ++i) if (robot->m_Unit[i].m_Type == MRT_WEAPON) ++weapons;
             if (object->GetSide() == PLAYER_SIDE) {
                 ++value.friendly_robots;
                 value.friendly_weapons = weapons;
                 value.friendly_health = robot->GetHitPoint();
+                value.friendly_x = robot->m_PosX;
+                value.friendly_y = robot->m_PosY;
+                value.friendly_move = robot->FindOrderLikeThat(ROT_MOVE_TO);
+                for (int i = 0; i < robot->GetOrdersInPool(); ++i) {
+                    const auto *order = robot->GetOrder(i);
+                    if (order->GetOrderType() == ROT_MOVE_TO) {
+                        value.order_x = order->m_Param1;
+                        value.order_y = order->m_Param2;
+                        break;
+                    }
+                }
             } else {
                 ++value.enemy_robots;
                 value.enemy_weapons = weapons;
