@@ -307,7 +307,7 @@ Result journey(random::Mode mode, int step, AutoOrder order, bool override_order
     }
     else MG_CHECK(std::hypot(result.final_x - 100, result.final_y - 400) > 50);
     session.check_running();
-    file << "{\"type\":\"milestones\",\"time_ms\":" << session.time()
+    file << "{\"type\":\"complete\",\"frame\":" << session.frame() << ",\"time_ms\":" << session.time()
         << ",\"paint_ms\":" << result.paint << ",\"ownership_ms\":" << result.ownership
         << ",\"stopped_ms\":" << result.stopped << ",\"hit_ms\":" << result.hit
         << ",\"retired_ms\":" << result.retired << ",\"replacement_ms\":" << result.replacement
