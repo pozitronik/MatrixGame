@@ -1020,3 +1020,18 @@ if(NOT MATRIXGAME_BUILD_DLL)
         endforeach()
     endif()
 endif()
+
+add_matrix_test_executable(matrixgame_navigation_work_tests navigation_work_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_navigation_work_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_navigation_work_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_navigation_work_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_navigation_work_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract scopes search avoidance)
+    add_matrix_test(game.navigation.work_${contract} matrixgame_navigation_work_tests gameplay ai navigation)
+endforeach()
+foreach(profile park_miller10 park_miller16 legacy10 legacy16)
+    add_matrix_test(game.navigation.work_preservation.${profile} matrixgame_navigation_work_tests gameplay ai navigation)
+endforeach()
