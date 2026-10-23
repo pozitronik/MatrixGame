@@ -960,6 +960,23 @@ if(MATRIXGAME_BUILD_DLL)
     endif()
 endif()
 
+add_matrix_test_executable(matrixgame_loaded_navigation_tests loaded_navigation_tests.cpp
+    native_session_assets.cpp battle_geometry.cpp)
+target_link_libraries(matrixgame_loaded_navigation_tests PRIVATE MatrixGameInternal matrixgame_native_window_containment)
+add_dependencies(matrixgame_loaded_navigation_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_loaded_navigation_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_loaded_navigation_tests PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}"
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CONFIGURATION="$<CONFIG>"
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+add_matrix_test(game.navigation.loaded_map_assets matrixgame_loaded_navigation_tests gameplay navigation storage)
+if(MATRIXGAME_BUILD_DLL AND MATRIXGAME_NATIVE_SESSION_TESTS)
+    foreach(profile park_miller10 park_miller16 legacy10 legacy16)
+        add_matrix_test(game.navigation.native_loaded_masks.${profile} matrixgame_loaded_navigation_tests gameplay navigation native native-process current-desktop)
+        set_tests_properties(game.navigation.native_loaded_masks.${profile} PROPERTIES RUN_SERIAL TRUE)
+    endforeach()
+endif()
+
 add_matrix_test_executable(matrixgame_native_special_fixture native_special_fixture.cpp
     native_special_assets.cpp native_session_assets.cpp native_packed_config.cpp battle_geometry.cpp)
 target_link_libraries(matrixgame_native_special_fixture PRIVATE MatrixGameInternal matrixgame_native_window_containment shell32)
