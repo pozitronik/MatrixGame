@@ -825,8 +825,8 @@ add_matrix_test(game.presentation.settings_display_rollback matrixgame_settings_
 
 
 
-# Clear-rectangle regressions are registered; unresolved plane correctness probes
-# remain outside CTest until a separately reviewed correction establishes their contract.
+# Corrected clear-rectangle and plane regressions are registered below;
+# probe.* commands remain unregistered aliases.
 add_matrix_test_executable(matrixgame_presentation_defect_probes presentation_defect_probes.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_presentation_defect_probes PRIVATE MatrixGameInternal)
 foreach(contract clear_rectangle clear_rectangle_states clear_rectangle_disabled)

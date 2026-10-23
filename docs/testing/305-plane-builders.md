@@ -17,25 +17,25 @@ The eight `game.geometry.plane.*` cases link the production header and MatrixLib
 | `direct_fields` | Camera-style direct writes to `norm`/`dist`, sign-bit refresh and copying retain their existing behavior without requiring a builder. |
 | `layout` | The supported x86 structure remains 36 bytes, aligned to four bytes, with unchanged offsets for `dxplane`, `norm`, `dist` and `signbits`. |
 
-The existing `probe.presentation.plane_normal` and `probe.presentation.plane_points` now run as ordinary registered engine regressions. They keep their correct-result assertions. The unrelated clear-rectangle probe retains its separate correction scope; this change does not register it as a passing contract.
+The original plane checks now run as registered `game.presentation.plane_normal` and `game.presentation.plane_points` engine regressions. Their `probe.presentation.*` executable commands remain unregistered aliases. The integrated clear-rectangle checks have their own `game.presentation.clear_rectangle*` names and retain the same alias convention.
 
 ## Reproduce
 
 ```powershell
-.\tools\test.ps1 -Configuration Debug -Filter '^(game\.geometry\.plane\.|probe\.presentation\.plane_)'
-.\tools\test.ps1 -Configuration Release -Filter '^(game\.geometry\.plane\.|probe\.presentation\.plane_)'
-.\tools\test.ps1 -Configuration Debug -DLL -Filter '^(game\.geometry\.plane\.|probe\.presentation\.plane_)'
-.\tools\test.ps1 -Configuration Release -DLL -Filter '^(game\.geometry\.plane\.|probe\.presentation\.plane_)'
+.\tools\test.ps1 -Configuration Debug -Filter '^(game\.geometry\.plane\.|game\.presentation\.plane_)'
+.\tools\test.ps1 -Configuration Release -Filter '^(game\.geometry\.plane\.|game\.presentation\.plane_)'
+.\tools\test.ps1 -Configuration Debug -DLL -Filter '^(game\.geometry\.plane\.|game\.presentation\.plane_)'
+.\tools\test.ps1 -Configuration Release -DLL -Filter '^(game\.geometry\.plane\.|game\.presentation\.plane_)'
 ```
 
 ## Assertion strength and compatibility
 
-A pinned MinGW Debug/Release comparison compiled the same eight-case fixture against the unchanged header and the four-assignment candidate. The original fails six mathematical cases and passes the direct-field/layout controls; the candidate passes all eight. Independent omission controls remove both normal copies, both distance copies, or both builder sign-bit updates. The first two controls fail six cases each; the sign-bit control fails five while intersection, direct-field and layout cases pass. These are intended assertion failures, not crashes. The comparison never modifies production source; it selects private copies of the production header and restores the complete candidate copy after each compilation.
+A pinned MinGW Debug/Release comparison compiled the same eight-case fixture against the unchanged header and the four-assignment candidate. The original fails six mathematical cases and passes the direct-field/layout controls; the candidate passes all eight. Independent omission controls remove both normal copies, both distance copies, or both builder sign-bit updates. The first two controls fail six cases each; the sign-bit control fails five while intersection, direct-field and layout cases pass. These are intended assertion failures, not crashes. The comparison selects temporary header copies without modifying production source. Failed approximate-value checks report the calling line and actual/expected values, using `std::source_location`.
 
 No union aliasing, normalization, allocation, RNG consumption, resource-format or host-interface change is introduced. The existing direct-field construction of ordinary camera frustum planes does not call either builder. Its source path is unchanged; the focused test does not substitute for native camera rendering evidence.
 
 ## Observable consumers and native evidence
 
-The live builder consumers are visibility preprocessing in `MatrixVisiCalc.cpp` and Debug-only flyer targeting in `MatrixMap.cpp`. Correct coefficients can change the generated visibility result and the Debug command's computed target. These functional effects belong to the correction contract; they are not mechanical cleanup under #97.
+The live builder consumers are `CalcVis` in `MatrixVisiCalc.cpp` and Debug-only flyer targeting in `MatrixMap.cpp`. `CalcVis` computes silhouette edges and shadow flags in temporary buffers. The flags feed Debug sphere markers; edge construction can also create Debug cones. Its `m_GroupVis` array remains zero-cleared, and the local `CStorage` record is never saved. Correcting the planes therefore changes the edge/shadow calculation, its run time and Debug diagnostics, but generates no saved map or Release visibility output. Map-argument startup appends to `calcvis.log` and exits before the game loop; its Debug markers are not drawn. The in-battle Debug F7 and `CALCVIS` routes can display diagnostics. The Debug flyer command instead changes its target to the mouse ray intersection with the horizontal plane at the flyer's height.
 
-The mathematical regressions do not establish native `CalcVis` output, rendered culling, Debug flyer input delivery or original-host behavior. Those observations remain under [native validation](native-validation.md) and complete baseline acceptance. Any future `CalcVis` check must use a disposable map copy: the preprocessing path writes visibility data back into its input map. Supplied maps must remain unchanged, and corrected native output must not silently become a reference golden.
+The mathematical regressions do not establish native `CalcVis` run time/Debug markers, Debug flyer input delivery or original-host behavior. Those observations remain under [native validation](native-validation.md) and complete baseline acceptance. `CalcVis` does not rewrite its input map: it loads a local storage object and changes only that unsaved object. Independently, it skips plane construction for non-land cells while the edge pass still reads those cells and their neighbors; this pre-existing caller limitation is recorded in the [legacy findings](../research/89-legacy-evidence/defects.md#d7-plane-representation-mismatch) for separate investigation.

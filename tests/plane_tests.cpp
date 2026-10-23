@@ -4,13 +4,22 @@
 #include "stupid_logger.hpp"
 #include <cmath>
 #include <cstddef>
+#include <source_location>
+#include <sstream>
 #include <type_traits>
 
 logger_type lgr{std::cerr};
 
 namespace {
 using tests::Case;
-void check_close(float actual, float expected) { MG_CHECK(std::abs(actual - expected) < .0001f); }
+void check_close(float actual, float expected,
+                 const std::source_location &location = std::source_location::current()) {
+    if (std::abs(actual - expected) < .0001f) return;
+    std::ostringstream message;
+    message.precision(9);
+    message << "expected " << expected << ", got " << actual;
+    tests::require(false, message.str().c_str(), location.file_name(), static_cast<int>(location.line()));
+}
 SPlane sentinel() {
     SPlane plane;
     plane.dxplane = D3DXPLANE(31, 37, 41, 43);
