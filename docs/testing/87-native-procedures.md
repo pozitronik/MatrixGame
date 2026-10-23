@@ -64,6 +64,7 @@ if ($cacheQualificationReady -and $configuration -ne 'Debug') { throw 'Cache qua
 if ($soundOverrideActive -and -not $soundOverrideReady) { throw 'Resolve the unfinished sound-override preparation.' }
 if ($faultActive -and -not $faultReady) { throw 'Resolve the unfinished fault preparation.' }
 if ($process -and -not $process.HasExited) { throw 'The previous owned process is still running.' }
+if (Get-Process -Name MatrixGame -ErrorAction SilentlyContinue) { throw 'Close all MatrixGame processes before starting this record.' }
 $currentGame = (Resolve-Path -LiteralPath $game).Path
 if ([IO.Path]::GetFullPath($exe) -ine (Join-Path $currentGame 'MatrixGame.exe')) { throw 'Run path setup for the current game before preparing this record.' }
 $fallbackRoots = @($cacheRoots | Where-Object Name -eq 'Fallback')
