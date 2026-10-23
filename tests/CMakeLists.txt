@@ -930,6 +930,24 @@ target_link_libraries(matrixgame_benchmarks PRIVATE MatrixGameInternal)
 add_test(NAME game.benchmark.smoke COMMAND matrixgame_benchmarks --smoke)
 set_tests_properties(game.benchmark.smoke PROPERTIES LABELS "engine;asset-free;benchmark" TIMEOUT 30)
 
+add_matrix_test_executable(matrixgame_battle_benchmarks battle_benchmarks.cpp benchmark_support.cpp
+    battle_scenario.cpp battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp
+    battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_battle_benchmarks PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_battle_benchmarks matrixgame_scenario_identity)
+target_include_directories(matrixgame_battle_benchmarks PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_battle_benchmarks PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(family combat.laser_tick strategy.capture_tick)
+    foreach(profile park_miller10 park_miller16 legacy10 legacy16)
+        add_test(NAME game.benchmark.${family}.${profile}
+            COMMAND matrixgame_battle_benchmarks --smoke --workload ${family}.${profile})
+        set_tests_properties(game.benchmark.${family}.${profile} PROPERTIES
+            LABELS "engine;asset-free;benchmark;gameplay;ai" TIMEOUT 30)
+    endforeach()
+endforeach()
+
 add_matrix_test_executable(matrixgame_battle_restart_scenarios battle_restart_scenarios.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_restart_scenarios PRIVATE MatrixGameInternal matrixgame_native_window_containment)
@@ -1078,38 +1096,60 @@ if(NOT MATRIXGAME_BUILD_DLL)
     if(NOT MSVC)
         target_link_options(matrixgame_standalone_session_probe PRIVATE -static)
     endif()
-    add_matrix_test_executable(matrixgame_standalone_session_tests standalone_session_tests.cpp native_session_assets.cpp native_outcome_assets.cpp battle_geometry.cpp)
+    add_matrix_test_executable(matrixgame_standalone_session_tests standalone_session_tests.cpp native_session_assets.cpp native_outcome_assets.cpp native_packed_config.cpp battle_geometry.cpp)
     target_link_libraries(matrixgame_standalone_session_tests PRIVATE MatrixGameInternal)
     target_compile_definitions(matrixgame_standalone_session_tests PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
     add_dependencies(matrixgame_standalone_session_tests matrixgame_standalone_session_probe)
+    add_test(NAME game.session.exe_configuration_assets COMMAND matrixgame_standalone_session_tests
+        game.session.exe_configuration_assets $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
+    set_tests_properties(game.session.exe_configuration_assets PROPERTIES
+        LABELS "engine;asset-free;startup;storage" TIMEOUT 30)
+    add_test(NAME game.session.exe_pointer_guard_policy COMMAND matrixgame_standalone_session_tests
+        game.session.exe_pointer_guard_policy $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
+    set_tests_properties(game.session.exe_pointer_guard_policy PROPERTIES
+        LABELS "engine;asset-free;startup;input" TIMEOUT 30)
     option(MATRIXGAME_NATIVE_EXE_TESTS "Run contained native Direct3D 9 executable lifecycle checks" OFF)
+    option(MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS "Show bounded nonactivating windows for native EXE tests" OFF)
+    if(MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS AND NOT MATRIXGAME_NATIVE_EXE_TESTS)
+        message(FATAL_ERROR "Visible native EXE windows require MATRIXGAME_NATIVE_EXE_TESTS=ON")
+    endif()
+    foreach(target matrixgame_standalone_session_probe matrixgame_standalone_session_tests)
+        target_compile_definitions(${target} PRIVATE
+            MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS=$<BOOL:${MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS}>)
+    endforeach()
+    set(native_exe_visibility_label "")
+    if(MATRIXGAME_NATIVE_EXE_VISIBLE_WINDOWS)
+        set(native_exe_visibility_label ";visible-window")
+    endif()
     if(MATRIXGAME_NATIVE_EXE_TESTS AND MATRIXGAME_CHEATS)
         message(FATAL_ERROR "Native executable lifecycle checks require MATRIXGAME_CHEATS=OFF")
     endif()
     if(MATRIXGAME_NATIVE_EXE_TESTS)
-        foreach(contract startup_cancel startup_selector_close startup_battle same_map different_map settings_relaunch failed_child_recovery surrender_cancel surrender_close surrender_next menu_exit)
-            add_test(NAME game.session.exe_${contract} COMMAND matrixgame_standalone_session_tests
-                game.session.exe_${contract} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
-            set_tests_properties(game.session.exe_${contract} PROPERTIES LABELS "engine;asset-free;startup;native;native-process;current-desktop" TIMEOUT 90 RUN_SERIAL TRUE)
-        endforeach()
-        foreach(contract failed_map_recovery unreadable_map_rejected)
-            add_test(NAME game.session.exe_${contract} COMMAND matrixgame_standalone_session_tests
-                game.session.exe_${contract} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
-            set_tests_properties(game.session.exe_${contract} PROPERTIES LABELS "engine;asset-free;startup;native;native-process;current-desktop" TIMEOUT 90 RUN_SERIAL TRUE)
-        endforeach()
-        foreach(mode park_miller legacy_crt)
-            foreach(destination same different)
-                set(contract "game.session.exe_active_order_${destination}_${mode}")
-                add_test(NAME ${contract} COMMAND matrixgame_standalone_session_tests
-                    ${contract} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
-                set_tests_properties(${contract} PROPERTIES LABELS "engine;asset-free;startup;gameplay;input;native;native-process;current-desktop" TIMEOUT 90 RUN_SERIAL TRUE)
+        foreach(profile "" "_packed")
+            foreach(contract startup_cancel startup_selector_close startup_battle same_map different_map settings_relaunch failed_child_recovery surrender_cancel surrender_close surrender_next menu_exit)
+                add_test(NAME game.session.exe_${contract}${profile} COMMAND matrixgame_standalone_session_tests
+                    game.session.exe_${contract}${profile} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
+                set_tests_properties(game.session.exe_${contract}${profile} PROPERTIES LABELS "engine;asset-free;startup;native;native-process;current-desktop${native_exe_visibility_label}" TIMEOUT 90 RUN_SERIAL TRUE)
             endforeach()
-            foreach(outcome win loss)
-                foreach(action "" _restart _exit)
-                    set(contract "game.session.exe_natural_${outcome}${action}_${mode}")
+            foreach(contract failed_map_recovery unreadable_map_rejected)
+                add_test(NAME game.session.exe_${contract}${profile} COMMAND matrixgame_standalone_session_tests
+                    game.session.exe_${contract}${profile} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
+                set_tests_properties(game.session.exe_${contract}${profile} PROPERTIES LABELS "engine;asset-free;startup;native;native-process;current-desktop${native_exe_visibility_label}" TIMEOUT 90 RUN_SERIAL TRUE)
+            endforeach()
+            foreach(mode park_miller legacy_crt)
+                foreach(destination same different)
+                    set(contract "game.session.exe_active_order_${destination}_${mode}${profile}")
                     add_test(NAME ${contract} COMMAND matrixgame_standalone_session_tests
                         ${contract} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
-                    set_tests_properties(${contract} PROPERTIES LABELS "engine;asset-free;startup;gameplay;native;native-process;current-desktop" TIMEOUT 150 RUN_SERIAL TRUE)
+                    set_tests_properties(${contract} PROPERTIES LABELS "engine;asset-free;startup;gameplay;input;native;native-process;current-desktop${native_exe_visibility_label}" TIMEOUT 90 RUN_SERIAL TRUE)
+                endforeach()
+                foreach(outcome win loss)
+                    foreach(action "" _restart _exit)
+                        set(contract "game.session.exe_natural_${outcome}${action}_${mode}${profile}")
+                        add_test(NAME ${contract} COMMAND matrixgame_standalone_session_tests
+                            ${contract} $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
+                        set_tests_properties(${contract} PROPERTIES LABELS "engine;asset-free;startup;gameplay;native;native-process;current-desktop${native_exe_visibility_label}" TIMEOUT 150 RUN_SERIAL TRUE)
+                    endforeach()
                 endforeach()
             endforeach()
         endforeach()

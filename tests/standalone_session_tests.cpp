@@ -2,11 +2,16 @@
 #include "test_support.hpp"
 #include "native_session_assets.hpp"
 #include "native_outcome_assets.hpp"
+#include "native_packed_config.hpp"
+#include "native_pointer_guard.hpp"
 #include "standalone_session_protocol.hpp"
 #include "CMain.hpp"
 #include "StandaloneSettings.hpp"
+#include "CBlockPar.hpp"
+#include "CStorage.hpp"
 #include <windows.h>
 #include <chrono>
+#include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -19,6 +24,8 @@ namespace {
 namespace fs = std::filesystem;
 namespace protocol = tests::native_session;
 fs::path probe_executable, compiler_directory;
+enum class ConfigurationProfile { Text, Packed };
+ConfigurationProfile configuration_profile = ConfigurationProfile::Text;
 void write(const fs::path &path, std::string_view text) {
     fs::create_directories(path.parent_path());
     std::ofstream stream(path, std::ios::binary);
@@ -44,15 +51,21 @@ struct Environment {
     ~Environment() { SetEnvironmentVariableW(key.c_str(), existed ? previous.c_str() : nullptr); }
 };
 struct Deployment {
+    const ConfigurationProfile configuration;
     fs::path previous = fs::current_path();
     fs::path root = previous / ("native-exe-session-" + std::to_string(GetCurrentProcessId()));
     fs::path app = root / "app", caller = root / "caller";
-    Deployment() {
+    explicit Deployment(ConfigurationProfile profile = configuration_profile) : configuration(profile) {
         MG_CHECK(!fs::exists(root));
         fs::create_directories(app); fs::create_directories(caller);
         try {
             fs::current_path(app);
             tests::write_native_session_assets();
+            if (configuration == ConfigurationProfile::Packed) {
+                tests::pack_native_session_configuration();
+                fs::remove_all(L"parked-text-config");
+                MG_CHECK(!fs::exists(L"CFG/robots") && !fs::exists(L"parked-text-config"));
+            }
             fs::create_directories("Matrix/Map");
             tests::write_native_session_map(L"Matrix/Map/first.cmap");
             tests::write_native_session_map(L"Matrix/Map/second.cmap");
@@ -83,6 +96,68 @@ struct Deployment {
         }
     }
 };
+void same_tree(const Base::CBlockPar &left, const Base::CBlockPar &right) {
+    MG_CHECK(left.ParCount() == right.ParCount() && left.BlockCount() == right.BlockCount());
+    for (int i = 0; i < left.ParCount(); ++i)
+        MG_CHECK(left.ParGetName(i) == right.ParGetName(i) && left.ParGet(i) == right.ParGet(i));
+    for (int i = 0; i < left.BlockCount(); ++i) {
+        MG_CHECK(left.BlockGetName(i) == right.BlockGetName(i));
+        same_tree(*left.BlockGet(i), *right.BlockGet(i));
+    }
+}
+void configuration_assets() {
+    Base::CBlockPar text_data, text_interface;
+    for (auto profile : {ConfigurationProfile::Text, ConfigurationProfile::Packed}) {
+        Deployment deployment(profile);
+        Base::CBlockPar data, interface_config;
+        const auto config = deployment.app / "CFG";
+        if (profile == ConfigurationProfile::Packed) {
+            MG_CHECK(fs::is_regular_file(config / "robots.dat") && !fs::exists(config / "robots"));
+            MG_CHECK(!fs::exists(deployment.app / "parked-text-config"));
+            Base::CStorage archive;
+            MG_CHECK(archive.Load((config / "robots.dat").c_str()));
+            archive.RestoreBlockPar(L"da", data);
+            archive.RestoreBlockPar(L"if", interface_config);
+        } else {
+            MG_CHECK(!fs::exists(config / "robots.dat"));
+            data.LoadFromTextFile((config / "robots/data.txt").c_str());
+            interface_config.LoadFromTextFile((config / "robots/iface.txt").c_str());
+            text_data.LoadFromTextFile((config / "robots/data.txt").c_str());
+            text_interface.LoadFromTextFile((config / "robots/iface.txt").c_str());
+        }
+        MG_CHECK(data.BlockGet(L"Config")->ParGet(L"SoftwareCursor") == L"1");
+        MG_CHECK(interface_config.BlockCount() > 0);
+        same_tree(text_data, data);
+        same_tree(text_interface, interface_config);
+    }
+}
+void pointer_guard_policy() {
+    const RECT panel{50, 50, 690, 530};
+    int cursor_queries{}, panel_queries{};
+    const auto check = [&](bool visible, POINT point, bool cursor_ok = true, bool panel_ok = true,
+                           RECT rectangle = RECT{50, 50, 690, 530}) {
+        tests::require_pointer_outside_panel(visible, [&](POINT &result) {
+            ++cursor_queries; result = point; return cursor_ok;
+        }, [&](RECT &result) { ++panel_queries; result = rectangle; return panel_ok; });
+    };
+    check(false, POINT{50, 50}, false, false);
+    MG_CHECK(cursor_queries == 0 && panel_queries == 0);
+    for (auto point : {POINT{49, 50}, POINT{50, 49}, POINT{panel.right, 50}, POINT{50, panel.bottom}})
+        check(true, point);
+    const auto rejected = [&](POINT point, bool cursor_ok, bool panel_ok, RECT rectangle, const char *message) {
+        bool failed = false;
+        try { check(true, point, cursor_ok, panel_ok, rectangle); }
+        catch (const std::runtime_error &error) { failed = std::string_view(error.what()).find(message) != std::string_view::npos; }
+        MG_CHECK(failed);
+    };
+    for (auto point : {POINT{50, 50}, POINT{689, 529}, POINT{300, 200}})
+        rejected(point, true, true, panel, "Physical pointer entered");
+    rejected(POINT{0, 0}, false, true, panel, "Cannot read physical pointer");
+    rejected(POINT{0, 0}, true, false, panel, "panel rectangle");
+    rejected(POINT{0, 0}, true, true, RECT{50, 50, 50, 530}, "panel rectangle");
+    rejected(POINT{0, 0}, true, true, RECT{50, 530, 690, 50}, "panel rectangle");
+    MG_CHECK(cursor_queries == 11 && panel_queries == 10);
+}
 struct Process {
     HANDLE handle{};
     bool exited{};
@@ -101,6 +176,13 @@ struct Harness {
     std::optional<Environment> path;
     explicit Harness(const Deployment &deployment) : application(deployment.app) {
         try {
+            const bool packed = deployment.configuration == ConfigurationProfile::Packed;
+            MG_CHECK(fs::is_regular_file(application / "CFG/robots.dat") == packed);
+            MG_CHECK(fs::is_regular_file(application / "CFG/robots/data.txt") == !packed);
+            MG_CHECK(fs::is_regular_file(application / "CFG/robots/iface.txt") == !packed);
+            MG_CHECK(!fs::exists(application / "parked-text-config"));
+            std::cout << "configuration=" << (packed ? "Packed" : "Text")
+                      << "; containment=" << (protocol::visible_windows ? "Visible" : "Hidden") << '\n' << std::flush;
             MG_CHECK(mapping);
             shared = static_cast<protocol::Shared *>(MapViewOfFile(mapping, FILE_MAP_ALL_ACCESS, 0, 0, sizeof(protocol::Shared)));
             MG_CHECK(shared); new (shared) protocol::Shared{};
@@ -127,7 +209,32 @@ struct Harness {
             MG_CHECK(resumed != DWORD(-1));
         } catch (...) { cleanup(); throw; }
     }
-    bool pump(DWORD timeout = 10) {
+    void check_pointer() {
+        if constexpr (protocol::visible_windows) {
+            for (auto &entry : shared->processes) {
+                const auto panel_value = InterlockedCompareExchange(&entry.panel, 0, 0);
+                if (!panel_value) continue; // The probe checks before showing, and clears before destruction.
+                const auto panel = reinterpret_cast<HWND>(panel_value);
+                const auto pid = DWORD(InterlockedCompareExchange(&entry.id, 0, 0));
+                if (const auto found = processes.find(pid); found != processes.end() &&
+                    (found->second.exited || WaitForSingleObject(found->second.handle, 0) == WAIT_OBJECT_0)) continue;
+                DWORD owner{};
+                const auto thread = GetWindowThreadProcessId(panel, &owner);
+                RECT rectangle{};
+                const bool valid = thread && owner == pid && GetWindowRect(panel, &rectangle);
+                if (!valid) {
+                    if (InterlockedCompareExchange(&entry.panel, 0, 0) == 0) continue;
+                    if (const auto found = processes.find(pid); found != processes.end() &&
+                        WaitForSingleObject(found->second.handle, 0) == WAIT_OBJECT_0) continue;
+                    throw std::runtime_error("Cannot verify owned visible native test panel");
+                }
+                tests::require_pointer_outside_panel(true, [](POINT &point) { return GetCursorPos(&point); },
+                    [&](RECT &result) { result = rectangle; return true; });
+            }
+        }
+    }
+    bool pump(DWORD timeout = 10, bool guard_pointer = true) {
+        if (guard_pointer) check_pointer();
         DEBUG_EVENT event{};
         if (!WaitForDebugEvent(&event, timeout)) return false;
         DWORD disposition = DBG_CONTINUE;
@@ -169,14 +276,19 @@ struct Harness {
         DWORD owner{};
         GetWindowThreadProcessId(target, &owner);
         if (owner != pid) return false;
-        MG_CHECK(!IsWindowVisible(target));
+        if constexpr (protocol::visible_windows) {
+            if (!IsWindowVisible(target)) return false; // Creation can precede the first ShowWindow.
+        } else {
+            MG_CHECK(!IsWindowVisible(target));
+        }
+        check_pointer();
         return PostMessageW(target, code, wp, lp) != 0;
     }
-    std::optional<protocol::Snapshot> snapshot(DWORD pid) {
+    std::optional<protocol::Snapshot> snapshot(DWORD pid, bool diagnostic = false) {
         auto *entry = slot(pid);
         if (!entry) return std::nullopt;
         const auto request = InterlockedIncrement(&entry->request);
-        if (!message(pid, protocol::snapshot_message, request)) return std::nullopt;
+        if (!message(pid, diagnostic ? protocol::diagnostic_snapshot_message : protocol::snapshot_message, request)) return std::nullopt;
         const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(100);
         while (std::chrono::steady_clock::now() < deadline) {
             pump(1);
@@ -206,11 +318,21 @@ struct Harness {
             if (auto state = snapshot(pid); state && ready(*state)) return *state;
         }
         std::cerr << "Observed slot=" << slot(pid) << " window=" << window(pid) << '\n';
-        if (auto state = snapshot(pid)) std::wcerr << L"Last form=" << state->form << L" flags=" << state->flags
+        if (auto state = snapshot(pid, true)) std::wcerr << L"Last form=" << state->form << L" flags=" << state->flags
             << L" time=" << state->time << L" friendly health=" << state->friendly_health << L" enemy health=" << state->enemy_health
             << L" selected=" << state->selected << L" preorder=" << state->move_preorder << L" moving=" << state->friendly_move
-            << L" position=" << state->friendly_x << L"," << state->friendly_y << L" trace=" << state->trace_x << L"," << state->trace_y
-            << L" trace land=" << state->trace_land << L" focus=" << state->interface_focus << '\n';
+            << L" pos=" << state->friendly_x << L',' << state->friendly_y << L" trace=" << state->trace_x << L',' << state->trace_y
+            << L" trace land=" << state->trace_land << L" focus=" << state->interface_focus
+            << L" map_flags=0x" << std::hex << state->map_flags << L" device_status=0x" << state->device_status << std::dec
+            << L" draw_fps=" << state->draw_fps << L" backbuffer=" << state->backbuffer_width << L'x' << state->backbuffer_height
+            << L" windowed=" << state->device_windowed << '\n';
+        RECT child_rectangle{}, parent_rectangle{};
+        if (const auto child = window(pid); child && GetWindowRect(child, &child_rectangle) &&
+            GetWindowRect(GetParent(child), &parent_rectangle))
+            std::cerr << "Child rectangle=" << child_rectangle.left << ',' << child_rectangle.top << ','
+                      << child_rectangle.right << ',' << child_rectangle.bottom << " parent rectangle="
+                      << parent_rectangle.left << ',' << parent_rectangle.top << ',' << parent_rectangle.right << ','
+                      << parent_rectangle.bottom << '\n';
         throw std::runtime_error("Timed out waiting for " + std::string(description));
     }
     void key(DWORD pid, WPARAM key) { MG_CHECK(message(pid, WM_KEYDOWN, key)); MG_CHECK(message(pid, WM_KEYUP, key)); }
@@ -227,7 +349,7 @@ struct Harness {
         while (std::chrono::steady_clock::now() < deadline) {
             pump();
             if (processes.contains(pid) && processes.at(pid).exited) {
-                if (expected == 0) check_diagnostics(pid);
+                if (expected == 0 || processes.at(pid).exit != expected) check_diagnostics(pid);
                 MG_CHECK(processes.at(pid).exit == expected);
                 return;
             }
@@ -241,7 +363,7 @@ struct Harness {
             bool active = root_pid && !processes.contains(root_pid);
             for (const auto &[id, child] : processes) if (!child.exited) active = true;
             if (!active) break;
-            try { pump(); } catch (...) { break; }
+            try { pump(10, false); } catch (...) { break; }
         }
         for (const auto &[id, child] : processes) {
             WaitForSingleObject(child.handle, 1000);
@@ -360,7 +482,8 @@ void battle_relaunch(bool different, bool edit_settings = false) {
 }
 void failed_child_recovery(bool corrupt_map = false) {
     Deployment deployment;
-    const auto original = deployment.app / (corrupt_map ? "Matrix/Map/second.cmap" : "CFG/robots/iface.txt");
+    const bool packed = deployment.configuration == ConfigurationProfile::Packed;
+    const auto original = deployment.app / (corrupt_map ? "Matrix/Map/second.cmap" : packed ? "CFG/robots.dat" : "CFG/robots/iface.txt");
     const auto backup = deployment.app / "fault-backup";
     {
         Harness run(deployment);
@@ -373,6 +496,9 @@ void failed_child_recovery(bool corrupt_map = false) {
         if (corrupt_map) {
             fs::copy_file(original, backup);
             tests::remove_native_map_width(original);
+        } else if (packed) {
+            fs::copy_file(original, backup);
+            write(original, "BAD!");
         } else fs::rename(original, backup);
         run.key(parent, VK_END);
         run.key(parent, VK_RETURN);
@@ -382,14 +508,18 @@ void failed_child_recovery(bool corrupt_map = false) {
         MG_CHECK(run.processes.size() == 2);
         const auto *failure = run.slot(child);
         MG_CHECK(failure && failure->diagnostics == 1);
-        MG_CHECK(std::wstring(failure->diagnostic_text).find(corrupt_map ? L"Unable to load map" : L"iface.txt") != std::wstring::npos);
-        MG_CHECK(StandaloneSettings::load((deployment.app / "CFG/standalone.txt").c_str()).values.map.empty());
+        const auto expected = corrupt_map ? L"Unable to load map" : packed ? L"Invalid packed configuration: cfg\\robots.dat" : L"iface.txt";
+        MG_CHECK(std::wstring(failure->diagnostic_text).find(expected) != std::wstring::npos);
+        // A bad archive fails before startup_map/begin_map_load; that path has
+        // not attempted the remembered map and therefore retains its choice.
+        const auto saved_map = StandaloneSettings::load((deployment.app / "CFG/standalone.txt").c_str()).values.map;
+        MG_CHECK(saved_map == (packed && !corrupt_map ? L"Matrix\\Map\\second.cmap" : L""));
     }
-    if (corrupt_map) restore_bytes(backup, original);
+    if (corrupt_map || packed) restore_bytes(backup, original);
     else fs::rename(backup, original);
     {
         Harness fresh(deployment);
-        start_battle(fresh, corrupt_map);
+        start_battle(fresh, corrupt_map || packed);
         MG_CHECK(fresh.message(fresh.root_pid, WM_CLOSE));
         fresh.exit(fresh.root_pid, 0);
         MG_CHECK(fresh.processes.size() == 1);
@@ -671,13 +801,16 @@ void natural_result(bool player_wins, random::Mode mode, PendingAction action = 
 }
 int main(int argc, char **argv) {
     if (argc != 4) return 2;
+    if (std::string_view(argv[1]).ends_with("_packed")) configuration_profile = ConfigurationProfile::Packed;
     probe_executable = fs::absolute(argv[2]);
     compiler_directory = fs::absolute(argv[3]).parent_path();
     SetErrorMode(SEM_FAILCRITICALERRORS | SEM_NOGPFAULTERRORBOX);
     Base::CMain::BaseInit();
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
-    const tests::Case cases[] = {{"game.session.exe_startup_selector_close", startup_selector_close},
+    tests::Case cases[] = {{"game.session.exe_configuration_assets", configuration_assets},
+        {"game.session.exe_pointer_guard_policy", pointer_guard_policy},
+        {"game.session.exe_startup_selector_close", startup_selector_close},
         {"game.session.exe_surrender_close", [] { battle_end(true, true, true); }},
         {"game.session.exe_startup_cancel", startup_cancel}, {"game.session.exe_startup_battle", startup_battle},
         {"game.session.exe_same_map", [] { battle_relaunch(false); }}, {"game.session.exe_different_map", [] { battle_relaunch(true); }},
@@ -704,6 +837,12 @@ int main(int argc, char **argv) {
         {"game.session.exe_natural_loss_legacy_crt", [] { natural_result(false, random::Mode::LegacyCRT, PendingAction::None); }},
         {"game.session.exe_natural_loss_restart_legacy_crt", [] { natural_result(false, random::Mode::LegacyCRT, PendingAction::Restart); }},
         {"game.session.exe_natural_loss_exit_legacy_crt", [] { natural_result(false, random::Mode::LegacyCRT, PendingAction::Exit); }}};
+    std::array<std::string, std::size(cases)> packed_names;
+    if (configuration_profile == ConfigurationProfile::Packed)
+        for (size_t i = 0; i < std::size(cases); ++i) {
+            packed_names[i] = std::string(cases[i].name) + "_packed";
+            cases[i].name = packed_names[i].c_str();
+        }
     const int result = tests::run(2, argv, cases);
     Base::CMain::BaseDeInit();
     return result;
