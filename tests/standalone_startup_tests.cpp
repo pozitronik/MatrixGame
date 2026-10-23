@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iterator>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace {
@@ -18,6 +19,28 @@ struct Handle {
     HANDLE value = nullptr;
     ~Handle() { if (value) CloseHandle(value); }
 };
+
+struct Removal {
+    std::error_code error;
+    unsigned attempts;
+};
+using SharingFailureObserver = void (*)(const std::error_code &, void *);
+
+Removal remove_deployment_tree(const std::filesystem::path &root, unsigned max_attempts = 151,
+                               DWORD delay_ms = 20, SharingFailureObserver observer = nullptr,
+                               void *context = nullptr) {
+    if (!max_attempts) return {std::make_error_code(std::errc::invalid_argument), 0};
+    const std::error_code sharing_violation(ERROR_SHARING_VIOLATION, std::system_category());
+    for (unsigned attempt = 1; ; ++attempt) {
+        std::error_code error;
+        std::filesystem::remove_all(root, error);
+        if (error != sharing_violation) return {error, attempt};
+        // Tests can release a real lock synchronously after an observed failure.
+        if (observer) observer(error, context);
+        if (attempt == max_attempts) return {error, attempt};
+        Sleep(delay_ms);
+    }
+}
 
 void check_win32(bool result, const char *operation) {
     if (!result) throw std::runtime_error(std::string(operation) + "; Windows error=" + std::to_string(GetLastError()));
@@ -123,14 +146,93 @@ struct Deployment {
         }
     }
     ~Deployment() {
-        std::error_code error;
-        std::filesystem::remove_all(root, error);
-        if (error) {
-            std::cerr << "Cannot remove synthetic startup deployment: " << root << ": " << error.message() << '\n';
+        const auto removal = remove_deployment_tree(root);
+        if (removal.error) {
+            std::cerr << "Cannot remove synthetic startup deployment: " << root << ": " << removal.error.message()
+                      << "; category=" << removal.error.category().name() << "; error=" << removal.error.value()
+                      << "; attempts=" << removal.attempts << '\n';
             std::abort();
         }
     }
 };
+
+struct CleanupDirectory {
+    std::filesystem::path root = std::filesystem::current_path() /
+        ("startup-cleanup-" + std::to_string(GetCurrentProcessId()));
+    std::filesystem::path file = root / "nested/synthetic.txt";
+    CleanupDirectory() { MG_CHECK(std::filesystem::create_directory(root)); }
+    ~CleanupDirectory() {
+        if (remove_deployment_tree(root).error) std::abort();
+    }
+};
+
+void cleanup_unlocked() {
+    CleanupDirectory directory;
+    write(directory.file, "synthetic cleanup fixture");
+    const auto removed = remove_deployment_tree(directory.root);
+    MG_CHECK(!removed.error && removed.attempts == 1 && !std::filesystem::exists(directory.root));
+    const auto absent = remove_deployment_tree(directory.root);
+    MG_CHECK(!absent.error && absent.attempts == 1);
+}
+
+void cleanup_transient_sharing() {
+    CleanupDirectory directory;
+    write(directory.file, "synthetic cleanup fixture");
+    Handle held;
+    held.value = CreateFileW(directory.file.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                             nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    check_win32(held.value != INVALID_HANDLE_VALUE, "CreateFileW cleanup transient lock");
+    struct Release { Handle &held; unsigned failures = 0; } release{held};
+    const auto observed = [](const std::error_code &error, void *context) {
+        auto &release = *static_cast<Release *>(context);
+        MG_CHECK(error == std::error_code(ERROR_SHARING_VIOLATION, std::system_category()));
+        MG_CHECK(++release.failures == 1);
+        check_win32(CloseHandle(release.held.value), "CloseHandle cleanup transient lock");
+        release.held.value = nullptr;
+    };
+    const auto removed = remove_deployment_tree(directory.root, 3, 0, observed, &release);
+    MG_CHECK(!removed.error && removed.attempts == 2 && release.failures == 1);
+    MG_CHECK(!std::filesystem::exists(directory.root));
+}
+
+void cleanup_persistent_sharing() {
+    CleanupDirectory directory;
+    write(directory.file, "synthetic cleanup fixture");
+    Handle held;
+    held.value = CreateFileW(directory.file.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                             nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    check_win32(held.value != INVALID_HANDLE_VALUE, "CreateFileW cleanup persistent lock");
+    const auto refused = remove_deployment_tree(directory.root, 3, 0);
+    MG_CHECK(refused.error == std::error_code(ERROR_SHARING_VIOLATION, std::system_category()));
+    MG_CHECK(refused.attempts == 3 && std::filesystem::exists(directory.file));
+    check_win32(CloseHandle(held.value), "CloseHandle cleanup persistent lock");
+    held.value = nullptr;
+    const auto removed = remove_deployment_tree(directory.root);
+    MG_CHECK(!removed.error && !std::filesystem::exists(directory.root));
+}
+
+void cleanup_readonly() {
+    CleanupDirectory directory;
+    write(directory.file, "synthetic cleanup fixture");
+    struct RestoreAttributes {
+        const std::filesystem::path &file;
+        ~RestoreAttributes() {
+            if (GetFileAttributesW(file.c_str()) != INVALID_FILE_ATTRIBUTES)
+                SetFileAttributesW(file.c_str(), FILE_ATTRIBUTE_NORMAL);
+        }
+    } restore{directory.file};
+    check_win32(SetFileAttributesW(directory.file.c_str(), FILE_ATTRIBUTE_READONLY), "SetFileAttributesW cleanup read-only");
+    const auto result = remove_deployment_tree(directory.root, 3, 0);
+    MG_CHECK(result.attempts == 1);
+    if (result.error) {
+        MG_CHECK(result.error == std::error_code(ERROR_ACCESS_DENIED, std::system_category()));
+        MG_CHECK(std::filesystem::exists(directory.file));
+        check_win32(SetFileAttributesW(directory.file.c_str(), FILE_ATTRIBUTE_NORMAL), "SetFileAttributesW cleanup normal");
+        const auto removed = remove_deployment_tree(directory.root);
+        MG_CHECK(!removed.error && !std::filesystem::exists(directory.root));
+    } else MG_CHECK(!std::filesystem::exists(directory.root));
+}
+
 struct Desktop {
     std::wstring name = L"MatrixGame-startup-" + std::to_wstring(GetCurrentProcessId());
     HDESK value = CreateDesktopW(name.c_str(), nullptr, nullptr, 0,
@@ -436,6 +538,10 @@ void damaged_optional_packages() {
     }
 }
 const tests::Case cases[]{
+    {"game.startup.deployment_cleanup_unlocked", cleanup_unlocked},
+    {"game.startup.deployment_cleanup_transient_sharing", cleanup_transient_sharing},
+    {"game.startup.deployment_cleanup_persistent_sharing", cleanup_persistent_sharing},
+    {"game.startup.deployment_cleanup_readonly", cleanup_readonly},
     {"game.startup.native_diagnostic_readiness", diagnostic_readiness},
     {"game.startup.native_missing_resources", missing_resources},
     {"game.startup.native_rejected_packed", rejected_packed_configuration},

@@ -590,6 +590,13 @@ endif()
 if(NOT MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_standalone_startup_tests standalone_startup_tests.cpp)
     add_dependencies(matrixgame_standalone_startup_tests MatrixGame)
+    foreach(contract unlocked transient_sharing persistent_sharing readonly)
+        add_test(NAME game.startup.deployment_cleanup_${contract}
+            COMMAND matrixgame_standalone_startup_tests game.startup.deployment_cleanup_${contract}
+                "$<TARGET_FILE:MatrixGame>" "${CMAKE_CXX_COMPILER}")
+        set_tests_properties(game.startup.deployment_cleanup_${contract} PROPERTIES
+            LABELS "engine;asset-free;startup" TIMEOUT 30)
+    endforeach()
     foreach(contract missing_resources rejected_packed missing_text invalid_random damaged_optional diagnostic_readiness)
         add_test(NAME game.startup.native_${contract}
             COMMAND matrixgame_standalone_startup_tests game.startup.native_${contract}
