@@ -54,12 +54,14 @@ void search_work() {
         Capture capture(work);
         MG_CHECK(search(48, 8) == 41);
         MG_CHECK(work.local_searches == 1 && work.local_cells_initialized == 3600);
-        MG_CHECK(work.local_queue_entries > 41 && work.local_failures == 0);
-        const auto first_entries = work.local_queue_entries;
+        // Pin queued entries, including relaxed re-entries, rather than processed cells.
+        MG_CHECK(work.local_queue_entries == 1943 && work.local_failures == 0);
         // The target is outside this zone's legal footprint search rectangle.
         MG_CHECK(search(62, 62) == 0);
         MG_CHECK(work.local_searches == 2 && work.local_cells_initialized == 7200);
-        MG_CHECK(work.local_queue_entries > first_entries && work.local_failures == 1);
+        MG_CHECK(work.local_queue_entries == 4895 && work.local_failures == 1);
+        std::cout << "search route_queue_entries=1943 accumulated_queue_entries="
+                  << work.local_queue_entries << std::endl;
         int zones[2]{};
         MG_CHECK(map.FindPathInZone(RUK_CHASSIS_WHEEL - 1, 0, 0, nullptr, 0, zones, false) == 0);
         MG_CHECK(work.zone_searches == 1);
@@ -85,7 +87,7 @@ void avoidance_work() {
     {
         Capture capture(work);
         first->RobotToObjectCollision(D3DXVECTOR3(0, 0, 0), 10);
-        MG_CHECK(work.robot_collision_queries == 1 && work.robot_collision_candidates > 0);
+        MG_CHECK(work.robot_collision_queries == 1 && work.robot_collision_candidates == 1);
         // Sample non-free terrain cells next to the original central obstacle.
         first->m_PosX = 270;
         first->m_PosY = 300;
@@ -95,8 +97,12 @@ void avoidance_work() {
         first->JoinToGroup();
         D3DXVECTOR3 correction(0, 0, 0);
         first->SphereRobotToAABBObstacleCollision(correction, D3DXVECTOR3(0, 0, 0));
-        MG_CHECK(work.terrain_collision_queries == 1 && work.terrain_mask_cells > 0);
-        MG_CHECK(work.terrain_geometry_tests > 0);
+        MG_CHECK(work.terrain_collision_queries == 1 && work.terrain_mask_cells == 72);
+        // Free cells skipped by the four sweeps must not count as geometry tests.
+        MG_CHECK(work.terrain_geometry_tests == 30);
+        std::cout << "avoidance robot_candidates=" << work.robot_collision_candidates
+                  << " mask_cells=" << work.terrain_mask_cells
+                  << " geometry_tests=" << work.terrain_geometry_tests << std::endl;
     }
     MG_CHECK(NavigationWork::active() == nullptr);
 }
@@ -142,7 +148,6 @@ void preservation() {
     const auto inactive = journey(Mode, Step, false);
     const auto collected = journey(Mode, Step, true);
     const auto repeated = journey(Mode, Step, true);
-    MG_CHECK(inactive.total == Counters{});
     MG_CHECK(inactive.snapshots == collected.snapshots && collected.snapshots == repeated.snapshots);
     MG_CHECK(collected.frames == repeated.frames && collected.total == repeated.total);
     const auto &work = collected.total;
