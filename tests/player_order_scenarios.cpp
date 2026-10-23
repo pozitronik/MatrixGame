@@ -28,6 +28,7 @@
 #include <iostream>
 #include <filesystem>
 #include <fstream>
+#include <utility>
 
 // Reuse the existing visibility-fixture friendship without substituting InRect.
 // Only the precomputed visible-object order is supplied; mesh picking is real.
@@ -1569,6 +1570,7 @@ void control_group_combat_death() {
 }
 
 void mixed_selection_lifecycle() {
+    std::vector<std::pair<std::filesystem::path, std::string>> completions;
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         for (int step_ms : {10, 16}) {
             for (bool building_first : {false, true}) {
@@ -1750,8 +1752,10 @@ void mixed_selection_lifecycle() {
                         record("cleared-final");
                         if (replay == 0) reference = observations;
                         else MG_CHECK(observations == reference);
-                        file << "{\"type\":\"complete\",\"frame\":" << session.frame()
-                             << ",\"time_ms\":" << session.time() << "}\n";
+                        std::ostringstream completion;
+                        completion << "{\"type\":\"complete\",\"frame\":" << session.frame()
+                                   << ",\"time_ms\":" << session.time() << "}\n";
+                        completions.emplace_back(path, completion.str());
                         file.flush();
                         MG_CHECK(file.good());
                         std::cout << session.metadata("mixed-selection-lifecycle-v1")
@@ -1760,6 +1764,14 @@ void mixed_selection_lifecycle() {
                 }
             }
         }
+    }
+    // Append tails only after every session lifetime and replay assertion has finished.
+    for (const auto &[path, completion] : completions) {
+        std::ofstream file(path, std::ios::app);
+        MG_CHECK(file.good());
+        file << completion;
+        file.flush();
+        MG_CHECK(file.good());
     }
 }
 
