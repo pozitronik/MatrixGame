@@ -17,6 +17,7 @@
 #include "input.hpp"
 #include "cheats.hpp"
 #include <algorithm>
+#include <array>
 #include <bit>
 #include <sstream>
 #include <cmath>
@@ -25,6 +26,9 @@
 #include <cstdlib>
 #include <vector>
 #include <iostream>
+#include <filesystem>
+#include <fstream>
+#include <utility>
 
 // Reuse the existing visibility-fixture friendship without substituting InRect.
 // Only the precomputed visible-object order is supplied; mesh picking is real.
@@ -39,6 +43,13 @@ struct SelectionFixture {
     void append(CMatrixMapStatic *object) {
         MG_CHECK(CMatrixMapStatic::objects_rite < MAX_OBJECTS_PER_SCREEN);
         CMatrixMapStatic::objects[CMatrixMapStatic::objects_rite++] = object;
+    }
+    template <class Identify>
+    std::vector<int> identities(Identify identify) const {
+        std::vector<int> result;
+        for (int i = CMatrixMapStatic::objects_left; i < CMatrixMapStatic::objects_rite; ++i)
+            result.push_back(identify(CMatrixMapStatic::objects[i]));
+        return result;
     }
     ~SelectionFixture() {
         while (CMultiSelection::m_First) {
@@ -1566,92 +1577,210 @@ void control_group_combat_death() {
 }
 
 void mixed_selection_lifecycle() {
+    std::vector<std::pair<std::filesystem::path, std::string>> completions;
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         for (int step_ms : {10, 16}) {
             for (bool building_first : {false, true}) {
                 for (bool click : {false, true}) {
-                    tests::BattleCombatAssets assets;
-                    PlayerCraterAssets crater;
-                    Session session({mode, 80, step_ms, 1000, false, true});
-                    assets.install();
-                    crater.install();
-                    CFormMatrixGame form;
-                    auto *robot = selected(0);
-                    // The building borrows the surviving robot's geometry, not the dying one's.
-                    auto building = tests::make_battle_building(*selected(1)->m_Unit[0].m_Graph->VO(),
-                        PLAYER_SIDE, BUILDING_TITAN, 100, 200);
-                    auto &props = g_Config.m_CannonsProps[0];
-                    props = {};
-                    props.weapon = WEAPON_CANNON2;
-                    props.m_Hitpoint = 1000;
-                    props.seek_radius = 1;
-                    auto *cannon = tests::create_battle_cannon(PLAYER_SIDE, 100, 200);
-                    const auto point = screen_center(*robot);
-                    const CRect area = click ? CRect(point.x, point.y, point.x + 1, point.y + 1)
-                                             : CRect(point.x - 30, point.y - 30, point.x + 30, point.y + 30);
-                    MG_CHECK(robot->InRect(area) && building->InRect(area));
-                    MG_CHECK(cannon->InRect(area));
-                    std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
-                        [](SObjectCore *value) { value->Release(); });
-                    const auto select_scene = [&](bool include_robot) {
-                        SelectionFixture visible{};
-                        if (building_first) {
-                            visible.append(cannon);
-                            visible.append(building.get());
+                    std::vector<std::string> reference;
+                    for (int replay = 0; replay < 2; ++replay) {
+                        tests::BattleCombatAssets assets;
+                        PlayerCraterAssets crater;
+                        Session session({mode, 80, step_ms, 1000, false, true});
+                        assets.install();
+                        crater.install();
+                        CFormMatrixGame form;
+                        auto *robot = selected(0);
+                        // The building borrows the surviving robot's geometry, not the dying one's.
+                        auto building = tests::make_battle_building(*selected(1)->m_Unit[0].m_Graph->VO(),
+                            PLAYER_SIDE, BUILDING_TITAN, 100, 200);
+                        auto &props = g_Config.m_CannonsProps[0];
+                        props = {};
+                        props.weapon = WEAPON_CANNON2;
+                        props.m_Hitpoint = 1000;
+                        props.seek_radius = 1;
+                        auto *cannon = tests::create_battle_cannon(PLAYER_SIDE, 100, 200);
+                        const auto point = screen_center(*robot);
+                        const CRect area = click ? CRect(point.x, point.y, point.x + 1, point.y + 1)
+                                                 : CRect(point.x - 30, point.y - 30, point.x + 30, point.y + 30);
+                        MG_CHECK(robot->InRect(area) && building->InRect(area));
+                        MG_CHECK(cannon->InRect(area));
+                        std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
+                            [](SObjectCore *value) { value->Release(); });
+                        const auto directory = std::filesystem::current_path() / "scenario-traces";
+                        std::filesystem::create_directories(directory);
+                        const auto path = directory / (std::string("player-selection-") +
+                            (mode == random::Mode::ParkMiller ? "pm-" : "crt-") + std::to_string(step_ms) +
+                            (building_first ? "-building-" : "-robot-") + (click ? "click-" : "rectangle-") +
+                            std::to_string(replay) + ".jsonl");
+                        std::ofstream file(path, std::ios::trunc);
+                        MG_CHECK(file.good());
+                        auto header = session.metadata("mixed-selection-lifecycle-v1");
+                        header.pop_back();
+#ifdef _TRACE
+                        constexpr bool traced = true;
+#else
+                        constexpr bool traced = false;
+#endif
+                        file << header << ",\"building_first\":" << (building_first ? "true" : "false")
+                             << ",\"click\":" << (click ? "true" : "false")
+                             << ",\"trace\":" << (traced ? "true" : "false") << ",\"area\":["
+                             << area.left << ',' << area.top << ',' << area.right << ',' << area.bottom
+                             << "],\"actor_ids\":{\"robot\":1,\"building\":5,\"cannon\":6}}\n";
+                        std::vector<std::string> observations;
+                        std::array<CMatrixMapStatic *, 4> actor_ids{};
+                        for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
+                            if (object->IsRobot()) for (unsigned id = 1; id <= actor_ids.size(); ++id)
+                                if (session.matches(id, object->AsRobot())) actor_ids[id - 1] = object;
+                        for (auto *object : actor_ids) MG_CHECK(object);
+                        const auto id_of = [&](CMatrixMapStatic *object) {
+                            if (!object) return 0;
+                            if (object == building.get()) return 5;
+                            if (object == cannon) return 6;
+                            // Retain session identities after retirement without dereferencing cached pointers.
+                            for (unsigned id = 1; id <= actor_ids.size(); ++id)
+                                if (object == actor_ids[id - 1]) return int(id);
+                            return -1;
+                        };
+                        const auto record = [&](const char *phase) {
+                            const auto draws = random::draw_count();
+                            std::ostringstream out;
+                            out << "{\"type\":\"snapshot\",\"state\":" << session.snapshot()
+                                << ",\"selection\":{\"phase\":\"" << phase << "\",\"kind\":" << side().m_CurrSel
+                                << ",\"active\":" << id_of(side().m_ActiveObject)
+                                << ",\"current_object\":" << id_of(side().GetCurSelObject())
+                                << ",\"current_index\":" << side().GetCurSelNum();
+                            const auto group = [&](const char *key, CMatrixGroup *value) {
+                                out << ",\"" << key << "\":[";
+                                if (value) for (int i = 0; i < value->GetObjectsCnt(); ++i) {
+                                    if (i) out << ',';
+                                    out << id_of(value->GetObjectByN(i));
+                                }
+                                out << ']';
+                            };
+                            group("ordered_members", side().GetCurGroup());
+                            group("temporary_members", side().GetCurSelGroup());
+                            out << ",\"core_object\":" << id_of(core->m_Object)
+                                << ",\"actor_state\":" << (core->m_Object ? int(core->m_Object->AsRobot()->m_CurrState) : -1)
+                                << ",\"enemy_kills\":" << g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL)
+                                << "}}";
+                            MG_CHECK(random::draw_count() == draws);
+                            observations.push_back(out.str());
+                            file << observations.back() << '\n';
+                            MG_CHECK(file.good());
+                        };
+                        const auto command = [&](const char *name, const std::vector<int> &visible = {}, const CRect *bounds = nullptr) {
+                            file << "{\"type\":\"command\",\"frame\":" << session.frame()
+                                 << ",\"time_ms\":" << session.time() << ",\"name\":\"" << name << "\",\"visible\":[";
+                            for (std::size_t i = 0; i < visible.size(); ++i) {
+                                if (i) file << ',';
+                                file << visible[i];
+                            }
+                            file << ']';
+                            if (bounds) file << ",\"area\":[" << bounds->left << ',' << bounds->top << ','
+                                             << bounds->right << ',' << bounds->bottom << ']';
+                            file << "}\n";
+                            MG_CHECK(file.good());
+                        };
+                        record("initial");
+                        const auto select_scene = [&](bool include_robot) {
+                            SelectionFixture visible{};
+                            if (building_first) {
+                                visible.append(cannon);
+                                visible.append(building.get());
+                            }
+                            if (include_robot) visible.append(robot);
+                            if (!building_first) {
+                                visible.append(building.get());
+                                visible.append(cannon);
+                            }
+                            const auto identities = visible.identities(id_of);
+                            drag(form, CPoint(area.left, area.top), CPoint(area.right, area.bottom));
+                            MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
+                            MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(cannon));
+                            return identities;
+                        };
+                        side().Select(NOTHING, nullptr);
+                        side().ResetSystemSelection();
+                        command("clear-initial-selection");
+                        record("cleared-initial");
+                        {
+                            SelectionFixture visible{cannon};
+                            const auto center = screen_center(*cannon);
+                            const CRect cannon_area(center.x - 20, center.y - 20, center.x + 20, center.y + 20);
+                            MG_CHECK(cannon->InRect(cannon_area));
+                            const auto cannon_visible = visible.identities(id_of);
+                            drag(form, CPoint(cannon_area.left, cannon_area.top),
+                                       CPoint(cannon_area.right, cannon_area.bottom));
+                            MG_CHECK(side().m_CurrSel == NOTHING_SELECTED);
+                            MG_CHECK(!side().GetCurGroup());
+                            MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
+                            command("select-cannon-only", cannon_visible, &cannon_area);
+                            record("cannon-control");
                         }
-                        if (include_robot) visible.append(robot);
-                        if (!building_first) {
-                            visible.append(building.get());
-                            visible.append(cannon);
-                        }
-                        drag(form, CPoint(area.left, area.top), CPoint(area.right, area.bottom));
-                        MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
-                        MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(cannon));
-                    };
-                    side().Select(NOTHING, nullptr);
-                    side().ResetSystemSelection();
-                    {
-                        SelectionFixture visible{cannon};
-                        const auto center = screen_center(*cannon);
-                        const CRect cannon_area(center.x - 20, center.y - 20, center.x + 20, center.y + 20);
-                        MG_CHECK(cannon->InRect(cannon_area));
-                        drag(form, CPoint(cannon_area.left, cannon_area.top),
-                                   CPoint(cannon_area.right, cannon_area.bottom));
-                        MG_CHECK(side().m_CurrSel == NOTHING_SELECTED);
-                        MG_CHECK(!side().GetCurGroup());
-                        MG_CHECK(side().GetCurSelGroup()->GetObjectsCnt() == 0);
-                    }
-                    select_scene(true);
-                    MG_CHECK(side().m_CurrSel == ROBOT_SELECTED);
-                    MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == robot);
-                    MG_CHECK(side().GetCurSelObject() == robot);
-                    MG_CHECK(!side().GetCurGroup()->FindObject(building.get()));
+                        const auto live_visible = select_scene(true);
+                        MG_CHECK(side().m_CurrSel == ROBOT_SELECTED);
+                        MG_CHECK(side().GetCurGroup()->GetObjectsCnt() == 1 && selected(0) == robot);
+                        MG_CHECK(side().GetCurSelObject() == robot);
+                        MG_CHECK(!side().GetCurGroup()->FindObject(building.get()));
+                        command("select-mixed-live", live_visible, &area);
+                        record("live-selected");
 
-                    g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {10000, 10000, 0};
-                    MG_CHECK(robot->Damage(WEAPON_GUN, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
-                    MG_CHECK(robot->m_CurrState == ROBOT_DIP && core->m_Object == robot);
-                    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
-                    MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(robot));
-                    select_scene(true); // The dying object is still visible, but no longer selectable.
-                    MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
-                    MG_CHECK(side().m_ActiveObject == building.get());
-                    // Selection uses supplied visibility; leave no cached pointer across map retirement.
-                    for (int elapsed = 0; elapsed < 6000; elapsed += step_ms) session.advance();
-                    MG_CHECK(core->m_Object == nullptr);
-                    MG_CHECK(!session.robot(1).alive);
-                    // Empty hits retain selection, so require a fresh building pick after retirement.
-                    side().Select(NOTHING, nullptr);
-                    MG_CHECK(side().m_CurrSel == NOTHING_SELECTED && side().m_ActiveObject == nullptr);
-                    select_scene(false);
-                    MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
-                    MG_CHECK(side().m_ActiveObject == building.get());
-                    MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
-                    side().Select(NOTHING, nullptr);
-                    std::cout << session.metadata("mixed-selection-lifecycle-v1")
-                              << " building_first=" << building_first << " click=" << click << '\n';
+                        g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {10000, 10000, 0};
+                        MG_CHECK(robot->Damage(WEAPON_GUN, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+                        MG_CHECK(robot->m_CurrState == ROBOT_DIP && core->m_Object == robot);
+                        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+                        MG_CHECK(!side().GetCurGroup() || !side().GetCurGroup()->FindObject(robot));
+                        command("lethal-damage");
+                        record("dying-unselected");
+                        const auto dying_visible = select_scene(true); // The dying object is still visible, but no longer selectable.
+                        MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
+                        MG_CHECK(side().m_ActiveObject == building.get());
+                        command("select-mixed-dying", dying_visible, &area);
+                        record("building-selected-dying");
+                        // Selection uses supplied visibility; leave no cached pointer across map retirement.
+                        for (int elapsed = 0; elapsed < 6000; elapsed += step_ms) {
+                            session.advance();
+                            record("retirement-tick");
+                        }
+                        MG_CHECK(core->m_Object == nullptr);
+                        MG_CHECK(!session.robot(1).alive);
+                        // Empty hits retain selection, so require a fresh building pick after retirement.
+                        side().Select(NOTHING, nullptr);
+                        MG_CHECK(side().m_CurrSel == NOTHING_SELECTED && side().m_ActiveObject == nullptr);
+                        command("clear-after-retirement");
+                        record("cleared-retired");
+                        const auto retired_visible = select_scene(false);
+                        MG_CHECK(side().m_CurrSel == BUILDING_SELECTED);
+                        MG_CHECK(side().m_ActiveObject == building.get());
+                        MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+                        command("select-after-retirement", retired_visible, &area);
+                        record("building-selected-retired");
+                        side().Select(NOTHING, nullptr);
+                        command("clear-final-selection");
+                        record("cleared-final");
+                        if (replay == 0) reference = observations;
+                        else MG_CHECK(observations == reference);
+                        std::ostringstream completion;
+                        completion << "{\"type\":\"complete\",\"frame\":" << session.frame()
+                                   << ",\"time_ms\":" << session.time() << "}\n";
+                        completions.emplace_back(path, completion.str());
+                        file.flush();
+                        MG_CHECK(file.good());
+                        std::cout << session.metadata("mixed-selection-lifecycle-v1")
+                                  << " building_first=" << building_first << " click=" << click << '\n';
+                    }
                 }
             }
         }
+    }
+    // Append tails only after every session lifetime and replay assertion has finished.
+    for (const auto &[path, completion] : completions) {
+        std::ofstream file(path, std::ios::app);
+        MG_CHECK(file.good());
+        file << completion;
+        file.flush();
+        MG_CHECK(file.good());
     }
 }
 

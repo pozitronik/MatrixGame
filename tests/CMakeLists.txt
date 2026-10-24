@@ -833,6 +833,7 @@ foreach(contract mixed_selection_lifecycle manual_track_lifecycle manual_hovercr
                  manual_bomb_key manual_combat_death manual_exit_keys)
     add_matrix_test(game.player.${contract} matrixgame_player_order_scenarios gameplay input)
 endforeach()
+set_tests_properties(game.player.mixed_selection_lifecycle PROPERTIES TIMEOUT 90)
 
 foreach(chassis track hovercraft)
     foreach(profile park_miller10 park_miller16 legacy10 legacy16)
