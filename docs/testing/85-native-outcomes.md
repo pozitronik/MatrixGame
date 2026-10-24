@@ -1,6 +1,6 @@
 # Native timing and session procedures
 
-Procedure version: **1**. This handoff prepares NV-05-2 and NV-06-1 from the [outcome completion plan](85-outcome-completion.md). Execution remains pending in the [native validation ledger](native-validation.md). Preparation and synthetic helper tests establish neither a successful native playtest nor complete-baseline acceptance.
+Procedure version: **3**. This handoff prepares NV-05-2 and NV-06-1 from the [outcome completion plan](85-outcome-completion.md). Execution remains pending in the [native validation ledger](native-validation.md). Preparation and synthetic helper tests establish neither a successful native playtest nor complete-baseline acceptance.
 
 ## Build and preserve the candidate
 
@@ -9,8 +9,12 @@ Use the pinned Windows x86 toolchain and owned local resources from [Windows bui
 Build the cheats-disabled candidate first. Run from the repository root:
 
 ```powershell
+. {
+$ErrorActionPreference = 'Stop'
 .\tools\build.ps1 -Configuration Release
+if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed; do not continue with an older executable.' }
 .\tools\playtest-outcomes.ps1 -Configuration Release -Cheats Off -ConfigurationMode Text
+}
 ```
 
 The second command only inspects the candidate. It must report the expected build cache, x86 executable, SHA-256, configuration mode, RNG and audio availability. It does not launch or change files. Build immediately before testing: matching cache entries are not proof that an arbitrary old executable matches the checkout. Record the source revision and successful build command alongside the binary hash. The helper rejects DLL, non-x86 and mismatched cheats/configuration candidates.
@@ -18,23 +22,142 @@ The second command only inspects the candidate. It must report the expected buil
 For the enabled-code checks, finish the disabled candidate's runs, then rebuild and inspect:
 
 ```powershell
+. {
+$ErrorActionPreference = 'Stop'
 .\tools\build.ps1 -Configuration Release -Cheats
+if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed; do not continue with an older executable.' }
 .\tools\playtest-outcomes.ps1 -Configuration Release -Cheats On -ConfigurationMode Text
+}
 ```
 
 Both builds reuse the same output directory. Finish a run and wait for configuration restoration before rebuilding, changing profiles or starting another game. For Debug, replace `Release` with `Debug` in both commands. For MSVC, add `-Compiler MSVC` to both; the helper accepts its multi-configuration cache and selects the matching `MatrixGame/<Configuration>` executable directory. `-ConfigurationMode Packed` requires a locally supplied `robots.dat` staged by the build; `Text` temporarily hides the output copy without touching the source package. `-RandomGenerator LegacyCRT` selects the second RNG profile; the default is ParkMiller. Do not rename a packed backup to `robots.dat.backup`: resource lookup also matches that name, and the helper rejects such aliases in a text run.
 
 Use the relevant Debug/Packed, Debug/Text, Release/Packed and Release/Text profiles from the ledger, recording each required RNG/audio variant independently. These are prepared variants, not claims that earlier playtests covered them. An unavailable variant stays pending until the maintainer explicitly disposes of it. The helper reports installed audio packages and any `sounds.txt` override; it does not silently remove them to manufacture an audio profile.
 
-## Common launch and scene
+## Protect each record before launch
 
-Add `-Launch` only when ready to operate a visible game window:
+Reuse the shared [settings context](87-native-procedures.md#preserve-settings-for-each-record), [cache protection](87-native-procedures.md#preserve-the-selected-minimap-cache) and [guarded completion](87-native-procedures.md#complete-a-record) blocks unchanged. Run every complete `. { ... }` block as one statement and wait for success before the next. Permit only one launch attempt per prepared record, including a failed or uncertain attempt without a retained handle. An exited successful process also needs completed restoration/guarded cleanup and a new record before another launch. Do not rebuild, start another game, change a profile or reset an active flag while a record remains unresolved.
+
+Select the already-built configuration, set `$game` to its absolute executable directory and `$exe` to its `MatrixGame.exe`; for a synthetic export, use its directory. Run the shared path-resolution block for the two distinct absolute `$cacheRoots`, then its settings preparation. Keep the shared `.playtest-presentation-backup` name and cleanup contract unchanged; it is separate from the launch helper's `CFG/.native-outcome-backup`. Close other games sharing either cache root and keep them closed through restoration.
+
+For an unknown key, perform the separate [Debug qualification](87-cache-qualification.md#copy-the-pre-launch-state): copy both cache trees before launch, load only the intended map, quit and [restore only its logged entry](87-cache-qualification.md#perform-the-separate-debug-qualification). Use the owned helper adapter below instead of #87's direct launch when qualification requires `-AlternateMapFile`; it stages the same alias as the real case. Qualify the installed filename (`native-outcome-alternate.cmap` or `native-outcome-demo.cmap`) and map/resource identity, not only its payload. A different alias needs its own qualification. Release cannot discover a key from Debug-only minimap messages. The completion block below binds only the current retained helper PID and its actual native exit result after the full appended log is read. Qualification requires one native code-0 lifetime, not just helper exit 0. If a closed launch reports no cache path, use the shared [no-path recovery](87-cache-qualification.md#recover-a-launch-with-no-cache-path); do not delete its snapshot or guess a key. Failed copies, ambiguous logs or unfamiliar paths leave preparation incomplete; never discover a key by an unprotected first play.
+
+For subsequent records, supply the complete confirmed `$cacheNames` array and run the common known-key protection block; every selected leaf is protected at both roots. Synthetic guides may supply exact keys from their generated manifests. Protect all maps that a relaunch can load before its first process starts. Do not infer a suffix for an arbitrary map or remove wildcards. Retain the key record, input hashes and log excerpt before shared cleanup.
+
+### Capture the log boundary
+
+After shared settings/cache preparation and before either launch adapter, run this block. It records this backup directory's lifetime and the candidate hash, plus the existing log's length, creation time and complete-prefix hash. It reads no old log text into the new evidence. Another build, replaced/truncated log or stale record cannot supply this launch's evidence.
 
 ```powershell
-.\tools\playtest-outcomes.ps1 -Configuration Release -Cheats Off -ConfigurationMode Text -Launch
+. {
+$ErrorActionPreference = 'Stop'
+if ($launchAttempted) { throw 'One launch attempt per prepared record; resolve and restore it before preparing another.' }
+if (-not $settingsReady -or -not $caseBackupOwned) { throw 'Prepare the shared owned record first.' }
+$currentGame = (Resolve-Path -LiteralPath $game -ErrorAction Stop).Path
+if ([IO.Path]::GetFullPath($exe) -ine (Join-Path $currentGame 'MatrixGame.exe')) { throw 'The executable does not belong to the protected game.' }
+$fallbackRoots = @($cacheRoots | Where-Object Name -eq 'Fallback')
+if ($fallbackRoots.Count -ne 1 -or $fallbackRoots[0].Path -ine (Join-Path $currentGame 'Cache')) { throw 'Run shared path setup for this game before preparing its cache.' }
+if ($settings -ine (Join-Path $currentGame 'CFG/standalone.txt') -or $caseBackup -ine (Join-Path $currentGame '.playtest-presentation-backup')) { throw 'The settings record belongs to another game.' }
+$boundaryFile = Join-Path $caseBackup 'log-boundary.json'
+if (Test-Path -LiteralPath $boundaryFile) { throw 'Do not overwrite a preceding launch boundary.' }
+$logBoundaryReady = $false
+$logBoundaryOwner = (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc
+$recordedExeHash = (Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash
+$logPath = Join-Path $game 'test.log'
+$logPresentBefore = Test-Path -LiteralPath $logPath -PathType Leaf
+if ((Test-Path -LiteralPath $logPath) -and -not $logPresentBefore) { throw 'The log path is not a regular file.' }
+if ($logPresentBefore -and ((Get-Item -LiteralPath $logPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Do not follow a log link.' }
+$logBeforeLength = if ($logPresentBefore) { (Get-Item -LiteralPath $logPath -ErrorAction Stop).Length } else { 0L }
+$logCreationBefore = if ($logPresentBefore) { (Get-Item -LiteralPath $logPath -ErrorAction Stop).CreationTimeUtc } else { $null }
+$logHashBefore = if ($logPresentBefore) { (Get-FileHash -LiteralPath $logPath -Algorithm SHA256 -ErrorAction Stop).Hash } else { $null }
+[IO.File]::WriteAllText($boundaryFile, (@{Record=$caseBackup; OwnerUtc=$logBoundaryOwner.ToString('o'); Executable=$exe; Hash=$recordedExeHash; Log=$logPath; Length=$logBeforeLength; OriginalHash=$logHashBefore} | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+$logBoundaryReady = $true
+}
 ```
 
-Use `-Cheats On` for an enabled-code run and the matching build/profile options described above. The helper temporarily sets Windowed 1280x720, camera speed 100%, bonus None, the selected RNG and the current corrected compatibility options. It preserves the original staged `CFG/standalone.txt` bytes, temporarily removes `CFG/robots.dat` only for Text, and restores both after process exit. It launches without arguments: a positional map argument selects visibility calculation rather than interactive play. Root-level supplied files and packages remain unchanged.
+### Owned helper launch adapter
+
+Case snippets set a `$caseArguments` hashtable without launching. Apply that exact configuration/cheats/Text/Packed/RNG/alias selection to the candidate and protection record first, with the same `$configuration`. The adapter retains a real child PowerShell running the existing launcher; game handles are owned and checked inside that launcher. It never fabricates a process object or treats a PID as lifetime proof. The helper console is hidden; its explicitly requested game remains visible. Output/error and the exact caught exception message stay in the owned record; expected failures are matched against that message rather than formatted console text. Run this block from the repository root after exactly one shared cache route is ready.
+
+```powershell
+. {
+$ErrorActionPreference = 'Stop'
+if ($launchAttempted) { throw 'One launch attempt per prepared record; resolve and restore it before preparing another.' }
+if (-not $settingsReady -or ($cacheReady -eq $cacheQualificationReady)) { throw 'Require exactly one verified cache route.' }
+if ($cacheQualificationReady -and $configuration -ne 'Debug') { throw 'Qualification requires Debug.' }
+if ($cacheQualificationReady -and $caseArguments.ExpectedProcesses -ne 1) { throw 'Qualification requires exactly one native lifetime.' }
+if (($cacheActive -and -not $cacheReady) -or ($cacheQualificationActive -and -not $cacheQualificationReady) -or ($faultActive -and -not $faultReady)) { throw 'Resolve unfinished shared preparation before launch.' }
+$currentGame = (Resolve-Path -LiteralPath $game -ErrorAction Stop).Path
+if ([IO.Path]::GetFullPath($exe) -ine (Join-Path $currentGame 'MatrixGame.exe')) { throw 'The executable does not belong to the protected game.' }
+$fallbackRoots = @($cacheRoots | Where-Object Name -eq 'Fallback')
+if ($fallbackRoots.Count -ne 1 -or $fallbackRoots[0].Path -ine (Join-Path $currentGame 'Cache')) { throw 'Run shared path setup for this game before preparing its cache.' }
+if ($settings -ine (Join-Path $currentGame 'CFG/standalone.txt') -or $caseBackup -ine (Join-Path $currentGame '.playtest-presentation-backup')) { throw 'The settings record belongs to another game.' }
+$boundaryPath = Join-Path $caseBackup 'log-boundary.json'
+if (-not $caseBackupOwned -or -not $logBoundaryReady -or -not (Test-Path -LiteralPath $boundaryPath -PathType Leaf) -or $logPath -ine (Join-Path $currentGame 'test.log') -or (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc -ne $logBoundaryOwner) { throw 'The current owned record log boundary is missing or stale.' }
+if ((Get-Item -LiteralPath $boundaryPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Do not follow a boundary-record link.' }
+$boundaryRecord = [IO.File]::ReadAllText($boundaryPath, [Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
+if ($boundaryRecord.Record -ine $caseBackup -or $boundaryRecord.OwnerUtc -cne $logBoundaryOwner.ToString('o') -or $boundaryRecord.Executable -ine $exe -or $boundaryRecord.Log -ine $logPath -or $boundaryRecord.Hash -cne $recordedExeHash -or $boundaryRecord.Length -ne $logBeforeLength -or $boundaryRecord.OriginalHash -cne $logHashBefore -or (Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash -cne $recordedExeHash) { throw 'The captured log boundary does not belong to this record and candidate.' }
+if ($process -and -not $process.HasExited) { throw 'The preceding retained process is still running.' }
+if (@(Get-Process -ErrorAction Stop | Where-Object ProcessName -eq 'MatrixGame').Count) { throw 'Close all MatrixGame processes first.' }
+if (-not $caseArguments.Launch -or $caseArguments.Restore -or $caseArguments.Configuration -ne $configuration) { throw 'Case/profile arguments are inconsistent.' }
+if (-not $caseArguments.WatchRelaunches) { throw 'Require the retained-process monitor.' }
+if ($expectedHelperExit -eq 1) {
+    if ($cacheQualificationReady -or $outcomeCase -notin @('R1','I1') -or -not $caseArguments.AlternateMapFile) { throw 'Only predeclared known-key R1/I1 failures may expect helper exit 1.' }
+    $requiredCount = if ($outcomeCase -eq 'R1') { 1 } else { 2 }
+    if ($caseArguments.ExpectedProcesses -ne $requiredCount -or ($outcomeCase -eq 'I1' -and $caseArguments.ConfigurationMode -ne 'Text')) { throw 'The negative-case profile/count differs.' }
+} elseif ($expectedHelperExit -ne 0 -or $outcomeCase -ne 'Normal') { throw 'Declare a normal success or the exact existing R1/I1 contract before launch.' }
+if ($caseArguments.AlternateMapFile) { $caseArguments.AlternateMapFile = (Resolve-Path -LiteralPath $caseArguments.AlternateMapFile -ErrorAction Stop).Path }
+$helper = (Resolve-Path -LiteralPath '.\tools\playtest-outcomes.ps1' -ErrorAction Stop).Path
+$recordedHelperHash = (Get-FileHash -LiteralPath $helper -Algorithm SHA256 -ErrorAction Stop).Hash
+$inspectionArguments = $caseArguments.Clone()
+$inspectionArguments.Launch = $false
+$inspection = @(& $helper @inspectionArguments)
+$reportedExecutable = @($inspection | Where-Object { $_ -like 'Executable: *' })
+if ($reportedExecutable.Count -ne 1 -or [IO.Path]::GetFullPath($reportedExecutable[0].Substring(12)) -ine $exe) { throw 'The helper candidate differs from the protected game directory.' }
+$inspection | Set-Content -LiteralPath (Join-Path $caseBackup 'candidate-inspection.txt') -Encoding UTF8 -ErrorAction Stop
+$helperBackup = Join-Path $game 'CFG/.native-outcome-backup'
+if (Test-Path -LiteralPath $helperBackup) { throw 'Resolve the preceding helper backup first.' }
+$helperOutput = Join-Path $caseBackup 'helper.stdout.txt'
+$helperError = Join-Path $caseBackup 'helper.stderr.txt'
+$helperException = Join-Path $caseBackup 'helper.exception.txt'
+if ((Test-Path -LiteralPath $helperOutput) -or (Test-Path -LiteralPath $helperError) -or (Test-Path -LiteralPath $helperException)) { throw 'Do not overwrite another launch record.' }
+$argumentJson = ConvertTo-Json -InputObject $caseArguments -Compress
+# Escape single quotes so paths/JSON remain data in the child command.
+$command = '$ErrorActionPreference = ''Stop''; [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); try { $values = ConvertFrom-Json ''' + $argumentJson.Replace("'", "''") + '''; $arguments = @{}; $values.PSObject.Properties | ForEach-Object { $arguments[$_.Name] = $_.Value }; & ''' + $helper.Replace("'", "''") + ''' @arguments; exit 0 } catch { [IO.File]::WriteAllText(''' + $helperException.Replace("'", "''") + ''', $_.Exception.Message, [Text.UTF8Encoding]::new($false)); Write-Error $_ -ErrorAction Continue; exit 1 }'
+$encoded = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($command))
+$launchMode = 'OutcomeHelper'
+$newLog = $null
+$newLogProcessId = $null
+$gameExitCode = $null
+$restorationEligible = $false
+$caseExitEvidenceMatches = $false
+$process = $null
+$launchSucceeded = $false
+$launchAttempted = $true
+$process = Start-Process -FilePath (Get-Command powershell.exe -CommandType Application -ErrorAction Stop).Source -ArgumentList @('-NoProfile', '-NonInteractive', '-EncodedCommand', $encoded) -WorkingDirectory (Get-Location).Path -WindowStyle Hidden -RedirectStandardOutput $helperOutput -RedirectStandardError $helperError -PassThru -ErrorAction Stop
+if ($null -eq $process) { throw 'No retained helper handle; preserve uncertain launch state.' }
+$null = $process.Handle
+$retainedProcessStart = $process.StartTime.ToUniversalTime()
+$process.Id
+}
+```
+
+Perform only the declared case and quit route, then use the separate completion/evidence block below. Do not call it before quit: its 30-second exit bound is not the gameplay-observation duration. A missing or unresolved handle, remaining game, retained helper backup or unreadable current log leaves restoration unverified. Once those are resolved, an exited failed helper can permit known-key/settings restoration while its case remains failed or incomplete. Preserve the record and resolve that lifetime; do not kill a merely polled same-path process or force a ready flag. The [R1/I1 call sites](85-native-failures.md) predeclare helper exit 1 only for their existing negative contracts. R1 requires one native exit 1; I1 requires the initial native exit 0 and observed replacement exit 1. Exact diagnostics and subsequent successful recovery remain mandatory. Neither is allowed for first-map qualification, which must complete a normal Debug battle/quit. Unknown case results never become passes. A verified closed known-key record can restore its originals despite a failed result; unresolved lifetime or qualification records retain backups.
+
+## Common launch and scene
+
+After protection is ready, select these arguments and run the [owned helper adapter](#owned-helper-launch-adapter) when ready for a visible game window:
+
+```powershell
+. {
+$ErrorActionPreference = 'Stop'
+$outcomeCase = 'Normal'
+$expectedHelperExit = 0
+$caseArguments = @{ Configuration = 'Release'; Cheats = 'Off'; ConfigurationMode = 'Text'; Launch = $true; WatchRelaunches = $true; ExpectedProcesses = 1 }
+}
+```
+
+Use `Cheats = 'On'` in the arguments for an enabled-code run and the matching build/profile options described above. The helper temporarily sets Windowed 1280x720, camera speed 100%, bonus None, the selected RNG and the current corrected compatibility options. It preserves the original staged `CFG/standalone.txt` bytes, temporarily removes `CFG/robots.dat` only for Text, and restores both after process exit. It launches without arguments: a positional map argument selects visibility calculation rather than interactive play. Root-level supplied files and packages remain unchanged.
 
 1. Open a small unrelated window, such as Notepad, beside the game so that a focus-loss observation does not hide the battlefield. Record Windows scaling and the actual client size.
 2. Within 60 seconds of launch, the startup menu should appear before any battlefield. Choose **New battle**. The remembered `desert1_3e.cmap` entry should be selected; choose bonus **None** and press Enter once to start. Allow up to 60 seconds for the introduction. If a different map is selected, the expected entry is unavailable, or loading fails, stop and record the setup failure.
@@ -97,17 +220,133 @@ Start the common scene and issue a Move. While it remains pending, press Escape,
 
 ## Restoration and evidence
 
-Wait for `Exit code` and `Restored the staged configuration` before the next launch. The helper intentionally discards settings/map preferences saved during this procedure and restores the original output bytes. It does not restore changes made by a concurrent build or another process; keep those stopped. A normal game error still runs restoration. The helper checks for exit every 250 ms so that Ctrl+C can interrupt its wait. Its cleanup attempts to close only its launched process; a forced closure is reported as an aborted run.
+Run this only after initiating the declared quit route or acknowledging its expected negative-case diagnostic. For helper cases it verifies the retained lifetime, unchanged candidate/helper, resolved helper backup, absence of every game and the full bound log before enabling known-key/settings restoration. Expected helper/native exits and row counts classify the case separately; a mismatch is failed or incomplete even after verified restoration. For a direct synthetic export, the same guard checks its retained root process after all recorded replacement processes have exited. A polled process is never a termination target. R1/I1 require the exact recorded native diagnostic before invoking expected-failure completion; a wrong/unknown diagnostic is a failed record with retained backups. The code checks process/cleanup evidence, not the visible error dialog or the later recovery observations. Direct owned-game failure may permit verified restoration after closure but remains a failed case. An unresolved retained handle, live game, helper backup or unread log still blocks restoration. After explicit helper recovery removes its verified backup, rerun this completion block; old failure/warning rows keep the case failed without preventing safe known-key/settings restoration. Do not reset flags to bypass a blocked record.
+
+```powershell
+. {
+$ErrorActionPreference = 'Stop'
+if (-not $logBoundaryReady) { throw 'Capture this record boundary, or keep the completed restoration bindings unchanged.' }
+$newLog = $null
+$newLogProcessId = $null
+$gameExitCode = $null
+$restorationEligible = $false
+$caseExitEvidenceMatches = $false
+$caseProblems = [Collections.Generic.List[string]]::new()
+$launchSucceeded = $false
+if (-not $launchAttempted -or $null -eq $process -or $launchMode -notin @('OutcomeHelper','DirectExport')) { throw 'No verified launch context.' }
+if (-not $process.WaitForExit(30000)) { throw 'Retained process has not exited; preserve all backups.' }
+$process.Refresh()
+if (-not $process.HasExited -or $process.StartTime.ToUniversalTime() -ne $retainedProcessStart) { throw 'Retained process lifetime differs; preserve the record.' }
+if (@(Get-Process -ErrorAction Stop | Where-Object ProcessName -eq 'MatrixGame').Count) { throw 'A game remains; retain the record.' }
+if ($launchMode -eq 'OutcomeHelper' -and (Test-Path -LiteralPath $helperBackup)) { throw 'Resolve the retained helper backup with explicit helper recovery, then rerun this block.' }
+$currentGame = (Resolve-Path -LiteralPath $game -ErrorAction Stop).Path
+$boundaryPath = Join-Path $caseBackup 'log-boundary.json'
+if (-not $caseBackupOwned -or -not $logBoundaryReady -or -not (Test-Path -LiteralPath $boundaryPath -PathType Leaf) -or $logPath -ine (Join-Path $currentGame 'test.log') -or (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc -ne $logBoundaryOwner) { throw 'The current owned record log boundary is missing or stale.' }
+if ((Get-Item -LiteralPath $boundaryPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Do not follow a boundary-record link.' }
+$boundaryRecord = [IO.File]::ReadAllText($boundaryPath, [Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
+if ($boundaryRecord.Record -ine $caseBackup -or $boundaryRecord.OwnerUtc -cne $logBoundaryOwner.ToString('o') -or $boundaryRecord.Executable -ine $exe -or $boundaryRecord.Log -ine $logPath -or $boundaryRecord.Hash -cne $recordedExeHash -or $boundaryRecord.Length -ne $logBeforeLength -or $boundaryRecord.OriginalHash -cne $logHashBefore -or (Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash -cne $recordedExeHash) { throw 'The captured log boundary does not belong to this record and candidate.' }
+$nativeExits = @()
+$observedGameExitCode = $null
+if ($launchMode -eq 'OutcomeHelper') {
+    if ((Get-FileHash -LiteralPath $helper -Algorithm SHA256 -ErrorAction Stop).Hash -cne $recordedHelperHash) { throw 'The retained helper changed; preserve its record.' }
+    $helperText = [IO.File]::ReadAllText($helperOutput, [Text.Encoding]::UTF8)
+    $helperErrors = [IO.File]::ReadAllText($helperError, [Text.Encoding]::UTF8)
+    $initialRows = [regex]::Matches($helperText, '(?m)^Process ID: ([0-9]+)\r?$')
+    $observedRows = [regex]::Matches($helperText, '(?m)^Observed process ID: ([0-9]+)\r?$')
+    $exitRows = [regex]::Matches($helperText, '(?m)^Process ID: ([0-9]+); exit code: (-?[0-9]+)\r?$')
+    $countRows = [regex]::Matches($helperText, '(?m)^Observed processes: ([0-9]+); expected: ([0-9]+)\r?$')
+    $requiredCount = [int]$caseArguments.ExpectedProcesses
+    $nativeExits = @($exitRows | ForEach-Object { [pscustomobject]@{Id=$_.Groups[1].Value; ExitCode=[long]$_.Groups[2].Value} })
+    if ($nativeExits.Count -eq 1) { $observedGameExitCode = $nativeExits[0].ExitCode }
+    if ($process.ExitCode -ne $expectedHelperExit) { $caseProblems.Add('The helper exit differs from the declared case.') }
+    if ($initialRows.Count -ne 1 -or $observedRows.Count -ne $requiredCount - 1 -or $exitRows.Count -ne $requiredCount -or $countRows.Count -ne 1) {
+        $caseProblems.Add('Native process rows are incomplete or extra; the case is not accepted.')
+    } else {
+        $declaredIds = @($initialRows[0].Groups[1].Value) + @($observedRows | ForEach-Object { $_.Groups[1].Value })
+        $exitIds = @($nativeExits | ForEach-Object Id)
+        if ([int]$countRows[0].Groups[1].Value -ne $requiredCount -or [int]$countRows[0].Groups[2].Value -ne $requiredCount -or @($declaredIds | Select-Object -Unique).Count -ne $requiredCount -or @($exitIds | Select-Object -Unique).Count -ne $requiredCount -or @(Compare-Object $declaredIds $exitIds).Count) { $caseProblems.Add('Native lifetime identities or counts differ.') }
+    }
+    if (-not $helperText.Contains('Restored the staged configuration; supplied source resources were unchanged.') -or ($helperText + $helperErrors) -match 'A process could not be retained|forced closure|cleanup could not be verified|backup retained') { $caseProblems.Add('The helper reported failed or incomplete cleanup; retain that failed-case evidence even after explicit recovery.') }
+    if ($expectedHelperExit -eq 0) {
+        if ($outcomeCase -ne 'Normal' -or (Test-Path -LiteralPath $helperException) -or @($nativeExits | Where-Object ExitCode -ne 0).Count) { $caseProblems.Add('A normal native lifetime or helper record failed.') }
+    } elseif ($expectedHelperExit -eq 1) {
+        $expectedException = 'Process evidence is incomplete or includes a failure; do not record the relaunch case as passed.'
+        if (-not (Test-Path -LiteralPath $helperException -PathType Leaf) -or [IO.File]::ReadAllText($helperException, [Text.Encoding]::UTF8) -cne $expectedException) { $caseProblems.Add('The helper exception is not the exact declared negative-case report.') }
+        if ($initialRows.Count -eq 1) {
+            $rootExit = @($nativeExits | Where-Object Id -eq $initialRows[0].Groups[1].Value)
+            $childExit = @($nativeExits | Where-Object Id -ne $initialRows[0].Groups[1].Value)
+            if ($outcomeCase -eq 'R1') {
+                if ($requiredCount -ne 1 -or $rootExit.Count -ne 1 -or $rootExit[0].ExitCode -ne 1) { $caseProblems.Add('R1 requires exactly its one native exit 1.') }
+            } elseif ($outcomeCase -eq 'I1') {
+                if ($requiredCount -ne 2 -or $rootExit.Count -ne 1 -or $rootExit[0].ExitCode -ne 0 -or $childExit.Count -ne 1 -or $childExit[0].ExitCode -ne 1) { $caseProblems.Add('I1 requires the original exit 0 and observed child exit 1.') }
+            } else { $caseProblems.Add('The negative case is undeclared.') }
+        }
+    } else { $caseProblems.Add('The expected helper exit is undeclared.') }
+} else {
+    $observedGameExitCode = $process.ExitCode
+    if ($null -ne $observedGameExitCode) { $nativeExits = @([pscustomobject]@{Id=[string]$process.Id; ExitCode=$observedGameExitCode}) }
+    if ($null -eq $observedGameExitCode -or $observedGameExitCode -ne 0) { $caseProblems.Add('The owned game did not report native exit 0.') }
+}
+if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash -ne $recordedExeHash) { throw 'The candidate changed during this record.' }
+$newLog = ''
+if (Test-Path -LiteralPath $logPath -PathType Leaf) {
+    $item = Get-Item -LiteralPath $logPath -Force -ErrorAction Stop
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -or ($logPresentBefore -and $item.CreationTimeUtc -ne $logCreationBefore)) { throw 'The log was replaced; retain the evidence.' }
+    $stream = [IO.File]::OpenRead($logPath)
+    $hash = [Security.Cryptography.SHA256]::Create()
+    $reader = $null
+    try {
+        if ($stream.Length -lt $logBeforeLength) { throw 'The log was truncated.' }
+        $remaining = $logBeforeLength
+        $buffer = [byte[]]::new(65536)
+        while ($remaining -gt 0) {
+            $read = $stream.Read($buffer, 0, [int][Math]::Min($remaining, $buffer.Length))
+            if ($read -le 0) { throw 'The recorded prefix is incomplete.' }
+            $null = $hash.TransformBlock($buffer, 0, $read, $buffer, 0)
+            $remaining -= $read
+        }
+        $null = $hash.TransformFinalBlock([byte[]]@(), 0, 0)
+        $prefixHash = ([BitConverter]::ToString($hash.Hash)).Replace('-', '')
+        if ($logPresentBefore -and $prefixHash -ne $logHashBefore) { throw 'Earlier log bytes changed.' }
+        $reader = [IO.StreamReader]::new($stream, [Text.Encoding]::UTF8)
+        $newLog = $reader.ReadToEnd()
+    } finally {
+        if ($reader) { $reader.Dispose() } else { $stream.Dispose() }
+        $hash.Dispose()
+    }
+} elseif ($logPresentBefore) { throw 'The original log disappeared.' }
+[IO.File]::WriteAllText((Join-Path $caseBackup 'new-log.txt'), $newLog, [Text.UTF8Encoding]::new($false))
+$gameExitCode = $observedGameExitCode
+$newLogProcessId = $process.Id
+$restorationEligible = $true
+$caseExitEvidenceMatches = $caseProblems.Count -eq 0
+$qualificationRecord = $cacheQualificationReady -or $cacheQualificationActive
+$launchSucceeded = $restorationEligible -and (-not $qualificationRecord -or ($caseExitEvidenceMatches -and $nativeExits.Count -eq 1 -and $gameExitCode -eq 0 -and $process.ExitCode -eq 0))
+$logBoundaryReady = $false
+$result = [ordered]@{RestorationEligible=$restorationEligible; SharedRestorationAllowed=$launchSucceeded; ExitEvidenceMatches=$caseExitEvidenceMatches; Problems=@($caseProblems); HelperExitCode=$(if ($launchMode -eq 'OutcomeHelper') { $process.ExitCode } else { $null }); NativeExits=$nativeExits; GameExitCode=$gameExitCode; LogProcessId=$newLogProcessId}
+[IO.File]::WriteAllText((Join-Path $caseBackup 'completion-result.json'), ($result | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+if (-not $caseExitEvidenceMatches) { Write-Warning ('Failed or incomplete case: ' + ($caseProblems -join ' ')) }
+if ($qualificationRecord -and -not $launchSucceeded) { Write-Warning 'Qualification is unresolved: preserve its snapshot for manual review; do not reset flags or invent a native exit code.' }
+$result | ConvertTo-Json -Depth 4
+}
+```
+
+For a completed known-key record, `$launchSucceeded` now means verified restoration eligibility, not a passing case. Restore the shared cache and settings, retain `completion-result.json` with the failed/incomplete observations, then use [guarded record cleanup](87-native-procedures.md#complete-a-record). For Debug qualification, only helper exit 0 plus exactly one complete matching native exit 0, or the direct retained native process's verified exit 0, enables the shared qualification block. A failed or ambiguous qualification keeps `$launchSucceeded` false and the snapshot active for manual review, even if the retained helper is closed; the actual native exit remains 0, nonzero or unknown, never fabricated to unlock recovery. A matching exit contract alone still requires every declared scene/diagnostic observation before accepting the native case. Cache methods are linked rather than copied here. A no-launch partial preparation uses the shared [cache recovery](87-native-procedures.md#preserve-the-selected-minimap-cache) or [qualification-copy abort](87-cache-qualification.md#recover-a-launch-with-no-cache-path), which verify parked and unparked originals. A failed or uncertain launch does not authorize deleting its backups. The helper's own explicit `-Restore` remains separate from this outer record; complete that guarded recovery before enabling outer restoration.
+
+After closing the declared game windows, run the completion block and finish verified restoration before the next launch. The monitor prints `Process ID: <pid>; exit code: N`, not an `Exit code:` line. The helper intentionally discards settings/map preferences saved during this procedure and restores the original output bytes. It does not restore changes made by a concurrent build or another process; keep those stopped. The retained helper console is hidden, so resolve an interrupted observation by closing the game window, then verify its retained exit and any explicit helper recovery through the completion block. Its cleanup attempts to close only its launched process; a forced closure remains an aborted case even when verified restoration later succeeds.
 
 If the shell itself was terminated or another MatrixGame process remained, close the game and use the same configuration/compiler/build-directory selection with `-Restore`, without `-Launch`:
 
 ```powershell
+. {
+$ErrorActionPreference = 'Stop'
 .\tools\playtest-outcomes.ps1 -Configuration Release -Restore
+}
 ```
 
 The backup is under the selected executable's `CFG/.native-outcome-backup`. A later ordinary inspection or launch refuses to proceed while that backup exists; it does not overwrite independently edited settings. Explicit `-Restore` replaces the current staged settings with the saved originals, so preserve any later edits separately before requesting recovery. Restoration also refuses while a MatrixGame process is running and verifies its record before using it. If the record is incomplete or unexpected files remain, inspect that directory manually; do not rebuild over the backup. Supplied packages at the repository root are never part of this restoration.
 
-Record procedure version, case/launch/step, source revision, binary hash, actual build/profile, map/resource identity, compatibility modes, audio availability, Windows/device/scaling, observable result, timeout or exception, process ID and exit code. Capture only the minimal diagnostic/evidence needed; do not publish packages, extracted assets or configuration dumps. The logger appends to `test.log`; identify the latest `Started as EXE` section and preserve the relevant excerpt before another run adds to it. A completed command or code 0 alone does not establish every observation above.
+Record procedure version, case/launch/step, source revision, binary hash, actual build/profile, map/resource identity, compatibility modes, audio availability, Windows/device/scaling, observable result, timeout or exception, process ID and exit code. Capture only the minimal diagnostic/evidence needed; do not publish packages, extracted assets or configuration dumps. The logger appends to `test.log`. Record its byte length immediately before the launch and preserve only the bytes appended by that completed launch, using the guarded evidence block above; reject truncation or replacement. `Started as EXE` uses the Debug-only `info` level and is not a Release delimiter. Release retains warning/error/fatal and unconditional `notice` entries. The RNG and remembered-map `notice` lines are available in both builds; an empty excerpt does not prove initialization. Match those lines with the retained executable/profile, selected map and visible battlefield; a remembered choice alone is not successful loading evidence. A completed command or code 0 alone does not establish every observation above.
 
 The helper's automated checks use synthetic files and a mocked process. They verify inspection without writes/launch, packed/text selection, exact-byte restoration, absent settings, launch failure, cheats/x86 mismatch, suffix aliases, retained backups with a remaining process and explicit recovery. They also cover MSVC multi-configuration cache/output selection, manifest-before-removal ordering, refusal of an incomplete packed backup, preservation of unexpected backup files, repeated bounded waits and cleanup after a simulated wait exception. They launch no game and do not establish delivery of a real Ctrl+C event or native execution.
 
@@ -115,13 +354,13 @@ The helper's automated checks use synthetic files and a mocked process. They ver
 
 | Case / shared handoff | Ready portion | Missing input or procedure |
 | --- | --- | --- |
-| NV-05-1: ordinary AUTO versus demo | [Ordinary/demo procedures](85-native-demo.md) prepare same-payload ordinary AUTO gate/toggle, actual demo-name startup, introduction/camera/Escape observations and a following ordinary process | Controlled eligible/no-eligible reinforcement and changing-camera-fight scenes, natural win/loss continuation and native execution remain missing; shared with #84 A8/O9. |
+| NV-05-1: ordinary AUTO versus demo | [Ordinary/demo procedures](85-native-demo.md) prepare same-payload ordinary AUTO gate/toggle, actual demo-name startup, introduction/camera/Escape observations and a following ordinary process | The [six-profile standalone exporter](85-native-demo-export.md) also supplies eligible/no-eligible reinforcement, changing fights and natural Win/Loss with following ordinary-process procedures. Native execution and applicability review remain pending; shared with #84 A8/O9. |
 | NV-05-2 | Procedures above, explicit build/launch profiles and restoration helper | Native execution and review; no pending-result or demo coverage is implied. |
 | NV-06-1 | Three ordinary-map launches above; toggle/restart extension in NV-05-2 | Native execution and review; weapon/effect-specific native scenes are not manufactured by the movement setup. |
 | NV-06-2: both selector origins | [Versioned selector procedures](85-native-selector.md) prepare menu Cancel/resume, Surrender and direct cheat-victory dialog routes, same/different-map acceptance, Exit controls and observed-process monitoring | The [contained lifecycle suite](85-native-exe-lifecycle.md) supplies natural-result triggers, dialogs, selector/relaunch, active-Move Cancel/resume/relaunch and retained failure-process exits with Text/Packed cheats-off setup. Native execution of both profiles, visible presentation and cheats-enabled variants remain pending. Visible different-map cases require the declared owned alternate map and shared resources. |
-| NV-06-3: pending result and failure/recovery | [Native failure procedures](85-native-failures.md) prepare guarded failed Restart and Text-only late interface initialization, expected diagnostics, restoration and next-launch recovery; [trigger investigation](85-native-selector.md#nv-06-3-trigger-investigation) separates natural pending results | The [contained lifecycle suite](85-native-exe-lifecycle.md) observes the natural pending counter before Restart/Exit and supplies Text/Packed selected-payload failure/recovery, Text late-interface failure and Packed early-configuration failure setup. Native execution of both profiles, visible R1/I1 execution, Packed late-initialization setup, cheats-enabled variants and complete short-lived tracing through the polling launcher remain open. IAMLOOSER directly opens victory and does not supply the pending state. |
+| NV-06-3: pending result and failure/recovery | [Native failure procedures](85-native-failures.md) prepare guarded failed Restart and Text-only late interface initialization, expected diagnostics, restoration and next-launch recovery; [trigger investigation](85-native-selector.md#nv-06-3-trigger-investigation) separates natural pending results | The [contained lifecycle suite](85-native-exe-lifecycle.md) observes the natural pending counter before Restart/Exit and supplies Text/Packed selected-payload failure/recovery, Text late-interface failure, Packed early-configuration failure and the separate Packed-only `late_configuration_recovery_packed` setup. That case uses a valid compressed archive missing only the required hint subtree after map preparation, verifies forgotten choice and retained failure exits, restores the exact archive and requires a fresh second-map Move. CPU preparation is not native execution: both profiles, visible R1 and Text-only I1 observations, required cheats-enabled execution and complete short-lived tracing through the polling launcher remain pending. IAMLOOSER directly opens victory and does not supply the pending state. |
 | NV-06-4: mixed special objectives and Terron | [Versioned synthetic exporter and scene procedures](85-native-special-scenes.md) supply exact map/object identities, mixed-objective ordering, collateral expectations, Text/Packed isolation, cache restoration and the following-battle sequence | The [contained outcome suite](85-native-special-outcomes.md) also follows destruction, result callbacks and a following session. Visible execution and review of A/B/C remain pending; contained outcomes do not establish those observations. |
-| P3/NV-03 and P4/NV-04 | [Presentation guide](87-presentation.md), [settings verification](../SETTINGS.md#verification) and [map verification](../MAPS.md#verification) | Their owners still need to reconcile exact failure/reset/rollback inputs and profile applicability; these procedures do not substitute for them. |
+| P3/NV-03 and P4/NV-04 | [Presentation guide](87-presentation.md), [settings verification](../SETTINGS.md#verification) and [map verification](../MAPS.md#verification) | The [prepared P1-P4 procedures](87-native-procedures.md) supply staged failure, actual audio-scene qualification and reset/rollback continuations; native execution and profile applicability remain pending. Their records remain separate from these outcome procedures. |
 | NV-07 | [Original host integration](../ORIGINAL_HOST.md) | Supported local x86 host/resource identity and the separately reviewed return/reentry record; standalone restart cannot establish it. |
 
 O10 remains incomplete until all selected cases have usable inputs and procedures. Only execution of prepared cases transfers to native validation; missing preparation stays implementation work.

@@ -28,14 +28,37 @@ Native execution uses the [test-window containment helper](native-window-contain
 
 The driver's successful presentation statuses, including an occluded window, establish continued device use rather than visible output. The host's post-session presentation check therefore uses HRESULT success. The engine's [presentation classification](../DEVICE_RECOVERY.md) also accepts successful statuses while keeping the loading handshake restricted to `S_OK`.
 
+Run the complete fenced block as one statement, including `. {` and the final `}`. It stops on a failed preparation/configure/build/test step and restores ordinary native registration in `finally`, then rebuilds the DLL and fixture even after failure. A failed restoration leaves the build unverified; do not continue to ordinary tests. Finish each native process before changing build options.
+
 ```powershell
-.\tools\build.ps1 -Configuration Debug -DLL -WithoutResources -TestsOnly
-& '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' -S . -B build/mingw-debug-dll -DMATRIXGAME_NATIVE_SESSION_TESTS=ON
-& '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' --build build/mingw-debug-dll --target matrixgame_native_session_fixture
-.\tools\test.ps1 -Configuration Debug -DLL -NoBuild -Jobs 1 -Filter '^game\.session\.native_demo_(packed_)?(reinforcement|no_reinforcement|camera_fights)$'
+. {
+$ErrorActionPreference = 'Stop'
+$configuration = 'Debug'
+$cheats = $false
+$build = "build/mingw-$($configuration.ToLowerInvariant())-dll"
+$cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
+try {
+    .\tools\build.ps1 -Configuration $configuration -DLL -WithoutMusic -TestsOnly -WithoutResources -Jobs 2 -Cheats:$cheats
+    if ($LASTEXITCODE -ne 0) { throw 'Native test build preparation failed.' }
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_SESSION_TESTS=ON
+    if ($LASTEXITCODE -ne 0) { throw 'Native test registration failed.' }
+    & $cmake --build $build --target MatrixGame matrixgame_native_session_fixture --parallel 2
+    if ($LASTEXITCODE -ne 0) { throw 'Native fixture build failed.' }
+    .\tools\setup-directx-runtime.ps1
+    if ($LASTEXITCODE -ne 0) { throw 'DirectX runtime preparation failed.' }
+    Copy-Item -LiteralPath '.\.tools\directx-x86\d3dx9_43.dll' -Destination (Join-Path $build 'tests') -ErrorAction Stop
+    .\tools\test.ps1 -Configuration $configuration -DLL -WithoutMusic -NoBuild -Jobs 1 -Cheats:$cheats -Filter '^game\.session\.native_demo_(packed_)?(reinforcement|no_reinforcement|camera_fights)$'
+    if ($LASTEXITCODE -ne 0) { throw 'Native fixture checks failed.' }
+} finally {
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_SESSION_TESTS=OFF
+    if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: native registration remains unverified; do not run ordinary tests.' }
+    & $cmake --build $build --target MatrixGame matrixgame_native_session_fixture --parallel 2
+    if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: default fixture binaries remain unverified; rebuild before ordinary tests.' }
+}
+}
 ```
 
-Repeat with Release and its build directory, then repeat both with `-Cheats` on the build helper and `-Cheats` on the test helper. Keep build and test options matched; restore the ordinary builds without `-Cheats` afterwards. The demo profile is unchanged by this build option, while the existing toggle controls verify enabled/disabled dispatch. The six checks carry the `native-process` and `current-desktop` labels, run serially within CTest and require a usable Direct3D 9 HAL and legacy DirectX runtime. Do not run separate native suites concurrently. A missing adapter fails the selected test rather than skipping it. Each test has the existing 30-second process limit in addition to its game-time/tick bounds. Native registration persists until the build directory is configured with `-DMATRIXGAME_NATIVE_SESSION_TESTS=OFF`.
+Repeat the whole block with `$configuration = 'Release'`, then repeat both configurations with `$cheats = $true`. The same value reaches build and test helpers. Finish those records, then restore the ordinary cheats-disabled builds; each block restores native registration to OFF and rebuilds in `finally`. The demo profile is unchanged by this build option, while the existing toggle controls verify enabled/disabled dispatch. The six checks carry the `native-process` and `current-desktop` labels, run serially within CTest and require a usable Direct3D 9 HAL and legacy DirectX runtime. Do not run separate native suites concurrently. A missing adapter fails the selected test rather than skipping it. Each test has the existing 30-second process limit in addition to its game-time/tick bounds. Native registration persists until the build directory is configured with `-DMATRIXGAME_NATIVE_SESSION_TESTS=OFF`.
 
 The production DLL chooses ParkMiller and seeds from wall time. For initialized sessions, logs bracket that seed and report request time, damage-related RNG draws, host ticks and results. An invalid packed header fails before the first progress callback and has no upper seed observation. These checks use bounded invariants; they do not claim fixed 10/16 ms schedules, LegacyCRT native execution, identical camera-angle bits or historical equivalence. Existing asset-free AUTO/camera scenes retain both RNG modes, fixed-step replays and their separate reference traces. These native continuations establish neither complete #84/#85 closure nor the accepted whole-game baseline.
 
