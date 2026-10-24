@@ -510,6 +510,18 @@ add_matrix_test(game.cheats.console matrixgame_cheat_tests gameplay input)
 foreach(contract diagnostic_registry video_registry hurry_boundaries)
     add_matrix_test(game.cheats.${contract} matrixgame_cheat_tests gameplay input)
 endforeach()
+add_matrix_test_executable(matrixgame_group_capacity_tests player_group_capacity_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_group_capacity_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_group_capacity_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_group_capacity_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_group_capacity_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract robot_exhausted selection_exhausted invalid_orders availability recovery)
+    add_matrix_test(game.player.group_capacity.${contract} matrixgame_group_capacity_tests gameplay input memory)
+endforeach()
+
 add_matrix_test_executable(matrixgame_player_cheat_scenarios player_cheat_spawn_scenarios.cpp battle_scenario.cpp
     battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_player_cheat_scenarios PRIVATE MatrixGameInternal)
@@ -518,7 +530,7 @@ target_include_directories(matrixgame_player_cheat_scenarios PRIVATE "${CMAKE_CU
 target_compile_definitions(matrixgame_player_cheat_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
-foreach(contract spawn_cheat_creation spawn_cheat_capacity crazy_cheat_creation debug_building_reinforcement)
+foreach(contract spawn_cheat_creation spawn_cheat_capacity spawn_cheat_exhausted crazy_cheat_creation debug_building_reinforcement)
     add_matrix_test(game.player.${contract} matrixgame_player_cheat_scenarios gameplay input)
 endforeach()
 foreach(mode park_miller legacy_crt)
