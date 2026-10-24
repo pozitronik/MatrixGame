@@ -42,6 +42,9 @@ struct Events {
 };
 
 struct Report {
+    // Captured only for recording; timing and legacy state bytes are unchanged.
+    std::string metadata;
+    std::vector<std::string> commands;
     Events events;
     NavigationWork::Counters total;
     // Intervals (0, 4000], (4000, 12000], (12000, 32000] ms.

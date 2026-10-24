@@ -201,6 +201,15 @@ jobs:
           path: |
             build/**/test-results.xml
             build/**/scenario-traces/*.jsonl
+      - name: Validate complete N5 navigation recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $sourceRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $sourceRevision) { throw 'Cannot identify the N5 producer source revision.' }
+          python -B tests/check_navigation_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --revision $sourceRevision
+          if ($LASTEXITCODE -ne 0) { throw 'N5 producer/parser validation failed.' }
       - name: Validate existing armed-combat recordings
         shell: pwsh
         run: |

@@ -37,6 +37,7 @@ struct Scene::Impl {
     std::array<D3DXVECTOR2, 8> starts{};
     std::array<CPoint, 8> intentions{};
     std::array<CPoint, 8> assigned{};
+    std::vector<std::string> commands;
 
     explicit Impl(Options value) : options(value), session(profile(value)) {
         for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
@@ -64,10 +65,14 @@ struct Scene::Impl {
             selection->RemoveAll();
             for (auto *robot : movers) selection->AddObject(robot, -4);
             side.SetCurGroup(selection); side.m_CurrSel = GROUP_SELECTED;
-            session.ground_command(500, 300);
+            command("context-ground", 0, 500, 300, [&] { session.ground_command(500, 300); });
         } else {
-            for (int i = 0; i < 8; ++i)
-                side.PGOrderMoveTo(side.RobotToLogicGroup(movers[i]), CPoint(i < 4 ? 48 : 8, 18 + (i % 4) * 6));
+            for (int i = 0; i < 8; ++i) {
+                const CPoint to(i < 4 ? 48 : 8, 18 + (i % 4) * 6);
+                command("PGOrderMoveTo", id(movers[i]), to.x, to.y, [&] {
+                    side.PGOrderMoveTo(side.RobotToLogicGroup(movers[i]), to);
+                });
+            }
         }
         for (int i = 0; i < 8; ++i) {
             const auto &group = side.m_PlayerGroup[movers[i]->GetGroupLogic()];
@@ -77,6 +82,21 @@ struct Scene::Impl {
             for (int j = 0; j < i; ++j) MG_CHECK(assigned[i] != assigned[j]);
         }
         MG_CHECK(NavigationWork::active() == nullptr);
+    }
+
+    template<class Action> void command(const char *name, int actor, int x, int y, Action action) {
+        const int frame = session.frame(), time = session.time();
+        const auto before = random::draw_count();
+        action();
+        const auto after = random::draw_count();
+        MG_CHECK(session.frame() == frame && session.time() == time);
+        std::ostringstream out;
+        out << "{\"type\":\"command\",\"frame\":" << frame << ",\"time_ms\":" << time
+            << ",\"name\":\"" << name << "\",\"actor\":" << actor
+            << ",\"destination\":[" << x << ',' << y << "]"
+            << ",\"rng_draws_before\":" << before << ",\"rng_draws_after\":" << after << '}';
+        commands.push_back(out.str());
+        MG_CHECK(random::draw_count() == after);
     }
 
     static battle::Profile profile(Options options) {
@@ -134,6 +154,8 @@ Report Scene::run(bool collect, bool record) {
     result.events.initial_rng_draws = random::draw_count();
     float minimum = 1000;
     if (record) {
+        result.metadata = s.session.metadata(name(s.options.kind));
+        result.commands = s.commands;
         result.states.reserve(horizon / s.options.step_ms + 1);
         result.frames.reserve(horizon / s.options.step_ms);
         result.states.push_back(s.snapshot());
