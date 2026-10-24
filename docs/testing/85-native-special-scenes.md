@@ -1,6 +1,6 @@
 # Mixed-objective native scenes
 
-Procedure version: **NV-06-4 v5**. This handoff supplies synthetic mixed Break/Anim and Terron maps, a resource exporter, a native loading and weapon check and exact standalone outcome steps. Preparation and execution are separate: the hidden native initialization check does not establish the manual attack, collateral, result-dialog or next-battle observations below. Record those observations in the [native validation ledger](native-validation.md#per-case-record).
+Procedure version: **NV-06-4 v6**. This handoff supplies synthetic mixed Break/Anim and Terron maps, a resource exporter, a native loading and weapon check and exact standalone outcome steps. Preparation and execution are separate: the hidden native initialization check does not establish the manual attack, collateral, result-dialog or next-battle observations below. Record those observations in the [native validation ledger](native-validation.md#per-case-record).
 
 ## What the export contains
 
@@ -95,6 +95,8 @@ Run the shared [known-key parking/restoration](87-native-procedures.md#preserve-
 
 Immediately before the launch, capture [this record's log boundary](85-native-outcomes.md#capture-the-log-boundary). After all retained processes exit, use the [completion/evidence guard](85-native-outcomes.md#restoration-and-evidence), shared cache restoration, shared settings restoration and guarded record cleanup, in that order. Never delete a cache entry merely because an old backup directory exists. The guard refuses live games or a stale/replaced record. Retain screenshots separately; shared cache directories and unrelated entries remain untouched.
 
+For a changed map without reviewed keys, qualify each map separately with the matching Debug export and the prepared qualification route. Load only the intended map and quit normally without selecting the other one; completion and shared qualification must finish before preparing another record. The two-map A/B/C journey below requires both confirmed keys and the known-key route.
+
 ## Launch and observe exits
 
 Launch the exported game without positional arguments. A positional map path selects visibility calculation in `WinMain`, so it cannot be used for these interactive battles:
@@ -103,7 +105,8 @@ Launch the exported game without positional arguments. A positional map path sel
 . {
 $ErrorActionPreference = 'Stop'
 if ($launchAttempted) { throw 'One launch attempt per prepared record; resolve and restore it before preparing another.' }
-if (-not $settingsReady -or -not $cacheReady -or -not $logBoundaryReady) { throw 'Prepare this record, both keys and log boundary first.' }
+if (-not $settingsReady -or ($cacheReady -eq $cacheQualificationReady) -or -not $logBoundaryReady) { throw 'Prepare this record, both keys and log boundary first.' }
+if ($cacheQualificationReady -and $configuration -ne 'Debug') { throw 'Qualification requires the matching Debug export.' }
 if ($process -and -not $process.HasExited) { throw 'The preceding retained process is still running.' }
 if (@(Get-Process -ErrorAction Stop | Where-Object ProcessName -eq 'MatrixGame').Count) { throw 'Close all MatrixGame processes first.' }
 $currentGame = (Resolve-Path -LiteralPath $game -ErrorAction Stop).Path
@@ -111,10 +114,17 @@ if ([IO.Path]::GetFullPath($exe) -ine (Join-Path $currentGame 'MatrixGame.exe'))
 $fallbackRoots = @($cacheRoots | Where-Object Name -eq 'Fallback')
 if ($fallbackRoots.Count -ne 1 -or $fallbackRoots[0].Path -ine (Join-Path $currentGame 'Cache')) { throw 'Run shared path setup for this game before preparing its cache.' }
 if ($settings -ine (Join-Path $currentGame 'CFG/standalone.txt') -or $caseBackup -ine (Join-Path $currentGame '.playtest-presentation-backup')) { throw 'The settings record belongs to another game.' }
+$boundaryPath = Join-Path $caseBackup 'log-boundary.json'
+if (-not $caseBackupOwned -or -not $logBoundaryReady -or -not (Test-Path -LiteralPath $boundaryPath -PathType Leaf) -or $logPath -ine (Join-Path $currentGame 'test.log') -or (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc -ne $logBoundaryOwner) { throw 'The current owned record log boundary is missing or stale.' }
+if ((Get-Item -LiteralPath $boundaryPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Do not follow a boundary-record link.' }
+$boundaryRecord = [IO.File]::ReadAllText($boundaryPath, [Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
+if ($boundaryRecord.Record -ine $caseBackup -or $boundaryRecord.OwnerUtc -cne $logBoundaryOwner.ToString('o') -or $boundaryRecord.Executable -ine $exe -or $boundaryRecord.Log -ine $logPath -or $boundaryRecord.Hash -cne $recordedExeHash -or $boundaryRecord.Length -ne $logBeforeLength -or $boundaryRecord.OriginalHash -cne $logHashBefore -or (Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash -cne $recordedExeHash) { throw 'The captured log boundary does not belong to this record and candidate.' }
 $launchMode = 'DirectExport'
 $newLog = $null
 $newLogProcessId = $null
 $gameExitCode = $null
+$restorationEligible = $false
+$caseExitEvidenceMatches = $false
 $process = $null
 $launchSucceeded = $false
 $launchAttempted = $true

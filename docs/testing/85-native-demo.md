@@ -1,6 +1,6 @@
 # Native ordinary AUTO and demo startup procedures
 
-Procedure version: **2**. This prepares the startup, Escape and following-ordinary-session portions of NV-05-1. It uses the actual filename-based branch in `CGame::Init`, not synthetic assignment of automatic-mode flags. Natural result continuation, controlled reinforcements, changing camera fights and mixed special-object/Terron scenes remain separately identified below. Native execution is pending.
+Procedure version: **3**. This prepares the startup, Escape and following-ordinary-session portions of NV-05-1. It uses the actual filename-based branch in `CGame::Init`, not synthetic assignment of automatic-mode flags. Natural result continuation, controlled reinforcements, changing camera fights and mixed special-object/Terron scenes remain separately identified below. Native execution is pending.
 
 ## Build and map input
 
@@ -24,7 +24,7 @@ The alias has no original metadata/preview match; its filename and the No previe
 
 Commands below use Release/Text/ParkMiller. Repeat the applicable Debug, Packed and LegacyCRT profiles by changing the corresponding build/helper options, as specified by the native ledger. Do not rebuild while a run or its retained backup is active. Finish and restore one launch before beginning another. Source maps and packages remain unchanged. Explicit recovery with `-Restore` reads the recorded alias mode, so an abandoned demo run can be recovered with the ordinary default parameters; preserve any independent later settings edits before that recovery.
 
-Every D0-D3 argument block below only selects a case. Complete [record/cache protection](85-native-outcomes.md#protect-each-record-before-launch), run the [owned helper adapter](85-native-outcomes.md#owned-helper-launch-adapter), then its separate [completion/evidence block](85-native-outcomes.md#restoration-and-evidence) after the declared exit. Qualify each installed alias separately in Debug before Release; finish and restore one record before the next.
+The D1/D2 build blocks run before any settings/cache protection or boundary capture. Each following D0-D3 argument block only selects a case. Complete [record/cache protection](85-native-outcomes.md#protect-each-record-before-launch), run the [owned helper adapter](85-native-outcomes.md#owned-helper-launch-adapter), then its separate [completion/evidence block](85-native-outcomes.md#restoration-and-evidence) after the declared exit. Qualify each installed alias separately in Debug before Release; finish and restore one record before the next.
 
 ## D0: cheats-disabled ordinary control
 
@@ -50,6 +50,14 @@ After D0 has restored its files, rebuild with enabled codes:
 $ErrorActionPreference = 'Stop'
 .\tools\build.ps1 -Configuration Release -Cheats
 if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed; do not continue with an older executable.' }
+}
+```
+
+Only after that build succeeds, select the arguments below, then prepare settings/cache protection and capture the new record's log boundary. Never rebuild inside a protected record.
+
+```powershell
+. {
+$ErrorActionPreference = 'Stop'
 $outcomeCase = 'Normal'
 $expectedHelperExit = 0
 $caseArguments = @{ Configuration = 'Release'; Cheats = 'On'; ConfigurationMode = 'Text'; AlternateMapFile = $source; WatchRelaunches = $true; ExpectedProcesses = 1; Launch = $true }
@@ -71,6 +79,14 @@ First use a fresh cheats-disabled build and the demo alias:
 $ErrorActionPreference = 'Stop'
 .\tools\build.ps1 -Configuration Release
 if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed; do not continue with an older executable.' }
+}
+```
+
+Only after that build succeeds, select the arguments below, then prepare settings/cache protection and capture the new record's log boundary. Never rebuild inside a protected record.
+
+```powershell
+. {
+$ErrorActionPreference = 'Stop'
 $outcomeCase = 'Normal'
 $expectedHelperExit = 0
 $caseArguments = @{ Configuration = 'Release'; Cheats = 'Off'; ConfigurationMode = 'Text'; AlternateMapFile = $source; AlternateMapMode = 'Demo'; WatchRelaunches = $true; ExpectedProcesses = 1; Launch = $true }

@@ -1,6 +1,6 @@
 # Controlled standalone demo scenes
 
-Procedure version: **NV-05-1 v2**. These synthetic exports prepare the visible ordinary/AUTO, filename-driven demo, reinforcement, changing-fight and natural-result observations. Generation is automated; running the exported standalone game is a separate operator action. A generated scene or a passing hidden DLL test is not a recorded visual pass. Use the [native validation ledger](native-validation.md#per-case-record) for each executed variant.
+Procedure version: **NV-05-1 v3**. These synthetic exports prepare the visible ordinary/AUTO, filename-driven demo, reinforcement, changing-fight and natural-result observations. Generation is automated; running the exported standalone game is a separate operator action. A generated scene or a passing hidden DLL test is not a recorded visual pass. Use the [native validation ledger](native-validation.md#per-case-record) for each executed variant.
 
 ## Build and export
 
@@ -73,6 +73,8 @@ $cacheNames = @(if ($profile -eq 'ordinary') { 'ordinary.cmap.0' } else { 'demo-
 
 Run the shared settings preparation and [log-boundary capture](85-native-outcomes.md#capture-the-log-boundary) before launching. Keep the verified record until all processes are gone, the [completion/evidence guard](85-native-outcomes.md#restoration-and-evidence) passes, and shared cache/settings restoration and guarded cleanup complete. Do not delete an export that still owns parked originals or an unresolved snapshot. No cache implementation is copied into this guide.
 
+For a changed map without a reviewed key, the direct launch also permits the prepared Debug qualification route. Load only that intended map and quit normally without a result/relaunch journey, then run completion and shared qualification; repeat separately for each changed key before ordinary records.
+
 ## Launch, deadlines and exits
 
 Choose the profile, then explicitly launch its copied executable without arguments. Positional map arguments enter visibility calculation rather than this gameplay path.
@@ -82,7 +84,8 @@ Choose the profile, then explicitly launch its copied executable without argumen
 $ErrorActionPreference = 'Stop'
 if ($launchAttempted) { throw 'One launch attempt per prepared record; resolve and restore it before preparing another.' }
 $target = (Resolve-Path -LiteralPath (Join-Path $root $profile) -ErrorAction Stop).Path
-if ($game -ine $target -or -not $settingsReady -or -not $cacheReady -or -not $logBoundaryReady) { throw 'Prepare this exact profile record, cache key and log boundary first.' }
+if ($game -ine $target -or -not $settingsReady -or ($cacheReady -eq $cacheQualificationReady) -or -not $logBoundaryReady) { throw 'Prepare this exact profile record, cache key and log boundary first.' }
+if ($cacheQualificationReady -and $configuration -ne 'Debug') { throw 'Qualification requires the matching Debug export.' }
 if ($process -and -not $process.HasExited) { throw 'The preceding retained process is still running.' }
 if (@(Get-Process -ErrorAction Stop | Where-Object ProcessName -eq 'MatrixGame').Count) { throw 'Close all MatrixGame processes first.' }
 $currentGame = (Resolve-Path -LiteralPath $game -ErrorAction Stop).Path
@@ -90,10 +93,17 @@ if ([IO.Path]::GetFullPath($exe) -ine (Join-Path $currentGame 'MatrixGame.exe'))
 $fallbackRoots = @($cacheRoots | Where-Object Name -eq 'Fallback')
 if ($fallbackRoots.Count -ne 1 -or $fallbackRoots[0].Path -ine (Join-Path $currentGame 'Cache')) { throw 'Run shared path setup for this game before preparing its cache.' }
 if ($settings -ine (Join-Path $currentGame 'CFG/standalone.txt') -or $caseBackup -ine (Join-Path $currentGame '.playtest-presentation-backup')) { throw 'The settings record belongs to another game.' }
+$boundaryPath = Join-Path $caseBackup 'log-boundary.json'
+if (-not $caseBackupOwned -or -not $logBoundaryReady -or -not (Test-Path -LiteralPath $boundaryPath -PathType Leaf) -or $logPath -ine (Join-Path $currentGame 'test.log') -or (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc -ne $logBoundaryOwner) { throw 'The current owned record log boundary is missing or stale.' }
+if ((Get-Item -LiteralPath $boundaryPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Do not follow a boundary-record link.' }
+$boundaryRecord = [IO.File]::ReadAllText($boundaryPath, [Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
+if ($boundaryRecord.Record -ine $caseBackup -or $boundaryRecord.OwnerUtc -cne $logBoundaryOwner.ToString('o') -or $boundaryRecord.Executable -ine $exe -or $boundaryRecord.Log -ine $logPath -or $boundaryRecord.Hash -cne $recordedExeHash -or $boundaryRecord.Length -ne $logBeforeLength -or $boundaryRecord.OriginalHash -cne $logHashBefore -or (Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash -cne $recordedExeHash) { throw 'The captured log boundary does not belong to this record and candidate.' }
 $launchMode = 'DirectExport'
 $newLog = $null
 $newLogProcessId = $null
 $gameExitCode = $null
+$restorationEligible = $false
+$caseExitEvidenceMatches = $false
 $process = $null
 $launchSucceeded = $false
 $launchAttempted = $true
@@ -118,7 +128,7 @@ $process.ExitCode
 }
 ```
 
-For a natural win/loss, do not press Escape or Alt+F4 to obtain the expected exit. If its 30-second result deadline fails, record the failure, then use Alt+F4 only to clean up. After all declared exits, run the completion/evidence guard and the shared restoration blocks before another profile. A process code of 0 by itself does not identify victory or defeat; the observed firing, losing side and unit retirement are required. No full-auto case should show Win/Lose/statistics or a next-map selector after its result/Escape exit. A new unexpected game window or error dialog is a failure. This manual observation does not substitute for an automated descendant-process trace.
+For a natural win/loss, do not press Escape or Alt+F4 to obtain the expected exit. If its 30-second result deadline fails, record the failure, then use Alt+F4 only to clean up. After all game windows close, run the completion/evidence block and the shared restoration blocks before another profile. If the expected-exit check above fails, retain that failed observation and still use completion for verified known-key/settings restoration; restored files never turn it into a passing case. A process code of 0 by itself does not identify victory or defeat; the observed firing, losing side and unit retirement are required. No full-auto case should show Win/Lose/statistics or a next-map selector after its result/Escape exit. A new unexpected game window or error dialog is a failure. This manual observation does not substitute for an automated descendant-process trace.
 
 ## NV-05-1D0/D1: ordinary control and AUTO
 

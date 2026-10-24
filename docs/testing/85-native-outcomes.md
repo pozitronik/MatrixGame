@@ -1,6 +1,6 @@
 # Native timing and session procedures
 
-Procedure version: **2**. This handoff prepares NV-05-2 and NV-06-1 from the [outcome completion plan](85-outcome-completion.md). Execution remains pending in the [native validation ledger](native-validation.md). Preparation and synthetic helper tests establish neither a successful native playtest nor complete-baseline acceptance.
+Procedure version: **3**. This handoff prepares NV-05-2 and NV-06-1 from the [outcome completion plan](85-outcome-completion.md). Execution remains pending in the [native validation ledger](native-validation.md). Preparation and synthetic helper tests establish neither a successful native playtest nor complete-baseline acceptance.
 
 ## Build and preserve the candidate
 
@@ -70,7 +70,7 @@ if ($logPresentBefore -and ((Get-Item -LiteralPath $logPath -Force -ErrorAction 
 $logBeforeLength = if ($logPresentBefore) { (Get-Item -LiteralPath $logPath -ErrorAction Stop).Length } else { 0L }
 $logCreationBefore = if ($logPresentBefore) { (Get-Item -LiteralPath $logPath -ErrorAction Stop).CreationTimeUtc } else { $null }
 $logHashBefore = if ($logPresentBefore) { (Get-FileHash -LiteralPath $logPath -Algorithm SHA256 -ErrorAction Stop).Hash } else { $null }
-[IO.File]::WriteAllText($boundaryFile, (@{Executable=$exe; Hash=$recordedExeHash; Log=$logPath; Length=$logBeforeLength; OriginalHash=$logHashBefore} | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+[IO.File]::WriteAllText($boundaryFile, (@{Record=$caseBackup; OwnerUtc=$logBoundaryOwner.ToString('o'); Executable=$exe; Hash=$recordedExeHash; Log=$logPath; Length=$logBeforeLength; OriginalHash=$logHashBefore} | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
 $logBoundaryReady = $true
 }
 ```
@@ -92,6 +92,11 @@ if ([IO.Path]::GetFullPath($exe) -ine (Join-Path $currentGame 'MatrixGame.exe'))
 $fallbackRoots = @($cacheRoots | Where-Object Name -eq 'Fallback')
 if ($fallbackRoots.Count -ne 1 -or $fallbackRoots[0].Path -ine (Join-Path $currentGame 'Cache')) { throw 'Run shared path setup for this game before preparing its cache.' }
 if ($settings -ine (Join-Path $currentGame 'CFG/standalone.txt') -or $caseBackup -ine (Join-Path $currentGame '.playtest-presentation-backup')) { throw 'The settings record belongs to another game.' }
+$boundaryPath = Join-Path $caseBackup 'log-boundary.json'
+if (-not $caseBackupOwned -or -not $logBoundaryReady -or -not (Test-Path -LiteralPath $boundaryPath -PathType Leaf) -or $logPath -ine (Join-Path $currentGame 'test.log') -or (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc -ne $logBoundaryOwner) { throw 'The current owned record log boundary is missing or stale.' }
+if ((Get-Item -LiteralPath $boundaryPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Do not follow a boundary-record link.' }
+$boundaryRecord = [IO.File]::ReadAllText($boundaryPath, [Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
+if ($boundaryRecord.Record -ine $caseBackup -or $boundaryRecord.OwnerUtc -cne $logBoundaryOwner.ToString('o') -or $boundaryRecord.Executable -ine $exe -or $boundaryRecord.Log -ine $logPath -or $boundaryRecord.Hash -cne $recordedExeHash -or $boundaryRecord.Length -ne $logBeforeLength -or $boundaryRecord.OriginalHash -cne $logHashBefore -or (Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash -cne $recordedExeHash) { throw 'The captured log boundary does not belong to this record and candidate.' }
 if ($process -and -not $process.HasExited) { throw 'The preceding retained process is still running.' }
 if (@(Get-Process -ErrorAction Stop | Where-Object ProcessName -eq 'MatrixGame').Count) { throw 'Close all MatrixGame processes first.' }
 if (-not $caseArguments.Launch -or $caseArguments.Restore -or $caseArguments.Configuration -ne $configuration) { throw 'Case/profile arguments are inconsistent.' }
@@ -101,7 +106,6 @@ if ($expectedHelperExit -eq 1) {
     $requiredCount = if ($outcomeCase -eq 'R1') { 1 } else { 2 }
     if ($caseArguments.ExpectedProcesses -ne $requiredCount -or ($outcomeCase -eq 'I1' -and $caseArguments.ConfigurationMode -ne 'Text')) { throw 'The negative-case profile/count differs.' }
 } elseif ($expectedHelperExit -ne 0 -or $outcomeCase -ne 'Normal') { throw 'Declare a normal success or the exact existing R1/I1 contract before launch.' }
-
 if ($caseArguments.AlternateMapFile) { $caseArguments.AlternateMapFile = (Resolve-Path -LiteralPath $caseArguments.AlternateMapFile -ErrorAction Stop).Path }
 $helper = (Resolve-Path -LiteralPath '.\tools\playtest-outcomes.ps1' -ErrorAction Stop).Path
 $recordedHelperHash = (Get-FileHash -LiteralPath $helper -Algorithm SHA256 -ErrorAction Stop).Hash
@@ -117,7 +121,6 @@ $helperOutput = Join-Path $caseBackup 'helper.stdout.txt'
 $helperError = Join-Path $caseBackup 'helper.stderr.txt'
 $helperException = Join-Path $caseBackup 'helper.exception.txt'
 if ((Test-Path -LiteralPath $helperOutput) -or (Test-Path -LiteralPath $helperError) -or (Test-Path -LiteralPath $helperException)) { throw 'Do not overwrite another launch record.' }
-if (-not $logBoundaryReady -or (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc -ne $logBoundaryOwner) { throw 'Capture this record''s log boundary first.' }
 $argumentJson = ConvertTo-Json -InputObject $caseArguments -Compress
 # Escape single quotes so paths/JSON remain data in the child command.
 $command = '$ErrorActionPreference = ''Stop''; [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); try { $values = ConvertFrom-Json ''' + $argumentJson.Replace("'", "''") + '''; $arguments = @{}; $values.PSObject.Properties | ForEach-Object { $arguments[$_.Name] = $_.Value }; & ''' + $helper.Replace("'", "''") + ''' @arguments; exit 0 } catch { [IO.File]::WriteAllText(''' + $helperException.Replace("'", "''") + ''', $_.Exception.Message, [Text.UTF8Encoding]::new($false)); Write-Error $_ -ErrorAction Continue; exit 1 }'
@@ -126,6 +129,8 @@ $launchMode = 'OutcomeHelper'
 $newLog = $null
 $newLogProcessId = $null
 $gameExitCode = $null
+$restorationEligible = $false
+$caseExitEvidenceMatches = $false
 $process = $null
 $launchSucceeded = $false
 $launchAttempted = $true
@@ -137,7 +142,7 @@ $process.Id
 }
 ```
 
-Perform only the declared case and quit route, then use the separate completion/evidence block below. Do not call it before quit: its 30-second exit bound is not the gameplay-observation duration. An interrupted/failed helper, missing handle, remaining game or retained helper backup leaves restoration unverified. Preserve the record and resolve that lifetime; do not kill a merely polled same-path process or force a ready flag. The [R1/I1 call sites](85-native-failures.md) predeclare helper exit 1 only for their existing negative contracts. R1 requires one native exit 1; I1 requires the initial native exit 0 and observed replacement exit 1. Exact diagnostics and subsequent successful recovery remain mandatory. Neither is allowed for first-map qualification, which must complete a normal Debug battle/quit. Unknown failures retain backups; no arbitrary exit 1 becomes a pass.
+Perform only the declared case and quit route, then use the separate completion/evidence block below. Do not call it before quit: its 30-second exit bound is not the gameplay-observation duration. A missing or unresolved handle, remaining game, retained helper backup or unreadable current log leaves restoration unverified. Once those are resolved, an exited failed helper can permit known-key/settings restoration while its case remains failed or incomplete. Preserve the record and resolve that lifetime; do not kill a merely polled same-path process or force a ready flag. The [R1/I1 call sites](85-native-failures.md) predeclare helper exit 1 only for their existing negative contracts. R1 requires one native exit 1; I1 requires the initial native exit 0 and observed replacement exit 1. Exact diagnostics and subsequent successful recovery remain mandatory. Neither is allowed for first-map qualification, which must complete a normal Debug battle/quit. Unknown case results never become passes. A verified closed known-key record can restore its originals despite a failed result; unresolved lifetime or qualification records retain backups.
 
 ## Common launch and scene
 
@@ -215,60 +220,74 @@ Start the common scene and issue a Move. While it remains pending, press Escape,
 
 ## Restoration and evidence
 
-Run this only after initiating the declared quit route or acknowledging its expected negative-case diagnostic. For helper cases it verifies the retained helper's lifetime/exit, its settings restoration and absence of every game before enabling shared restoration. For a direct synthetic export, the same guard checks its retained root process after all recorded replacement processes have exited. A polled process is never a termination target. R1/I1 require the exact recorded native diagnostic before invoking expected-failure completion; a wrong/unknown diagnostic is a failed record with retained backups. The code checks process/cleanup evidence, not the visible error dialog or the later recovery observations. Direct owned-game failure may permit verified restoration after closure but remains a failed case. Unknown/interrupted helper failures retain backups; do not reset flags to pass this guard.
+Run this only after initiating the declared quit route or acknowledging its expected negative-case diagnostic. For helper cases it verifies the retained lifetime, unchanged candidate/helper, resolved helper backup, absence of every game and the full bound log before enabling known-key/settings restoration. Expected helper/native exits and row counts classify the case separately; a mismatch is failed or incomplete even after verified restoration. For a direct synthetic export, the same guard checks its retained root process after all recorded replacement processes have exited. A polled process is never a termination target. R1/I1 require the exact recorded native diagnostic before invoking expected-failure completion; a wrong/unknown diagnostic is a failed record with retained backups. The code checks process/cleanup evidence, not the visible error dialog or the later recovery observations. Direct owned-game failure may permit verified restoration after closure but remains a failed case. An unresolved retained handle, live game, helper backup or unread log still blocks restoration. After explicit helper recovery removes its verified backup, rerun this completion block; old failure/warning rows keep the case failed without preventing safe known-key/settings restoration. Do not reset flags to bypass a blocked record.
 
 ```powershell
 . {
 $ErrorActionPreference = 'Stop'
+if (-not $logBoundaryReady) { throw 'Capture this record boundary, or keep the completed restoration bindings unchanged.' }
 $newLog = $null
 $newLogProcessId = $null
 $gameExitCode = $null
-$observedGameExitCode = $null
+$restorationEligible = $false
+$caseExitEvidenceMatches = $false
+$caseProblems = [Collections.Generic.List[string]]::new()
 $launchSucceeded = $false
 if (-not $launchAttempted -or $null -eq $process -or $launchMode -notin @('OutcomeHelper','DirectExport')) { throw 'No verified launch context.' }
 if (-not $process.WaitForExit(30000)) { throw 'Retained process has not exited; preserve all backups.' }
 $process.Refresh()
-if ($process.StartTime.ToUniversalTime() -ne $retainedProcessStart) { throw 'Process lifetime differs; preserve the record.' }
+if (-not $process.HasExited -or $process.StartTime.ToUniversalTime() -ne $retainedProcessStart) { throw 'Retained process lifetime differs; preserve the record.' }
 if (@(Get-Process -ErrorAction Stop | Where-Object ProcessName -eq 'MatrixGame').Count) { throw 'A game remains; retain the record.' }
-if ($launchMode -eq 'OutcomeHelper' -and (Test-Path -LiteralPath $helperBackup)) { throw 'The helper retained its backup; resolve it before shared restoration.' }
+if ($launchMode -eq 'OutcomeHelper' -and (Test-Path -LiteralPath $helperBackup)) { throw 'Resolve the retained helper backup with explicit helper recovery, then rerun this block.' }
+$currentGame = (Resolve-Path -LiteralPath $game -ErrorAction Stop).Path
+$boundaryPath = Join-Path $caseBackup 'log-boundary.json'
+if (-not $caseBackupOwned -or -not $logBoundaryReady -or -not (Test-Path -LiteralPath $boundaryPath -PathType Leaf) -or $logPath -ine (Join-Path $currentGame 'test.log') -or (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc -ne $logBoundaryOwner) { throw 'The current owned record log boundary is missing or stale.' }
+if ((Get-Item -LiteralPath $boundaryPath -Force -ErrorAction Stop).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Do not follow a boundary-record link.' }
+$boundaryRecord = [IO.File]::ReadAllText($boundaryPath, [Text.Encoding]::UTF8) | ConvertFrom-Json -ErrorAction Stop
+if ($boundaryRecord.Record -ine $caseBackup -or $boundaryRecord.OwnerUtc -cne $logBoundaryOwner.ToString('o') -or $boundaryRecord.Executable -ine $exe -or $boundaryRecord.Log -ine $logPath -or $boundaryRecord.Hash -cne $recordedExeHash -or $boundaryRecord.Length -ne $logBeforeLength -or $boundaryRecord.OriginalHash -cne $logHashBefore -or (Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash -cne $recordedExeHash) { throw 'The captured log boundary does not belong to this record and candidate.' }
+$nativeExits = @()
+$observedGameExitCode = $null
 if ($launchMode -eq 'OutcomeHelper') {
-    if ($process.ExitCode -ne $expectedHelperExit -or (Get-FileHash -LiteralPath $helper -Algorithm SHA256 -ErrorAction Stop).Hash -ne $recordedHelperHash) { throw 'Unexpected helper result or changed helper; keep backups.' }
+    if ((Get-FileHash -LiteralPath $helper -Algorithm SHA256 -ErrorAction Stop).Hash -cne $recordedHelperHash) { throw 'The retained helper changed; preserve its record.' }
     $helperText = [IO.File]::ReadAllText($helperOutput, [Text.Encoding]::UTF8)
     $helperErrors = [IO.File]::ReadAllText($helperError, [Text.Encoding]::UTF8)
     $initialRows = [regex]::Matches($helperText, '(?m)^Process ID: ([0-9]+)\r?$')
     $observedRows = [regex]::Matches($helperText, '(?m)^Observed process ID: ([0-9]+)\r?$')
-    $exitRows = [regex]::Matches($helperText, '(?m)^Process ID: ([0-9]+); exit code: ([0-9]+)\r?$')
+    $exitRows = [regex]::Matches($helperText, '(?m)^Process ID: ([0-9]+); exit code: (-?[0-9]+)\r?$')
     $countRows = [regex]::Matches($helperText, '(?m)^Observed processes: ([0-9]+); expected: ([0-9]+)\r?$')
     $requiredCount = [int]$caseArguments.ExpectedProcesses
-    if ($initialRows.Count -ne 1 -or $observedRows.Count -ne $requiredCount - 1 -or $exitRows.Count -ne $requiredCount -or $countRows.Count -ne 1 -or [int]$countRows[0].Groups[1].Value -ne $requiredCount -or [int]$countRows[0].Groups[2].Value -ne $requiredCount) { throw 'Incomplete or extra process evidence; keep backups.' }
-    $declaredIds = @($initialRows[0].Groups[1].Value) + @($observedRows | ForEach-Object { $_.Groups[1].Value })
-    $exitIds = @($exitRows | ForEach-Object { $_.Groups[1].Value })
-    if (@($declaredIds | Select-Object -Unique).Count -ne $requiredCount -or @($exitIds | Select-Object -Unique).Count -ne $requiredCount -or @(Compare-Object $declaredIds $exitIds).Count) { throw 'Native lifetime identities do not match.' }
-    if (-not $helperText.Contains('Restored the staged configuration; supplied source resources were unchanged.') -or ($helperText + $helperErrors) -match 'A process could not be retained|forced closure|cleanup could not be verified|backup retained') { throw 'Helper cleanup evidence is incomplete.' }
-    if ($expectedHelperExit -eq 0) {
-        if ((Test-Path -LiteralPath $helperException) -or @($exitRows | Where-Object { $_.Groups[2].Value -ne '0' }).Count) { throw 'A normal native lifetime failed.' }
-        $observedGameExitCode = 0
+    $nativeExits = @($exitRows | ForEach-Object { [pscustomobject]@{Id=$_.Groups[1].Value; ExitCode=[long]$_.Groups[2].Value} })
+    if ($nativeExits.Count -eq 1) { $observedGameExitCode = $nativeExits[0].ExitCode }
+    if ($process.ExitCode -ne $expectedHelperExit) { $caseProblems.Add('The helper exit differs from the declared case.') }
+    if ($initialRows.Count -ne 1 -or $observedRows.Count -ne $requiredCount - 1 -or $exitRows.Count -ne $requiredCount -or $countRows.Count -ne 1) {
+        $caseProblems.Add('Native process rows are incomplete or extra; the case is not accepted.')
     } else {
-        $expectedException = 'Process evidence is incomplete or includes a failure; do not record the relaunch case as passed.'
-        if (-not (Test-Path -LiteralPath $helperException -PathType Leaf) -or [IO.File]::ReadAllText($helperException, [Text.Encoding]::UTF8) -cne $expectedException) { throw 'Helper failure is not the declared negative-case report.' }
-        $rootExit = @($exitRows | Where-Object { $_.Groups[1].Value -eq $initialRows[0].Groups[1].Value })
-        if ($outcomeCase -eq 'R1') {
-            if ($requiredCount -ne 1 -or $rootExit[0].Groups[2].Value -ne '1') { throw 'R1 requires exactly its one native exit 1.' }
-            $observedGameExitCode = 1
-        } elseif ($outcomeCase -eq 'I1') {
-            $childExit = @($exitRows | Where-Object { $_.Groups[1].Value -ne $initialRows[0].Groups[1].Value })
-            if ($requiredCount -ne 2 -or $rootExit[0].Groups[2].Value -ne '0' -or $childExit.Count -ne 1 -or $childExit[0].Groups[2].Value -ne '1') { throw 'I1 requires the original exit 0 and observed child exit 1.' }
-            $observedGameExitCode = 1
-        } else { throw 'Undeclared negative case.' }
+        $declaredIds = @($initialRows[0].Groups[1].Value) + @($observedRows | ForEach-Object { $_.Groups[1].Value })
+        $exitIds = @($nativeExits | ForEach-Object Id)
+        if ([int]$countRows[0].Groups[1].Value -ne $requiredCount -or [int]$countRows[0].Groups[2].Value -ne $requiredCount -or @($declaredIds | Select-Object -Unique).Count -ne $requiredCount -or @($exitIds | Select-Object -Unique).Count -ne $requiredCount -or @(Compare-Object $declaredIds $exitIds).Count) { $caseProblems.Add('Native lifetime identities or counts differ.') }
     }
+    if (-not $helperText.Contains('Restored the staged configuration; supplied source resources were unchanged.') -or ($helperText + $helperErrors) -match 'A process could not be retained|forced closure|cleanup could not be verified|backup retained') { $caseProblems.Add('The helper reported failed or incomplete cleanup; retain that failed-case evidence even after explicit recovery.') }
+    if ($expectedHelperExit -eq 0) {
+        if ($outcomeCase -ne 'Normal' -or (Test-Path -LiteralPath $helperException) -or @($nativeExits | Where-Object ExitCode -ne 0).Count) { $caseProblems.Add('A normal native lifetime or helper record failed.') }
+    } elseif ($expectedHelperExit -eq 1) {
+        $expectedException = 'Process evidence is incomplete or includes a failure; do not record the relaunch case as passed.'
+        if (-not (Test-Path -LiteralPath $helperException -PathType Leaf) -or [IO.File]::ReadAllText($helperException, [Text.Encoding]::UTF8) -cne $expectedException) { $caseProblems.Add('The helper exception is not the exact declared negative-case report.') }
+        if ($initialRows.Count -eq 1) {
+            $rootExit = @($nativeExits | Where-Object Id -eq $initialRows[0].Groups[1].Value)
+            $childExit = @($nativeExits | Where-Object Id -ne $initialRows[0].Groups[1].Value)
+            if ($outcomeCase -eq 'R1') {
+                if ($requiredCount -ne 1 -or $rootExit.Count -ne 1 -or $rootExit[0].ExitCode -ne 1) { $caseProblems.Add('R1 requires exactly its one native exit 1.') }
+            } elseif ($outcomeCase -eq 'I1') {
+                if ($requiredCount -ne 2 -or $rootExit.Count -ne 1 -or $rootExit[0].ExitCode -ne 0 -or $childExit.Count -ne 1 -or $childExit[0].ExitCode -ne 1) { $caseProblems.Add('I1 requires the original exit 0 and observed child exit 1.') }
+            } else { $caseProblems.Add('The negative case is undeclared.') }
+        }
+    } else { $caseProblems.Add('The expected helper exit is undeclared.') }
 } else {
     $observedGameExitCode = $process.ExitCode
-    if ($null -eq $observedGameExitCode) { throw 'The native exit code is unavailable; retain backups.' }
-    if ($observedGameExitCode -ne 0) { Write-Warning 'The owned game failed. Verified restoration may proceed, but this is not a passing native case.' }
+    if ($null -ne $observedGameExitCode) { $nativeExits = @([pscustomobject]@{Id=[string]$process.Id; ExitCode=$observedGameExitCode}) }
+    if ($null -eq $observedGameExitCode -or $observedGameExitCode -ne 0) { $caseProblems.Add('The owned game did not report native exit 0.') }
 }
-
 if ((Get-FileHash -LiteralPath $exe -Algorithm SHA256 -ErrorAction Stop).Hash -ne $recordedExeHash) { throw 'The candidate changed during this record.' }
-if (-not $logBoundaryReady -or (Get-Item -LiteralPath $caseBackup -ErrorAction Stop).CreationTimeUtc -ne $logBoundaryOwner) { throw 'The log boundary belongs to another record.' }
 $newLog = ''
 if (Test-Path -LiteralPath $logPath -PathType Leaf) {
     $item = Get-Item -LiteralPath $logPath -Force -ErrorAction Stop
@@ -297,17 +316,24 @@ if (Test-Path -LiteralPath $logPath -PathType Leaf) {
     }
 } elseif ($logPresentBefore) { throw 'The original log disappeared.' }
 [IO.File]::WriteAllText((Join-Path $caseBackup 'new-log.txt'), $newLog, [Text.UTF8Encoding]::new($false))
-if ($launchMode -eq 'OutcomeHelper') { Get-Content -LiteralPath $helperOutput; Get-Content -LiteralPath $helperError }
-$process.ExitCode
 $gameExitCode = $observedGameExitCode
 $newLogProcessId = $process.Id
-$launchSucceeded = $true
+$restorationEligible = $true
+$caseExitEvidenceMatches = $caseProblems.Count -eq 0
+$qualificationRecord = $cacheQualificationReady -or $cacheQualificationActive
+$launchSucceeded = $restorationEligible -and (-not $qualificationRecord -or ($caseExitEvidenceMatches -and $nativeExits.Count -eq 1 -and $gameExitCode -eq 0 -and $process.ExitCode -eq 0))
+$logBoundaryReady = $false
+$result = [ordered]@{RestorationEligible=$restorationEligible; SharedRestorationAllowed=$launchSucceeded; ExitEvidenceMatches=$caseExitEvidenceMatches; Problems=@($caseProblems); HelperExitCode=$(if ($launchMode -eq 'OutcomeHelper') { $process.ExitCode } else { $null }); NativeExits=$nativeExits; GameExitCode=$gameExitCode; LogProcessId=$newLogProcessId}
+[IO.File]::WriteAllText((Join-Path $caseBackup 'completion-result.json'), ($result | ConvertTo-Json -Depth 4), [Text.UTF8Encoding]::new($false))
+if (-not $caseExitEvidenceMatches) { Write-Warning ('Failed or incomplete case: ' + ($caseProblems -join ' ')) }
+if ($qualificationRecord -and -not $launchSucceeded) { Write-Warning 'Qualification is unresolved: preserve its snapshot for manual review; do not reset flags or invent a native exit code.' }
+$result | ConvertTo-Json -Depth 4
 }
 ```
 
-Now complete the shared cache route (known-key restoration or Debug qualification restoration), restore the shared settings backup, preserve the record's evidence and use [guarded record cleanup](87-native-procedures.md#complete-a-record). Cache methods are linked rather than copied here. A no-launch partial preparation uses the shared [cache recovery](87-native-procedures.md#preserve-the-selected-minimap-cache) or [qualification-copy abort](87-cache-qualification.md#recover-a-launch-with-no-cache-path), which verify parked and unparked originals. A failed or uncertain launch does not authorize deleting its backups. The helper's own explicit `-Restore` remains separate from this outer record; complete that guarded recovery before enabling outer restoration.
+For a completed known-key record, `$launchSucceeded` now means verified restoration eligibility, not a passing case. Restore the shared cache and settings, retain `completion-result.json` with the failed/incomplete observations, then use [guarded record cleanup](87-native-procedures.md#complete-a-record). For Debug qualification, only helper exit 0 plus exactly one complete matching native exit 0, or the direct retained native process's verified exit 0, enables the shared qualification block. A failed or ambiguous qualification keeps `$launchSucceeded` false and the snapshot active for manual review, even if the retained helper is closed; the actual native exit remains 0, nonzero or unknown, never fabricated to unlock recovery. A matching exit contract alone still requires every declared scene/diagnostic observation before accepting the native case. Cache methods are linked rather than copied here. A no-launch partial preparation uses the shared [cache recovery](87-native-procedures.md#preserve-the-selected-minimap-cache) or [qualification-copy abort](87-cache-qualification.md#recover-a-launch-with-no-cache-path), which verify parked and unparked originals. A failed or uncertain launch does not authorize deleting its backups. The helper's own explicit `-Restore` remains separate from this outer record; complete that guarded recovery before enabling outer restoration.
 
-Wait for `Exit code` and `Restored the staged configuration` before the next launch. The helper intentionally discards settings/map preferences saved during this procedure and restores the original output bytes. It does not restore changes made by a concurrent build or another process; keep those stopped. A normal game error still runs restoration. The helper checks for exit every 250 ms so that Ctrl+C can interrupt its wait. Its cleanup attempts to close only its launched process; a forced closure is reported as an aborted run.
+After closing the declared game windows, run the completion block and finish verified restoration before the next launch. The monitor prints `Process ID: <pid>; exit code: N`, not an `Exit code:` line. The helper intentionally discards settings/map preferences saved during this procedure and restores the original output bytes. It does not restore changes made by a concurrent build or another process; keep those stopped. The retained helper console is hidden, so resolve an interrupted observation by closing the game window, then verify its retained exit and any explicit helper recovery through the completion block. Its cleanup attempts to close only its launched process; a forced closure remains an aborted case even when verified restoration later succeeds.
 
 If the shell itself was terminated or another MatrixGame process remained, close the game and use the same configuration/compiler/build-directory selection with `-Restore`, without `-Launch`:
 

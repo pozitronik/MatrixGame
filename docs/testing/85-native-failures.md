@@ -1,6 +1,6 @@
 # Native reload and selected-map failure procedures
 
-Procedure version: **2**. These cases prepare the failed reload and late selected-map initialization portions of NV-06-3. Restart/Quit while a natural result is pending has separate automated setup in the [contained standalone lifecycle suite](85-native-exe-lifecycle.md). Preparation of R1 and I1 is complete for the profiles declared below; their execution and review belong to [native validation #191](https://github.com/pozitronik/MatrixGame/issues/191). No native execution is recorded here, and the remaining NV-06-3 variants stay with implementation #85.
+Procedure version: **3**. These cases prepare the failed reload and late selected-map initialization portions of NV-06-3. Restart/Quit while a natural result is pending has separate automated setup in the [contained standalone lifecycle suite](85-native-exe-lifecycle.md). Preparation of R1 and I1 is complete for the profiles declared below; their execution and review belong to [native validation #191](https://github.com/pozitronik/MatrixGame/issues/191). No native execution is recorded here, and the remaining NV-06-3 variants stay with implementation #85.
 
 ## Candidate and source requirements
 
@@ -82,7 +82,7 @@ The helper backs up only the staged `CFG/robots/iface.txt`, records restoration 
 
 Return to the battle menu, press `N`, select **native-outcome-alternate**, keep None and accept Start. The selector's storage/properties check must accept the unchanged map. The original process exits and the new process attempts full battlefield initialization. Within 60 seconds expect the new process's exception dialog containing `Error open file: cfg\robots\iface.txt`; letter case and source/stack details may vary. The dialog should also say the chosen map could not be started and was forgotten. Do not accept an early selector validation error as equivalent: no child initialization occurred in that case.
 
-**Keep the exception dialog open until the retained helper's output reports the replacement.** Its console is hidden; use this bounded observation in window A while the exception remains open, rather than closing it early or waiting indefinitely:
+**Keep the exception dialog open until the retained helper's output reports the replacement.** Its console is hidden; use this bounded observation in window A while the exception remains open, rather than closing it early or waiting indefinitely. The reader permits the helper's live write handle, closes its stream on every path and accepts only a complete newline-terminated PID row:
 
 ```powershell
 . {
@@ -91,8 +91,18 @@ $deadline = [DateTime]::UtcNow.AddSeconds(30)
 $reportedChild = $null
 while ([DateTime]::UtcNow -lt $deadline) {
     if ($process.HasExited) { throw 'Helper ended before the required live-child observation; keep the record.' }
-    $text = if (Test-Path -LiteralPath $helperOutput -PathType Leaf) { [IO.File]::ReadAllText($helperOutput, [Text.Encoding]::UTF8) } else { '' }
-    $rows = [regex]::Matches($text, '(?m)^Observed process ID: ([0-9]+)\r?$')
+    $text = ''
+    if (Test-Path -LiteralPath $helperOutput -PathType Leaf) {
+        $outputStream = [IO.File]::Open($helperOutput, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+        $outputReader = $null
+        try {
+            $outputReader = [IO.StreamReader]::new($outputStream, [Text.Encoding]::UTF8)
+            $text = $outputReader.ReadToEnd()
+        } finally {
+            if ($outputReader) { $outputReader.Dispose() } else { $outputStream.Dispose() }
+        }
+    }
+    $rows = [regex]::Matches($text, '(?m)^Observed process ID: ([0-9]+)\r?\n')
     if ($rows.Count -gt 1) { throw 'Unexpected additional observed process; do not accept this case.' }
     if ($rows.Count -eq 1) { $reportedChild = $rows[0].Groups[1].Value; break }
     Start-Sleep -Milliseconds 250
@@ -102,7 +112,7 @@ $reportedChild
 }
 ```
 
-Only after this observation acknowledge the expected exception. The ordinary completion guard still requires the exact two exit records; the live PID observation does not replace them. Record the original and child PIDs. The original process must have exited with **0**, and the failing child with **1**. No playable replacement battle or third process is expected. The helper reports an error for this intentional child failure and then restores the staged interface and configuration.
+Only after this observation acknowledge the expected exception. Accepting I1 still requires the exact two exit records; the live PID observation does not replace them. The completion block records any mismatch as failed or incomplete while allowing verified known-key/settings restoration after the helper and all games close. Record the original and child PIDs. The original process must have exited with **0**, and the failing child with **1**. No playable replacement battle or third process is expected. The helper reports an error for this intentional child failure and then restores the staged interface and configuration.
 
 An observed count of one, a parent-only code 0 or an unavailable child exit is not a passing result. Retaining the visible exception until observation makes this particular path inspectable; it does not turn the polling monitor into proof that every short-lived failure in other cases was observed. Require exit/restoration within 30 seconds after acknowledgement. Keep the game log's map-loading/error excerpt with the two PIDs to distinguish the late initialization boundary from selector rejection. The launcher's restored-interface SHA-256 must match the fault helper's original-interface SHA-256.
 
