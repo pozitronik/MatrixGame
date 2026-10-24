@@ -40,4 +40,17 @@ void write_native_packed_missing_hint() {
     changed.Save(L"CFG/robots.dat", true);
 }
 
+void write_native_packed_missing_hint_block(const std::filesystem::path &filename) {
+    Base::CStorage source;
+    MG_CHECK(source.Load(filename.c_str()));
+    Base::CBlockPar data, interface_config;
+    source.RestoreBlockPar(L"da", data);
+    source.RestoreBlockPar(L"if", interface_config);
+    data.BlockGet(PAR_SOURCE_HINTS)->BlockDelete(PAR_SOURCE_HINTS_BITMAPS);
+    Base::CStorage changed;
+    changed.StoreBlockPar(L"da", data);
+    changed.StoreBlockPar(L"if", interface_config);
+    changed.Save(filename.c_str(), true);
+}
+
 }

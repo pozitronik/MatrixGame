@@ -9,16 +9,23 @@
 #include "StandaloneSettings.hpp"
 #include "CBlockPar.hpp"
 #include "CStorage.hpp"
+#include "Interface/MatrixHint.hpp"
+#include "3g.hpp"
+#include "stupid_logger.hpp"
+#include "utils.hpp"
 #include <windows.h>
 #include <chrono>
 #include <array>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <new>
 #include <optional>
+#include <sstream>
 #include <vector>
+#include <utility>
 
 namespace {
 namespace fs = std::filesystem;
@@ -32,12 +39,15 @@ void write(const fs::path &path, std::string_view text) {
     stream.write(text.data(), text.size());
     MG_CHECK(stream.good());
 }
-void restore_bytes(const fs::path &backup, const fs::path &original) {
-    std::ifstream source(backup, std::ios::binary);
+std::string read_bytes(const fs::path &path) {
+    std::ifstream source(path, std::ios::binary);
     MG_CHECK(source.good());
     const std::string bytes{std::istreambuf_iterator<char>(source), std::istreambuf_iterator<char>()};
     MG_CHECK(!source.bad());
-    write(original, bytes);
+    return bytes;
+}
+void restore_bytes(const fs::path &backup, const fs::path &original) {
+    write(original, read_bytes(backup));
 }
 struct Environment {
     std::wstring key, previous;
@@ -105,6 +115,123 @@ void same_tree(const Base::CBlockPar &left, const Base::CBlockPar &right) {
         same_tree(*left.BlockGet(i), *right.BlockGet(i));
     }
 }
+void only_missing_hint_bitmaps(const Base::CBlockPar &original, const Base::CBlockPar &changed,
+                               const std::wstring &path = L"") {
+    MG_CHECK(original.ParCount() == changed.ParCount());
+    for (int i = 0; i < original.ParCount(); ++i)
+        MG_CHECK(original.ParGetName(i) == changed.ParGetName(i) && original.ParGet(i) == changed.ParGet(i));
+    const bool hints = path == L"/Hints";
+    MG_CHECK(original.BlockCount() == changed.BlockCount() + (hints ? 1 : 0));
+    int next = 0, omitted = 0;
+    for (int i = 0; i < original.BlockCount(); ++i) {
+        const auto name = original.BlockGetName(i);
+        if (hints && name == L"Bitmaps") { ++omitted; continue; }
+        MG_CHECK(name == changed.BlockGetName(next));
+        only_missing_hint_bitmaps(*original.BlockGet(i), *changed.BlockGet(next++), path + L"/" + name);
+    }
+    MG_CHECK(omitted == (hints ? 1 : 0));
+}
+struct MatrixDataAlias {
+    Base::CBlockPar *previous;
+    explicit MatrixDataAlias(Base::CBlockPar &data) : previous(std::exchange(g_MatrixData, &data)) {}
+    ~MatrixDataAlias() { g_MatrixData = previous; }
+};
+void require_late_child_log(std::string_view log) {
+    constexpr std::string_view fatal = "|FATAL| ";
+    bool expected_fatal = false;
+    for (auto position = log.find(fatal); position != std::string_view::npos;
+         position = log.find(fatal, position + fatal.size())) {
+        // CExceptionStr::Info spans lines; its entry ends at the logger's source-location suffix.
+        const auto end = log.find(" | ", position + fatal.size());
+        if (end != std::string_view::npos &&
+            log.substr(position, end - position).find("Text: Block not found: Bitmaps") != std::string_view::npos)
+            expected_fatal = true;
+    }
+    MG_CHECK(expected_fatal);
+    MG_CHECK(log.find("Standalone session cleanup failed") == std::string_view::npos);
+}
+void late_child_log_contract(const std::string &diagnostic) {
+    MG_CHECK(diagnostic.find('\n') != std::string::npos);
+    std::ostringstream captured;
+    logger_type expected(captured);
+    expected.fatal(diagnostic);
+    require_late_child_log(captured.str());
+    const auto rejected = [](const std::string &log, const char *message) {
+        bool failed = false;
+        try { require_late_child_log(log); }
+        catch (const std::runtime_error &error) { failed = std::string_view(error.what()).find(message) != std::string_view::npos; }
+        MG_CHECK(failed);
+    };
+    std::ostringstream wrong_level;
+    logger_type nonfatal(wrong_level);
+    nonfatal.fatal("An unrelated failure");
+    nonfatal.notice(diagnostic);
+    rejected(wrong_level.str(), "expected_fatal");
+    expected.fatal("Standalone session cleanup failed");
+    rejected(captured.str(), "Standalone session cleanup failed");
+}
+void packed_late_fault_assets(const fs::path &archive_path, const Base::CBlockPar &original_data,
+                              const Base::CBlockPar &original_interface) {
+    MG_CHECK(!g_MatrixData && !g_MatrixHeap && !g_MatrixMap && !g_D3D && !g_D3DD);
+    const auto original = read_bytes(archive_path);
+    MG_CHECK(original.size() > 8 && original.substr(0, 4) == "STRG" && original[4] == 1);
+    tests::write_native_packed_missing_hint_block(archive_path);
+    const auto changed = read_bytes(archive_path);
+    MG_CHECK(changed.size() > 8 && changed.substr(0, 4) == "STRG" && changed[4] == 1);
+    Base::CStorage fault;
+    MG_CHECK(fault.Load(archive_path.c_str()));
+    Base::CBlockPar data, interface_config;
+    fault.RestoreBlockPar(L"da", data);
+    fault.RestoreBlockPar(L"if", interface_config);
+    only_missing_hint_bitmaps(original_data, data);
+    same_tree(original_interface, interface_config);
+    MG_CHECK(!data.BlockGet(L"Hints")->BlockGetNE(L"Bitmaps"));
+    bool failed = false;
+    try {
+        MatrixDataAlias alias(data);
+        CMatrixHint::PreloadBitmaps();
+    } catch (const Base::CExceptionStr &error) {
+        const auto diagnostic = error.Info();
+        MG_CHECK(diagnostic.find(L"Text: Block not found: Bitmaps") != std::wstring::npos);
+        MG_CHECK(diagnostic.find(L"CBlockPar.cpp") != std::wstring::npos);
+        late_child_log_contract(utils::from_wstring(diagnostic));
+        failed = true;
+    }
+    MG_CHECK(failed && !g_MatrixData);
+    // An empty required block is accepted, so omission rather than emptiness supplies the fault.
+    data.BlockGet(L"Hints")->BlockAdd(L"Bitmaps");
+    Base::CStorage empty;
+    empty.StoreBlockPar(L"da", data);
+    empty.StoreBlockPar(L"if", interface_config);
+    empty.Save(archive_path.c_str(), true);
+    Base::CStorage empty_archive;
+    MG_CHECK(empty_archive.Load(archive_path.c_str()));
+    Base::CBlockPar empty_data, empty_interface;
+    empty_archive.RestoreBlockPar(L"da", empty_data);
+    empty_archive.RestoreBlockPar(L"if", empty_interface);
+    same_tree(data, empty_data);
+    same_tree(original_interface, empty_interface);
+    try {
+        MatrixDataAlias alias(empty_data);
+        CMatrixHint::PreloadBitmaps();
+    } catch (const Base::CExceptionStr &error) {
+        std::wcerr << L"Empty Hints/Bitmaps control: " << error.Info() << L'\n';
+        MG_CHECK(!"empty Hints/Bitmaps block must be accepted");
+    }
+    MG_CHECK(!g_MatrixData && !g_MatrixHeap && !g_MatrixMap && !g_D3D && !g_D3DD);
+    write(archive_path, "BAD!");
+    Base::CStorage early;
+    MG_CHECK(!early.Load(archive_path.c_str()));
+    write(archive_path, original);
+    MG_CHECK(read_bytes(archive_path) == original);
+    Base::CStorage restored;
+    MG_CHECK(restored.Load(archive_path.c_str()));
+    Base::CBlockPar restored_data, restored_interface;
+    restored.RestoreBlockPar(L"da", restored_data);
+    restored.RestoreBlockPar(L"if", restored_interface);
+    same_tree(original_data, restored_data);
+    same_tree(original_interface, restored_interface);
+}
 void configuration_assets() {
     Base::CBlockPar text_data, text_interface;
     for (auto profile : {ConfigurationProfile::Text, ConfigurationProfile::Packed}) {
@@ -129,6 +256,8 @@ void configuration_assets() {
         MG_CHECK(interface_config.BlockCount() > 0);
         same_tree(text_data, data);
         same_tree(text_interface, interface_config);
+        if (profile == ConfigurationProfile::Packed)
+            packed_late_fault_assets(config / "robots.dat", data, interface_config);
     }
 }
 void pointer_guard_policy() {
@@ -646,6 +775,84 @@ protocol::Snapshot submit_native_move(Harness &run, DWORD pid) {
     }, "accepted Move and actual displacement");
     return moving;
 }
+void late_configuration_recovery() {
+    MG_CHECK(configuration_profile == ConfigurationProfile::Packed);
+    Deployment deployment;
+    const auto configuration = deployment.app / "CFG/robots.dat";
+    const auto backup = deployment.app / "late-configuration-backup";
+    const auto second_cache = deployment.app / "Cache/second.cmap.0";
+    const auto child_log = deployment.app / "test.log";
+    MG_CHECK(!fs::exists(second_cache));
+    MG_CHECK(!fs::exists(child_log));
+    const auto original = read_bytes(configuration);
+    fs::copy_file(configuration, backup);
+    Base::CStorage original_archive;
+    MG_CHECK(original_archive.Load(configuration.c_str()));
+    Base::CBlockPar original_data, original_interface;
+    original_archive.RestoreBlockPar(L"da", original_data);
+    original_archive.RestoreBlockPar(L"if", original_interface);
+    const auto settings_path = deployment.app / "CFG/standalone.txt";
+    auto settings = StandaloneSettings::load(settings_path.c_str()).values;
+    settings.display.width = 1280;
+    settings.display.height = 720;
+    std::string save_error;
+    MG_CHECK(StandaloneSettings::save(settings, save_error, settings_path.c_str()));
+    {
+        Harness run(deployment);
+        start_battle(run);
+        const auto parent = run.root_pid;
+        run.key(parent, VK_ESCAPE);
+        run.wait(parent, [](const auto &state) { return state.paused && state.dialog[0]; }, "late-fault battle menu");
+        run.key(parent, 'N');
+        run.wait(parent, [](const auto &state) { return state.selector; }, "late-fault selector");
+        MG_CHECK(!fs::exists(second_cache));
+        MG_CHECK(!fs::exists(child_log));
+        MG_CHECK(fs::is_regular_file(deployment.caller / "test.log"));
+        tests::write_native_packed_missing_hint_block(configuration);
+        Base::CStorage accepted_fault;
+        MG_CHECK(accepted_fault.Load(configuration.c_str()));
+        run.key(parent, VK_END);
+        run.key(parent, VK_RETURN);
+        const auto child = run.child(parent);
+        run.exit(child, 1);
+        run.exit(parent, 0);
+        MG_CHECK(run.processes.size() == 2);
+        const auto *failure = run.slot(child);
+        MG_CHECK(failure && failure->diagnostics == 1);
+        const std::wstring diagnostic = failure->diagnostic_text;
+        MG_CHECK(diagnostic.find(L"Block not found: Bitmaps") != std::wstring::npos);
+        MG_CHECK(diagnostic.find(L"The map chosen in the map selector could not be started and was forgotten.") != std::wstring::npos);
+        // Only the second-map child can create this owned cache. PrepareMap writes it
+        // before the later required hint-block lookup; the early BAD! path cannot.
+        MG_CHECK(fs::is_regular_file(second_cache) && fs::file_size(second_cache) > 0);
+        const auto failed_settings = StandaloneSettings::load(settings_path.c_str());
+        MG_CHECK(failed_settings.invalid.empty() && failed_settings.values.map.empty());
+    }
+    // The failed child and parent are terminated and their job has been closed.
+    // The parent opens caller/test.log before WinMain changes directory; the relaunched
+    // child starts in app and alone creates this fresh log. Read only after handles close.
+    require_late_child_log(read_bytes(child_log));
+    MG_CHECK(read_bytes(backup) == original);
+    restore_bytes(backup, configuration);
+    MG_CHECK(read_bytes(configuration) == original);
+    Base::CStorage restored;
+    MG_CHECK(restored.Load(configuration.c_str()));
+    Base::CBlockPar restored_data, restored_interface;
+    restored.RestoreBlockPar(L"da", restored_data);
+    restored.RestoreBlockPar(L"if", restored_interface);
+    same_tree(original_data, restored_data);
+    same_tree(original_interface, restored_interface);
+    {
+        Harness fresh(deployment);
+        start_battle(fresh, true);
+        submit_native_move(fresh, fresh.root_pid);
+        MG_CHECK(fresh.message(fresh.root_pid, WM_CLOSE));
+        fresh.exit(fresh.root_pid, 0);
+        MG_CHECK(fresh.processes.size() == 1);
+        const auto recovered = StandaloneSettings::load(settings_path.c_str());
+        MG_CHECK(recovered.invalid.empty() && recovered.values.map == L"Matrix\\Map\\second.cmap");
+    }
+}
 void active_order_relaunch(bool different, random::Mode mode) {
     Deployment deployment;
     const auto settings_path = deployment.app / "CFG/standalone.txt";
@@ -816,6 +1023,7 @@ int main(int argc, char **argv) {
         {"game.session.exe_same_map", [] { battle_relaunch(false); }}, {"game.session.exe_different_map", [] { battle_relaunch(true); }},
         {"game.session.exe_settings_relaunch", [] { battle_relaunch(true, true); }},
         {"game.session.exe_failed_child_recovery", [] { failed_child_recovery(); }},
+        {"game.session.exe_late_configuration_recovery", late_configuration_recovery},
         {"game.session.exe_failed_map_recovery", [] { failed_child_recovery(true); }},
         {"game.session.exe_unreadable_map_rejected", unreadable_map_rejected},
         {"game.session.exe_surrender_cancel", [] { battle_end(true, true); }},

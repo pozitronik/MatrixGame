@@ -1154,6 +1154,10 @@ if(NOT MATRIXGAME_BUILD_DLL)
                 endforeach()
             endforeach()
         endforeach()
+        add_test(NAME game.session.exe_late_configuration_recovery_packed COMMAND matrixgame_standalone_session_tests
+            game.session.exe_late_configuration_recovery_packed $<TARGET_FILE:matrixgame_standalone_session_probe> "${CMAKE_CXX_COMPILER}")
+        set_tests_properties(game.session.exe_late_configuration_recovery_packed PROPERTIES
+            LABELS "engine;asset-free;startup;gameplay;input;native;native-process;current-desktop${native_exe_visibility_label}" TIMEOUT 90 RUN_SERIAL TRUE)
     endif()
 endif()
 
