@@ -1,16 +1,21 @@
 # Controlled standalone demo scenes
 
-Procedure version: **NV-05-1 v1**. These synthetic exports prepare the visible ordinary/AUTO, filename-driven demo, reinforcement, changing-fight and natural-result observations. Generation is automated; running the exported standalone game is a separate operator action. A generated scene or a passing hidden DLL test is not a recorded visual pass. Use the [native validation ledger](native-validation.md#per-case-record) for each executed variant.
+Procedure version: **NV-05-1 v2**. These synthetic exports prepare the visible ordinary/AUTO, filename-driven demo, reinforcement, changing-fight and natural-result observations. Generation is automated; running the exported standalone game is a separate operator action. A generated scene or a passing hidden DLL test is not a recorded visual pass. Use the [native validation ledger](native-validation.md#per-case-record) for each executed variant.
 
 ## Build and export
 
 Use the pinned Windows tools and a reviewed x86 candidate. The dedicated console exporter is available in both EXE and DLL test configurations. It never initializes a game or creates a graphics device; without arguments it prints usage and exits with code 2. `--export <profile> <new-directory> <Text|Packed>` generates only files. The six supported profiles are `ordinary`, `reinforcement`, `no-reinforcement`, `win`, `loss` and `fights`.
 
 ```powershell
+. {
+$ErrorActionPreference = 'Stop'
 .\tools\build.ps1 -Configuration Release -WithoutResources -Jobs 2
+if ($LASTEXITCODE -ne 0) { throw 'Candidate build failed.' }
 .\tools\setup-directx-runtime.ps1
+if ($LASTEXITCODE -ne 0) { throw 'Runtime preparation failed.' }
 Copy-Item -LiteralPath '.\.tools\directx-x86\d3dx9_43.dll' -Destination '.\build\mingw-release-exe\tests'
 .\tools\test.ps1 -Configuration Release -NoBuild -Jobs 1 -Filter '^game\.session\.demo_export_'
+if ($LASTEXITCODE -ne 0) { throw 'Export regression checks failed.' }
 $writer = (Resolve-Path '.\build\mingw-release-exe\tests\matrixgame_native_demo_export.exe').Path
 $game = (Resolve-Path '.\build\mingw-release-exe\MatrixGame\MatrixGame.exe').Path
 $runtime = Split-Path -Parent $game
@@ -25,6 +30,7 @@ foreach ($profile in @('ordinary', 'reinforcement', 'no-reinforcement', 'win', '
     Get-ChildItem -LiteralPath $runtime -Filter '*.dll' -File | Copy-Item -Destination $target
     Copy-Item -LiteralPath '.\.tools\directx-x86\d3dx9_43.dll' -Destination $target
 }
+}
 ```
 
 The destination's parent must already exist. Existing destinations are refused, including empty directories; invalid profiles/modes and missing parents fail without creating an export. Before retaining output, the writer validates declared map records, settings, configuration and package parsing, checks that the shared image, fixture map and package exist and are nonempty, and checks that reinforcement mesh files exist. Image and mesh decoding belongs to the separate loaded-scene fixtures. A generation/validation failure removes only its newly created output and restores the working directory. Windows Unicode paths and spaces are supported. Do not merge output into an installation or retry a failed export over an existing directory.
@@ -38,35 +44,81 @@ The default standalone profile is Windowed 1280×720, ParkMiller RNG, bonus None
 Record source/binary/input identities before running a profile:
 
 ```powershell
+. {
+$ErrorActionPreference = 'Stop'
 git rev-parse HEAD
 Get-FileHash -Algorithm SHA256 -LiteralPath $game, $writer
 Get-ChildItem -LiteralPath $root -Recurse -File |
     Where-Object { $_.Extension -eq '.cmap' -or $_.Name -in @('standalone.txt', 'robots.dat', 'data.txt', 'iface.txt') } |
     Get-FileHash -Algorithm SHA256
+}
 ```
+
+## Protect the exported scene before launch
+
+Use a new record for each profile and follow [shared settings/cache protection](85-native-outcomes.md#protect-each-record-before-launch), with `$game` set to the absolute profile directory and `$exe` to its copied executable. The unchanged generated maps omit `DATA_UNIQID`: the exact key is `ordinary.cmap.0` for ordinary, or `demo-<profile>.cmap.0` for the other five declared profiles. Set `$cacheNames` to that one known key, then use the common known-key block to protect it at both Documents and fallback roots. If map/resource records changed, perform the protected Debug qualification before treating any suffix as known. No unprotected first run is allowed.
+
+Run this input block first, selecting the intended profile, then the linked shared path/settings/cache blocks and log capture. Keep its values unchanged for that record:
+
+```powershell
+. {
+$ErrorActionPreference = 'Stop'
+$profile = 'ordinary' # Select one of the six exported profiles before preparation.
+$game = (Resolve-Path -LiteralPath (Join-Path $root $profile) -ErrorAction Stop).Path
+$exe = (Resolve-Path -LiteralPath (Join-Path $game 'MatrixGame.exe') -ErrorAction Stop).Path
+$configuration = 'Release' # Match the actual copied executable.
+$cacheNames = @(if ($profile -eq 'ordinary') { 'ordinary.cmap.0' } else { 'demo-' + $profile + '.cmap.0' })
+}
+```
+
+Run the shared settings preparation and [log-boundary capture](85-native-outcomes.md#capture-the-log-boundary) before launching. Keep the verified record until all processes are gone, the [completion/evidence guard](85-native-outcomes.md#restoration-and-evidence) passes, and shared cache/settings restoration and guarded cleanup complete. Do not delete an export that still owns parked originals or an unresolved snapshot. No cache implementation is copied into this guide.
 
 ## Launch, deadlines and exits
 
 Choose the profile, then explicitly launch its copied executable without arguments. Positional map arguments enter visibility calculation rather than this gameplay path.
 
 ```powershell
-$profile = 'ordinary'
-$target = Join-Path $root $profile
-$process = Start-Process -FilePath (Join-Path $target 'MatrixGame.exe') -WorkingDirectory $target -PassThru
-$null = $process.Handle # Retain the handle before a natural result can exit.
+. {
+$ErrorActionPreference = 'Stop'
+if ($launchAttempted) { throw 'One launch attempt per prepared record; resolve and restore it before preparing another.' }
+$target = (Resolve-Path -LiteralPath (Join-Path $root $profile) -ErrorAction Stop).Path
+if ($game -ine $target -or -not $settingsReady -or -not $cacheReady -or -not $logBoundaryReady) { throw 'Prepare this exact profile record, cache key and log boundary first.' }
+if ($process -and -not $process.HasExited) { throw 'The preceding retained process is still running.' }
+if (@(Get-Process -ErrorAction Stop | Where-Object ProcessName -eq 'MatrixGame').Count) { throw 'Close all MatrixGame processes first.' }
+$currentGame = (Resolve-Path -LiteralPath $game -ErrorAction Stop).Path
+if ([IO.Path]::GetFullPath($exe) -ine (Join-Path $currentGame 'MatrixGame.exe')) { throw 'The executable does not belong to the protected game.' }
+$fallbackRoots = @($cacheRoots | Where-Object Name -eq 'Fallback')
+if ($fallbackRoots.Count -ne 1 -or $fallbackRoots[0].Path -ine (Join-Path $currentGame 'Cache')) { throw 'Run shared path setup for this game before preparing its cache.' }
+if ($settings -ine (Join-Path $currentGame 'CFG/standalone.txt') -or $caseBackup -ine (Join-Path $currentGame '.playtest-presentation-backup')) { throw 'The settings record belongs to another game.' }
+$launchMode = 'DirectExport'
+$newLog = $null
+$newLogProcessId = $null
+$gameExitCode = $null
+$process = $null
+$launchSucceeded = $false
+$launchAttempted = $true
+$process = Start-Process -FilePath $exe -WorkingDirectory $game -PassThru -ErrorAction Stop
+if ($null -eq $process) { throw 'No retained game handle; preserve the record.' }
+$null = $process.Handle
+$retainedProcessStart = $process.StartTime.ToUniversalTime()
+}
 ```
 
-Require the startup menu within 60 seconds. Choose New battle, select the only installed map and Start with bonus None; require the battlefield within 60 seconds. Use the basename in the table below and the loaded map entry in `test.log` to identify the scene. Keep the game focused at normal speed, release all keys and keep the pointer away from window edges while observing autonomous behavior. Profile deadlines start when its battlefield appears. A missing scene, diagnostic, premature exit, wrong outcome or deadline failure must be recorded as a failure. Close the owned game before trying another profile; do not let a failed scene run indefinitely.
+Require the startup menu within 60 seconds. Choose New battle, select the only installed map and Start with bonus None; require the battlefield within 60 seconds. Use the basename, actual battlefield and only this launch's appended log excerpt to identify the scene; Release has no Debug-only startup-section delimiter. Keep the game focused at normal speed, release all keys and keep the pointer away from window edges while observing autonomous behavior. Profile deadlines start when its battlefield appears. A missing scene, diagnostic, premature exit, wrong outcome or deadline failure must be recorded as a failure. Close the owned game before trying another profile; do not let a failed scene run indefinitely.
 
 After the specified exit, return to PowerShell:
 
 ```powershell
-if (-not $process.WaitForExit(30000)) { throw 'Owned game did not exit within 30 seconds.' }
+. {
+$ErrorActionPreference = 'Stop'
+if (-not $process.WaitForExit(30000)) { throw 'Owned game is still running; retain all backups.' }
 $process.Refresh()
-$process.ExitCode # Expected 0.
+if ($process.StartTime.ToUniversalTime() -ne $retainedProcessStart -or $process.ExitCode -ne 0) { throw 'The retained lifetime/exit differs.' }
+$process.ExitCode
+}
 ```
 
-For a natural win/loss, do not press Escape or Alt+F4 to obtain the expected exit. If its 30-second result deadline fails, record the failure, then use Alt+F4 only to clean up. A process code of 0 by itself does not identify victory or defeat; the observed firing, losing side and unit retirement are required. No full-auto case should show Win/Lose/statistics or a next-map selector after its result/Escape exit. A new unexpected game window or error dialog is a failure. This manual observation does not substitute for an automated descendant-process trace.
+For a natural win/loss, do not press Escape or Alt+F4 to obtain the expected exit. If its 30-second result deadline fails, record the failure, then use Alt+F4 only to clean up. After all declared exits, run the completion/evidence guard and the shared restoration blocks before another profile. A process code of 0 by itself does not identify victory or defeat; the observed firing, losing side and unit retirement are required. No full-auto case should show Win/Lose/statistics or a next-map selector after its result/Escape exit. A new unexpected game window or error dialog is a failure. This manual observation does not substitute for an automated descendant-process trace.
 
 ## NV-05-1D0/D1: ordinary control and AUTO
 

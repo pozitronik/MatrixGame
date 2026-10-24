@@ -1,6 +1,6 @@
 # Native selector and relaunch procedures
 
-Procedure version: **3**. These cases prepare the bounded ordinary-map portions of NV-06-2. They share the [native timing/session setup](85-native-outcomes.md#build-and-preserve-the-candidate), including the build, source/binary identity, resource/configuration profiles and restoration rules. Visible execution remains pending. Natural victory/defeat and the pending-result trigger have automated Text/Packed cheats-off setup in the [contained lifecycle suite](85-native-exe-lifecycle.md); their visible observations remain open below.
+Procedure version: **4**. These cases prepare the bounded ordinary-map portions of NV-06-2. They share the [native timing/session setup](85-native-outcomes.md#build-and-preserve-the-candidate), including the build, source/binary identity, resource/configuration profiles and restoration rules. Visible execution remains pending. Natural victory/defeat and the pending-result trigger have automated Text/Packed cheats-off setup in the [contained lifecycle suite](85-native-exe-lifecycle.md); their visible observations remain open below.
 
 ## Inputs and process observations
 
@@ -9,8 +9,11 @@ The first map is `Matrix\Map\desert1_3e.cmap`. Use the common startup steps in [
 Same-map and Cancel controls need no additional map. Different-map cases require an owned, already extracted `desert2_2e.cmap` from the ordinary original maps, with its shared resources available in the local package. Supply its actual path; no map data is bundled or downloaded by this helper. Copying the first map under another filename does not establish the different-payload case.
 
 ```powershell
+. {
+$ErrorActionPreference = 'Stop'
 $alternate = Read-Host 'Full path to your owned desert2_2e.cmap'
 .\tools\playtest-outcomes.ps1 -Configuration Release -Cheats Off -ConfigurationMode Text -AlternateMapFile $alternate
+}
 ```
 
 Inspection prints the source hash and intended temporary entry without writing or launching. During `-Launch`, the helper copies that file to `Matrix/Map/native-outcome-alternate.cmap` beside the executable. It refuses an existing file at that reserved output path, preserves the source bytes, and removes only its own copy during restoration. Newly created empty map directories are removed; existing directories and other map files remain. The alternate selector entry has no original catalog match or bundled preview, so its filename and **No preview** placeholder are expected. Renaming is appropriate here only because the selected source is an ordinary map; demo/Terron filenames select additional gameplay behavior and are outside this setup.
@@ -21,7 +24,9 @@ For normal relaunches, add `-WatchRelaunches -ExpectedProcesses 2`. A fresh laun
 
 Each wait is bounded so PowerShell can handle interruption and enter restoration; this is not a total playtest deadline. Stop and record the case when a stated step deadline is exceeded. The monitor rejects a missing/extra process count, an unavailable exit code or a nonzero observed exit. Nevertheless, polling cannot establish that every short-lived failing child was seen; a child that exits between observations can be missed. Record a launch/failure with incomplete observations as incomplete, never infer successful initialization from the parent's zero exit. These procedures are for normal transitions with a visible, usable destination battle. Exact short-lived failure tracing remains an NV-06-3 preparation gap.
 
-For every accepted replacement, require all of these observations: the loading window appears when loading is observable; the replacement battle arrives without another startup menu; the expected map and bonus appear; the introduction is usable; a fresh robot Move works; and both parent and child eventually report code 0. Record the process IDs and the latest `test.log` launch/map/RNG sections. A disappearing parent, the correct process count or a saved map preference alone is insufficient.
+Before every launch, select its `$caseArguments` below, then complete [shared settings/cache protection](85-native-outcomes.md#protect-each-record-before-launch) and the [log-boundary capture](85-native-outcomes.md#capture-the-log-boundary). Run the [retained helper adapter](85-native-outcomes.md#owned-helper-launch-adapter) only after those guards succeed. Each argument block selects one record; it does not launch. All selector cases declare `Normal`/helper exit 0. Protect the confirmed keys for both initial and destination maps at both cache roots before a replacement; Cancel/same-map cases need only the initial map's key. For an unknown key, qualify each installed map separately in Debug using that same alias/profile, one normally exited process and no replacement; finish restoration before preparing the next qualification or real case. Do not discover a destination key through an unprotected first relaunch.
+
+For every accepted replacement, require all of these observations: the loading window appears when loading is observable; the replacement battle arrives without another startup menu; the expected map and bonus appear; the introduction is usable; a fresh robot Move works; and both parent and child eventually report code 0. Record the process IDs and only the log bytes appended by this journey using the [completion/evidence guard](85-native-outcomes.md#restoration-and-evidence); Release has the map/RNG notices but no Debug-only startup delimiter. A disappearing parent, the correct process count or a saved map preference alone is insufficient.
 
 Allow 30 seconds for menus/dialogs and 60 seconds for the new battlefield. A timeout is a recorded failure or blocked observation, not permission to wait indefinitely. The production loading handoff's 120-second limit is a separate automated contract. Do not race a fast load to click Hide: [selector verification](../MAPS.md#verification) identifies the gated synthetic dismissal checks. Record an unobservable loader interval honestly.
 
@@ -32,7 +37,12 @@ Build and inspect the matching cheats-disabled candidate first. Repeat the appli
 ### M1: Cancel, resume, then replace with the same map
 
 ```powershell
-.\tools\playtest-outcomes.ps1 -Configuration Release -Cheats Off -ConfigurationMode Text -WatchRelaunches -ExpectedProcesses 2 -Launch
+. {
+$ErrorActionPreference = 'Stop'
+$outcomeCase = 'Normal'
+$expectedHelperExit = 0
+$caseArguments = @{ Configuration = 'Release'; Cheats = 'Off'; ConfigurationMode = 'Text'; WatchRelaunches = $true; ExpectedProcesses = 2; Launch = $true }
+}
 ```
 
 1. Start the common scene. While a Move is active, press Escape, then `N`. The selector should replace the battle menu and the battle must remain paused.
@@ -44,7 +54,12 @@ Build and inspect the matching cheats-disabled candidate first. Repeat the appli
 ### M2: replace with the different map
 
 ```powershell
-.\tools\playtest-outcomes.ps1 -Configuration Release -Cheats Off -ConfigurationMode Text -AlternateMapFile $alternate -WatchRelaunches -ExpectedProcesses 2 -Launch
+. {
+$ErrorActionPreference = 'Stop'
+$outcomeCase = 'Normal'
+$expectedHelperExit = 0
+$caseArguments = @{ Configuration = 'Release'; Cheats = 'Off'; ConfigurationMode = 'Text'; AlternateMapFile = $alternate; WatchRelaunches = $true; ExpectedProcesses = 2; Launch = $true }
+}
 ```
 
 Start the common scene and open Escape, `N` during a Move. Navigate to **native-outcome-alternate** with the map list/page controls. Choose None (`1`), then double-click its name. Require loading continuity when observable and a usable introduction in the different battlefield, with no intervening startup menu. Confirm the log names `Matrix\Map\native-outcome-alternate.cmap` and compare the terrain/start layout with the first map; a saved filename alone is insufficient. Select a friendly robot and verify a Move. Close through menu Exit/statistics as in M1. Expect exactly two observed processes, both code 0, followed by removal of the temporary map and restoration of settings.
@@ -54,14 +69,19 @@ Start the common scene and open Escape, `N` during a Move. Navigate to **native-
 ### S0: Surrender, selector Cancel and window close
 
 ```powershell
-.\tools\playtest-outcomes.ps1 -Configuration Release -Cheats Off -ConfigurationMode Text -WatchRelaunches -ExpectedProcesses 1 -Launch
+. {
+$ErrorActionPreference = 'Stop'
+$outcomeCase = 'Normal'
+$expectedHelperExit = 0
+$caseArguments = @{ Configuration = 'Release'; Cheats = 'Off'; ConfigurationMode = 'Text'; WatchRelaunches = $true; ExpectedProcesses = 1; Launch = $true }
+}
 ```
 
 Start the common scene, issue a Move and press Escape, `S`, Enter while it remains pending. Inspect statistics, then press Enter once and release it. The selector must appear and remain open until a fresh action. Click Cancel; expect code 0 with one process. Repeat in a fresh launch, using Alt+F4 at the battle-end selector instead of Cancel. Again expect one process and code 0. NV-06-1 separately covers Escape Cancel. None of these is natural defeat detection.
 
 ### S1/S2: Surrender, same-map and different-map acceptance
 
-For S1 use the M1 launch command. For S2 use the M2 command with the supplied alternate file. In either fresh battle, issue a Move, then Escape, `S`, Enter to surrender. Inspect statistics and press Enter once to reach the selector. For S1 retain the current map, choose None and press Enter once. For S2 choose **native-outcome-alternate**, choose None and click Start.
+For S1 use the M1 argument block and protection/adapter sequence. For S2 use M2 with the supplied alternate file and both confirmed map keys. In either fresh battle, issue a Move, then Escape, `S`, Enter to surrender. Inspect statistics and press Enter once to reach the selector. For S1 retain the current map, choose None and press Enter once. For S2 choose **native-outcome-alternate**, choose None and click Start.
 
 Require the complete replacement observations: no new startup menu, correct destination scene/logged path, introduction and fresh movement. Close the child through menu Exit/statistics. Each run must record exactly two observed processes, both code 0. A child whose window appears but never reaches a usable battlefield fails the readiness check even if it later exits normally.
 
@@ -70,9 +90,33 @@ Require the complete replacement observations: no new startup menu, correct dest
 These two additional cases require a freshly rebuilt `-Cheats` candidate and `-Cheats On` in the helper. Use the same-map and different-map commands below:
 
 ```powershell
+. {
+$ErrorActionPreference = 'Stop'
 .\tools\build.ps1 -Configuration Release -Cheats
-.\tools\playtest-outcomes.ps1 -Configuration Release -Cheats On -ConfigurationMode Text -WatchRelaunches -ExpectedProcesses 2 -Launch
-.\tools\playtest-outcomes.ps1 -Configuration Release -Cheats On -ConfigurationMode Text -AlternateMapFile $alternate -WatchRelaunches -ExpectedProcesses 2 -Launch
+if ($LASTEXITCODE -ne 0) { throw 'Cheats-enabled candidate build failed.' }
+}
+```
+
+Select W1, then prepare and run its one protected record:
+
+```powershell
+. {
+$ErrorActionPreference = 'Stop'
+$outcomeCase = 'Normal'
+$expectedHelperExit = 0
+$caseArguments = @{ Configuration = 'Release'; Cheats = 'On'; ConfigurationMode = 'Text'; WatchRelaunches = $true; ExpectedProcesses = 2; Launch = $true }
+}
+```
+
+After W1 has fully exited and restored, select W2 and prepare a fresh protected record:
+
+```powershell
+. {
+$ErrorActionPreference = 'Stop'
+$outcomeCase = 'Normal'
+$expectedHelperExit = 0
+$caseArguments = @{ Configuration = 'Release'; Cheats = 'On'; ConfigurationMode = 'Text'; AlternateMapFile = $alternate; WatchRelaunches = $true; ExpectedProcesses = 2; Launch = $true }
+}
 ```
 
 Run the two launches separately. Start the common scene, deselect robots, keep the pointer over bare terrain and leave the developer console closed. Type `IAMLOOSER` using an English keyboard layout. Despite its spelling, this code immediately opens the **victory** dialog and sets exit state 3. Confirm that dialog, inspect the resulting statistics, then press Enter once to reach the selector. In W1 accept the same map with None; in W2 accept **native-outcome-alternate** with None. Verify destination readiness and close through menu Exit/statistics. Each run requires two observed code-0 exits.
@@ -81,7 +125,7 @@ W1/W2 establish the real victory-dialog callbacks, statistics, selector and rela
 
 ### E0: Exit control
 
-Use a fresh cheats-disabled launch with `-WatchRelaunches -ExpectedProcesses 1`. Start a Move and choose Escape, `E`, Enter, inspect statistics, then Enter. The process must exit with code 0 without a selector or child. Record this control separately from S0: the two routes deliberately differ after statistics.
+Use the S0 one-process argument block with a fresh cheats-disabled protected record and the retained helper adapter. Start a Move and choose Escape, `E`, Enter, inspect statistics, then Enter. The process must exit with code 0 without a selector or child. Record this control separately from S0: the two routes deliberately differ after statistics.
 
 ## NV-06-3 trigger investigation
 
@@ -106,6 +150,6 @@ The [native failure procedure](85-native-failures.md) prepares failed Restart th
 | Failed reload and late text-interface initialization/recovery | Prepared separately in the [native failure procedure](85-native-failures.md); no execution recorded |
 | Pending-result Restart/Quit and selected-map failure | The contained suite observes the armed counter, Restart/Exit and selected-payload failure/recovery. Native Text/Packed execution, ordinary visible observation, cheats-enabled profiles and the polling launcher's short-lived-process limitation remain open |
 
-Use the same profile/result record as the session guide, adding case ID, selector origin, source/destination map identity, activation method, expected/observed process count, every captured exit and each readiness observation. After all observed processes exit, the helper restores the staged configuration and removes its own alternate-map copy. It leaves any source map and existing unrelated output maps unchanged. Abandoned-run recovery uses explicit `-Restore` after all games close; preserve independent later settings edits before that command.
+Use the same profile/result record as the session guide, adding case ID, selector origin, source/destination map identity, activation method, expected/observed process count, every captured exit and each readiness observation. After each declared quit, run the completion/evidence guard, then shared cache/settings restoration and guarded record cleanup before any following launch. After all observed processes exit, the helper restores the staged configuration and removes its own alternate-map copy. It leaves any source map and existing unrelated output maps unchanged. Abandoned-run recovery uses explicit `-Restore` after all games close; preserve independent later settings edits before that command.
 
 The helper's synthetic contracts cover retained-process counts/exits, missing/extra/foreign processes, null or failing exits, repeated observations and PID reuse, monitor interruption cleanup with an unrelated same-path lifetime left running, bounded forced closure and retained backups on a post-kill timeout, read-only alternate inspection, temporary-map collision/restoration and abandoned or malformed recovery records. Existing MSVC output/cache selection, exact-byte backup, text/packed profiles and interruptible ordinary waits remain checked. They start no game and do not establish native rendering, map compatibility or a successful relaunch. NV-06-2 remains incomplete until the visible observations and remaining declared profiles have reviewed evidence; the contained natural-result setup is already available.

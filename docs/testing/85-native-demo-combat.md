@@ -22,14 +22,37 @@ This case distinguishes an incidental general flyover from a retained fight by c
 
 The ordinary `game.session.demo_assets` check parses all six AI/combat declarations in Text and Packed form, including complete robot columns, side arrays `{1, 2}` or `{1, 2, 2}`, the single armed side, stationary/nonlethal component-scene configuration, natural-fight heat and armor structure values, and the third fight robot's Diploid armor. It preserves the factory-column, transport-model and reinforcement-order checks of the loaded-demo AI suite. It requires no window or device and runs in default DLL test configurations.
 
+Run the complete fenced block as one statement, including `. {` and the final `}`. It stops on a failed preparation/configure/build/test step and restores ordinary native registration in `finally`, then rebuilds the DLL and fixture even after failure. A failed restoration leaves the build unverified; do not continue to ordinary tests. Finish each native process before changing build options.
+
 ```powershell
-.\tools\build.ps1 -Configuration Debug -DLL -WithoutResources -TestsOnly
-& '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' -S . -B build/mingw-debug-dll -DMATRIXGAME_NATIVE_SESSION_TESTS=ON
-& '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' --build build/mingw-debug-dll --target matrixgame_native_session_fixture
-.\tools\test.ps1 -Configuration Debug -DLL -NoBuild -Jobs 1 -Filter '^game\.session\.(demo_assets|native_demo_(packed_)?natural_.*)$'
+. {
+$ErrorActionPreference = 'Stop'
+$configuration = 'Debug'
+$cheats = $false
+$build = "build/mingw-$($configuration.ToLowerInvariant())-dll"
+$cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
+try {
+    .\tools\build.ps1 -Configuration $configuration -DLL -WithoutMusic -TestsOnly -WithoutResources -Jobs 2 -Cheats:$cheats
+    if ($LASTEXITCODE -ne 0) { throw 'Native test build preparation failed.' }
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_SESSION_TESTS=ON
+    if ($LASTEXITCODE -ne 0) { throw 'Native test registration failed.' }
+    & $cmake --build $build --target MatrixGame matrixgame_native_session_fixture --parallel 2
+    if ($LASTEXITCODE -ne 0) { throw 'Native fixture build failed.' }
+    .\tools\setup-directx-runtime.ps1
+    if ($LASTEXITCODE -ne 0) { throw 'DirectX runtime preparation failed.' }
+    Copy-Item -LiteralPath '.\.tools\directx-x86\d3dx9_43.dll' -Destination (Join-Path $build 'tests') -ErrorAction Stop
+    .\tools\test.ps1 -Configuration $configuration -DLL -WithoutMusic -NoBuild -Jobs 1 -Cheats:$cheats -Filter '^game\.session\.(demo_assets|native_demo_(packed_)?natural_.*)$'
+    if ($LASTEXITCODE -ne 0) { throw 'Native fixture checks failed.' }
+} finally {
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_SESSION_TESTS=OFF
+    if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: native registration remains unverified; do not run ordinary tests.' }
+    & $cmake --build $build --target MatrixGame matrixgame_native_session_fixture --parallel 2
+    if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: default fixture binaries remain unverified; rebuild before ordinary tests.' }
+}
+}
 ```
 
-Repeat with Release and its build directory, then repeat both with `-Cheats` on the build and test helpers. Keep those options matched and restore the ordinary builds without `-Cheats` afterwards. The host also enforces a frame-count backstop of fewer than 5,000 callbacks for natural Win/Loss and fewer than 20,000 for natural fights. The unthrottled native loop truncates frame durations to whole milliseconds, so that backstop can reject a stalled scene before its game-time deadline. Native combat processes have a 90-second CTest deadline in addition to game-time and frame-count bounds; registration is opt-in and the checks carry the `native-process` and `current-desktop` labels. They run serially; do not run separate native suites concurrently. They require a usable native Direct3D 9 HAL and legacy DirectX runtime. A selected test fails if setup is unavailable. The shared [containment helper](native-window-containment.md) keeps windows and imported cursor operations test-local, while real rendering and presentation remain enabled. Restore registration with `-DMATRIXGAME_NATIVE_SESSION_TESTS=OFF` after an opted-in run.
+Repeat the whole block with `$configuration = 'Release'`, then repeat both configurations with `$cheats = $true`. The same value reaches build and test helpers. Finish those records, then restore the ordinary cheats-disabled builds; each block restores native registration to OFF and rebuilds in `finally`. The host also enforces a frame-count backstop of fewer than 5,000 callbacks for natural Win/Loss and fewer than 20,000 for natural fights. The unthrottled native loop truncates frame durations to whole milliseconds, so that backstop can reject a stalled scene before its game-time deadline. Native combat processes have a 90-second CTest deadline in addition to game-time and frame-count bounds; registration is opt-in and the checks carry the `native-process` and `current-desktop` labels. They run serially; do not run separate native suites concurrently. They require a usable native Direct3D 9 HAL and legacy DirectX runtime. A selected test fails if setup is unavailable. The shared [containment helper](native-window-containment.md) keeps windows and imported cursor operations test-local, while real rendering and presentation remain enabled. Restore registration with `-DMATRIXGAME_NATIVE_SESSION_TESTS=OFF` after an opted-in run.
 
 These observations do not establish visible artwork, human screen picking, original resource behavior, original-host DLL loading or a standalone child-process transition. Native DLL execution uses ParkMiller selected and seeded by production code; the ordinary fixed-step AUTO/combat tests retain both supported RNG modes and replay comparisons. Native procedures and complete-baseline acceptance retain their separate recorded requirements.
 

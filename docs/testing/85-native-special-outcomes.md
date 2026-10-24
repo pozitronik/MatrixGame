@@ -26,17 +26,38 @@ The normal DLL seed remains time-derived ParkMiller. Native frame lengths are no
 
 Build the DLL-configured tests using the pinned toolchain and enable `MATRIXGAME_NATIVE_SESSION_TESTS=ON`. These cases need a working legacy DirectX runtime and graphics device; an unavailable device fails rather than silently skipping the test. Run native cases serially to avoid unnecessary graphics contention. They retain `native-process` and `current-desktop` labels and `RUN_SERIAL`; the normal default test selection excludes these optional native lifetimes.
 
+Run the complete fenced block as one statement, including `. {` and the final `}`. It stops on a failed preparation/configure/build/test step and restores ordinary native registration in `finally`, then rebuilds the DLL and fixture even after failure. A failed restoration leaves the build unverified; do not continue to ordinary tests. Finish each native process before changing build options.
+
 ```powershell
-.\tools\build.ps1 -Configuration Debug -DLL -WithoutMusic -TestsOnly -WithoutResources -Jobs 2
-& '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' -S . -B '.\build\mingw-debug-dll' -DMATRIXGAME_NATIVE_SESSION_TESTS=ON
-& '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe' --build '.\build\mingw-debug-dll' --target MatrixGame matrixgame_native_special_fixture --parallel 2
-.\tools\setup-directx-runtime.ps1
-Copy-Item -LiteralPath '.\.tools\directx-x86\d3dx9_43.dll' -Destination '.\build\mingw-debug-dll\tests'
-.\tools\test.ps1 -Configuration Debug -DLL -WithoutMusic -NoBuild -Jobs 1 -Filter '^game\.session\.native_(special_scenes|break_anim|anim_break|terron|special_diagnostic)$'
+. {
+$ErrorActionPreference = 'Stop'
+$configuration = 'Debug'
+$cheats = $false
+$build = "build/mingw-$($configuration.ToLowerInvariant())-dll"
+$cmake = '.\.tools\cmake-4.4.4-windows-i386\bin\cmake.exe'
+try {
+    .\tools\build.ps1 -Configuration $configuration -DLL -WithoutMusic -TestsOnly -WithoutResources -Jobs 2 -Cheats:$cheats
+    if ($LASTEXITCODE -ne 0) { throw 'Native test build preparation failed.' }
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_SESSION_TESTS=ON
+    if ($LASTEXITCODE -ne 0) { throw 'Native test registration failed.' }
+    & $cmake --build $build --target MatrixGame matrixgame_native_special_fixture --parallel 2
+    if ($LASTEXITCODE -ne 0) { throw 'Native fixture build failed.' }
+    .\tools\setup-directx-runtime.ps1
+    if ($LASTEXITCODE -ne 0) { throw 'DirectX runtime preparation failed.' }
+    Copy-Item -LiteralPath '.\.tools\directx-x86\d3dx9_43.dll' -Destination (Join-Path $build 'tests') -ErrorAction Stop
+    .\tools\test.ps1 -Configuration $configuration -DLL -WithoutMusic -NoBuild -Jobs 1 -Cheats:$cheats -Filter '^game\.session\.native_(special_scenes|break_anim|anim_break|terron|special_diagnostic)$'
+    if ($LASTEXITCODE -ne 0) { throw 'Native fixture checks failed.' }
+} finally {
+    & $cmake -S . -B $build -DMATRIXGAME_NATIVE_SESSION_TESTS=OFF
+    if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: native registration remains unverified; do not run ordinary tests.' }
+    & $cmake --build $build --target MatrixGame matrixgame_native_special_fixture --parallel 2
+    if ($LASTEXITCODE -ne 0) { throw 'Restoration failed: default fixture binaries remain unverified; rebuild before ordinary tests.' }
+}
+}
 ```
 
-Repeat with Release, including `release` in the build paths. The initialization case covers six DLL lifetimes; the three outcome cases cover another twelve, followed by one intentionally rejected ordinary-map lifetime in the diagnostic control. Generated inputs live in a unique test-owned directory and are removed after the run; no original package or normal game configuration is changed. The special-scene exporter and its asset-free layout/ownership tests remain available in both EXE and DLL builds; native outcome tests register only for the opted-in DLL role.
+Repeat the whole block with `$configuration = 'Release'`. The initialization case covers six DLL lifetimes; the three outcome cases cover another twelve, followed by one intentionally rejected ordinary-map lifetime in the diagnostic control. Generated inputs live in a unique test-owned directory and are removed after the run; no original package or normal game configuration is changed. The special-scene exporter and its asset-free layout/ownership tests remain available in both EXE and DLL builds; native outcome tests register only for the opted-in DLL role.
 
-After native checks, configure each affected DLL build directory with `-DMATRIXGAME_NATIVE_SESSION_TESTS=OFF` to restore ordinary test registration. Keep the build's cheats and music options matched to the test-helper arguments throughout validation.
+The block restores `MATRIXGAME_NATIVE_SESSION_TESTS=OFF` on every exit path and rebuilds before returning. Keep `$cheats` and music options matched throughout; this example uses cheats disabled and DLL music disabled.
 
 The missing-Terron-win-request negative control disables only that production status transition: the real death sequence still starts, but the registered Terron test fails its result deadline. Use this only as a temporary local mutation and restore the production source before accepting passing evidence. This guide defines the control; recorded run results identify which revision and profiles were actually checked.
