@@ -5,6 +5,10 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <bit>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <iostream>
 
 namespace {
@@ -23,6 +27,7 @@ template<bool Cluster> struct MovingFormation {
     bool previous_reference = false;
     float previous_expected = 0;
     float minimum_separation = 10000;
+    std::string command;
 
     explicit MovingFormation(Session &session) {
         auto &side = *g_MatrixMap->GetPlayerSide();
@@ -52,7 +57,17 @@ template<bool Cluster> struct MovingFormation {
             MG_CHECK(std::abs(units[i]->GetGeoCenter().x - x[i]) < .001f);
             MG_CHECK(std::abs(units[i]->GetGeoCenter().y - 260) < .001f);
         }
+        const int frame = session.frame(), time = session.time();
+        const auto before = random::draw_count();
         session.ground_command(600, 260);
+        const auto after = random::draw_count();
+        MG_CHECK(session.frame() == frame && session.time() == time);
+        std::ostringstream out;
+        out << "{\"type\":\"command\",\"frame\":" << frame << ",\"time_ms\":" << time
+            << ",\"name\":\"context-ground\",\"destination\":[600,260]"
+            << ",\"rng_draws_before\":" << before << ",\"rng_draws_after\":" << after << '}';
+        command = out.str();
+        MG_CHECK(random::draw_count() == after);
         group = units[0]->GetGroupLogic();
         MG_CHECK(group >= 0 && group < MAX_LOGIC_GROUP);
         target = side.m_PlayerGroup[group].m_To;
@@ -164,15 +179,105 @@ template<bool Cluster> struct MovingFormation {
     }
 };
 
-template<bool Cluster, random::Mode Mode, int Step> void journey() {
+struct Recording {
+    std::ofstream file;
+    std::vector<std::string> states;
+    std::string completion;
+    explicit Recording(const std::string &name) {
+        const auto directory = std::filesystem::current_path() / "scenario-traces";
+        std::filesystem::create_directories(directory);
+        file.open(directory / name, std::ios::trunc);
+        MG_CHECK(file.good());
+    }
+    void write(const std::string &line) {
+        file << line << '\n';
+        file.flush();
+        MG_CHECK(file.good());
+    }
+};
+
+template<bool Cluster> struct Actors {
+    std::array<CMatrixRobotAI *, MovingFormation<Cluster>::count + 2> values{};
+    std::array<unsigned, MovingFormation<Cluster>::count + 2> identities{};
+    Actors(Session &session, const MovingFormation<Cluster> &formation) {
+        for (unsigned id = 1; id <= 4; ++id) {
+            for (auto *o = CMatrixMapStatic::GetFirstLogic(); o; o = o->GetNextLogic())
+                if (o->IsRobot() && session.matches(id, o->AsRobot())) values[id - 1] = o->AsRobot();
+            MG_CHECK(values[id - 1]);
+        }
+        MG_CHECK(values[0] == formation.units[0] && values[1] == formation.units[1]);
+        for (size_t i = 2; i < formation.units.size(); ++i) values[i + 2] = formation.units[i];
+        for (size_t i = 0; i < values.size(); ++i) identities[i] = values[i]->UID;
+    }
+    int id(const CMatrixMapStatic *object) const {
+        if (!object) return 0;
+        const auto found = std::find(values.begin(), values.end(), object);
+        MG_CHECK(found != values.end());
+        return static_cast<int>(found - values.begin() + 1);
+    }
+    std::string snapshot(Session &session) const {
+        const auto draws = random::draw_count();
+        std::ostringstream out;
+        out << "{\"type\":\"snapshot\",\"state\":" << session.snapshot() << ",\"formation\":{\"actors\":[";
+        for (size_t i = 0; i < values.size(); ++i) {
+            auto *r = values[i];
+            bool live = false;
+            for (auto *o = CMatrixMapStatic::GetFirstLogic(); o; o = o->GetNextLogic())
+                if (o == r) live = o->IsLiveRobot() && r->UID == identities[i];
+            MG_CHECK(live);
+            out << (i ? "," : "") << "{\"id\":" << i + 1 << ",\"alive\":true,\"side\":" << r->m_Side
+                << ",\"state\":" << int(r->m_CurrState)
+                << ",\"x_bits\":" << std::bit_cast<std::uint32_t>(r->m_PosX)
+                << ",\"y_bits\":" << std::bit_cast<std::uint32_t>(r->m_PosY)
+                << ",\"forward_x_bits\":" << std::bit_cast<std::uint32_t>(r->m_Forward.x)
+                << ",\"forward_y_bits\":" << std::bit_cast<std::uint32_t>(r->m_Forward.y)
+                << ",\"health_bits\":" << std::bit_cast<std::uint32_t>(r->GetHitPoint())
+                << ",\"speed_bits\":" << std::bit_cast<std::uint32_t>(r->m_Speed)
+                << ",\"group_speed_bits\":" << std::bit_cast<std::uint32_t>(r->m_GroupSpeed)
+                << ",\"maximum_speed_bits\":" << std::bit_cast<std::uint32_t>(r->GetMaxSpeed())
+                << ",\"group\":" << r->GetGroupLogic() << ",\"in_place\":" << (r->PLIsInPlace() ? "true" : "false")
+                << ",\"queue\":[";
+            for (int j = 0; j < r->GetOrdersInPool(); ++j) {
+                if (j) out << ',';
+                const auto &order = *r->GetOrder(j);
+                out << "{\"type\":" << int(order.m_OrderType) << ",\"phase\":" << int(order.m_OrderPhase)
+                    << ",\"param1_bits\":" << std::bit_cast<std::uint32_t>(order.m_Param1)
+                    << ",\"param2_bits\":" << std::bit_cast<std::uint32_t>(order.m_Param2)
+                    << ",\"param3_bits\":" << std::bit_cast<std::uint32_t>(order.m_Param3)
+                    << ",\"param4\":" << order.m_Param4
+                    << ",\"object\":" << id(order.m_ObjCore ? order.m_ObjCore->m_Object : nullptr) << '}';
+            }
+            out << "]}";
+        }
+        out << "]}}";
+        MG_CHECK(random::draw_count() == draws);
+        return out.str();
+    }
+};
+
+template<bool Cluster, random::Mode Mode, int Step> void run_journey(Recording &trace) {
     Profile profile{Mode, 81, Step, 6000, false, true};
     profile.layout = NavigationLayout::Open;
     Session session(profile);
     MovingFormation<Cluster> formation(session);
+    const Actors<Cluster> actors(session, formation);
+    auto metadata = session.metadata(Cluster ? "formation-moving-reference-v1" : "formation-moving-intermediate-v1");
+    metadata.pop_back();
+    trace.write(metadata + ",\"navigation_observation\":\"physical-actors-v1\"}");
+    trace.write(formation.command);
+    const auto record = [&] {
+        trace.states.push_back(actors.snapshot(session));
+        trace.write(trace.states.back());
+    };
+    record();
     const auto initial_draws = random::draw_count();
     std::cout << session.metadata(Cluster ? "formation-moving-reference-v1" : "formation-moving-intermediate-v1")
               << std::endl;
-    while (session.time() < 50000 && !formation.arrived()) formation.tick(session);
+    while (session.time() < 50000 && !formation.arrived()) {
+        formation.tick(session);
+        record();
+    }
+    const int arrival_time = session.time();
     std::cout << "arrival=" << session.time() << " arrived=" << formation.arrived()
               << " reference_samples=" << formation.reference_samples
               << " physical_samples=" << formation.physical_samples
@@ -195,6 +300,7 @@ template<bool Cluster, random::Mode Mode, int Step> void journey() {
     }
     for (int frame = 0; frame < 20; ++frame) {
         formation.tick(session);
+        record();
         for (size_t i = 0; i < final.size(); ++i) {
             MG_CHECK(formation.units[i]->PLIsInPlace());
             MG_CHECK(formation.units[i]->m_PosX == final[i].x && formation.units[i]->m_PosY == final[i].y);
@@ -202,6 +308,33 @@ template<bool Cluster, random::Mode Mode, int Step> void journey() {
     }
     for (auto *r : formation.units) MG_CHECK(r->GetOrdersInPool() == 0);
     std::cout << "observed_rng_draws=" << random::draw_count() - initial_draws << std::endl;
+    session.check_running();
+    const auto draws = random::draw_count();
+    std::ostringstream complete;
+    complete << "{\"type\":\"complete\",\"frame\":" << session.frame() << ",\"time_ms\":" << session.time()
+             << ",\"formation\":{\"arrival_ms\":" << arrival_time << ",\"stationary_frames\":20"
+             << ",\"reference_samples\":" << formation.reference_samples
+             << ",\"physical_samples\":" << formation.physical_samples
+             << ",\"minimum_separation_bits\":" << std::bit_cast<std::uint32_t>(formation.minimum_separation)
+             << ",\"initial_rng_draws\":" << initial_draws << ",\"final_rng_draws\":" << draws
+             << ",\"assigned\":[";
+    for (size_t i = 0; i < final.size(); ++i)
+        complete << (i ? "," : "") << '[' << formation.assigned[i].x << ',' << formation.assigned[i].y << ']';
+    complete << "]}}";
+    trace.completion = complete.str();
+    MG_CHECK(random::draw_count() == draws);
+}
+
+template<bool Cluster, random::Mode Mode, int Step> void journey() {
+    const auto prefix = std::string("n5-formation-") + (Cluster ? "trailing-reference-" : "intermediate-") +
+        (Mode == random::Mode::ParkMiller ? "pm-" : "crt-") + std::to_string(Step) + "-run";
+    Recording first(prefix + "0.jsonl"), second(prefix + "1.jsonl");
+    run_journey<Cluster, Mode, Step>(first);
+    run_journey<Cluster, Mode, Step>(second);
+    MG_CHECK(first.states == second.states && first.completion == second.completion);
+    // Neither a failing session nor a replay mismatch may receive a completed tail.
+    first.write(first.completion);
+    second.write(second.completion);
 }
 
 #define PROFILE(Name, Mode, Step) \
