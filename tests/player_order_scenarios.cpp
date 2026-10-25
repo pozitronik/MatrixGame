@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_geometry.hpp"
+#include "manual_control_recording.hpp"
 #include "battle_building.hpp"
 #include "battle_combat_geometry.hpp"
 #include "test_support.hpp"
@@ -914,7 +915,7 @@ struct ManualEnemyResult {
     int exit_time = 0, retry_time = 0;
 };
 ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode, int step,
-                                       bool moving_target, ManualEnemyContinuation continuation) {
+                                       bool moving_target, ManualEnemyContinuation continuation, int replay = 0) {
     tests::BattleCombatAssets assets;
     ManualTrackEffects tracks;
     Profile profile{mode, 80, step, 3000, false, false};
@@ -967,9 +968,32 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
     side().CreateGroupFromCurrent(robot);
     side().Select(ROBOT, nullptr);
     CFormMatrixGame form;
+    tests::manual::View manual_view(session, *robot);
+    tests::manual::Recording manual_record(session, manual_view, int(chassis), mode, step,
+                                            moving_target, int(continuation), replay);
+    auto key = [&](bool down, uint8_t code, const char *name) {
+        const auto before = random::draw_count();
+        form.Keyboard(down, code);
+        manual_record.command(name, "keyboard", before, code, down ? 1 : 0);
+    };
+    auto enter = [&](bool leaving) {
+        key(true, VK_RETURN, leaving ? "exit-down" : "enter-down");
+        key(false, VK_RETURN, leaving ? "exit-up" : "enter-up");
+        MG_CHECK(!Input::isVKeyPressed(VK_RETURN));
+    };
+    auto mouse = [&](auto status, const char *name) {
+        const auto before = random::draw_count();
+        form.MouseKey(status, VK_LBUTTON, 640, 360);
+        manual_record.command(name, "mouse", before, VK_LBUTTON, int(status), 640, 360);
+    };
+    auto move = [&](float x, float y, const char *name) {
+        const auto before = random::draw_count();
+        session.ground_command(x, y);
+        manual_record.command(name, "context-ground", before, -1, -1, int(x), int(y));
+    };
     const float speed = robot->GetMaxSpeed();
     MG_CHECK(speed == (tracked ? .5f : .7f));
-    press(form, VK_RETURN);
+    enter(false);
     MG_CHECK(side().GetArcadedObject() == robot && side().IsRobotMode());
     MG_CHECK(robot->m_Unit[0].u1.s1.m_Kind == chassis && robot->GetMaxSpeed() == speed * 1.1f);
     std::cout << session.metadata(continuation == ManualEnemyContinuation::Original
@@ -978,6 +1002,7 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
     const bool recording = continuation != ManualEnemyContinuation::Original;
     ManualEnemyResult result;
     auto observe = [&](const char *event) {
+        manual_record.state(event);
         if (!recording) return;
         const auto draws = random::draw_count();
         auto &env = *robot->GetEnv();
@@ -1021,6 +1046,7 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
             if (target) {
                 g_MatrixMap->m_TraceStopObj = target;
                 g_MatrixMap->m_TraceStopPos = target->GetGeoCenter();
+                manual_view.aim_assigned();
             }
             session.advance();
             MG_CHECK(robot->IsLiveRobot());
@@ -1033,41 +1059,43 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
     const uint8_t forward = g_Config.m_KeyActions[KA_UNIT_FORWARD];
     const uint8_t right = g_Config.m_KeyActions[KA_UNIT_RIGHT];
     const float start_x = robot->m_PosX;
-    form.Keyboard(true, forward);
+    key(true, forward, "forward-down");
     advance(200);
     MG_CHECK(robot->m_PosX > start_x + 5);
-    form.Keyboard(false, forward);
+    key(false, forward, "forward-up");
     advance(100);
     MG_CHECK(!robot->FindOrderLikeThat(ROT_MOVE_TO));
     const auto direction = robot->m_Forward;
-    form.Keyboard(true, right);
+    key(true, right, "right-down");
     advance(100);
-    form.Keyboard(false, right);
+    key(false, right, "right-up");
     MG_CHECK(direction.x * robot->m_Forward.y - direction.y * robot->m_Forward.x > 0);
     const float target_x = target->m_PosX, target_y = target->m_PosY;
     const float health = target->GetHitPoint();
-    form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+    mouse(B_DOWN, "fire-down");
     advance(1000);
     MG_CHECK(robot->FindOrderLikeThat(ROT_FIRE));
     MG_CHECK(target->GetHitPoint() < health);
     MG_CHECK((target->m_PosX != target_x || target->m_PosY != target_y) == moving_target);
-    form.MouseKey(B_UP, VK_LBUTTON, 640, 360);
+    mouse(B_UP, "fire-up");
     const float stopped_health = target->GetHitPoint();
     advance(200);
     MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE) && target->GetHitPoint() == stopped_health);
-    form.MouseKey(B_DOWN, VK_LBUTTON, 640, 360);
+    mouse(B_DOWN, "fire-down");
     advance(200);
     MG_CHECK(target->GetHitPoint() < stopped_health);
+    const auto reset_draws = random::draw_count();
     form.SystemEvent(SYSEV_INPUT_RESET);
+    manual_record.command("input-reset", "system", reset_draws, SYSEV_INPUT_RESET);
     const float reset_health = target->GetHitPoint();
     advance(200);
     MG_CHECK(!Input::isVKeyPressed(VK_LBUTTON) && !robot->FindOrderLikeThat(ROT_FIRE));
     MG_CHECK(target->GetHitPoint() == reset_health);
     const float driving_x = robot->m_PosX;
-    form.Keyboard(true, forward);
+    key(true, forward, "forward-down");
     advance(100);
     MG_CHECK(robot->m_PosX > driving_x + 1);
-    press(form, VK_RETURN);
+    enter(true);
     MG_CHECK(!side().IsArcadeMode() && !side().GetArcadedObject());
     MG_CHECK(Input::isVKeyPressed(forward) && robot->GetMaxSpeed() == speed);
     MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].Order() == mpo_Attack);
@@ -1080,11 +1108,13 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
         MG_CHECK(g_MatrixMap->m_RN.m_Place[0].m_Pos == CPoint(8, 8));
     }
     if (continuation != ManualEnemyContinuation::Live) {
+        const auto remove_draws = random::draw_count();
         MG_CHECK(session.remove(3));
         target = nullptr;
+        manual_record.command("remove-nearby-enemy", "fixture-remove", remove_draws, 3, 1);
     }
     const float exit_y = robot->m_PosY;
-    session.ground_command(100, 100);
+    move(100, 100, "move-goal");
     const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
     MG_CHECK(group.Order() == mpo_MoveTo && group.m_To == CPoint(8, 8));
     const auto destination = group.m_To;
@@ -1098,7 +1128,7 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
     advance(1000);
     MG_CHECK(Input::isVKeyPressed(forward));
     MG_CHECK(robot->m_PosY < exit_y - 10);
-    form.Keyboard(false, forward);
+    key(false, forward, "forward-up");
     MG_CHECK(!Input::isVKeyPressed(forward));
     advance(12000);
     MG_CHECK(group.Order() == mpo_MoveTo && group.m_To == destination);
@@ -1119,8 +1149,10 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
         MG_CHECK(!group.IsWar());
         std::cout << "reserved-goal time=" << session.time() << " intended=8,8 assigned=4,4 actual=60,60"
                   << " enemy=" << target->m_PosX << ',' << target->m_PosY << " health=" << target->GetHitPoint() << '\n';
+        const auto remove_draws = random::draw_count();
         MG_CHECK(session.remove(3));
         target = nullptr;
+        manual_record.command("remove-nearby-enemy", "fixture-remove", remove_draws, 3, 1);
     } else {
         MG_CHECK(robot->GetEnv()->m_Place == 0);
         MG_CHECK(robot->m_PosX == 100 && robot->m_PosY == 100);
@@ -1134,7 +1166,7 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
         MG_CHECK(!robot->FindOrderLikeThat(ROT_FIRE));
         MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_To == CPoint(8, 8));
         result.retry_time = session.time();
-        session.ground_command(100, 100);
+        move(100, 100, "retry-goal");
         if (continuation == ManualEnemyContinuation::Live) {
             MG_CHECK(distant_enemy->GetEnv()->m_Place == 0);
             MG_CHECK(robot->GetEnv()->m_Place == -1 && robot->GetEnv()->m_PlaceAdd == CPoint(4, 4));
@@ -1142,7 +1174,7 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
         observe("retry-move");
         advance(500);
         MG_CHECK(robot->m_PosX == settled.x && robot->m_PosY == settled.y);
-        session.ground_command(100, 300);
+        move(100, 300, "free-goal");
         CPoint free_move;
         MG_CHECK(robot->GetMoveToCoords(free_move) && free_move == CPoint(8, 28));
         observe("free-move");
@@ -1153,20 +1185,23 @@ ManualEnemyResult manual_chassis_scene(ERobotUnitKind chassis, random::Mode mode
         MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_To == CPoint(8, 28));
         std::cout << "free-move-complete time=" << session.time() << " retry_at=" << result.retry_time << " actual=100,300\n";
     }
+    manual_record.finish(result.frames, result.prefix_frames, result.exit_time, result.retry_time);
     return result;
 }
 void manual_chassis_lifecycle(ERobotUnitKind chassis) {
+    tests::manual::invalidate_original(int(chassis));
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
     for (int step : {10, 16}) for (bool moving : {false, true})
         manual_chassis_scene(chassis, mode, step, moving, ManualEnemyContinuation::Original);
 }
 template<ERobotUnitKind Chassis, random::Mode Mode, int Step, bool Moving>
 void manual_enemy_continuation() {
-    const auto live = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Live);
-    const auto replay = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Live);
+    tests::manual::invalidate_enemy(int(Chassis), Mode, Step, Moving);
+    const auto live = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Live, 0);
+    const auto replay = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Live, 1);
     MG_CHECK(live.frames == replay.frames);
-    const auto control = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Removed);
-    const auto control_replay = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Removed);
+    const auto control = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Removed, 0);
+    const auto control_replay = manual_chassis_scene(Chassis, Mode, Step, Moving, ManualEnemyContinuation::Removed, 1);
     MG_CHECK(control.frames == control_replay.frames);
     MG_CHECK(live.prefix_frames == control.prefix_frames && live.exit_time == control.exit_time);
     MG_CHECK(std::equal(live.frames.begin(), live.frames.begin() + live.prefix_frames, control.frames.begin()));
@@ -2106,5 +2141,12 @@ int main(int argc, char **argv) {
     }
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try { tests::manual::complete_after_cleanup(); }
+        catch (const std::exception &error) {
+            std::cerr << "Manual recording completion failed: " << error.what() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     return result;
 }
