@@ -2,6 +2,8 @@
 
 These production-backed cases supply the physical approach scene selected by N6 in the [baseline completion checklist](baseline-completion.md#navigation). Existing [delivery and neighboring-landing cases](81-navigation.md#delivery-flights-and-carrier-damage) cover configured flights, inherited orders, landing restrictions and carrier damage. The [weapon-attached transport cases](85-transport-collisions.md) cover multipart collision and combat outcomes. This fixture adds a physical building on the incoming flight path and a low-building control; it does not change gameplay.
 
+The [physical carrier recording contract](carrier-recordings.md) retains these existing approach replays and the related delivery families as fifty complete episodes, with collection, semantic validation and exact comparison instructions.
+
 ## Run the cases
 
 ```powershell
