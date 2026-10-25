@@ -1170,7 +1170,7 @@ target_compile_definitions(matrixgame_ai_strategic_capture_scenarios PRIVATE
     MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
     MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
 foreach(profile park_miller10 park_miller16 legacy10 legacy16)
-    foreach(scene control objective_loss home_loss)
+    foreach(scene control objective_loss home_loss member_loss)
         add_matrix_test(game.ai.strategic_capture.${scene}.${profile} matrixgame_ai_strategic_capture_scenarios gameplay ai)
     endforeach()
 endforeach()
