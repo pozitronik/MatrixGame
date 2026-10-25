@@ -180,6 +180,35 @@ class ManualRecordingContracts(unittest.TestCase):
                 with self.assertRaises(CHECK.TRACES.TraceError):
                     CHECK.header(header, self.profile)
 
+    def test_compiler_version_matches_the_production_header_type(self):
+        for compiler, version in (("MinGW", "13.2.0"), ("MSVC", 1944)):
+            for configuration, target, cheats, trace in (
+                    ("Debug", "EXE", False, False), ("Release", "EXE", False, False),
+                    ("Release", "DLL", True, False), ("Release", "DLL", True, True)):
+                with self.subTest(compiler=compiler, configuration=configuration, target=target, trace=trace):
+                    header = make_header(self.profile)
+                    header.update(compiler=compiler, compiler_version=version, configuration=configuration,
+                                  build_exe=target == "EXE", cheats=cheats, trace=trace)
+                    identity = dict(revision="a" * 40, compiler=compiler, configuration=configuration,
+                                    target=target, cheats=cheats, trace=trace)
+                    CHECK.header(header, self.profile, identity)
+        for compiler, invalid in (
+                ("MSVC", (None, True, False, 0, -1, 1 << 31, 1944.0, "1944", [], {})),
+                ("MinGW", (None, True, False, 1944, 13.2, "", [], {}))):
+            for version in invalid:
+                with self.subTest(compiler=compiler, version=version):
+                    left = make_header(self.profile)
+                    left.update(compiler=compiler, compiler_version=version)
+                    right = copy.deepcopy(left)
+                    self.assertEqual(left, right)
+                    for header in (left, right):
+                        with self.assertRaisesRegex(CHECK.TRACES.TraceError, "compiler_version"):
+                            CHECK.header(header, self.profile)
+        unknown = make_header(self.profile)
+        unknown.update(compiler="Unknown")
+        with self.assertRaisesRegex(CHECK.TRACES.TraceError, "compiler"):
+            CHECK.header(unknown, self.profile)
+
     def test_correlated_missing_or_malformed_extra_actor_fields_fail(self):
         original = next(r for r in self.valid if r.get("phase") == "tick")
         edits = (lambda r: r["manual"].pop("forward_x_bits"),
@@ -201,6 +230,30 @@ class ManualRecordingContracts(unittest.TestCase):
                 for record in (left, right):
                     with self.assertRaises(CHECK.TRACES.TraceError):
                         CHECK.snapshot(record, self.profile, False)
+
+    def test_cli_accepts_msvc_integer_version_and_rejects_crossed_types(self):
+        p = profile("removed")
+        names = next(names for expected, names in CHECK.inventory() if expected == p)
+        records = recording(p)
+        records[0].update(compiler="MSVC", compiler_version=1944)
+        with tempfile.TemporaryDirectory() as directory:
+            args = [directory, "--revision", "a" * 40, "--configuration", "Debug", "--compiler", "MSVC",
+                    "--target", "EXE", "--cheats", "false", "--trace", "false"]
+
+            def write_pair(version):
+                records[0]["compiler_version"] = version
+                text = "".join(json.dumps(record) + "\n" for record in records)
+                for name in names:
+                    (Path(directory) / name).write_text(text, encoding="utf-8")
+
+            with mock.patch.object(CHECK, "inventory", return_value=[(p, names)]), \
+                    redirect_stderr(io.StringIO()), mock.patch("sys.stdout", new=io.StringIO()):
+                write_pair(1944)
+                self.assertEqual(0, CHECK.main(args))
+                for version in ("1944", True, 1944.0, 0, -1, 1 << 31):
+                    with self.subTest(version=version):
+                        write_pair(version)
+                        self.assertEqual(1, CHECK.main(args))
 
     def test_uint32_order_payloads_and_signed_param4_are_preserved(self):
         value = copy.deepcopy(next(r for r in self.valid if r.get("phase") == "tick"))

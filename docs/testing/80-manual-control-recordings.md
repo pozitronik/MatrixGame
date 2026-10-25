@@ -13,6 +13,8 @@ The eighty filenames are `manual-control-<track|hovercraft>-<stationary|moving>-
 
 Seed 80, Open synthetic terrain, unavailable audio, supplied picking and the surrogate device remain unchanged. Chassis kind, motion choice, effective manual bindings and compiled trace mode supplement the existing Session build/RNG/precision/compatibility header. Replay indices belong only to filenames. Original intentionally keeps its existing bounds behavior; the neighboring variants refresh target bounds and add retry/free-point navigation. Enabling that branch for Original would change the scenario.
 
+The effective compiler header preserves the Session writer's types: MSVC records `_MSC_VER` as a positive signed 32-bit JSON integer, while MinGW records `__VERSION__` as a nonempty JSON string. The validator checks the type for the named compiler and rejects booleans, missing values and crossed compiler/version representations.
+
 ## Observations and completion
 
 Every whole map advance and existing checkpoint retains the four Session actors and added manual actor 5. A live-list address/UID check precedes live-only fields. Absent or non-live objects supply absence/liveness information without reading a chassis/weapon union reused for debris. The added actor records exact position, health, speed and direction bits; group intention/target/destination/War; actual Move and ordinary/additional place; enemy references; and all physical order parameters, including Param3 bits and signed Param4. Shared Session object identities remain -1/0/1..4; the local observer also identifies actor 5.

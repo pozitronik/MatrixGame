@@ -202,8 +202,14 @@ def header(record, profile, identity=None):
     for key in ("revision", "compiler", "compiler_version", "configuration", "precision_control", "assert_off",
                 "build_exe", "cheats", "trace", "delayed_damage", "group_counts", "place_containment", "zero_x_trace"):
         require(key in record, "missing effective profile field " + key)
-    for key in ("revision", "compiler", "compiler_version", "configuration"):
+    for key in ("revision", "compiler", "configuration"):
         require(type(record[key]) is str and bool(record[key]), "invalid effective profile field " + key)
+    require(record["compiler"] in ("MSVC", "MinGW"), "invalid effective profile field compiler")
+    if record["compiler"] == "MSVC":
+        valid_version = integer(record["compiler_version"], 1, (1 << 31) - 1)
+    else:
+        valid_version = type(record["compiler_version"]) is str and bool(record["compiler_version"])
+    require(valid_version, "invalid effective profile field compiler_version")
     require(integer(record["precision_control"], 0) and integer(record.get("dirty"), 0, 1),
             "invalid precision/source identity scalar")
     for key in ("assert_off", "build_exe", "cheats", "trace"):
