@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "bomb_escape_recording.hpp"
 #include "battle_combat_geometry.hpp"
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
@@ -46,7 +47,7 @@ void position(CMatrixRobotAI &robot, float x, float y) {
 float distance(const CMatrixRobotAI &robot, float x, float y) {
     return std::hypot(robot.m_PosX - x, robot.m_PosY - y);
 }
-std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, random::Mode mode, int step) {
+std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, random::Mode mode, int step, int replay_index) {
     Containment containment(original);
     BattleCombatAssets assets;
     Profile profile{mode, 84, step, 5000, false, false};
@@ -74,18 +75,29 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
     }
     CoreLease core(bomber->GetCore(DEBUG_CALL_INFO));
     bomber->GetEnv()->AddToList(cover); // Initial historical observation.
-    if (refuge == Refuge::Reserved) cover->MoveTo(48, 8);
+    bomb_escape::Recording recording(session, name(refuge), detonate, original, mode, step, replay_index, core.get());
+    recording.state("setup-ready", session.snapshot(), {0, 0, 0, 0, 0, 0, 0, 0, distance(*escaping, 100, 100)});
+    if (refuge == Refuge::Reserved) {
+        const auto before = random::draw_count();
+        cover->MoveTo(48, 8);
+        recording.command("reserve-cover", before);
+    }
     if (refuge == Refuge::Unreachable) {
+        const auto before = random::draw_count();
         auto &start = g_MatrixMap->m_RN.m_Place[0];
         for (int edge = 0; edge < start.m_NearCnt; ++edge)
             start.m_NearMove[edge] = 1 << (escaping->m_Unit[0].u1.s1.m_Kind - 1);
+        recording.command("block-refuge-edges", before);
     }
     const CPoint intended(20, 20);
     const CPoint expected = refuge == Refuge::Unreachable ? intended :
         refuge == Refuge::Reserved && !original ? CPoint(8, 48) : CPoint(48, 8);
+    const auto move_draws = random::draw_count();
     escaping->MoveTo(intended.x, intended.y);
+    recording.command("initial-move", move_draws);
     const auto initial_draws = random::draw_count();
     g_MatrixMap->GetPlayerSide()->EscapeFromBomb();
+    recording.command("escape-from-bomb", initial_draws);
     MG_CHECK(random::draw_count() == initial_draws);
     CPoint destination, previous;
     MG_CHECK(escaping->GetMoveToCoords(destination) && destination == expected);
@@ -100,6 +112,11 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
     int damage_at = 0, arrived_at = 0, retired_at = 0;
     const bool observe_rediversion = refuge == Refuge::Free && !detonate;
     float maximum_distance = distance(*escaping, 100, 100);
+    const auto progress = [&] {
+        return bomb_escape::Milestones{safe_at, refuge_at, first_return, second_escape, cleared_at,
+                                       damage_at, arrived_at, retired_at, maximum_distance};
+    };
+    recording.state("planned", states.back(), progress());
     while (session.time() < 45000) {
         session.advance();
         MG_CHECK(escaping->IsLiveRobot() && cover->IsLiveRobot());
@@ -128,6 +145,8 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
             const bool clear_now = refuge == Refuge::Unreachable ? session.time() >= 1200 :
                 observe_rediversion ? second_escape != 0 : safe_at != 0;
             if (clear_now) {
+                recording.state("before-clearance", session.snapshot(), progress());
+                const auto clearance_draws = random::draw_count();
                 cleared_at = session.time();
                 if (detonate) {
                     bomber->BigBoom();
@@ -136,7 +155,9 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
                     MG_CHECK(session.remove(3));
                     MG_CHECK(!core->m_Object);
                 }
+                recording.command(detonate ? "detonate" : "remove", clearance_draws);
                 states.push_back(std::string(detonate ? "detonate:" : "remove:") + session.snapshot());
+                recording.state("clearance", states.back(), progress());
             }
         }
         if (cleared_at) {
@@ -146,6 +167,7 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
                 arrived_at = session.time();
         }
         states.push_back(session.snapshot());
+        recording.state("tick", states.back(), progress());
         if (arrived_at && retired_at && session.time() >= arrived_at + 500) break;
     }
     MG_CHECK(cleared_at > 0 && arrived_at > cleared_at && retired_at >= cleared_at);
@@ -176,13 +198,16 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
     std::cout << "safe=" << safe_at << " refuge=" << refuge_at << " return=" << first_return << " redivert=" << second_escape
         << " cleared=" << cleared_at << " damage=" << damage_at << " retired=" << retired_at
         << " arrival=" << arrived_at << " draws=" << random::draw_count() << '\n';
+    recording.state("final", states.back(), progress());
+    recording.finish();
     return states;
 }
 void run(Refuge refuge) {
+    bomb_escape::invalidate(name(refuge));
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (int step : {10, 16}) for (bool original : {false, true}) for (bool detonate : {false, true}) {
-            const auto reference = journey(refuge, detonate, original, mode, step);
-            const auto replay = journey(refuge, detonate, original, mode, step);
+            const auto reference = journey(refuge, detonate, original, mode, step, 0);
+            const auto replay = journey(refuge, detonate, original, mode, step, 1);
             MG_CHECK(reference.size() == replay.size());
             for (size_t index = 0; index < reference.size(); ++index)
                 if (reference[index] != replay[index])
@@ -212,5 +237,13 @@ int main(int argc, char **argv) {
     }
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            tests::battle::bomb_escape::complete_after_cleanup();
+        } catch (const std::exception &error) {
+            std::cerr << "Bomb-escape recording completion failed: " << error.what() << '\n';
+            result = EXIT_FAILURE;
+        }
+    }
     return result;
 }
