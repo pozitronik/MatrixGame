@@ -18,6 +18,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <initializer_list>
 #include <sstream>
 
 namespace {
@@ -49,16 +50,32 @@ std::set<CMatrixMapObject *> building_ruins() {
         }
     return result;
 }
+std::vector<std::pair<std::filesystem::path, std::string>> combat_completions;
 struct Trace {
+    std::filesystem::path path;
     std::ofstream file;
     std::vector<std::string> states;
+    static std::filesystem::path path_for(const char *name, random::Mode mode, int step, int run) {
+        return std::filesystem::current_path() / "scenario-traces" / (std::string(name) + "-" +
+            (mode == random::Mode::ParkMiller ? "pm" : "crt") + "-" +
+            std::to_string(step) + "-" + std::to_string(run) + ".jsonl");
+    }
+    static void invalidate(const char *name, std::initializer_list<int> steps) {
+        std::filesystem::create_directories(std::filesystem::current_path() / "scenario-traces");
+        for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+            for (int step : steps)
+                for (int run : {0, 1}) {
+                    std::ofstream file(path_for(name, mode, step, run), std::ios::trunc);
+                    MG_CHECK(file.good());
+                    file.close();
+                    MG_CHECK(file.good());
+                }
+    }
     Trace(Session &session, Profile p, const char *name, int run,
           const char *fixture = "synthetic-armed-boxes-v2") {
         const auto directory = std::filesystem::current_path() / "scenario-traces";
         std::filesystem::create_directories(directory);
-        const auto path = directory / (std::string(name) + "-" +
-            (p.mode == random::Mode::ParkMiller ? "pm" : "crt") + "-" +
-            std::to_string(p.step_ms) + "-" + std::to_string(run) + ".jsonl");
+        path = path_for(name, p.mode, p.step_ms, run);
         file.open(path, std::ios::trunc);
         MG_CHECK(file.good());
         std::string header = session.metadata(fixture);
@@ -116,6 +133,14 @@ struct Trace {
              << ",\"time_ms\":" << session.time() << "}\n";
         file.flush();
         MG_CHECK(file.good());
+    }
+    void defer_completion(Session &session) {
+        std::ostringstream completion;
+        completion << "{\"type\":\"complete\",\"frame\":" << session.frame()
+                   << ",\"time_ms\":" << session.time() << "}\n";
+        file.flush();
+        MG_CHECK(file.good());
+        combat_completions.emplace_back(path, completion.str());
     }
 };
 void compare(const std::vector<std::string> &expected, const std::vector<std::string> &actual) {
@@ -183,10 +208,11 @@ std::vector<std::string> robot_run(Profile profile, bool plasma, int run) {
     else MG_CHECK(target->GetHitPoint() == at_removal);
     trace.record(session, target);
     session.check_running();
-    trace.complete(session);
+    trace.defer_completion(session);
     return trace.states;
 }
 void robot_firing() {
+    Trace::invalidate("laser-attack", {10, 16});
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (int step : {10, 16}) {
             const Profile p{mode, 82, step, 1000, false, true};
@@ -195,6 +221,7 @@ void robot_firing() {
         }
 }
 void plasma_flight() {
+    Trace::invalidate("plasma-flight", {10});
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         const Profile p{mode, 82, 10, 1000, false, true};
         const auto a = robot_run(p, true, 0);
@@ -261,10 +288,11 @@ std::vector<std::string> cannon_run(random::Mode mode, int run) {
     MG_CHECK(yaw_changed && cannon->m_Angle == 0);
     trace.record(session, next, nullptr, cannon);
     session.check_running();
-    trace.complete(session);
+    trace.defer_completion(session);
     return trace.states;
 }
 void cannon_firing() {
+    Trace::invalidate("cannon-retarget", {10});
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         const auto a = cannon_run(mode, 0);
         compare(a, cannon_run(mode, 1));
@@ -2322,5 +2350,21 @@ int main(int argc, char **argv) {
     }
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            // Selected tails require every Session lifetime, replay and outer cleanup check to pass.
+            for (const auto &[path, completion] : combat_completions) {
+                std::ofstream file(path, std::ios::app);
+                MG_CHECK(file.good());
+                file << completion;
+                file.flush();
+                MG_CHECK(file.good());
+            }
+        }
+        catch (const std::exception &error) {
+            std::cerr << "Combat recording completion failed: " << error.what() << '\n';
+            result = EXIT_FAILURE;
+        }
+    }
     return result;
 }
