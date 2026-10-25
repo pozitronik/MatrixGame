@@ -39,3 +39,5 @@ The following map-clock observations are checked in both RNG modes. Opening and 
 The final balances include continuing base income after purchase. The four-draw total includes the decision and subsequent production activity; only the first draw is attributed to choosing the design. The suite checks the decision interval separately, so a changed selection lottery cannot be hidden by later activity. Debug's tracked-allocation check also runs after each selected test process has torn down its sessions.
 
 This completes the selected A7 component trajectory. It does not establish native presentation, audible production feedback, a complete autonomous opponent or acceptance of the whole-game behavior baseline.
+
+[Strategic-production recordings](strategic-production-recordings.md) document the finite JSONL inventory, ordered observations, strict consumer and independent reference comparison.

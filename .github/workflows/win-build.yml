@@ -191,6 +191,15 @@ jobs:
           if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
           python -B tests/check_player_auto_traces.py "build/$buildName/tests/scenario-traces"
           if ($LASTEXITCODE -ne 0) { throw 'Auto-order trace validation failed.' }
+      - name: Validate strategic-production recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $sourceRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
+          python -B tools/check-strategic-production-recordings.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats && 'true' || 'false' }}' --trace '${{ matrix.trace && 'true' || 'false' }}' --revision $sourceRevision
+          if ($LASTEXITCODE -ne 0) { throw 'Strategic-production recording validation failed.' }
       - name: Upload engine test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
