@@ -101,6 +101,35 @@ class AutoTraceContracts(unittest.TestCase):
                     self.assertEqual(0, self.run_cli())
                 self.assertEqual(1, self.run_cli())
 
+    def test_liveness_cannot_bypass_queue_checks(self):
+        for value in (None, "true", "false", 0, 1, 0.0, 1.0, [], {}):
+            for missing in (False, True) if value is None else (False,):
+                with self.subTest(alive=value, missing=missing):
+                    records = json.loads(json.dumps(self.records))
+                    actor = records[2]["state"]["robots"][0]
+                    actor["alive"] = value
+                    actor["queue"] = "malformed"
+                    if missing:
+                        del actor["alive"]
+                    self.overwrite(records, both=True)
+                    with self.assertRaisesRegex(CHECK.TRACES.TraceError, r"robots\[0\]\.alive must be a boolean"):
+                        CHECK.load(self.directory, self.names[0])
+                    with mock.patch.object(CHECK, "validate_queues"):
+                        self.assertEqual(0, self.run_cli())
+                    self.assertEqual(1, self.run_cli())
+
+    def test_dead_actor_stale_queue_fails_even_when_both_replays_match(self):
+        for queue in ([], [[0, 0, 0, 0, 0]], "malformed", None):
+            with self.subTest(queue=queue):
+                records = json.loads(json.dumps(self.records))
+                records[2]["state"]["robots"][0].update(alive=False, queue=queue)
+                self.overwrite(records, both=True)
+                with self.assertRaisesRegex(CHECK.TRACES.TraceError, r"queue must be omitted for a dead actor"):
+                    CHECK.load(self.directory, self.names[0])
+                with mock.patch.object(CHECK, "validate_queues"):
+                    self.assertEqual(0, self.run_cli())
+                self.assertEqual(1, self.run_cli())
+
     def test_later_live_actor_and_queue_entry_are_checked(self):
         records = json.loads(json.dumps(self.records))
         later = dict(records[-2]["state"]["robots"][0], id=2)

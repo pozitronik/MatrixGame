@@ -27,10 +27,15 @@ def validate_queues(records, source):
         if record["type"] != "snapshot":
             continue
         for index, robot in enumerate(record["state"]["robots"]):
+            actor_path = f"{source}:{line}: $.state.robots[{index}]"
+            if type(robot.get("alive")) is not bool:
+                raise TRACES.TraceError(f"{actor_path}.alive must be a boolean")
             # Session::snapshot omits the queue once the actor is no longer live.
-            if robot.get("alive") is not True:
+            if not robot["alive"]:
+                if "queue" in robot:
+                    raise TRACES.TraceError(f"{actor_path}.queue must be omitted for a dead actor")
                 continue
-            path = f"{source}:{line}: $.state.robots[{index}].queue"
+            path = f"{actor_path}.queue"
             queue = robot.get("queue")
             if type(queue) is not list or len(queue) > 5:
                 raise TRACES.TraceError(f"{path} must be an array of at most 5 orders")
