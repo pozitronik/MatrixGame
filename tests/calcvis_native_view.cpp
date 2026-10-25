@@ -16,6 +16,7 @@
 #include <iterator>
 #include <string_view>
 #include <string>
+#include <array>
 #include <cmath>
 #include <iostream>
 #include <shellapi.h>
@@ -34,6 +35,49 @@ bool accepts(int argc, const wchar_t *const *argv) {
     return argc == 5 && std::wstring_view(argv[1]) == L"--view" && argv[2][0] &&
            (std::wstring_view(argv[3]) == L"Text" || std::wstring_view(argv[3]) == L"Packed") &&
            std::wstring_view(argv[4]) == L"--allow-visible-window";
+}
+
+// The parked fixture has no spawn base and must never enter a simulation tick.
+// Filter commands before the normal form can resume time or replace its selection.
+bool ignored_input(UINT message, WPARAM key) {
+    if (message == WM_KEYDOWN || message == WM_KEYUP) return key != VK_F7 && key != VK_ESCAPE;
+    switch (message) {
+    case WM_SYSKEYDOWN:
+    case WM_SYSKEYUP:
+    case WM_CHAR:
+    case WM_SYSCHAR:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_LBUTTONDBLCLK:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_MBUTTONDBLCLK:
+    case WM_RBUTTONDBLCLK:
+    case WM_XBUTTONDOWN:
+    case WM_XBUTTONUP:
+    case WM_XBUTTONDBLCLK:
+    case WM_MOUSEWHEEL:
+        return true;
+    default:
+        return false;
+    }
+}
+
+void input_guard() {
+    for (UINT message : {WM_KEYDOWN, WM_KEYUP}) {
+        for (WPARAM key : std::array<WPARAM, 8>{
+                VK_PAUSE, VK_RETURN, VK_SPACE, VK_LEFT, VK_RIGHT, 'C', 'M', '1'})
+            MG_CHECK(ignored_input(message, key));
+        MG_CHECK(!ignored_input(message, VK_F7));
+        MG_CHECK(!ignored_input(message, VK_ESCAPE));
+    }
+    for (UINT message : {WM_SYSKEYDOWN, WM_SYSKEYUP, WM_CHAR, WM_SYSCHAR, WM_LBUTTONDOWN,
+                         WM_LBUTTONUP, WM_LBUTTONDBLCLK, WM_MBUTTONDOWN, WM_MBUTTONUP,
+                         WM_MBUTTONDBLCLK, WM_RBUTTONDBLCLK, WM_XBUTTONDOWN, WM_XBUTTONUP,
+                         WM_XBUTTONDBLCLK, WM_MOUSEWHEEL})
+        MG_CHECK(ignored_input(message, VK_RETURN));
+    for (UINT message : {WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_CLOSE, WM_PAINT})
+        MG_CHECK(!ignored_input(message, 0));
 }
 
 fs::path controlled_map_path() {
@@ -116,6 +160,7 @@ void fail(std::string_view text) noexcept {
 LRESULT CALLBACK observe(HWND window, UINT message, WPARAM key, LPARAM data) {
     if (!current) return DefWindowProcW(window, message, key, data);
     try {
+        if (ignored_input(message, key)) return 0;
         if (message == WM_KEYDOWN && key == VK_ESCAPE) {
             SETFLAG(g_Flags, GFLAG_EXITLOOP);
             return 0;
@@ -297,6 +342,7 @@ int main(int argc, char **argv) {
         }
     }
     const tests::Case cases[] = {{"game.presentation.calcvis_view_argument_guard", argument_guard},
+                                {"game.presentation.calcvis_view_input_guard", input_guard},
                                 {"game.presentation.calcvis_view_transition_guard", transition_guard}};
     return tests::run(argc, argv, cases);
 }
