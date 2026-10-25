@@ -29,6 +29,22 @@ def number(value):
     return struct.unpack("<f", struct.pack("<I", value))[0]
 
 
+def full_revision(value):
+    return type(value) is str and len(value) == 40 and all(character in "0123456789abcdef" for character in value)
+
+
+def provenance(header, revision=None, *, strict=False):
+    require(isinstance(header.get("revision"), str) and header["revision"]
+            and type(header.get("dirty")) is int and header["dirty"] in (0, 1), "invalid source provenance")
+    if revision is not None:
+        require(full_revision(revision), "revision must be a full lowercase 40-hex commit ID")
+    if strict or revision is not None:
+        require(full_revision(header["revision"]), "header revision must be a full lowercase 40-hex commit ID")
+        require(header["dirty"] == 0, "dirty source identity")
+    if revision is not None:
+        require(header["revision"] == revision, "header.revision differs")
+
+
 def inventory():
     for family in ("mixed", "spawning", "carried", "dying"):
         for suffix, rng in (("pm", "ParkMiller"), ("crt", "LegacyCRT")):
@@ -280,12 +296,9 @@ def validate(records, profile, *, revision=None, configuration=None, compiler=No
     for key, value in expected.items():
         require(type(header.get(key)) is type(value) and header[key] == value, "header." + key + " differs")
     require(type(header.get("trace")) is bool, "missing compiled trace profile")
-    require(isinstance(header.get("revision"), str) and header["revision"]
-            and type(header.get("dirty")) is int and header["dirty"] in (0, 1), "invalid source provenance")
+    provenance(header, revision)
     require(type(header.get("build_exe")) is bool and type(header.get("cheats")) is bool,
             "missing compiled role or cheats profile")
-    if revision is not None:
-        require(type(header.get("dirty")) is int and header["dirty"] == 0, "dirty source identity")
     commands, end = schedule(profile)
     actual_commands = [record for record in records if record["type"] == "command"]
     require([(r["name"], r.get("time_ms")) for r in actual_commands] == commands, "command schedule differs")
@@ -407,7 +420,12 @@ def read(path):
         return trace.read_records(stream, str(path))
 
 
-def check_directory(directory, *, reference=None, **identity):
+def check_directory(directory, *, reference=None, reference_revision=None, **identity):
+    if reference_revision is not None:
+        require(reference is not None, "reference revision requires a reference directory")
+        require(full_revision(reference_revision), "reference revision must be a full lowercase 40-hex commit ID")
+    if identity.get("revision") is not None:
+        require(full_revision(identity["revision"]), "revision must be a full lowercase 40-hex commit ID")
     selections = list(inventory())
     expected = {name for name, _ in selections}
     require({p.name for p in directory.glob("player-command-*.jsonl")} == expected, "C2 finite inventory differs")
@@ -419,7 +437,9 @@ def check_directory(directory, *, reference=None, **identity):
         current = validate(records, profile, **identity)
         if reference is not None:
             old = read(reference / name)
-            validate(old, profile, **{k: v for k, v in identity.items() if k != "revision"})
+            provenance(old[0], reference_revision, strict=identity.get("revision") is not None)
+            validate(old, profile, revision=reference_revision,
+                     **{k: v for k, v in identity.items() if k != "revision"})
             difference = trace.compare_records(old, records)
             require(difference is None, f"{name}: reference divergence: {difference}")
         if profile["family"] == "mixed":
@@ -436,6 +456,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("directory", type=Path)
     parser.add_argument("--reference", type=Path)
+    parser.add_argument("--reference-revision")
     parser.add_argument("--revision")
     parser.add_argument("--configuration", choices=("Debug", "Release"))
     parser.add_argument("--compiler", choices=("MinGW", "MSVC"))

@@ -15,6 +15,9 @@ spec = importlib.util.spec_from_file_location("command_lifecycle_traces",
 c2 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(c2)
 
+CANDIDATE = "1" * 40
+HISTORICAL = "2" * 40
+
 
 def bits(value):
     return struct.unpack("<I", struct.pack("<f", value))[0]
@@ -55,7 +58,7 @@ def dying_recording(step=10):
                   step_ms=step, max_frames=6000, initially_selected=False, audio="unavailable",
                   navigation_layout="open-v1", move_route=-1, flag=False, extra_actor=0, trace=False,
                   configuration="Release", compiler="MinGW", precision_control=131072,
-                  revision="candidate", dirty=0, build_exe=True, cheats=False)
+                  revision=CANDIDATE, dirty=0, build_exe=True, cheats=False)
     commands, end = c2.schedule(profile)
     hit = commands[1][1]
     retired_at = commands[-1][1]
@@ -119,6 +122,60 @@ def movement_boundaries(family, step):
 
 
 class CommandLifecycleTraces(unittest.TestCase):
+    def compare_reference(self, *, candidate_header=None, reference_header=None, revision=CANDIDATE,
+                          reference_revision=None):
+        profile, records = dying_recording()
+        candidate = [dict(records[0], **(candidate_header or {}))] + records[1:]
+        reference = [dict(records[0], revision=HISTORICAL)] + records[1:]
+        reference[0].update(reference_header or {})
+        name = "player-command-dying-pm-10.jsonl"
+        with tempfile.TemporaryDirectory() as temp:
+            directories = [Path(temp) / name for name in ("candidate", "reference")]
+            for directory, content in zip(directories, (candidate, reference)):
+                directory.mkdir()
+                (directory / name).write_text("\n".join(json.dumps(r) for r in content), encoding="utf-8")
+            with mock.patch.object(c2, "inventory", return_value=iter([(name, profile)])):
+                return c2.check_directory(directories[0], reference=directories[1], revision=revision,
+                                          reference_revision=reference_revision, configuration="Release",
+                                          compiler="MinGW", target="EXE", cheats=False, traced=False)
+
+    def test_strict_candidate_accepts_a_different_clean_historical_revision(self):
+        self.assertEqual(self.compare_reference(), (1, 0))
+        self.assertEqual(self.compare_reference(reference_revision=HISTORICAL), (1, 0))
+
+    def test_explicit_historical_pin_rejects_another_clean_commit(self):
+        with self.assertRaisesRegex(c2.trace.TraceError, "revision differs"):
+            self.compare_reference(reference_revision="3" * 40)
+
+    def test_strict_candidate_rejects_dirty_or_short_reference_without_a_pin(self):
+        for changed in (dict(dirty=1), dict(dirty=True), dict(revision="short")):
+            with self.subTest(changed=changed), self.assertRaises(c2.trace.TraceError):
+                self.compare_reference(reference_header=changed)
+
+    def test_strict_reference_still_requires_supplied_build_fields(self):
+        for changed in (dict(compiler="MSVC"), dict(configuration="Debug"), dict(build_exe=False),
+                        dict(cheats=True), dict(trace=True)):
+            with self.subTest(changed=changed), self.assertRaises(c2.trace.TraceError):
+                self.compare_reference(reference_header=changed)
+
+    def test_reference_pin_requires_a_folder_and_full_commit(self):
+        with self.assertRaisesRegex(c2.trace.TraceError, "reference directory"):
+            c2.check_directory(Path("unused"), reference_revision=HISTORICAL)
+        for invalid in ("short", "g" * 40, "A" * 40, 123):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(c2.trace.TraceError, "40-hex"):
+                c2.check_directory(Path("unused"), reference=Path("reference"), reference_revision=invalid)
+
+    def test_strict_candidate_requires_full_commit_and_clean_header(self):
+        for invalid in ("short", "g" * 40, "A" * 40, 123):
+            with self.subTest(invalid=invalid), self.assertRaisesRegex(c2.trace.TraceError, "40-hex"):
+                c2.check_directory(Path("unused"), revision=invalid)
+        with self.assertRaisesRegex(c2.trace.TraceError, "dirty"):
+            self.compare_reference(candidate_header=dict(dirty=1))
+
+    def test_unpinned_diagnostic_source_identity_remains_explicitly_supported(self):
+        self.assertEqual(self.compare_reference(candidate_header=dict(revision="working", dirty=1),
+                         reference_header=dict(revision="archive", dirty=1), revision=None), (1, 0))
+
     def test_mixed_progress_stop_and_stationary_contract(self):
         for step in (10, 16):
             profile, commands, records = movement_boundaries("mixed", step)
@@ -167,7 +224,7 @@ class CommandLifecycleTraces(unittest.TestCase):
         for step in (10, 16):
             profile, records = dying_recording(step)
             parsed = c2.trace.read_records(io.StringIO("\n".join(json.dumps(r) for r in records)), "synthetic")
-            self.assertEqual(c2.validate(parsed, profile, revision="candidate", configuration="Release",
+            self.assertEqual(c2.validate(parsed, profile, revision=CANDIDATE, configuration="Release",
                                          compiler="MinGW", target="EXE", cheats=False, traced=False), [])
 
     def test_scalar_order_parameters_reject_bool_float_and_string(self):
@@ -273,7 +330,7 @@ class CommandLifecycleTraces(unittest.TestCase):
             changed = copy.deepcopy(records[0])
             changed[key] = value
             with self.assertRaises(c2.trace.TraceError):
-                c2.validate([changed], profile, revision="candidate")
+                c2.validate([changed], profile, revision=CANDIDATE)
 
     def test_truncated_or_duplicate_tail_is_not_a_completed_episode(self):
         _, records = dying_recording()
@@ -298,7 +355,8 @@ class CommandLifecycleTraces(unittest.TestCase):
             with mock.patch.object(c2, "inventory", return_value=iter([(name, profile)])), \
                     mock.patch.object(c2.trace, "compare_records", side_effect=AssertionError("must validate first")):
                 with self.assertRaisesRegex(c2.trace.TraceError, "Move destination"):
-                    c2.check_directory(candidate, reference=reference)
+                    c2.check_directory(candidate, reference=reference, revision=CANDIDATE,
+                                       reference_revision=CANDIDATE)
 
 
 if __name__ == "__main__":
