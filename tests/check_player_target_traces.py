@@ -231,8 +231,12 @@ def validate(records, spec):
         require(type(header.get(key)) is type(value) and header[key] == value, "fixture/header mismatch: " + key)
     require(point(header["viewport"]), "viewport must retain integer coordinates")
     require(header.get("navigation_layout", "central-obstacle-v1") == "central-obstacle-v1", "layout differs")
-    for key in ("revision", "compiler_version", "delayed_damage", "group_counts", "place_containment", "zero_x_trace"):
+    for key in ("revision", "delayed_damage", "group_counts", "place_containment", "zero_x_trace"):
         require(type(header.get(key)) is str and bool(header[key]), "profile metadata missing: " + key)
+    compiler, version = header.get("compiler"), header.get("compiler_version")
+    require(compiler in ("MinGW", "MSVC"), "invalid compiled compiler")
+    require(integer(version, 1) if compiler == "MSVC" else type(version) is str and bool(version),
+            "invalid compiled compiler_version")
     require(type(header.get("dirty")) is int and header["dirty"] in (-1, 0, 1), "invalid source dirty marker")
     for key in ("assert_off", "build_exe", "cheats"):
         require(type(header.get(key)) is bool, "invalid compiled boolean: " + key)

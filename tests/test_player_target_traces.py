@@ -183,6 +183,29 @@ class TargetTraceContracts(unittest.TestCase):
                 with self.subTest(rng=rng, step=step):
                     self.validated(*contract_episode(step=step, rng=rng))
 
+    def test_compiler_versions_retain_the_source_representations(self):
+        for compiler, version in (("MinGW", "13.2.0"), ("MSVC", 1944)):
+            for configuration in ("Debug", "Release"):
+                records, spec = contract_episode()
+                records[0].update(compiler=compiler, compiler_version=version, configuration=configuration)
+                with self.subTest(compiler=compiler, configuration=configuration):
+                    self.validated(records, spec)
+
+    def test_correlated_invalid_compiler_versions_are_rejected(self):
+        invalid_versions = {"MSVC": (None, True, False, "1944", 1944.0, 0, -1, 0x80000000),
+                            "MinGW": (None, True, False, 13, 13.2, "")}
+        for compiler, versions in invalid_versions.items():
+            for version in versions:
+                records, spec = contract_episode()
+                records[0].update(compiler=compiler, compiler_version=version)
+                if version is None:
+                    del records[0]["compiler_version"]
+                parsed = CHECK.TRACES.read_records(io.StringIO("\n".join(map(json.dumps, records))))
+                self.assertIsNone(CHECK.TRACES.compare_records(parsed, copy.deepcopy(parsed)))
+                with self.subTest(compiler=compiler, version=version), self.assertRaisesRegex(
+                        CHECK.TRACES.TraceError, "compiler_version"):
+                    CHECK.validate(parsed, spec)
+
     def test_correlated_missing_custom_fields_need_semantic_validation(self):
         original, spec = contract_episode()
         for field in original[1]["target_lifecycle"]:
