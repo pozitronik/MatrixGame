@@ -212,15 +212,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot identify selection recording revision.' }
           python -B tools/check-selection-traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
           if ($LASTEXITCODE -ne 0) { throw 'Mixed-selection recording validation failed.' }
-      - name: Validate regional-road journey recordings
-        shell: pwsh
-        run: |
-          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
-          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
-          $revision = git rev-parse HEAD
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify road recording revision.' }
-          python -B tools/check-road-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
-          if ($LASTEXITCODE -ne 0) { throw 'Regional-road recording validation failed.' }
       - name: Validate complete N5 navigation recordings
         shell: pwsh
         run: |
@@ -252,6 +243,15 @@ jobs:
         if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         shell: pwsh
         run: ./tools/package.ps1
+      - name: Validate regional-road journey recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify road recording revision.' }
+          python -B tools/check-road-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Regional-road recording validation failed.' }
       - name: Upload standalone package and corresponding source
         if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
