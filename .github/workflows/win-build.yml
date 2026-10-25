@@ -239,6 +239,15 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
           python -B tests/check_fire_feedback_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --revision $sourceRevision
           if ($LASTEXITCODE -ne 0) { throw 'Fire-feedback producer/parser validation failed.' }
+      - name: Validate competing-repair recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $sourceRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
+          python -B tests/check_competing_repair_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats && 'ON' || 'OFF' }}' --trace '${{ matrix.trace && 'ON' || 'OFF' }}' --revision $sourceRevision
+          if ($LASTEXITCODE -ne 0) { throw 'Competing-repair producer/parser validation failed.' }
       - name: Prepare the minimal standalone package
         if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         shell: pwsh

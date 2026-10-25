@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "competing_repair_recording.hpp"
 #include "battle_geometry.hpp"
 #include "battle_combat_geometry.hpp"
 #include "battle_mesh.hpp"
@@ -839,14 +840,22 @@ void repair_competing_run(bool replace_order, bool competitor_in_range = false) 
         auto *first = injure(160, 140);
         const auto release = [](SObjectCore *core) { core->Release(); };
         std::unique_ptr<SObjectCore, decltype(release)> first_core(first->GetCore(DEBUG_CALL_INFO), release);
+        competing_repair::Recording recording(session, mode, step, replace_order, competitor_in_range,
+                                               observer, first, second, first_core.get());
+        recording.state("initial", 0, 0, first->GetHitPoint(), second->GetHitPoint(), false, 0);
+        const auto initial_draws = random::draw_count();
         session.ground_command(500, 200);
+        recording.command("move", initial_draws);
         MG_CHECK(observer->GetEnv()->m_Target == first);
+        recording.state("after-move", 0, 0, first->GetHitPoint(), second->GetHitPoint(), false,
+                        recording.identity(observer->GetEnv()->m_Target));
         auto intent = session.robot(1);
         int first_pulses = 0, second_pulses = 0;
         float first_health = first->GetHitPoint(), second_health = second->GetHitPoint();
         bool changed = false;
         while (session.time() < 25000) {
             const auto *target_before = observer->GetEnv()->m_Target;
+            const int recorded_target = recording.identity(observer->GetEnv()->m_Target);
             session.advance();
             const auto state = session.robot(1);
             MG_CHECK(state.order == mpo_MoveTo);
@@ -866,6 +875,9 @@ void repair_competing_run(bool replace_order, bool competitor_in_range = false) 
                 MG_CHECK(second_health == float(std::min(50, 32 + second_pulses * 4)) / 10.0f);
             }
             if (!changed && first_pulses == (competitor_in_range ? 3 : 2)) {
+                recording.state("before-change", first_pulses, second_pulses, first_health, second_health,
+                                changed, recorded_target);
+                const auto change_draws = random::draw_count();
                 MG_CHECK(observer->m_PosX > 100 && observer->GetEnv()->m_Target == first);
                 MG_CHECK(second_pulses == 0);
                 if (replace_order) {
@@ -881,9 +893,14 @@ void repair_competing_run(bool replace_order, bool competitor_in_range = false) 
                     first = nullptr;
                     MG_CHECK(!first_core->m_Object && !observer->GetEnv()->m_Target);
                 }
+                recording.command(replace_order ? "replace-move" : "retire-patient", change_draws);
                 changed = true;
+                recording.state("after-change", first_pulses, second_pulses, first_health, second_health,
+                                changed, recorded_target);
             }
             if (changed && !replace_order) MG_CHECK(!first_core->m_Object);
+            recording.state("tick", first_pulses, second_pulses, first_health, second_health,
+                            changed, recorded_target);
         }
         MG_CHECK(changed && first_pulses == (replace_order ? 5 : 2) && second_pulses == 5);
         MG_CHECK(second->GetHitPoint() == 5 && !second->NeedRepair());
@@ -892,13 +909,22 @@ void repair_competing_run(bool replace_order, bool competitor_in_range = false) 
         MG_CHECK(observer->m_PosX == (replace_order ? 300 : 500));
         MG_CHECK(observer->m_PosY == (replace_order ? 500 : 200));
         MG_CHECK(!observer->GetEnv()->m_Target && !observer->FindOrderLikeThat(ROT_FIRE));
+        recording.state("final", first_pulses, second_pulses, first_health, second_health, changed, 0);
+        recording.finish();
         std::cout << session.metadata("competing-moving-repair-v2") << " replace=" << replace_order << " competitor_in_range=" << competitor_in_range
                   << " first_pulses=" << first_pulses << " second_pulses=" << second_pulses << '\n';
     }
 }
 }
-void repair_competing_retirement() { repair_competing_run(false); }
-void repair_replacement_move() { repair_competing_run(true); repair_competing_run(true, true); }
+void repair_competing_retirement() {
+    competing_repair::invalidate(false);
+    repair_competing_run(false);
+}
+void repair_replacement_move() {
+    competing_repair::invalidate(true);
+    repair_competing_run(true);
+    repair_competing_run(true, true);
+}
 
 namespace {
 enum class CombatJourney { Move, Patrol, RetireTarget, ReplaceMove };
