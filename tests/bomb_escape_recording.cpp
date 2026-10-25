@@ -89,8 +89,16 @@ void Recording::state(const char *phase, std::string_view raw, const Milestones 
         << ",\"first_return\":" << milestones.first_return << ",\"second_escape\":" << milestones.second_escape
         << ",\"cleared\":" << milestones.cleared << ",\"damage\":" << milestones.damage
         << ",\"arrived\":" << milestones.arrived << ",\"retired\":" << milestones.retired
-        << ",\"maximum_distance_bits\":" << std::bit_cast<uint32_t>(milestones.maximum_distance)
-        << "},\"kills\":[" << g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) << ','
+        << ",\"maximum_distance_bits\":" << std::bit_cast<uint32_t>(milestones.maximum_distance);
+    const auto sample = [&](const std::optional<float> &value) {
+        if (value) out << "{\"value_bits\":" << std::bit_cast<uint32_t>(*value) << '}';
+        else out << "null";
+    };
+    out << ",\"bomb_distance\":";
+    sample(milestones.bomb_distance);
+    out << ",\"refuge_distance\":";
+    sample(milestones.refuge_distance);
+    out << "},\"kills\":[" << g_MatrixMap->GetPlayerSide()->GetStatValue(STAT_ROBOT_KILL) << ','
         << g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) << "],\"start_edge_masks\":[";
     const auto &place = g_MatrixMap->m_RN.m_Place[0];
     for (int index = 0; index < place.m_NearCnt; ++index) {

@@ -81,12 +81,14 @@ def synthetic_trace(family="unreachable", detonate=False, containment="corrected
     refuge_time, first_return = aligned(2000), aligned(3000)
     goal = [20, 20] if unreachable else [8, 48] if family == "reserved" and containment == "corrected" else [48, 8]
     progress = dict.fromkeys(CHECK.EVENTS, 0)
-    maximum = 80.0
+    maximum = 0.0
+    sample_frame = None
+    bomb_sample = refuge_sample = None
     cleared = False
     yield header(family, detonate, containment, step, replay)
 
     def state(phase, now, *, post=False):
-        nonlocal maximum
+        nonlocal maximum, sample_frame, bomb_sample, refuge_sample
         initial = phase == "setup-ready"
         if not now:
             x, y = 180.0, 100.0
@@ -102,7 +104,15 @@ def synthetic_trace(family="unreachable", detonate=False, containment="corrected
         else:
             x = y = 220.0
         x, y = CHECK.floating(CHECK.float_bits(x)), CHECK.floating(CHECK.float_bits(y))
-        maximum = max(maximum, math.hypot(x - 100, y - 100))
+        if not initial and (sample_frame != now or phase == "planned"):
+            sample_frame = now
+            bomb_sample = {"value_bits": CHECK.float_bits(math.hypot(x - 100, y - 100))}
+            refuge_sample = None
+            if phase != "planned" and not unreachable and not progress["refuge"]:
+                refuge_sample = {
+                    "value_bits": CHECK.float_bits(math.hypot(x - (goal[0] + 2) * 10, y - (goal[1] + 2) * 10))
+                }
+            maximum = max(maximum, CHECK.sample(bomb_sample))
         returning = not initial and not unreachable and (now < first_return or (redivert and clear <= now < arrived))
         moving = not initial and now < arrived
         destination = (goal if returning else [20, 20]) if moving else [-1, -1]
@@ -187,7 +197,12 @@ def synthetic_trace(family="unreachable", detonate=False, containment="corrected
             state=dict(frame=now // step, time_ms=now, rng_draws=7, robots=robots, player_groups=[]),
             bomber_core_present=actors[2]["present"],
             bomber_core=3 if actors[2]["present"] else 0,
-            milestones=dict(progress, maximum_distance_bits=CHECK.float_bits(maximum)),
+            milestones=dict(
+                progress,
+                maximum_distance_bits=CHECK.float_bits(maximum),
+                bomb_distance=bomb_sample,
+                refuge_distance=refuge_sample,
+            ),
             kills=[0, 0],
             start_edge_masks=[2, 2] if unreachable and not initial else [0, 0],
             actors=actors,
@@ -373,6 +388,27 @@ class BombEscapeTests(unittest.TestCase):
             edit(bad[where])
             with self.assertRaises(ValueError):
                 CHECK.validate(bad, ("unreachable", "pm", 10, "corrected", False), 0, arguments(), REVISION)
+
+    def test_source_samples_retain_float_rounding_and_short_circuit(self):
+        self.assertIsNone(CHECK.sample(None))
+        self.assertEqual(CHECK.sample({"value_bits": CHECK.float_bits(330.000001)}), 330.0)
+        self.assertEqual(CHECK.sample({"value_bits": CHECK.float_bits(0.99999999)}), 1.0)
+        for value in (
+            True,
+            1,
+            {"value_bits": True},
+            {"value_bits": -1},
+            {"value_bits": 0x7F800000},
+            {"value_bits": CHECK.float_bits(-1)},
+        ):
+            with self.assertRaises(ValueError):
+                CHECK.sample(value)
+        bad = list(self.records)
+        index = next(i for i, r in enumerate(bad) if r.get("phase") == "tick")
+        bad[index] = copy.deepcopy(bad[index])
+        bad[index]["milestones"]["refuge_distance"] = {"value_bits": 0}
+        with self.assertRaises(ValueError):
+            CHECK.validate(bad, ("unreachable", "pm", 10, "corrected", False), 0, arguments(), REVISION)
 
     def test_cli_rejects_incomplete_inventory_and_invalid_pins(self):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()):

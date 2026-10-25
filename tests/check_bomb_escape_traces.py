@@ -38,6 +38,15 @@ def floating(value):
     return result
 
 
+def sample(value):
+    if value is None:
+        return None
+    require(type(value) is dict and set(value) == {"value_bits"}, "invalid source distance sample")
+    result = floating(value["value_bits"])
+    require(result >= 0, "negative source distance sample")
+    return result
+
+
 def float_bits(value):
     return struct.unpack("<I", struct.pack("<f", value))[0]
 
@@ -178,7 +187,11 @@ def observations(record):
         "invalid refuge edge masks",
     )
     progress = record.get("milestones")
-    require(type(progress) is dict and set(EVENTS) | {"maximum_distance_bits"} <= progress.keys(), "missing milestone")
+    require(
+        type(progress) is dict
+        and set(EVENTS) | {"maximum_distance_bits", "bomb_distance", "refuge_distance"} <= progress.keys(),
+        "missing milestone",
+    )
     require(
         all(integer(progress[key], 0, 45008) for key in EVENTS) and bits(progress["maximum_distance_bits"]),
         "invalid milestone type",
@@ -286,7 +299,8 @@ def validate(records, description, replay, args, pin=None, reference=False):
     phases = collections.Counter()
     previous_frame = None
     last_draws = None
-    last_maximum = 80.0
+    last_maximum = 0.0
+    measured_frame = None
     last = None
     clearance_frame = None
     for record in records[1:-1]:
@@ -369,35 +383,57 @@ def validate(records, description, replay, args, pin=None, reference=False):
                 "unreachable refuge replaced original route",
             )
         maximum = floating(milestone["maximum_distance_bits"])
-        require(maximum >= last_maximum, "maximum distance moved backwards")
+        bomb_distance = sample(milestone["bomb_distance"])
+        refuge_distance = sample(milestone["refuge_distance"])
+        if phase == "setup-ready":
+            require(
+                maximum == 0 and bomb_distance is None and refuge_distance is None,
+                "distance sampled before its original source evaluation",
+            )
+        else:
+            require(
+                bomb_distance is not None and maximum == max(last_maximum, bomb_distance),
+                "maximum/source distance differs",
+            )
         last_maximum = maximum
         if phase in ("tick", "before-clearance"):
-            x, y = floating(escaping["x_bits"]), floating(escaping["y_bits"])
-            distance = math.hypot(x - 100, y - 100)
-            if not progress["safe"] and distance > 330:
-                progress["safe"] = now
-            if family != "unreachable":
-                if (
-                    not progress["refuge"]
-                    and math.hypot(x - (expected_refuge[0] + 2) * 10, y - (expected_refuge[1] + 2) * 10) < 1
-                ):
-                    progress["refuge"] = now
-                if (
-                    not progress["first_return"]
-                    and not escaping["returning"]
-                    and escaping["moving"]
-                    and escaping["move"] == [20, 20]
-                ):
-                    progress["first_return"] = now
-            if progress["first_return"] and escaping["returning"] and not progress["second_escape"]:
-                progress["second_escape"] = now
+            if measured_frame != state["frame"]:
+                measured_frame = state["frame"]
+                if not progress["safe"] and bomb_distance > 330:
+                    progress["safe"] = now
+                if family != "unreachable":
+                    if not progress["refuge"]:
+                        require(refuge_distance is not None, "missing evaluated source refuge distance")
+                        if refuge_distance < 1:
+                            progress["refuge"] = now
+                    else:
+                        require(refuge_distance is None, "source refuge call should have short-circuited")
+                    if (
+                        not progress["first_return"]
+                        and not escaping["returning"]
+                        and escaping["moving"]
+                        and escaping["move"] == [20, 20]
+                    ):
+                        progress["first_return"] = now
+                else:
+                    require(refuge_distance is None, "unreachable case evaluated a refuge distance")
+                if progress["first_return"] and escaping["returning"] and not progress["second_escape"]:
+                    progress["second_escape"] = now
             if phase == "tick" and progress["cleared"]:
                 if not record["bomber_core_present"] and not progress["retired"]:
                     progress["retired"] = now
                 if cover["health_bits"] != float_bits(10) and not progress["damage"]:
                     progress["damage"] = now
-                if not progress["arrived"] and not escaping["moving"] and not escaping["returning"] and x == y == 220:
+                if (
+                    not progress["arrived"]
+                    and not escaping["moving"]
+                    and not escaping["returning"]
+                    and escaping["x_bits"] == escaping["y_bits"] == float_bits(220)
+                ):
                     progress["arrived"] = now
+        if last is not None and phase != "planned" and last["state"]["frame"] == state["frame"]:
+            for field in ("bomb_distance", "refuge_distance"):
+                require(milestone[field] == last["milestones"][field], "same-boundary source sample changed")
         require(all(milestone[k] == progress[k] for k in EVENTS), "observed milestone schedule differs")
         if not progress["cleared"]:
             require(
@@ -407,12 +443,14 @@ def validate(records, description, replay, args, pin=None, reference=False):
             require(cover["health_bits"] == escaping["health_bits"] == float_bits(10), "damage before clearance")
         if phase == "setup-ready":
             require(
-                last is None and now == 0 and maximum == 80 and record["start_edge_masks"] == [0, 0],
+                last is None and now == 0 and maximum == 0 and record["start_edge_masks"] == [0, 0],
                 "setup state differs",
             )
         elif phase == "planned":
             require(
                 now == 0
+                and maximum == bomb_distance == 80
+                and refuge_distance is None
                 and escaping["moving"]
                 and escaping["move"] == expected_refuge
                 and escaping["returning"] is (family != "unreachable"),

@@ -44,8 +44,10 @@ void position(CMatrixRobotAI &robot, float x, float y) {
     robot.m_PosX = x; robot.m_PosY = y; robot.MapPosCalc();
     robot.RChange(MR_Matrix); robot.RNeed(MR_Matrix); robot.JoinToGroup();
 }
-float distance(const CMatrixRobotAI &robot, float x, float y) {
-    return std::hypot(robot.m_PosX - x, robot.m_PosY - y);
+float distance(const CMatrixRobotAI &robot, float x, float y, std::optional<float> *sample = nullptr) {
+    const float result = std::hypot(robot.m_PosX - x, robot.m_PosY - y);
+    if (sample) *sample = result;
+    return result;
 }
 std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, random::Mode mode, int step, int replay_index) {
     Containment containment(original);
@@ -76,7 +78,7 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
     CoreLease core(bomber->GetCore(DEBUG_CALL_INFO));
     bomber->GetEnv()->AddToList(cover); // Initial historical observation.
     bomb_escape::Recording recording(session, name(refuge), detonate, original, mode, step, replay_index, core.get());
-    recording.state("setup-ready", session.snapshot(), {0, 0, 0, 0, 0, 0, 0, 0, distance(*escaping, 100, 100)});
+    recording.state("setup-ready", session.snapshot(), {});
     if (refuge == Refuge::Reserved) {
         const auto before = random::draw_count();
         cover->MoveTo(48, 8);
@@ -112,9 +114,12 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
     int damage_at = 0, arrived_at = 0, retired_at = 0;
     const bool observe_rediversion = refuge == Refuge::Free && !detonate;
     float maximum_distance = distance(*escaping, 100, 100);
+    float sampled_bomb_distance = maximum_distance;
+    std::optional<float> sampled_refuge_distance;
     const auto progress = [&] {
         return bomb_escape::Milestones{safe_at, refuge_at, first_return, second_escape, cleared_at,
-                                       damage_at, arrived_at, retired_at, maximum_distance};
+                                       damage_at, arrived_at, retired_at, maximum_distance,
+                                       sampled_bomb_distance, sampled_refuge_distance};
     };
     recording.state("planned", states.back(), progress());
     while (session.time() < 45000) {
@@ -130,10 +135,13 @@ std::vector<std::string> journey(Refuge refuge, bool detonate, bool original, ra
             MG_CHECK(!returning);
             if (moving) MG_CHECK(destination == intended);
         }
-        maximum_distance = std::max(maximum_distance, distance(*escaping, 100, 100));
+        sampled_refuge_distance.reset();
+        sampled_bomb_distance = distance(*escaping, 100, 100);
+        maximum_distance = std::max(maximum_distance, sampled_bomb_distance);
         if (!safe_at && distance(*escaping, 100, 100) > 330) safe_at = session.time();
         if (refuge != Refuge::Unreachable && !refuge_at &&
-            distance(*escaping, float((expected.x + 2) * 10), float((expected.y + 2) * 10)) < 1)
+            distance(*escaping, float((expected.x + 2) * 10), float((expected.y + 2) * 10),
+                     &sampled_refuge_distance) < 1)
             refuge_at = session.time();
         if (refuge != Refuge::Unreachable && !first_return && !returning && moving && destination == intended)
             first_return = session.time();

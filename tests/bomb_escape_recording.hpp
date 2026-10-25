@@ -4,6 +4,7 @@
 #include "battle_scenario.hpp"
 #include <array>
 #include <fstream>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -15,6 +16,7 @@ struct Milestones {
     int safe = 0, refuge = 0, first_return = 0, second_escape = 0, cleared = 0;
     int damage = 0, arrived = 0, retired = 0;
     float maximum_distance = 0;
+    std::optional<float> bomb_distance, refuge_distance;
 };
 
 void invalidate(std::string_view refuge);
