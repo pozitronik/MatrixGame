@@ -189,7 +189,9 @@ jobs:
         run: |
           $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
           if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
-          python -B tests/check_player_auto_traces.py "build/$buildName/tests/scenario-traces"
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify auto-order recording revision.' }
+          python -B tests/check_player_auto_traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}'
           if ($LASTEXITCODE -ne 0) { throw 'Auto-order trace validation failed.' }
       - name: Upload engine test results
         if: always()
