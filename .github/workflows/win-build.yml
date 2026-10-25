@@ -212,6 +212,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot identify selection recording revision.' }
           python -B tools/check-selection-traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
           if ($LASTEXITCODE -ne 0) { throw 'Mixed-selection recording validation failed.' }
+      - name: Validate regional-road journey recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify road recording revision.' }
+          python -B tools/check-road-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Regional-road recording validation failed.' }
       - name: Validate complete N5 navigation recordings
         shell: pwsh
         run: |
