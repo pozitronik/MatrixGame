@@ -10,7 +10,7 @@ The existing `game.ai.repair_competing_retirement` and `game.ai.repair_replaceme
 | `game.ai.repair_replacement_move` | `replace-far` | 4 | Replace Move while the competitor is outside repair range, after the second pulse |
 | `game.ai.repair_replacement_move` | `replace-near` | 4 | Replace Move while the competitor is within repair range, after the third pulse |
 
-Each family runs Park?Miller and LegacyCRT at both 10 ms and 16 ms, with seed 84, the open synthetic layout, unavailable audio and a 3,000-frame limit. Every existing loop runs until time reaches 25,000 ms: 2,500 boundaries at 10 ms or 1,563 boundaries at 16 ms. Assets are synthetic; no installed game or resource package is required.
+Each family runs Park-Miller and LegacyCRT at both 10 ms and 16 ms, with seed 84, the open synthetic layout, unavailable audio and a 3,000-frame limit. Every existing loop runs until time reaches 25,000 ms: 2,500 boundaries at 10 ms or 1,563 boundaries at 16 ms. Assets are synthetic; no installed game or resource package is required.
 
 From the repository root, build and run the two existing CTest cases with the pinned tools:
 
@@ -25,7 +25,7 @@ The test working directory contains `scenario-traces/repair-competing-<family>-<
 
 The header uses the existing schema-1 Session metadata: compiled source revision and dirty state, compiler and version, configuration, assertion policy, executable/DLL role, cheats, floating-point precision, effective compatibility modes, RNG, timestep and synthetic fixture policy. The scene adds its family flags and the compiled `_TRACE` state. MinGW reports a nonempty compiler-version string; MSVC reports a positive integer.
 
-Each observation contains the Session snapshot and six explicitly normalized actors. IDs 1?4 retain the Session identities; ID 5 is the first patient and ID 6 is the earlier-listed competitor. The ordered logic list is recorded without sorting: initially `[1,2,3,4,6,5]`. Retiring patient 5 removes it from that list and clears its retained core. An absent actor has only ID and presence; a present non-live actor has only ID, presence, life state and state enum. Live-only fields are never read from inactive robot storage.
+Each observation contains the Session snapshot and six explicitly normalized actors. IDs 1 through 4 retain the Session identities; ID 5 is the first patient and ID 6 is the earlier-listed competitor. The ordered logic list is recorded without sorting: initially `[1,2,3,4,6,5]`. Retiring patient 5 removes it from that list and clears its retained core. An absent actor has only ID and presence; a present non-live actor has only ID, presence, life state and state enum. Live-only fields are never read from inactive robot storage.
 
 Live custom actors carry position and health float bits, group, signed place, arrival flag, group intention and destination, and the complete physical order queue. Each order retains type, phase, three float bit patterns, signed Param4 and the normalized object referenced by its retained core. The recorder reads the core directly; it never calls the mutating `GetStatic()`. The Session's existing queue retains its five-field layout, while the custom queue supplies the omitted Param3 and Param4. Unknown non-null objects normalize to -1 and null to 0; pointers and process-global UIDs are never serialized.
 
