@@ -138,6 +138,79 @@ class BenchmarkToolTests(unittest.TestCase):
         _, problems, _ = benchmark.compare(result(), other, allow_identity_mismatch=True)
         self.assertEqual(problems, [])
 
+    def test_strict_inspection_rejects_differences_before_timing(self):
+        base, candidate = result(), result()
+        base['workloads'][0]['inspection']['interval_0.local_searches'] = 2
+        candidate['workloads'][0]['inspection']['interval_0.local_searches'] = 3
+        # Existing optimization comparisons intentionally retain their previous behavior.
+        self.assertEqual(benchmark.compare(base, candidate)[1], [])
+        with patch.object(benchmark, 'bootstrap_ratio') as timing:
+            rows, problems, _ = benchmark.compare(base, candidate, require_inspection_match=True)
+        timing.assert_not_called()
+        self.assertEqual(rows, [])
+        self.assertTrue(any("inspection['interval_0.local_searches'] differs" in problem for problem in problems))
+
+    def test_strict_inspection_rejects_missing_fields_and_objects(self):
+        for role in ('base', 'candidate', 'both'):
+            for missing_counter in (False, True):
+                with self.subTest(role=role, missing_counter=missing_counter):
+                    base, candidate = result(), result()
+                    reports = {'base': [base], 'candidate': [candidate], 'both': [base, candidate]}
+                    for report in reports[role]:
+                        workload = report['workloads'][0]
+                        if missing_counter:
+                            del workload['inspection']['rng_draws']
+                        else:
+                            del workload['inspection']
+                    if missing_counter and role == 'both':
+                        # Empty inspection objects are emitted by Sessions without diagnostic counters.
+                        self.assertEqual(benchmark.compare(base, candidate, require_inspection_match=True)[1], [])
+                    else:
+                        with patch.object(benchmark, 'bootstrap_ratio') as timing:
+                            rows, problems, _ = benchmark.compare(base, candidate, require_inspection_match=True)
+                        timing.assert_not_called()
+                        self.assertEqual(rows, [])
+                        self.assertTrue(any('inspection' in problem for problem in problems))
+
+    def test_strict_inspection_rejects_correlated_malformed_counters(self):
+        for value in (True, False, 1.0, '1', None, [], {'nested': 1}, -(1 << 63) - 1, 1 << 63):
+            with self.subTest(value=value):
+                base, candidate = result(), result()
+                for report in (base, candidate):
+                    report['workloads'][0]['inspection']['rng_draws'] = value
+                with patch.object(benchmark, 'bootstrap_ratio') as timing:
+                    rows, problems, _ = benchmark.compare(base, candidate, require_inspection_match=True)
+                timing.assert_not_called()
+                self.assertEqual(rows, [])
+                self.assertTrue(any("inspection['rng_draws'] must be an int64 counter" in p for p in problems))
+        for inspection in (None, [], 1, 'counters', True, {1: 2}):
+            with self.subTest(inspection=inspection):
+                base, candidate = result(), result()
+                for report in (base, candidate):
+                    report['workloads'][0]['inspection'] = inspection
+                self.assertTrue(benchmark.compare(base, candidate, require_inspection_match=True)[1])
+
+    def test_strict_inspection_accepts_equal_signed_counters_regardless_of_key_order(self):
+        base, candidate = result(), result()
+        base['workloads'][0]['inspection'] = {'minimum': -(1 << 63), 'maximum': (1 << 63) - 1, 'zero': 0}
+        candidate['workloads'][0]['inspection'] = {'zero': 0, 'maximum': (1 << 63) - 1, 'minimum': -(1 << 63)}
+        rows, problems, _ = benchmark.compare(base, candidate, require_inspection_match=True)
+        self.assertEqual(problems, [])
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]['verdict'], 'no material change')
+
+    def test_strict_inspection_cannot_be_bypassed_by_other_overrides(self):
+        base, candidate = result(), result()
+        candidate['build']['configuration'] = 'Debug'
+        candidate['workloads'][0]['parameters']['robots'] = '49'
+        candidate['workloads'][0]['inspection']['rng_draws'] = 2
+        with patch.object(benchmark, 'bootstrap_ratio') as timing:
+            rows, problems, _ = benchmark.compare(base, candidate, allow_identity_mismatch=True,
+                                                 allow_parameter_change=True, require_inspection_match=True)
+        timing.assert_not_called()
+        self.assertEqual(rows, [])
+        self.assertTrue(any("inspection['rng_draws'] differs" in problem for problem in problems))
+
     def test_instrumentation_precision_and_counters_are_identity(self):
         changes = [("cmake", "coverage", "OFF", "ON"),
                    ("runner", "x87_control_word", "0x001f", "0x0000"),
@@ -214,6 +287,38 @@ class BenchmarkToolTests(unittest.TestCase):
                 slower.write_text(json.dumps(broken))
                 self.assertEqual(benchmark.main(["compare", str(reference), str(slower)]), 2)
             self.assertIn("regression", output.getvalue())
+
+    def test_strict_inspection_compare_command_exit_status(self):
+        base = PROJECT / 'build/benchmark-tests'
+        base.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=base) as temporary:
+            root = Path(temporary)
+            reference, changed = root / 'reference.json', root / 'changed.json'
+            reference.write_text(json.dumps(result()), encoding='utf-8')
+            command = ['compare', str(reference), str(changed)]
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(benchmark.main(['compare', str(reference), str(reference),
+                                                 '--require-inspection-match']), 0)
+            for inspection in ({'rng_draws': 2}, {'rng_draws': True}, {'rng_draws': 1.0},
+                               {'rng_draws': {'nested': 1}}, {}, None):
+                with self.subTest(inspection=inspection):
+                    candidate = result()
+                    candidate['workloads'][0]['inspection'] = inspection
+                    changed.write_text(json.dumps(candidate), encoding='utf-8')
+                    output = io.StringIO()
+                    with redirect_stdout(output), redirect_stderr(io.StringIO()):
+                        self.assertEqual(benchmark.main(command), 0)
+                        self.assertEqual(benchmark.main(command + ['--require-inspection-match',
+                                                                  '--allow-identity-mismatch',
+                                                                  '--allow-parameter-change']), 2)
+                    self.assertIn('Not comparable: navigation.crowd_move', output.getvalue())
+                    self.assertIn('inspection', output.getvalue())
+            for path in (reference, changed):
+                report = result()
+                del report['workloads'][0]['inspection']
+                path.write_text(json.dumps(report), encoding='utf-8')
+            with redirect_stdout(io.StringIO()), redirect_stderr(io.StringIO()):
+                self.assertEqual(benchmark.main(command + ['--require-inspection-match']), 2)
 
 
 if __name__ == "__main__":
