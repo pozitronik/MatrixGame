@@ -1577,6 +1577,24 @@ void control_group_combat_death() {
 }
 
 void mixed_selection_lifecycle() {
+    const auto directory = std::filesystem::current_path() / "scenario-traces";
+    std::filesystem::create_directories(directory);
+    const auto recording_path = [&](random::Mode mode, int step_ms, bool building_first, bool click, int replay) {
+        return directory / (std::string("player-selection-") +
+            (mode == random::Mode::ParkMiller ? "pm-" : "crt-") + std::to_string(step_ms) +
+            (building_first ? "-building-" : "-robot-") + (click ? "click-" : "rectangle-") +
+            std::to_string(replay) + ".jsonl");
+    };
+    // Invalidate the whole case before setup can fail and leave an older completed corpus.
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
+        for (int step_ms : {10, 16})
+            for (bool building_first : {false, true})
+                for (bool click : {false, true})
+                    for (int replay = 0; replay < 2; ++replay) {
+                        std::ofstream file(recording_path(mode, step_ms, building_first, click, replay),
+                            std::ios::trunc);
+                        MG_CHECK(file.good());
+                    }
     std::vector<std::pair<std::filesystem::path, std::string>> completions;
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) {
         for (int step_ms : {10, 16}) {
@@ -1607,12 +1625,7 @@ void mixed_selection_lifecycle() {
                         MG_CHECK(cannon->InRect(area));
                         std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
                             [](SObjectCore *value) { value->Release(); });
-                        const auto directory = std::filesystem::current_path() / "scenario-traces";
-                        std::filesystem::create_directories(directory);
-                        const auto path = directory / (std::string("player-selection-") +
-                            (mode == random::Mode::ParkMiller ? "pm-" : "crt-") + std::to_string(step_ms) +
-                            (building_first ? "-building-" : "-robot-") + (click ? "click-" : "rectangle-") +
-                            std::to_string(replay) + ".jsonl");
+                        const auto path = recording_path(mode, step_ms, building_first, click, replay);
                         std::ofstream file(path, std::ios::trunc);
                         MG_CHECK(file.good());
                         auto header = session.metadata("mixed-selection-lifecycle-v1");
