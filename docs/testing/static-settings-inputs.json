@@ -1,0 +1,1597 @@
+{
+  "purpose": "Source/input/assertion catalog for twelve direct settings parser, text-transformation and display scalar predicates; not a runtime manifest, execution result, reference selection or baseline acceptance.",
+  "source_revision": "9a85aa9a98414913e0d2ffd9d7d24b0dc96fa362",
+  "hash_conventions": {
+    "source": "UTF-8 canonical Git content",
+    "body": "Inclusive function signature through closing brace, LF, no trailing LF",
+    "finite_case": "Sorted-key compact UTF-8 JSON (ensure_ascii=false), excluding source and self hash"
+  },
+  "shared": {
+    "Values_defaults": {
+      "display": {
+        "width": 1024,
+        "height": 768,
+        "mode": "Windowed",
+        "fullscreen": "Borderless"
+      },
+      "random": "ParkMiller",
+      "sound_volume": 100,
+      "music_volume": 100,
+      "camera_speed": 100,
+      "stencil_shadows": true,
+      "projected_shadows": true,
+      "skybox": "High",
+      "robot_shadows": true,
+      "delayed_damage": "Corrected",
+      "map": "",
+      "battle_bonus": "None",
+      "group_counts": "Corrected",
+      "place_containment": "Corrected",
+      "zero_x_trace": "Corrected"
+    },
+    "Values_custom": {
+      "display": {
+        "width": 1280,
+        "height": 720,
+        "mode": "Borderless",
+        "fullscreen": "Borderless"
+      },
+      "random": "LegacyCRT",
+      "sound_volume": 40,
+      "music_volume": 60,
+      "camera_speed": 150,
+      "stencil_shadows": false,
+      "projected_shadows": false,
+      "skybox": "Low",
+      "robot_shadows": false,
+      "delayed_damage": "Original",
+      "map": "Matrix\\Map\\Desert (2).cmap",
+      "battle_bonus": "None",
+      "group_counts": "Original",
+      "place_containment": "Original",
+      "zero_x_trace": "Original"
+    },
+    "Display_Settings_defaults": {
+      "width": 1024,
+      "height": 768,
+      "mode": "Windowed",
+      "fullscreen": "Borderless"
+    },
+    "enum_domains_from_headers": {
+      "Display::Mode": {
+        "Windowed": 0,
+        "Borderless": 1,
+        "Exclusive": 2
+      },
+      "random::Mode": {
+        "ParkMiller": 0,
+        "LegacyCRT": 1
+      },
+      "StandaloneSettings::Skybox": {
+        "Off": 0,
+        "Low": 1,
+        "High": 2
+      },
+      "StandaloneSettings::DamageAttribution": {
+        "Corrected": 0,
+        "Original": 1
+      },
+      "StandaloneSettings::GroupCountMode": {
+        "Corrected": 0,
+        "Original": 1
+      },
+      "StandaloneSettings::PlaceContainmentMode": {
+        "Corrected": 0,
+        "Original": 1
+      },
+      "StandaloneSettings::ZeroXTraceMode": {
+        "Corrected": 0,
+        "Original": 1
+      },
+      "BattleChoice::Bonus": {
+        "None": 0,
+        "AirSupport": 1,
+        "ReinforcedArmor": 2
+      }
+    },
+    "production_parser_limits_not_coverage_claim": {
+      "volume_percent": [
+        0,
+        100
+      ],
+      "camera_percent": [
+        25,
+        300
+      ],
+      "width": [
+        640,
+        8192
+      ],
+      "height": [
+        480,
+        8192
+      ],
+      "invalid_range_policy": "fallback/reject, not clamp"
+    },
+    "helper_blocks": [
+      {
+        "name": "StandaloneSettings::Selection parse(const std::wstring &text)",
+        "source": {
+          "path": "tests/standalone_settings_tests.cpp",
+          "first_line": 23,
+          "last_line": 27,
+          "body_sha256": "6088c857b494121f18a176dfa57ea792c339617310ed54249bca436964923512"
+        },
+        "literal_strings": []
+      },
+      {
+        "name": "Values custom()",
+        "source": {
+          "path": "tests/standalone_settings_tests.cpp",
+          "first_line": 29,
+          "last_line": 46,
+          "body_sha256": "28e40fa2e189413b01a428e8fdd3e553037f93b7951b94b5a8a595175a1f767a"
+        },
+        "literal_strings": [
+          {
+            "wide": true,
+            "value": "Matrix\\Map\\Desert (2).cmap"
+          }
+        ]
+      }
+    ],
+    "RNG": "No explicit seeding, draw-count or RNG-state equality assertion in selected cases. Parsing random mode is not running the generator.",
+    "purity": "Selected case paths parse/update in-memory text or compute scalar values; no file access/window/device/controller/reset/save/restart API. Test executable startup/diagnostic allocation/CRT work is separate harness behavior."
+  },
+  "registration": {
+    "cases_count": 12,
+    "settings_target": "matrixgame_standalone_settings_tests",
+    "settings_labels": [
+      "engine",
+      "asset-free",
+      "startup",
+      "settings"
+    ],
+    "display_target": "matrixgame_display_tests",
+    "display_labels": [
+      "engine",
+      "asset-free",
+      "rendering",
+      "input"
+    ],
+    "timeout_seconds": 30,
+    "dispatch": "One named existing case per CTest process, unconditionally registered when tests enabled.",
+    "main": "Settings main returns tests::run only. Display main calls SetErrorMode, BaseInit, tests::run, BaseDeInit. Neither has the explicit final MEM_SPY scan present in queue/host tests.",
+    "checks": "MG_CHECK remains active in Release; optional MSVC Debug CRT configuration belongs to shared support.",
+    "target_details": {
+      "matrixgame_standalone_settings_tests": {
+        "direct_sources": [
+          "tests/standalone_settings_tests.cpp",
+          "MatrixGame/src/StandaloneSettings.cpp",
+          "MatrixGame/src/RandomConfiguration.cpp",
+          "MatrixGame/src/MapCatalog.cpp",
+          "tests/test_support.cpp",
+          "tests/test_support.hpp"
+        ],
+        "links": [
+          "MatrixLib",
+          "MSVC only dbghelp"
+        ],
+        "MatrixGameInternal": false,
+        "diagnostic_overlay_stub": false
+      },
+      "matrixgame_display_tests": {
+        "direct_sources": [
+          "tests/display_tests.cpp",
+          "tests/diagnostic_overlay_stub.cpp",
+          "tests/test_support.cpp",
+          "tests/test_support.hpp"
+        ],
+        "links": [
+          "MatrixLib",
+          "MatrixGameInternal",
+          "MSVC only dbghelp"
+        ],
+        "extra_compile_definition": "WINDOWS_IGNORE_PACKING_MISMATCH"
+      }
+    }
+  },
+  "cases": [
+    {
+      "case": "game.settings.defaults",
+      "function": "defaults",
+      "source": {
+        "path": "tests/standalone_settings_tests.cpp",
+        "first_line": 76,
+        "last_line": 83,
+        "body_sha256": "b1035565e1a74801787eab86631f15272819552ed47fb83a14bbf7df9d65c338"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "ordered_calls": [
+          {
+            "input_text": "",
+            "asserted": {
+              "invalid": [],
+              "values": "shared.Values_defaults",
+              "selected_scalar_checks": [
+                "sound_volume==100",
+                "camera_speed==100",
+                "music_volume==100",
+                "skybox==High",
+                "robot_shadows==true"
+              ]
+            }
+          }
+        ],
+        "limits": [
+          "Whole Values equality is asserted here; no RNG draw counter or effective game setting is observed."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": ""
+        }
+      ],
+      "active_assertion_expressions": [
+        "selection.invalid.empty()",
+        "selection.values == Values{}",
+        "selection.values.sound_volume == 100 && selection.values.camera_speed == 100",
+        "selection.values.music_volume == 100",
+        "selection.values.skybox == Skybox::High && selection.values.robot_shadows"
+      ],
+      "finite_input_assertion_json_sha256": "eab5d2c5837ba12089e61c445e090514bc942c5679a439c930032f74c61da36a"
+    },
+    {
+      "case": "game.settings.explicit_values",
+      "function": "explicit_values",
+      "source": {
+        "path": "tests/standalone_settings_tests.cpp",
+        "first_line": 105,
+        "last_line": 122,
+        "body_sha256": "e254b3da9f33a98967c35d7c9b46494cf2646f80ecc23f452d40066508451363"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "ordered_calls": [
+          {
+            "input": "literal_strings[0]",
+            "asserted": {
+              "invalid": [],
+              "values": "shared.Values_custom"
+            }
+          },
+          {
+            "input": "boolean-alias literal",
+            "asserted": {
+              "skybox": "Off"
+            }
+          },
+          {
+            "input": "Map=Matrix/Map/A.CMAP\n",
+            "asserted": {
+              "map": "Matrix/Map/A.CMAP"
+            }
+          },
+          {
+            "input": "Map=\n",
+            "asserted": {
+              "invalid": [],
+              "map": ""
+            }
+          }
+        ],
+        "limits": [
+          "The boolean-alias call asserts skybox only, not every parsed boolean. No file/map discovery or runtime application."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": "RandomGenerator=LegacyCRT\r\nResolutionWidth=1280\r\nResolutionHeight=720\r\nWindowMode=Borderless\r\nSoundVolume= 40 // quieter\r\nCameraSpeed=150\r\nStencilShadows=off\r\nProjectedShadows=FALSE\r\nSkybox=low\r\nRobotShadows=0\r\nDelayedDamage=ORIGINAL\r\nMap= Matrix\\Map\\Desert (2).cmap // chosen in the Map window\r\nGroupCounts=ORIGINAL\r\nPlaceContainment=original\r\nZeroXTrace=original\r\nMusicVolume=60 // under the effects\r\n"
+        },
+        {
+          "wide": true,
+          "value": "StencilShadows=TRUE\nProjectedShadows=1\nRobotShadows=On\nSkybox=OFF\n"
+        },
+        {
+          "wide": true,
+          "value": "Map=Matrix/Map/A.CMAP\n"
+        },
+        {
+          "wide": true,
+          "value": "Matrix/Map/A.CMAP"
+        },
+        {
+          "wide": true,
+          "value": "Map=\n"
+        }
+      ],
+      "active_assertion_expressions": [
+        "selection.invalid.empty()",
+        "selection.values == custom()",
+        "parse(L\"StencilShadows=TRUE\\nProjectedShadows=1\\nRobotShadows=On\\nSkybox=OFF\\n\").values.skybox ==\n             Skybox::Off",
+        "parse(L\"Map=Matrix/Map/A.CMAP\\n\").values.map == L\"Matrix/Map/A.CMAP\"",
+        "empty.invalid.empty() && empty.values.map.empty()"
+      ],
+      "finite_input_assertion_json_sha256": "fce12e60c609eb3721d5899050c6cb1da6633ef46e6a4511001c7e4a47d9cf2a"
+    },
+    {
+      "case": "game.settings.invalid_values",
+      "function": "invalid_values",
+      "source": {
+        "path": "tests/standalone_settings_tests.cpp",
+        "first_line": 124,
+        "last_line": 163,
+        "body_sha256": "a310b37aeeeab08be6a304c69e6d4277129ee5b46c3b860ffe3df7ee03e1e961"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "ordered_calls": [
+          {
+            "input": "literal_strings[0]",
+            "asserted": {
+              "invalid_in_order": [
+                "SoundVolume",
+                "CameraSpeed",
+                "StencilShadows",
+                "ProjectedShadows",
+                "Skybox",
+                "RobotShadows",
+                "DelayedDamage",
+                "Map",
+                "GroupCounts",
+                "PlaceContainment",
+                "ZeroXTrace",
+                "MusicVolume"
+              ],
+              "sound_volume": 100,
+              "camera_speed": 100,
+              "stencil_shadows": true,
+              "projected_shadows": true,
+              "skybox": "High",
+              "robot_shadows": true,
+              "delayed_damage": "Corrected",
+              "group_counts": "Corrected",
+              "place_containment": "Corrected",
+              "zero_x_trace": "Corrected",
+              "music_volume": 100,
+              "map": "",
+              "display": "Display::Settings{}"
+            }
+          },
+          {
+            "loop_map_inputs": [
+              "Map=x.txt\n",
+              "Map=C:\\x.cmap\n",
+              "Map=a.cmap\nMap=b.cmap\n",
+              "Map=a|b.cmap\n"
+            ],
+            "asserted_each": {
+              "invalid": [
+                "Map"
+              ],
+              "map": ""
+            }
+          },
+          {
+            "loop_description": "Four separately written duplicate-key calls in source order: GroupCounts, PlaceContainment, ZeroXTrace, MusicVolume",
+            "asserted_each": "exact one-key invalid vector and that key default Corrected/Corrected/Corrected/100"
+          },
+          {
+            "input": "SoundVolume=0\nCameraSpeed=300\nMusicVolume=0\n",
+            "asserted": {
+              "invalid": [],
+              "sound_volume": 0,
+              "camera_speed": 300,
+              "music_volume": 0
+            }
+          }
+        ],
+        "limits": [
+          "ResolutionWidth is absent from the exact invalid vector despite display all-or-default fallback. Do not infer full Values equality. Range failures fall back; this is not clamping."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": "SoundVolume=101\nCameraSpeed=24\nStencilShadows=maybe\nProjectedShadows=\nSkybox=Ultra\nRobotShadows=Off\nRobotShadows=On\nResolutionWidth=12\nDelayedDamage=Broken\nMap=..\\escape.cmap\nGroupCounts=Fixed\nPlaceContainment=Diagonal\nZeroXTrace=Vertical\nMusicVolume=-5\n"
+        },
+        {
+          "wide": false,
+          "value": "SoundVolume"
+        },
+        {
+          "wide": false,
+          "value": "CameraSpeed"
+        },
+        {
+          "wide": false,
+          "value": "StencilShadows"
+        },
+        {
+          "wide": false,
+          "value": "ProjectedShadows"
+        },
+        {
+          "wide": false,
+          "value": "Skybox"
+        },
+        {
+          "wide": false,
+          "value": "RobotShadows"
+        },
+        {
+          "wide": false,
+          "value": "DelayedDamage"
+        },
+        {
+          "wide": false,
+          "value": "Map"
+        },
+        {
+          "wide": false,
+          "value": "GroupCounts"
+        },
+        {
+          "wide": false,
+          "value": "PlaceContainment"
+        },
+        {
+          "wide": false,
+          "value": "ZeroXTrace"
+        },
+        {
+          "wide": false,
+          "value": "MusicVolume"
+        },
+        {
+          "wide": true,
+          "value": "Map=x.txt\n"
+        },
+        {
+          "wide": true,
+          "value": "Map=C:\\x.cmap\n"
+        },
+        {
+          "wide": true,
+          "value": "Map=a.cmap\nMap=b.cmap\n"
+        },
+        {
+          "wide": true,
+          "value": "Map=a|b.cmap\n"
+        },
+        {
+          "wide": false,
+          "value": "Map"
+        },
+        {
+          "wide": true,
+          "value": "GroupCounts=Original\nGroupCounts=Original\n"
+        },
+        {
+          "wide": false,
+          "value": "GroupCounts"
+        },
+        {
+          "wide": true,
+          "value": "PlaceContainment=Original\nPlaceContainment=Original\n"
+        },
+        {
+          "wide": false,
+          "value": "PlaceContainment"
+        },
+        {
+          "wide": true,
+          "value": "ZeroXTrace=Original\nZeroXTrace=Original\n"
+        },
+        {
+          "wide": false,
+          "value": "ZeroXTrace"
+        },
+        {
+          "wide": true,
+          "value": "MusicVolume=20\nMusicVolume=30\n"
+        },
+        {
+          "wide": false,
+          "value": "MusicVolume"
+        },
+        {
+          "wide": true,
+          "value": "SoundVolume=0\nCameraSpeed=300\nMusicVolume=0\n"
+        }
+      ],
+      "active_assertion_expressions": [
+        "selection.values.sound_volume == 100 && selection.values.camera_speed == 100",
+        "selection.values.stencil_shadows && selection.values.projected_shadows",
+        "selection.values.skybox == Skybox::High && selection.values.robot_shadows",
+        "selection.values.delayed_damage == StandaloneSettings::DamageAttribution::Corrected",
+        "selection.values.group_counts == StandaloneSettings::GroupCountMode::Corrected",
+        "selection.values.place_containment == StandaloneSettings::PlaceContainmentMode::Corrected",
+        "selection.values.zero_x_trace == StandaloneSettings::ZeroXTraceMode::Corrected",
+        "selection.invalid == std::vector<std::string>({\"SoundVolume\", \"CameraSpeed\", \"StencilShadows\",\n                                                            \"ProjectedShadows\", \"Skybox\", \"RobotShadows\",\n                                                            \"DelayedDamage\", \"Map\", \"GroupCounts\",\n                                                            \"PlaceContainment\", \"ZeroXTrace\", \"MusicVolume\"})",
+        "selection.values.music_volume == 100",
+        "selection.values.map.empty()",
+        "rejected.values.map.empty() && rejected.invalid == std::vector<std::string>({\"Map\"})",
+        "repeated.values.group_counts == StandaloneSettings::GroupCountMode::Corrected",
+        "repeated.invalid == std::vector<std::string>({\"GroupCounts\"})",
+        "repeated_place.values.place_containment == StandaloneSettings::PlaceContainmentMode::Corrected",
+        "repeated_place.invalid == std::vector<std::string>({\"PlaceContainment\"})",
+        "repeated_trace.values.zero_x_trace == StandaloneSettings::ZeroXTraceMode::Corrected",
+        "repeated_trace.invalid == std::vector<std::string>({\"ZeroXTrace\"})",
+        "music.values.music_volume == 100 && music.invalid == std::vector<std::string>({\"MusicVolume\"})",
+        "selection.values.display == Display::Settings{}",
+        "valid.invalid.empty() && valid.values.sound_volume == 0 && valid.values.camera_speed == 300",
+        "valid.values.music_volume == 0"
+      ],
+      "finite_input_assertion_json_sha256": "8f50fd9fdace4abcebc18c47884752b0db410ff12dc034b5fa2ca4d000cac93c"
+    },
+    {
+      "case": "game.settings.preserves_text",
+      "function": "preserves_text",
+      "source": {
+        "path": "tests/standalone_settings_tests.cpp",
+        "first_line": 165,
+        "last_line": 210,
+        "body_sha256": "8647d6268b77fe30c309db9b19538e0ae05d218acb7401efe3cff1a9c61fb8b1"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "ordered_calls": [
+          {
+            "input": "original multiline literal plus Values_custom",
+            "asserted": "updated equals the full expected multiline literal"
+          },
+          {
+            "input": "updated plus Values_custom",
+            "asserted": "equals that same expected literal"
+          },
+          {
+            "input": "UnknownKey=1\n plus Values_defaults",
+            "asserted": "starts with UnknownKey=1\nRandomGenerator=ParkMiller\n and contains no CR"
+          }
+        ],
+        "limits": [
+          "First two calls use full text equality. Final Unix-newline call checks prefix/no-CR only; no whole expected text is asserted."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": "// Header comment\r\nRandomGenerator=ParkMiller\r\n\r\n  ResolutionWidth =  1024   // trailing comment\r\nUnknownKey=kept\r\nNested {\r\n    SoundVolume=7\r\n}\r\nWindowMode=Windowed\r\nWindowMode=Exclusive\r\n// SoundVolume=1 stays a comment\r\nFullscreenMode=Borderless"
+        },
+        {
+          "wide": true,
+          "value": "// Header comment\r\nRandomGenerator=LegacyCRT\r\n\r\n  ResolutionWidth =  1280   // trailing comment\r\nUnknownKey=kept\r\nNested {\r\n    SoundVolume=7\r\n}\r\nWindowMode=Borderless\r\n// SoundVolume=1 stays a comment\r\nFullscreenMode=Borderless\r\nResolutionHeight=720\r\nSoundVolume=40\r\nStencilShadows=Off\r\nProjectedShadows=Off\r\nSkybox=Low\r\nRobotShadows=Off\r\nCameraSpeed=150\r\nDelayedDamage=Original\r\nMap=Matrix\\Map\\Desert (2).cmap\r\nGroupCounts=Original\r\nBattleBonus=None\r\nPlaceContainment=Original\r\nZeroXTrace=Original\r\nMusicVolume=60\r\n"
+        },
+        {
+          "wide": true,
+          "value": "UnknownKey=1\n"
+        },
+        {
+          "wide": true,
+          "value": "UnknownKey=1\nRandomGenerator=ParkMiller\n"
+        }
+      ],
+      "active_assertion_expressions": [
+        "updated == expected",
+        "StandaloneSettings::update_text(updated, custom()) == expected",
+        "unix.starts_with(L\"UnknownKey=1\\nRandomGenerator=ParkMiller\\n\") && unix.find(L'\\r') == std::wstring::npos"
+      ],
+      "finite_input_assertion_json_sha256": "7607363aca302b26193ab1874c8ea409d6ef82999bd67b8d6a599126f832a275"
+    },
+    {
+      "case": "game.settings.round_trip",
+      "function": "round_trip",
+      "source": {
+        "path": "tests/standalone_settings_tests.cpp",
+        "first_line": 212,
+        "last_line": 220,
+        "body_sha256": "1ca6e1ecb86320c6af370211dd6dcb327e847e41a5aa4766cc3d9653fe4103d2"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "ordered_calls": [
+          {
+            "loop_values": [
+              "shared.Values_defaults",
+              "shared.Values_custom"
+            ],
+            "input": "update_text(empty,values), then parse",
+            "asserted_each": "invalid empty and exact Values equality"
+          },
+          {
+            "input": "custom with display.mode=display.fullscreen=Exclusive, update_text(empty), then parse",
+            "asserted": "exact exclusive Values equality"
+          }
+        ],
+        "limits": [
+          "Exclusive branch does not separately assert invalid.empty(). No extra idempotence check belongs to this function."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": ""
+        },
+        {
+          "wide": true,
+          "value": ""
+        }
+      ],
+      "active_assertion_expressions": [
+        "selection.invalid.empty() && selection.values == values",
+        "parse(StandaloneSettings::update_text(L\"\", exclusive)).values == exclusive"
+      ],
+      "finite_input_assertion_json_sha256": "d8d41c760cd917a788d7d2e43b260c959f375b40e8144e21d0b7c37111681e2d"
+    },
+    {
+      "case": "game.settings.round_trip_inline_blocks",
+      "function": "round_trip_inline_blocks",
+      "source": {
+        "path": "tests/standalone_settings_tests.cpp",
+        "first_line": 222,
+        "last_line": 249,
+        "body_sha256": "b17b607e3f45b64909bd9bd2f70031485a1c3bfe0b298d0e6c4993afc85ae7af"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "compact_literal_columns": [
+          "original",
+          "initial_sound_volume",
+          "expected_prefix",
+          "expected_suffix"
+        ],
+        "literal_rows": [
+          [
+            "Extension {} SoundVolume=20\n",
+            20,
+            "Extension {} SoundVolume=40\nRandomGenerator=",
+            ""
+          ],
+          [
+            "Block {\n    SoundVolume=7\n} SoundVolume=20 // kept\nOther { SoundVolume=8\n}\n",
+            20,
+            "Block {\n    SoundVolume=7\n} SoundVolume=40 // kept\nOther { SoundVolume=8\n}\nRandomGenerator=",
+            ""
+          ],
+          [
+            "SoundVolume=20\nExtension {} SoundVolume=30 // note\n",
+            100,
+            "SoundVolume=40\nExtension {} // note\nRandomGenerator=",
+            ""
+          ],
+          [
+            "UnknownKey=1\n}\nSoundVolume=20\n",
+            100,
+            "UnknownKey=1\nRandomGenerator=",
+            "}\nSoundVolume=20\n"
+          ],
+          [
+            "Extension {} }\n",
+            100,
+            "Extension {} \nRandomGenerator=",
+            "MusicVolume=60\n}\n"
+          ]
+        ],
+        "ordered_per_row": [
+          "parse original and assert only volume",
+          "update_text original with Values_custom; assert starts_with prefix and ends_with suffix",
+          "parse updated; invalid empty and exact Values_custom",
+          "update_text updated with Values_custom; exact equality to updated"
+        ],
+        "limits": [
+          "Exactly five existing rows. Prefix/suffix checks do not establish full equality of original-to-updated text; only the second update is asserted byte-for-byte equal as a wstring."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": "Extension {} SoundVolume=20\n"
+        },
+        {
+          "wide": true,
+          "value": "Extension {} SoundVolume=40\nRandomGenerator="
+        },
+        {
+          "wide": true,
+          "value": ""
+        },
+        {
+          "wide": true,
+          "value": "Block {\n    SoundVolume=7\n} SoundVolume=20 // kept\nOther { SoundVolume=8\n}\n"
+        },
+        {
+          "wide": true,
+          "value": "Block {\n    SoundVolume=7\n} SoundVolume=40 // kept\nOther { SoundVolume=8\n}\nRandomGenerator="
+        },
+        {
+          "wide": true,
+          "value": ""
+        },
+        {
+          "wide": true,
+          "value": "SoundVolume=20\nExtension {} SoundVolume=30 // note\n"
+        },
+        {
+          "wide": true,
+          "value": "SoundVolume=40\nExtension {} // note\nRandomGenerator="
+        },
+        {
+          "wide": true,
+          "value": ""
+        },
+        {
+          "wide": true,
+          "value": "UnknownKey=1\n}\nSoundVolume=20\n"
+        },
+        {
+          "wide": true,
+          "value": "UnknownKey=1\nRandomGenerator="
+        },
+        {
+          "wide": true,
+          "value": "}\nSoundVolume=20\n"
+        },
+        {
+          "wide": true,
+          "value": "Extension {} }\n"
+        },
+        {
+          "wide": true,
+          "value": "Extension {} \nRandomGenerator="
+        },
+        {
+          "wide": true,
+          "value": "MusicVolume=60\n}\n"
+        }
+      ],
+      "active_assertion_expressions": [
+        "parse(item.original).values.sound_volume == item.sound_volume",
+        "updated.starts_with(item.start) && updated.ends_with(item.end)",
+        "selection.invalid.empty() && selection.values == custom()",
+        "StandaloneSettings::update_text(updated, custom()) == updated"
+      ],
+      "finite_input_assertion_json_sha256": "5a89f4b176adb7a3d07ef28c9c106aa9ef88ce0a6edb1c53a73686e50b41ac7b"
+    },
+    {
+      "case": "game.display.defaults",
+      "function": "defaults",
+      "source": {
+        "path": "tests/display_tests.cpp",
+        "first_line": 15,
+        "last_line": 23,
+        "body_sha256": "226443fe67c3f5a3155d53688ef48a6fcfae496a8b7015c141a32bea5001c46f"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "ordered_calls": [
+          {
+            "options": [
+              [
+                "RandomGenerator",
+                "LegacyCRT"
+              ]
+            ],
+            "asserted": {
+              "valid": true,
+              "width": 1024,
+              "height": 768,
+              "mode": "Windowed",
+              "fullscreen": "Borderless"
+            }
+          }
+        ],
+        "limits": [
+          "Unrelated RandomGenerator does not become an RNG execution assertion."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": "RandomGenerator"
+        },
+        {
+          "wide": true,
+          "value": "LegacyCRT"
+        }
+      ],
+      "active_assertion_expressions": [
+        "result.valid",
+        "result.settings.width == 1024 && result.settings.height == 768",
+        "result.settings.mode == Display::Mode::Windowed",
+        "result.settings.fullscreen == Display::Mode::Borderless"
+      ],
+      "finite_input_assertion_json_sha256": "80c5c71a1dc38e88d41fa8ff3175c7fc85beeadd3b6c82494400b23764868df6"
+    },
+    {
+      "case": "game.display.options",
+      "function": "explicit_settings",
+      "source": {
+        "path": "tests/display_tests.cpp",
+        "first_line": 25,
+        "last_line": 42,
+        "body_sha256": "fc528b1dec55688118dbd453500019f1ab218749277cb7e8b6776d017b12f0a2"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "ordered_calls": [
+          {
+            "options": [
+              [
+                "ResolutionWidth",
+                "1920"
+              ],
+              [
+                "ResolutionHeight",
+                "1080"
+              ],
+              [
+                "WindowMode",
+                "  borderless\t"
+              ],
+              [
+                "FullscreenMode",
+                "Exclusive"
+              ]
+            ],
+            "asserted": {
+              "valid": true,
+              "width": 1920,
+              "height": 1080,
+              "mode": "Borderless",
+              "fullscreen": "Borderless"
+            }
+          },
+          {
+            "ParSetAdd": [
+              "WindowMode",
+              "Windowed"
+            ],
+            "asserted": {
+              "valid": true,
+              "fullscreen": "Exclusive"
+            }
+          },
+          {
+            "ParSetAdd": [
+              "WindowMode",
+              "EXCLUSIVE"
+            ],
+            "asserted": {
+              "valid": true,
+              "mode": "Exclusive",
+              "fullscreen": "Exclusive"
+            }
+          }
+        ],
+        "limits": [
+          "Later calls do not reassert all size/other fields. No actual window mode switch."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": "ResolutionWidth"
+        },
+        {
+          "wide": true,
+          "value": "1920"
+        },
+        {
+          "wide": true,
+          "value": "ResolutionHeight"
+        },
+        {
+          "wide": true,
+          "value": "1080"
+        },
+        {
+          "wide": true,
+          "value": "WindowMode"
+        },
+        {
+          "wide": true,
+          "value": "  borderless\t"
+        },
+        {
+          "wide": true,
+          "value": "FullscreenMode"
+        },
+        {
+          "wide": true,
+          "value": "Exclusive"
+        },
+        {
+          "wide": true,
+          "value": "WindowMode"
+        },
+        {
+          "wide": true,
+          "value": "Windowed"
+        },
+        {
+          "wide": true,
+          "value": "WindowMode"
+        },
+        {
+          "wide": true,
+          "value": "EXCLUSIVE"
+        }
+      ],
+      "active_assertion_expressions": [
+        "result.valid && result.settings.width == 1920 && result.settings.height == 1080",
+        "result.settings.mode == Display::Mode::Borderless",
+        "result.settings.fullscreen == Display::Mode::Borderless",
+        "result.valid && result.settings.fullscreen == Display::Mode::Exclusive",
+        "result.valid && result.settings.mode == Display::Mode::Exclusive",
+        "result.settings.fullscreen == Display::Mode::Exclusive"
+      ],
+      "finite_input_assertion_json_sha256": "71c31b0d5c600dca50904d6187d37a3ebb3a4ee9587aca5ead506874baabeef0"
+    },
+    {
+      "case": "game.display.invalid_options",
+      "function": "invalid_settings",
+      "source": {
+        "path": "tests/display_tests.cpp",
+        "first_line": 44,
+        "last_line": 69,
+        "body_sha256": "91277f61c7701fd124a3a97c6a7f5d7ec361e3a3d0fd19bd45cfb86206576686"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "ordered_calls": [
+          {
+            "loop_width_strings": [
+              "0",
+              "-1",
+              "639",
+              "8193",
+              "1920oops",
+              "1920.5",
+              "99999999999999",
+              ""
+            ],
+            "also_WindowMode": "Exclusive",
+            "fresh_options_each": true,
+            "asserted_each": {
+              "valid": false,
+              "width": 1024,
+              "mode": "Windowed"
+            }
+          },
+          {
+            "fresh_options": [
+              [
+                "ResolutionHeight",
+                "479"
+              ]
+            ],
+            "asserted": {
+              "valid": false
+            }
+          },
+          {
+            "ParSetAdd": [
+              "ResolutionHeight",
+              "720"
+            ],
+            "asserted": {
+              "valid": true
+            }
+          },
+          {
+            "ParAdd": [
+              "ResolutionHeight",
+              "1080"
+            ],
+            "asserted": {
+              "valid": false
+            }
+          },
+          {
+            "fresh_modes": [
+              [
+                "FullscreenMode",
+                "Windowed"
+              ]
+            ],
+            "asserted": {
+              "valid": false
+            }
+          },
+          {
+            "mutations": [
+              [
+                "ParSetAdd",
+                "FullscreenMode",
+                "Exclusive"
+              ],
+              [
+                "ParAdd",
+                "WindowMode",
+                "unknown"
+              ]
+            ],
+            "asserted": {
+              "valid": false
+            }
+          },
+          {
+            "mutations": [
+              [
+                "ParSetAdd",
+                "WindowMode",
+                "Windowed"
+              ],
+              [
+                "ParAdd",
+                "WindowMode",
+                "Borderless"
+              ]
+            ],
+            "asserted": {
+              "valid": false
+            }
+          }
+        ],
+        "limits": [
+          "Invalid-width loop checks width and mode fallback only, not full Settings equality. Parser bounds are not tested exhaustively."
+        ]
+      },
+      "literal_strings": [
+        {
+          "wide": true,
+          "value": "0"
+        },
+        {
+          "wide": true,
+          "value": "-1"
+        },
+        {
+          "wide": true,
+          "value": "639"
+        },
+        {
+          "wide": true,
+          "value": "8193"
+        },
+        {
+          "wide": true,
+          "value": "1920oops"
+        },
+        {
+          "wide": true,
+          "value": "1920.5"
+        },
+        {
+          "wide": true,
+          "value": "99999999999999"
+        },
+        {
+          "wide": true,
+          "value": ""
+        },
+        {
+          "wide": true,
+          "value": "ResolutionWidth"
+        },
+        {
+          "wide": true,
+          "value": "WindowMode"
+        },
+        {
+          "wide": true,
+          "value": "Exclusive"
+        },
+        {
+          "wide": true,
+          "value": "ResolutionHeight"
+        },
+        {
+          "wide": true,
+          "value": "479"
+        },
+        {
+          "wide": true,
+          "value": "ResolutionHeight"
+        },
+        {
+          "wide": true,
+          "value": "720"
+        },
+        {
+          "wide": true,
+          "value": "ResolutionHeight"
+        },
+        {
+          "wide": true,
+          "value": "1080"
+        },
+        {
+          "wide": true,
+          "value": "FullscreenMode"
+        },
+        {
+          "wide": true,
+          "value": "Windowed"
+        },
+        {
+          "wide": true,
+          "value": "FullscreenMode"
+        },
+        {
+          "wide": true,
+          "value": "Exclusive"
+        },
+        {
+          "wide": true,
+          "value": "WindowMode"
+        },
+        {
+          "wide": true,
+          "value": "unknown"
+        },
+        {
+          "wide": true,
+          "value": "WindowMode"
+        },
+        {
+          "wide": true,
+          "value": "Windowed"
+        },
+        {
+          "wide": true,
+          "value": "WindowMode"
+        },
+        {
+          "wide": true,
+          "value": "Borderless"
+        }
+      ],
+      "active_assertion_expressions": [
+        "!result.valid",
+        "result.settings.width == 1024 && result.settings.mode == Display::Mode::Windowed",
+        "!Display::resolve(options).valid",
+        "Display::resolve(options).valid",
+        "!Display::resolve(options).valid",
+        "!Display::resolve(modes).valid",
+        "!Display::resolve(modes).valid",
+        "!Display::resolve(modes).valid"
+      ],
+      "finite_input_assertion_json_sha256": "feb233360eb618db7f7b8d5e9e3bcbc5850385d7256b3b8aeefa02b05086c54b"
+    },
+    {
+      "case": "game.display.toggle_pairs",
+      "function": "toggle_pairs",
+      "source": {
+        "path": "tests/display_tests.cpp",
+        "first_line": 97,
+        "last_line": 103,
+        "body_sha256": "2ea99c1b1727bed7aa4cc2952572b7b264fc0c02e117ff28eff7191a3791f53f"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "literal_columns": [
+          "current",
+          "fullscreen",
+          "expected_target"
+        ],
+        "literal_rows": [
+          [
+            "Windowed",
+            "Borderless",
+            "Borderless"
+          ],
+          [
+            "Borderless",
+            "Borderless",
+            "Windowed"
+          ],
+          [
+            "Windowed",
+            "Exclusive",
+            "Exclusive"
+          ],
+          [
+            "Exclusive",
+            "Exclusive",
+            "Windowed"
+          ]
+        ],
+        "limits": [
+          "Four scalar calls only; no shortcut/window/controller transition."
+        ]
+      },
+      "literal_strings": [],
+      "active_assertion_expressions": [
+        "Display::toggle_target(Mode::Windowed, Mode::Borderless) == Mode::Borderless",
+        "Display::toggle_target(Mode::Borderless, Mode::Borderless) == Mode::Windowed",
+        "Display::toggle_target(Mode::Windowed, Mode::Exclusive) == Mode::Exclusive",
+        "Display::toggle_target(Mode::Exclusive, Mode::Exclusive) == Mode::Windowed"
+      ],
+      "finite_input_assertion_json_sha256": "ce938fef5a11ac81d04da7bbf93d2e8b61408009d9b5131f49ff3bca69bfa6c7"
+    },
+    {
+      "case": "game.display.coordinates",
+      "function": "scaled_mouse_coordinates",
+      "source": {
+        "path": "tests/display_tests.cpp",
+        "first_line": 132,
+        "last_line": 144,
+        "body_sha256": "1397f656e19418853522d55c9747bfb79c49c02fd828c8969063edf21670378b"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "loop_extents": [
+          720,
+          768,
+          1080,
+          2160
+        ],
+        "render_extent": 768,
+        "ordered_scalar_orbit_each": [
+          {
+            "position": 0,
+            "assertion": "==0"
+          },
+          {
+            "position": "extent-1",
+            "assertion": "==767"
+          },
+          {
+            "position": -1,
+            "assertion": "<0"
+          },
+          {
+            "position": "extent",
+            "assertion": ">=768"
+          },
+          {
+            "position": "extent/2 (integer)",
+            "assertion": ">=383"
+          },
+          {
+            "position": "extent/2 (integer)",
+            "assertion": "<=384"
+          }
+        ],
+        "extra_exact_calls": [
+          {
+            "inputs": [
+              25,
+              0,
+              768
+            ],
+            "expected": 0
+          },
+          {
+            "inputs": [
+              25,
+              1,
+              768
+            ],
+            "expected": 0
+          },
+          {
+            "inputs": [
+              32767,
+              32768,
+              8192
+            ],
+            "expected": 8191
+          }
+        ],
+        "limits": [
+          "Midpoint is the inclusive integer range383..384, not an exact coordinate. Outside assertions preserve only signs/bounds, not exact values. No cursor/OS/viewport dispatch."
+        ]
+      },
+      "literal_strings": [],
+      "active_assertion_expressions": [
+        "Display::map_coordinate(0, extent, 768) == 0",
+        "Display::map_coordinate(extent - 1, extent, 768) == 767",
+        "Display::map_coordinate(-1, extent, 768) < 0",
+        "Display::map_coordinate(extent, extent, 768) >= 768",
+        "Display::map_coordinate(extent / 2, extent, 768) >= 383",
+        "Display::map_coordinate(extent / 2, extent, 768) <= 384",
+        "Display::map_coordinate(25, 0, 768) == 0",
+        "Display::map_coordinate(25, 1, 768) == 0",
+        "Display::map_coordinate(32767, 32768, 8192) == 8191"
+      ],
+      "finite_input_assertion_json_sha256": "2c24f99fcb4fc60ae1291e73fdd8bddb85aad8c4f1108bbea1803ec4fbab4bcc"
+    },
+    {
+      "case": "game.display.change_plans",
+      "function": "change_plans",
+      "source": {
+        "path": "tests/display_tests.cpp",
+        "first_line": 193,
+        "last_line": 216,
+        "body_sha256": "1c639871281375242c19f2fc45b52cdb27670c8a23b2e1933da0f347d43d55c2"
+      },
+      "catalog_credit": "PRES-04 discrete parser/text/scalar/planner predicate only",
+      "contract": {
+        "input_columns": [
+          "current",
+          "fullscreen",
+          "mode_pending",
+          "requested",
+          "current_size",
+          "requested_size"
+        ],
+        "ordered_calls": [
+          {
+            "input": [
+              "Windowed",
+              "Borderless",
+              true,
+              null,
+              [
+                1024,
+                768
+              ],
+              null
+            ],
+            "asserted": {
+              "target": "Borderless",
+              "size": [
+                1024,
+                768
+              ],
+              "resize": false,
+              "reset": false
+            }
+          },
+          {
+            "input": [
+              "Borderless",
+              "Borderless",
+              true,
+              "Windowed",
+              [
+                1024,
+                768
+              ],
+              null
+            ],
+            "asserted": {
+              "target": "Windowed",
+              "reset": false
+            }
+          },
+          {
+            "input": [
+              "Windowed",
+              "Borderless",
+              true,
+              "Exclusive",
+              [
+                1024,
+                768
+              ],
+              null
+            ],
+            "asserted": {
+              "reset": true
+            }
+          },
+          {
+            "input": [
+              "Exclusive",
+              "Exclusive",
+              true,
+              null,
+              [
+                1024,
+                768
+              ],
+              null
+            ],
+            "asserted": {
+              "reset": true
+            }
+          },
+          {
+            "loop_mode": [
+              "Windowed",
+              "Borderless",
+              "Exclusive"
+            ],
+            "input": [
+              "mode",
+              "Borderless",
+              false,
+              null,
+              [
+                1024,
+                768
+              ],
+              [
+                1920,
+                1080
+              ]
+            ],
+            "asserted": {
+              "target": "mode",
+              "size": [
+                1920,
+                1080
+              ],
+              "resize": true,
+              "reset": true
+            }
+          },
+          {
+            "input": [
+              "Borderless",
+              "Borderless",
+              false,
+              null,
+              [
+                1024,
+                768
+              ],
+              [
+                1024,
+                768
+              ]
+            ],
+            "asserted": {
+              "target": "Borderless",
+              "resize": false,
+              "reset": false
+            }
+          },
+          {
+            "input": [
+              "Windowed",
+              "Borderless",
+              true,
+              "Borderless",
+              [
+                1024,
+                768
+              ],
+              [
+                640,
+                480
+              ]
+            ],
+            "asserted": {
+              "target": "Borderless",
+              "size": [
+                640,
+                480
+              ],
+              "reset": true
+            }
+          }
+        ],
+        "limits": [
+          "Nine existing planner calls, one compact mode loop. Borderless-to-Windowed asserts only target and !reset. Exclusive samples assert reset only. Final combined sample does not separately assert resize. No native/controller/reset API."
+        ]
+      },
+      "literal_strings": [],
+      "active_assertion_expressions": [
+        "change.target == Mode::Borderless && change.size == current && !change.resize && !change.reset",
+        "change.target == Mode::Windowed && !change.reset",
+        "Display::plan(Mode::Windowed, Mode::Borderless, true, Mode::Exclusive, current, std::nullopt).reset",
+        "Display::plan(Mode::Exclusive, Mode::Exclusive, true, std::nullopt, current, std::nullopt).reset",
+        "change.target == mode && change.size == (Size{1920, 1080}) && change.resize && change.reset",
+        "change.target == Mode::Borderless && !change.resize && !change.reset",
+        "change.target == Mode::Borderless && change.size == (Size{640, 480}) && change.reset"
+      ],
+      "finite_input_assertion_json_sha256": "aaa04d6b95e7e7723e6f3a53464f75b22be3e2a3972b7b9fb69b6053861025cf"
+    }
+  ],
+  "excluded": {
+    "settings": [
+      "game.settings.battle_bonus",
+      "game.settings.save_utf8",
+      "game.settings.save_wide",
+      "game.settings.save_creates_file",
+      "game.settings.save_failure",
+      "game.settings.unreadable_file",
+      "game.settings.save_transient_lock",
+      "game.settings.save_persistent_lock"
+    ],
+    "display": [
+      "game.display.files",
+      "game.display.shortcut",
+      "game.display.reset_parameters",
+      "game.display.transition_order",
+      "game.display.transition_failure",
+      "game.display.resize_rollback"
+    ],
+    "other": "All host, resource, plane and remaining deferred families. No partial parser facet is used to credit an excluded mixed case."
+  },
+  "execution_identity_requirements": [
+    "Exact source/input-to-test-binary hash/PE role and actual build/cache/compiler/defines/dependency/runtime/FP identity",
+    "Per-case process/stdout/JUnit and meaningful negative-control evidence tied to that binary/profile",
+    "Approved reference/profile and same-profile comparison; no final reference or acceptance in this packet"
+  ],
+  "source_identities": [
+    {
+      "path": "tests/standalone_settings_tests.cpp",
+      "git_blob": "f2a1523e1e11675f3ab10579d55502161ebedb87",
+      "git_content_sha256": "a4be0c71127750fe06b733c68f3e9b292028bf30165bae384316cf89001aa7d8"
+    },
+    {
+      "path": "tests/display_tests.cpp",
+      "git_blob": "edf6604664004c5c07ced0cec9c1da47e0668937",
+      "git_content_sha256": "3b6bde7e773fe842f23883fe0db4aebd6d2f8d726a659268f3fa7c313cee7196"
+    },
+    {
+      "path": "MatrixGame/src/StandaloneSettings.hpp",
+      "git_blob": "2f8fd6c170baee3eb5a1001ed1ca9a8fcb625469",
+      "git_content_sha256": "c55a587366a78c9b51d3061d83d4d5f770fa66ff92464c111fcbcd5a1a03e1c3"
+    },
+    {
+      "path": "MatrixGame/src/StandaloneSettings.cpp",
+      "git_blob": "69a3c71aef83613796ba0355b82cec9db06027e2",
+      "git_content_sha256": "75f08877df878c7e3626253a26d1fbd42d666fe8a583c84ff39b5b32f8575bc0"
+    },
+    {
+      "path": "MatrixLib/3G/DisplaySettings.hpp",
+      "git_blob": "c7470c58292b6123c8eeceaab5b24740cde85da6",
+      "git_content_sha256": "68d4bc804b2a9031482f9f062767143bedf9cd055d71ae46855c3e7a2641faac"
+    },
+    {
+      "path": "MatrixLib/3G/DisplaySettings.cpp",
+      "git_blob": "8c17a5bfc11e854b0be3b1ea382209568bac6717",
+      "git_content_sha256": "1ced89a514521772fd69840ea824b21c86962d372d63b7f82a35337d6294e90b"
+    },
+    {
+      "path": "MatrixGame/src/RandomConfiguration.hpp",
+      "git_blob": "b907351f790e4fa5f507022ccf7c428f2e29026f",
+      "git_content_sha256": "1bbac88aa99361bc27f47c89244daba64f85cd20699d19ad13ed643da4370224"
+    },
+    {
+      "path": "MatrixGame/src/RandomConfiguration.cpp",
+      "git_blob": "7886658a70be5ad85e124a320bab50544a45f6f8",
+      "git_content_sha256": "1dc73145a7bbcc3b169a3a962f902e7e87ba101e994d7bdefa2da7795f4864b8"
+    },
+    {
+      "path": "MatrixGame/src/MapCatalog.cpp",
+      "git_blob": "bd2c5288eff3a84f88552e98ed700968893facb9",
+      "git_content_sha256": "40c3e26551bd7c31a7b5e9bd66d037b434b547a3a35aac83834e5f6b45dd5496"
+    },
+    {
+      "path": "MatrixLib/Base/CBlockPar.hpp",
+      "git_blob": "bc0a991d604ce7546f028a381a9cb99958d74835",
+      "git_content_sha256": "c746f291ba45996c4150b0543b81f2cd7226cff5b618c7af48394947e4371cde"
+    },
+    {
+      "path": "MatrixLib/Base/CBlockPar.cpp",
+      "git_blob": "ac921ddd5007e3a37c9b17e994f5255a6e7397b2",
+      "git_content_sha256": "bc2c55bddd62709bad774569f267c34b9e0c08b910d1be5a40924a62fa83ce0a"
+    },
+    {
+      "path": "MatrixLib/Base/random.hpp",
+      "git_blob": "cafdd624674224e691b262f686c4c83885754c8e",
+      "git_content_sha256": "ec17d5355e937a1f229cd54f9b76b40c6585c16251faa1a59dd921944f6fa194"
+    },
+    {
+      "path": "MatrixGame/src/BattleChoice.hpp",
+      "git_blob": "a062e9dca1abaf4b8a038f31bcd4c9232e2f7f97",
+      "git_content_sha256": "825664d964de7dd440cfd2802b8e79d240a341a9d673f360166acd06a19724fc"
+    },
+    {
+      "path": "tests/CMakeLists.txt",
+      "git_blob": "ea9d0fb9a36453aaaa06ea5f9853cb95ebfc38d4",
+      "git_content_sha256": "f309ed34f1e3b107158873429913762cf5b040e4966b1ac51cfd9518626a185c"
+    },
+    {
+      "path": "tests/test_support.hpp",
+      "git_blob": "940580a5339aae04f0de7d26653b4e3ed677e64c",
+      "git_content_sha256": "53681fff37f0c398a3f8f60134a61ff3a122b2b423166c5c65773aaac8b27e05"
+    },
+    {
+      "path": "tests/test_support.cpp",
+      "git_blob": "4c5b465df8274e4e43b0c18c650da8ff9b3a4a93",
+      "git_content_sha256": "406ddbadfec3d3785aaf464424fccec0d56222cd3fd86e52c51cbd2dd546ba1a"
+    }
+  ]
+}
