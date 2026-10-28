@@ -114,6 +114,8 @@ The public scenario's seed, headless policy and generated fixtures differ from a
 
 ## Delivery flights and carrier damage
 
+The [physical carrier recording contract](carrier-recordings.md) documents the fifty retained delivery/landing/damage/approach episodes, their ownership, lifetime/pose rules and reproducible collection and comparison commands.
+
 `carrier_drop_landing` remains the isolated release case: it declares an 80-world-unit release height on an attached robot, releases it through `Carry(nullptr)` and deletes the now-empty carrier. Every falling frame checks finite, nonincreasing height and unchanged horizontal position. The normal map scheduler changes the robot from Falling to SuccessfullyBuilt on ground contact at 970 ms with 10 ms frames or 976 ms with 16 ms frames, after which a new `PGOrderMoveTo` completes.
 
 `delivery_flights` adds the actual `OrderFlyer` -> `ApplyOrder(FO_GIVE_BOT)` route using the shared [reinforcement resources](reinforcement-fixtures.md). Every session starts from open synthetic topology, seed 81 and the explicitly declared unavailable-icon-target profile. Four paired configurations use cardinal approach angles, distances 300/450, approach heights 100/160 and landing heights 40/70. Each runs both RNG modes at 10 and 16 ms. The caller requests place 3 directly; maintenance proposal selection is covered separately by the reinforcement suite. Robot construction, carrier trajectory, midpoint release, falling, ground contact, inherited attack intent and carrier retirement use ordinary map ticks without editing private trajectory state.

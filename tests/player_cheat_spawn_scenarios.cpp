@@ -6,6 +6,7 @@
 #include "battle_building.hpp"
 #include "battle_flyer.hpp"
 #include "test_support.hpp"
+#include "player_group_capacity_fixture.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFlyer.hpp"
 #include "MatrixFormGame.hpp"
@@ -263,6 +264,25 @@ void crazy_creation() {
         for (const auto &core : cores) MG_CHECK(core->m_Object == nullptr);
     }
 }
+void spawn_exhausted() {
+    for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16})
+    for (bool through_form : {false, true}) {
+        tests::BattleMaterialProfile material;
+        tests::BattleCombatAssets assets;
+        tests::capacity::FullPlayerGroups scene(mode, step);
+        assets.install();
+        cheat_assets();
+        CFormMatrixGame form;
+        g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(300, 100, 0);
+        MG_CHECK(!side().HasFreePlayerLogicGroup());
+        const auto before = scene.snapshot();
+        command(form, "SPAWN", through_form);
+        MG_CHECK(scene.snapshot() == before);
+        MG_CHECK(player_robots() == MAX_LOGIC_GROUP);
+        MG_CHECK(scene.session.time() == 0 && scene.session.frame() == 0);
+        std::cout << scene.session.metadata("spawn-exhausted-v1") << " form=" << through_form << '\n';
+    }
+}
 std::vector<std::string> crazy_deployment_run(random::Mode mode, int step, bool through_form) {
     tests::BattleMaterialProfile material;
     tests::BattleCombatAssets assets;
@@ -392,6 +412,7 @@ void debug_building_reinforcement() {
 constexpr tests::Case cases[]{
     {"game.player.spawn_cheat_creation", spawn_creation<false>},
     {"game.player.spawn_cheat_capacity", spawn_creation<true>},
+    {"game.player.spawn_cheat_exhausted", spawn_exhausted},
     {"game.player.crazy_cheat_creation", crazy_creation},
     {"game.player.crazy_cheat_deployment.park_miller_10_raw", crazy_deployment<random::Mode::ParkMiller, 10, false>},
     {"game.player.crazy_cheat_deployment.park_miller_16_raw", crazy_deployment<random::Mode::ParkMiller, 16, false>},

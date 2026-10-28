@@ -1,6 +1,7 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "test_support.hpp"
+#include "carrier_recording.hpp"
 #include "MatrixMap.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFlyer.hpp"
@@ -478,5 +479,14 @@ int main(int argc, char **argv) {
     if (Base::SMemHeader::first_mem_block != nullptr) result = EXIT_FAILURE;
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            tests::carrier::complete_after_cleanup();
+        }
+        catch (const std::exception &error) {
+            std::cerr << "Failed to complete carrier recordings: " << error.what() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     return result;
 }

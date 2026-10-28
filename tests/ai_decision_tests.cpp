@@ -1,4 +1,5 @@
 // MatrixGame - licensed under GPLv2 or any later version.
+#include "competing_repair_recording.hpp"
 #include "battle_scenario.hpp"
 #include "battle_geometry.hpp"
 #include "test_support.hpp"
@@ -519,5 +520,13 @@ int main(int argc, char **argv) {
     }
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            tests::ai::competing_repair::complete_after_cleanup();
+        } catch (const std::exception &error) {
+            std::cerr << "Competing-repair recording completion failed: " << error.what() << '\n';
+            result = EXIT_FAILURE;
+        }
+    }
     return result;
 }

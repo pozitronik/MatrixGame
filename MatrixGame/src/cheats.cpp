@@ -106,6 +106,10 @@ void processCheat_FLYCAM()
 
 void processCheat_SPAWN()
 {
+    auto *player_side = g_MatrixMap->GetPlayerSide();
+    if (!player_side->HasFreePlayerLogicGroup())
+        return;
+
     D3DXVECTOR3 pos = g_MatrixMap->m_TraceStopPos;
 
     SSpecialBot bot{};
@@ -127,8 +131,14 @@ void processCheat_SPAWN()
     r->CreateTextures();
     r->InitMaxHitpoint(10000.0);
 
+    const int group = player_side->RobotToLogicGroup(r);
+    if (group < 0) {
+        g_MatrixMap->StaticDelete(r);
+        return;
+    }
+
     SETFLAG(g_MatrixMap->m_Flags, MMFLAG_SOUND_ORDER_ATTACK_DISABLE);
-    g_MatrixMap->GetPlayerSide()->PGOrderStop(g_MatrixMap->GetPlayerSide()->RobotToLogicGroup(r));
+    player_side->PGOrderStop(group);
     RESETFLAG(g_MatrixMap->m_Flags, MMFLAG_SOUND_ORDER_ATTACK_DISABLE);
 }
 

@@ -64,6 +64,75 @@ class CombatRecordingTests(unittest.TestCase):
         parsed = combat.trace.read_records(io.StringIO("\n".join(json.dumps(r) for r in records)))
         combat.validate(parsed, **(profile or self.profile))
 
+    def reject_correlated_pair(self, edit, message, profile=None):
+        profile = profile or self.profile
+        left = recording(profile)
+        edit(left)
+        right = copy.deepcopy(left)
+        self.assertIsNone(combat.trace.compare_records(left, right))
+        for records in (left, right):
+            with self.assertRaisesRegex(combat.trace.TraceError, message):
+                self.checked(records, **profile)
+
+    def test_live_queue_enum_capacity_and_object_domains(self):
+        for queue, message in (([[9, 0, 0, 0, 0]], "queue type or phase"),
+                               ([[-1, 0, 0, 0, 0]], "queue type or phase"),
+                               ([[1, 9, 0, 0, 0]], "queue type or phase"),
+                               ([[1, -1, 0, 0, 0]], "queue type or phase"),
+                               ([[1, 0, 0, 0, -2]], "queue object"),
+                               ([[1, 0, 0, 0, 5]], "queue object"),
+                               ([[1, 0, 0, 0, 0]] * 6, "invalid live actor queue")):
+            with self.subTest(queue=queue):
+                self.reject_correlated_pair(
+                    lambda r: r[2]["state"]["robots"][0].update(queue=queue), message)
+
+    def test_live_order_and_normalized_target_domains(self):
+        for field, values, message in (("order", (-2, 10, 999), "player order"),
+                                       ("target", (-2, 5), "actor target")):
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    self.reject_correlated_pair(
+                        lambda r: r[2]["state"]["robots"][0].update({field: value}), message)
+
+    def test_player_group_order_and_target_domains(self):
+        for field, values, message in (("order", (-1, 10, 999), "player-group order"),
+                                       ("target", (-2, 5), "player-group target")):
+            for value in values:
+                with self.subTest(field=field, value=value):
+                    def edit(records):
+                        group = dict(slot=0, stored_count=1, members=1, order=0, target=0)
+                        group[field] = value
+                        records[2]["state"]["player_groups"] = [group]
+                    self.reject_correlated_pair(edit, message)
+
+    def test_retired_actor_cannot_retain_even_an_empty_queue(self):
+        for queue in ([], [[1, 0, 0, 0, 0]], None):
+            with self.subTest(queue=queue):
+                def edit(records):
+                    snapshot = next(r for r in records if r["type"] == "snapshot"
+                                    and not r["state"]["robots"][0]["alive"])
+                    snapshot["state"]["robots"][0]["queue"] = queue
+                self.reject_correlated_pair(edit, "retired Session actor retains a queue")
+
+    def test_valid_order_boundaries_and_all_uint32_payloads_pass(self):
+        for order in (-1, 0, 9):
+            records = recording(self.profile)
+            state = records[2]["state"]
+            state["robots"][0].update(order=order, target=-1,
+                                      queue=[[0, 0, 0, 0xffffffff, -1], [8, 8, 0xffffffff, 0, 4]] * 2 +
+                                            [[1, 0, 0, 0, 0]])
+            state["player_groups"] = [dict(slot=0, stored_count=1, members=1, order=9, target=4)]
+            self.checked(records)
+
+    def test_patient_state_matches_the_current_turret_patient(self):
+        profile = dict(family="cannon-retarget", rng="ParkMiller", step=10)
+        for frame in (0, 100):
+            with self.subTest(frame=frame):
+                def edit(records):
+                    snapshot = next(r for r in records if r.get("state", {}).get("frame") == frame)
+                    snapshot["combat"]["robot_state"] = 999
+                self.reject_correlated_pair(edit, "combat patient state differs", profile)
+
     def test_all_eight_profiles(self):
         for _, profile in combat.inventory():
             with self.subTest(profile=profile):

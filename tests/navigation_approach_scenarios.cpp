@@ -5,6 +5,7 @@
 #include "test_support.hpp"
 #include "MatrixFlyer.hpp"
 #include "MatrixRobot.hpp"
+#include "carrier_recording.hpp"
 
 #include <algorithm>
 #include <array>
@@ -31,7 +32,7 @@ struct Observation {
     bool operator==(const Observation &) const = default;
 };
 
-Observation approach(random::Mode mode, int step, bool tall) {
+Observation approach(random::Mode mode, int step, bool tall, int replay) {
     tests::BattleMaterialProfile materials;
     Profile profile{mode, 81, step, duration / step, false, false};
     profile.layout = tests::NavigationLayout::Open;
@@ -73,7 +74,10 @@ Observation approach(random::Mode mode, int step, bool tall) {
               << " roof=" << roof.z << " bounds=" << minimum.x << ',' << minimum.y << ',' << minimum.z
               << ':' << maximum.x << ',' << maximum.y << ',' << maximum.z << std::endl;
     const auto destination = map.m_RN.m_Place[3].m_Pos;
+    tests::carrier::Recording recording(session, mode, step, "approach", int(tall), replay);
+    const auto request_draws = random::draw_count();
     map.GetPlayerSide()->OrderFlyer(D3DXVECTOR2(480, 480), FO_GIVE_BOT, 0, 3, destination, 0);
+    recording.request(request_draws, 0, {480, 480}, 3, {destination.x, destination.y});
     MG_CHECK(map.m_AD_Obj_cnt == 1);
     auto *carrier = static_cast<CMatrixFlyer *>(map.m_AD_Obj[0]);
     auto *cargo = static_cast<CMatrixRobotAI *>(carrier->GetCarryingRobot());
@@ -87,6 +91,22 @@ Observation approach(random::Mode mode, int step, bool tall) {
     MG_CHECK(map.GetPlayerSide()->m_PlayerGroup[group].Order() == mpo_Attack);
     MG_CHECK(map.GetPlayerSide()->m_PlayerGroup[group].m_To == destination);
     Observation result;
+    const auto sample = [&](std::optional<std::array<float, 3>> position = {}, std::optional<float> height = {},
+                            std::optional<float> surface = {}, std::optional<float> hit_roof = {},
+                            const std::string &original = {}) {
+        const tests::carrier::Pair pair{carrier, cargo, carrier_core.get(), cargo_core.get(), 3,
+            {destination.x, destination.y}, position, height,
+            tests::carrier::Progress{result.release, result.landed, result.retired, -1}};
+        tests::carrier::Frame frame;
+        frame.obstacle = obstacle;
+        frame.original = original;
+        frame.approach = tests::carrier::Approach{{minimum.x, minimum.y, minimum.z},
+            {maximum.x, maximum.y, maximum.z}, roof.z, result.maximum_z, result.maximum_surface,
+            result.inside, result.first_inside, result.last_inside, surface, hit_roof};
+        const auto observation = tests::carrier::observe(session, std::span(&pair, 1), frame);
+        recording.snapshot(observation);
+    };
+    sample();
     while (session.time() < duration) {
         session.advance();
         MG_CHECK(!map.IsPaused());
@@ -95,17 +115,21 @@ Observation approach(random::Mode mode, int step, bool tall) {
         MG_CHECK(std::isfinite(cargo->m_PosX) && std::isfinite(cargo->m_PosY) &&
                  std::isfinite(cargo->GetMatrix()._43));
         std::ostringstream snapshot;
+        std::optional<std::array<float, 3>> observed_position;
+        std::optional<float> observed_surface, observed_hit_roof;
         snapshot << session.snapshot() << ":carrier=" << bool(carrier_core->m_Object);
         if (carrier_core->m_Object) {
             MG_CHECK(carrier_core->m_Object == carrier);
             MG_CHECK(carrier->GetHitPoint() == 1000);
             const auto position = carrier->GetPos();
+            observed_position = std::array<float, 3>{position.x, position.y, position.z};
             MG_CHECK(std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z));
             result.horizontal.push_back({std::bit_cast<uint32_t>(position.x), std::bit_cast<uint32_t>(position.y)});
             result.altitude.push_back(position.z);
             result.maximum_z = std::max(result.maximum_z, position.z);
-            result.maximum_surface = std::max(result.maximum_surface,
-                map.GetZInterpolatedObjRobots(position.x, position.y));
+            const float surface = map.GetZInterpolatedObjRobots(position.x, position.y);
+            observed_surface = surface;
+            result.maximum_surface = std::max(result.maximum_surface, surface);
             if (position.x > minimum.x && position.x < maximum.x && position.y > minimum.y &&
                 position.y < maximum.y && position.z > minimum.z && position.z < maximum.z) {
                 ++result.inside;
@@ -116,6 +140,7 @@ Observation approach(random::Mode mode, int step, bool tall) {
                 MG_CHECK(map.Trace(&hit, D3DXVECTOR3(position.x, position.y, 1000),
                                    D3DXVECTOR3(position.x, position.y, -10), TRACE_BUILDING) == obstacle);
                 MG_CHECK(hit.z > position.z);
+                observed_hit_roof = hit.z;
             }
             snapshot << ',' << std::bit_cast<uint32_t>(position.x) << ',' << std::bit_cast<uint32_t>(position.y)
                      << ',' << std::bit_cast<uint32_t>(position.z);
@@ -127,9 +152,10 @@ Observation approach(random::Mode mode, int step, bool tall) {
         else {
             MG_CHECK(!carrier_core->m_Object || !carrier->CarryingRobot());
         }
+        const float observed_height = cargo->GetMatrix()._43;
         snapshot << ":cargo=" << int(cargo->m_CurrState) << ',' << std::bit_cast<uint32_t>(cargo->m_PosX)
                  << ',' << std::bit_cast<uint32_t>(cargo->m_PosY) << ','
-                 << std::bit_cast<uint32_t>(cargo->GetMatrix()._43);
+                 << std::bit_cast<uint32_t>(observed_height);
         result.trace.push_back(snapshot.str());
         result.draws.push_back(random::draw_count());
         if (!result.release && cargo->m_CurrState == ROBOT_FALLING) result.release = session.time();
@@ -147,6 +173,7 @@ Observation approach(random::Mode mode, int step, bool tall) {
             MG_CHECK(cargo->m_PosX == 500 && cargo->m_PosY == 500 && cargo->GetMatrix()._43 == 0);
             MG_CHECK(cargo->GetOrdersInPool() == 0);
         }
+        sample(observed_position, observed_height, observed_surface, observed_hit_roof, result.trace.back());
     }
     std::cout << "tall=" << tall << " release=" << result.release << " landed=" << result.landed
               << " retired=" << result.retired << " inside=" << result.inside
@@ -163,15 +190,17 @@ Observation approach(random::Mode mode, int step, bool tall) {
         MG_CHECK(result.inside >= 10 && result.first_inside > 0);
         MG_CHECK(result.last_inside - result.first_inside >= 200 && result.last_inside < result.release);
     }
+    recording.finish();
     return result;
 }
 
 template<random::Mode Mode, int Step>
 void approach_pair() {
-    const auto low = approach(Mode, Step, false);
-    MG_CHECK(low == approach(Mode, Step, false));
-    const auto high = approach(Mode, Step, true);
-    MG_CHECK(high == approach(Mode, Step, true));
+    tests::carrier::invalidate("approach", Mode, Step);
+    const auto low = approach(Mode, Step, false, 0);
+    MG_CHECK(low == approach(Mode, Step, false, 1));
+    const auto high = approach(Mode, Step, true, 0);
+    MG_CHECK(high == approach(Mode, Step, true, 1));
     MG_CHECK(low.horizontal == high.horizontal);
     MG_CHECK(low.draws == high.draws);
     MG_CHECK(low.release == high.release && low.landed == high.landed && low.retired == high.retired);
@@ -206,5 +235,14 @@ int main(int argc, char **argv) {
     if (Base::SMemHeader::first_mem_block != nullptr) return EXIT_FAILURE;
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            tests::carrier::complete_after_cleanup();
+        }
+        catch (const std::exception &error) {
+            std::cerr << "Failed to complete carrier recordings: " << error.what() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     return result;
 }
