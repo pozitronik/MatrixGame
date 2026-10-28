@@ -870,7 +870,8 @@ foreach(contract mixed_command_lifecycle spawning_command_lifecycle carried_comm
     set_tests_properties(game.player.${contract} PROPERTIES TIMEOUT 90)
 endforeach()
 
-add_matrix_test_executable(matrixgame_player_target_lifecycles player_target_lifecycle_tests.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_player_target_lifecycles player_target_lifecycle_tests.cpp
+    player_target_recording.cpp battle_scenario.cpp
     battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_player_target_lifecycles PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_player_target_lifecycles matrixgame_scenario_identity)

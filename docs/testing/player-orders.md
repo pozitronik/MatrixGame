@@ -185,6 +185,29 @@ Each interrupted bomb run first proves that the bomber has physically progressed
 
 The cleanup deadline follows `CMatrixSideUnit::TaktPL`: it runs when at least 100 ms have elapsed, so assertions allow 100 ms plus one profile tick after deletion. Bomb completion has a separate request boundary: `BigBoom` marks the robot for death, and a later robot tick enters the dying state. These cases do not mistake the intervening group Stop for canceled detonation. New completion checks are bounded behavioral assertions, not accepted historical trajectories; the two RNG profiles remain separate. No production code or gameplay balance changes are included.
 
+### Retained repair and bomb lifecycle recordings
+
+The existing eight cases write 80 schema-1 JSONL files under the normal build's `tests/scenario-traces/` directory. Repair contributes 24 episodes: both RNGs, both schedules, completion/removal/Stop and both input routes. The seven selected bomb variants contribute eight episodes each. Filenames retain family, target, ending, RNG, schedule and route, beginning with `player-target-`. The original 28 keyboard/button Session-vector comparisons remain active; Stop routes deliberately have no cross-route equality requirement. These comparisons do not make route-specific files interchangeable or establish same-route fresh-process reproducibility.
+
+Each file retains setup identity, every original input and complete production tick, plus initial and same-frame command boundaries. Inputs distinguish routed keyboard/button commands, keyboard cancellation, supplied target/ground clicks and explicit `StaticDelete` interventions. The `accepted` field describes the checked resulting contract of a void input handler. It is not an engine return code or native screen-picking evidence. Shared Session state is retained unchanged; custom observations add preorders, saved destinations, healing/damage events, live actor/environment state and full seven-field selected-actor orders, including aim height and firing/repair mode. Objects use null `0`, external/nonregistered `-1` and the four Session identities; no raw address is stored.
+
+Bomb records distinguish a death request, DIP with a retained object core and final core retirement. A dying robot reuses its unit storage for debris, so live health, environment, firing and order fields are omitted after DIP; only safe core/object/state/flag observations remain. Repair deletion is separate from healing completion, and Stop may still allow autonomous healing. The reader preserves those source contracts rather than treating every Stop as no activity.
+
+Each CTest caller invalidates all of its 24 or eight output files before constructing any fixture, including episodes a later failure would prevent visiting. Journeys queue only precomputed completion data. Footers are appended after all original case assertions and route comparisons, the tracked-allocation check and successful base cleanup. A failed setup, caller or cleanup therefore leaves an incomplete family; the strict reader rejects it. Keep the whole process result as well, including a possible output-write failure.
+
+The dedicated [post-engine consumer](../../tests/check_player_target_traces.py) requires the exact 80-file inventory, typed observations, full command/tick schedules, target/reference cleanup, health-event counts and request/DIP/core milestones. It parses each file once; two real-file representatives supply eight bounded malformed-observation/frame/tail controls. Its [Python contracts](../../tests/test_player_target_traces.py) use synthetic recording data, independently rejecting correlated omissions and distinguishing object lifetime phases. Those synthetic data are reader tests, not gameplay reference trajectories.
+
+After building and running the complete eight-case selection, check a clean Debug build with:
+
+```powershell
+$revision = git rev-parse HEAD
+python -B tests/check_player_target_traces.py build/mingw-debug-exe/tests/scenario-traces --revision $revision --configuration Debug --compiler MinGW --target EXE --cheats false
+```
+
+Use the corresponding Release path/configuration, compiler, EXE/DLL role and cheats value for other builds. The five profile options are optional together for diagnostic inspection and mandatory together once any is supplied. CI provides its actual HEAD and build inputs. Strict mode requires a clean exact candidate revision and correctly typed supplied build fields; it does not bind missing `_TRACE` metadata, resources, compiler version or floating-point policy to an external manifest. The recorded profile remains part of exact comparison. `--reference-directory` compares corresponding files without stripping route identity; in strict mode references must be clean and match supplied build inputs. Add `--reference-revision` to pin a different full historical revision; omitting that pin is diagnostic and does not select an accepted oracle. The final reference/candidate campaign still requires the reviewed #324 contract.
+
+No extra simulation episodes or ticks are introduced. Before/after validation compares all 80 original episode vectors and terminal RNG counts per configuration, retaining exact original stdout as well. Standalone Debug and Release preserve all 280,800 original tick strings across both profiles without normalization. The first measured 80-file output is approximately 203 MB per profile; keep current outputs and compact provenance rather than archiving duplicate runs. Native presentation, shared capture/special-object cases, older route adapters and complete C3/baseline acceptance remain separate.
+
 Run this increment and its existing route controls with:
 
 ```powershell

@@ -241,6 +241,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot identify combat recording revision.' }
           python -B tools/check-combat-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}'
           if ($LASTEXITCODE -ne 0) { throw 'Armed-combat recording validation failed.' }
+      - name: Validate complete target-lifecycle recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify target-lifecycle recording revision.' }
+          python -B tests/check_player_target_traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Target-lifecycle recording validation failed.' }
       - name: Validate complete fire-feedback recordings
         shell: pwsh
         run: |
