@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import sys
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -150,6 +151,35 @@ class NavigationCorpusTests(unittest.TestCase):
         tails = [call.args[2][0] for call in controls.call_args_list if call.args[-1]]
         self.assertEqual(tails, ["intermediate", "trailing-reference", "crowded", "opposing"])
 
+    def test_equal_physical_files_cannot_use_a_string_order_parameter(self):
+        def edit(records):
+            first = next(record for record in records if record["type"] == "snapshot")
+            first["formation"]["actors"][0]["queue"][0]["param4"] = "not-an-integer"
+        self.mutate_group("intermediate", edit)
+        with patch.object(CHECK.TRACES, "compare_records", side_effect=AssertionError("replay must not decide this")):
+            self.rejects("invalid physical order integers")
+
+    def test_equal_work_files_cannot_use_a_string_order_parameter(self):
+        def edit(records):
+            first = next(record for record in records if record["type"] == "snapshot")
+            first["navigation"]["actors"][0][8][0][5] = "not-an-integer"
+        self.mutate_group("crowded", edit)
+        compare = CHECK.TRACES.compare_records
+        def reject_corrupt_comparison(left, right):
+            if left[0]["fixture"] == "crowded-destination-v1":
+                raise AssertionError("replay must not decide this")
+            return compare(left, right)
+        with patch.object(CHECK.TRACES, "compare_records", side_effect=reject_corrupt_comparison):
+            self.rejects("invalid work order integers")
+
+    def test_equal_files_cannot_replace_the_session_queue_with_a_string(self):
+        def edit(records):
+            first = next(record for record in records if record["type"] == "snapshot")
+            first["state"]["robots"][0]["queue"] = "not-an-array"
+        self.mutate_group("intermediate", edit)
+        with patch.object(CHECK.TRACES, "compare_records", side_effect=AssertionError("replay must not decide this")):
+            self.rejects("invalid Session queue")
+
     def test_consistent_missing_frame(self):
         self.mutate_group("intermediate", lambda records: records.pop(3))
         self.rejects("missing/duplicate whole-frame boundary")
@@ -255,6 +285,126 @@ class NavigationCorpusTests(unittest.TestCase):
     def test_consistent_terminal_rng(self):
         self.mutate_group("intermediate", lambda records: records[-1]["formation"].__setitem__("initial_rng_draws", 11))
         self.rejects("terminal RNG boundaries mismatch")
+
+
+class QueueScalarContracts(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.arguments = SimpleNamespace(configuration="Debug", compiler="MinGW", target="EXE",
+                                        cheats=False, revision=REVISION)
+        cls.records = {physical: list(synthetic_trace(family, "ParkMiller", 10))
+                       for physical, family in ((True, "intermediate"), (False, "crowded"))}
+        for physical, records in cls.records.items():
+            cls.validate(records, physical)
+
+    @classmethod
+    def validate(cls, records, physical):
+        CHECK.validate(records, "intermediate" if physical else "crowded", physical, "pm", 10, cls.arguments)
+
+    def changed_queue(self, physical, edit, session=False):
+        records = self.records[physical]
+        first = next(i for i, record in enumerate(records) if record["type"] == "snapshot")
+        def change(snapshot):
+            actor = snapshot["state"]["robots"][0] if session else CHECK.actors(snapshot, physical)[0]
+            edit(actor, "queue" if session or physical else 8)
+        return CHECK.changed(records, first, change)
+
+    def reject_queue(self, physical, edit, message, session=False):
+        records = self.changed_queue(physical, edit, session)
+        with self.assertRaisesRegex(ValueError, message):
+            self.validate(records, physical)
+
+    def test_named_order_scalar_types_and_integer_width(self):
+        for key in ("type", "phase", "param4"):
+            for value in (True, False, 0.0, "0", None, -0x80000001, 0x80000000):
+                with self.subTest(key=key, value=value):
+                    self.reject_queue(True, lambda actor, q: actor[q][0].__setitem__(key, value),
+                                      "invalid physical order integers")
+
+    def test_work_order_scalar_types_and_integer_width(self):
+        for index in (0, 1, 5):
+            for value in (True, False, 0.0, "0", None, -0x80000001, 0x80000000):
+                with self.subTest(index=index, value=value):
+                    self.reject_queue(False, lambda actor, q: actor[q][0].__setitem__(index, value),
+                                      "invalid work order integers")
+
+    def test_named_and_work_parameter_bit_widths(self):
+        for physical in (True, False):
+            fields = ("param1_bits", "param2_bits", "param3_bits") if physical else (2, 3, 4)
+            for field in fields:
+                for value in (True, -1, 0x100000000, 0.0, "0", None):
+                    with self.subTest(physical=physical, field=field, value=value):
+                        self.reject_queue(physical, lambda actor, q: actor[q][0].__setitem__(field, value),
+                                          "invalid order bits" if physical else "invalid work order bits")
+
+    def test_named_order_shape(self):
+        for value in (None, [], 1, {"type": 1},
+                      dict(self.records[True][2]["formation"]["actors"][0]["queue"][0], extra=0)):
+            with self.subTest(value=value):
+                self.reject_queue(True, lambda actor, q: actor.__setitem__(q, [value]),
+                                  "incomplete physical order")
+        for queue in (None, "queue", {}):
+            with self.subTest(queue=queue):
+                self.reject_queue(True, lambda actor, q: actor.__setitem__(q, queue), "missing physical queue")
+
+    def test_work_order_shape(self):
+        for value in (None, {}, 1, [1, 0, 0, 0, 0, 0], [1, 0, 0, 0, 0, 0, 0, 0]):
+            with self.subTest(value=value):
+                self.reject_queue(False, lambda actor, q: actor.__setitem__(q, [value]), "incomplete work order")
+        for queue in (None, "queue", {}):
+            with self.subTest(queue=queue):
+                self.reject_queue(False, lambda actor, q: actor.__setitem__(q, queue),
+                                  "invalid work group/arrival/queue")
+
+    def test_named_and_work_objects_are_integer_actor_ids(self):
+        for physical, count in ((True, 5), (False, 10)):
+            field = "object" if physical else 6
+            for value in (True, False, 0.0, "0", -1, count + 1):
+                with self.subTest(physical=physical, value=value):
+                    self.reject_queue(physical, lambda actor, q: actor[q][0].__setitem__(field, value),
+                                      "unnormalized order object" if physical else "unnormalized work order object")
+
+    def test_session_queue_shape_and_scalar_types(self):
+        for queue in (None, "queue", {}):
+            with self.subTest(queue=queue):
+                self.reject_queue(True, lambda actor, q: actor.__setitem__(q, queue),
+                                  "invalid Session queue", session=True)
+        for order in (None, {}, [1, 0, 0, 0], [1, 0, 0, 0, 0, 0]):
+            with self.subTest(order=order):
+                self.reject_queue(True, lambda actor, q: actor.__setitem__(q, [order]),
+                                  "incomplete Session order", session=True)
+        for index in (0, 1):
+            for value in (True, 0.0, "0", -0x80000001, 0x80000000):
+                order = [1, 0, 0, 0, 0]
+                order[index] = value
+                with self.subTest(index=index, value=value):
+                    self.reject_queue(True, lambda actor, q: actor.__setitem__(q, [order]),
+                                      "invalid Session order integers", session=True)
+        for index in (2, 3):
+            for value in (True, 0.0, -1, 0x100000000):
+                order = [1, 0, 0, 0, 0]
+                order[index] = value
+                with self.subTest(index=index, value=value):
+                    self.reject_queue(True, lambda actor, q: actor.__setitem__(q, [order]),
+                                      "invalid Session order bits", session=True)
+        for value in (True, False, 0.0, "0", -2, 5):
+            with self.subTest(value=value):
+                self.reject_queue(True, lambda actor, q: actor.__setitem__(q, [[1, 0, 0, 0, value]]),
+                                  "unnormalized Session order object", session=True)
+
+    def test_representable_parameters_and_object_namespaces_remain_supported(self):
+        for physical in (True, False):
+            for mode in (-0x80000000, -1, 0, 2, 0x7fffffff):
+                def edit(actor, q):
+                    if physical:
+                        actor[q][0].update(param3_bits=0x420c0000, param4=mode)
+                    else:
+                        actor[q][0][4:6] = [0x420c0000, mode]
+                self.validate(self.changed_queue(physical, edit), physical)
+        for object_id in (-1, 0, 1, 4):
+            records = self.changed_queue(True, lambda actor, q: actor.__setitem__(q, [[1, 0, 0, 0, object_id]]),
+                                         session=True)
+            self.validate(records, True)
 
 
 if __name__ == "__main__":

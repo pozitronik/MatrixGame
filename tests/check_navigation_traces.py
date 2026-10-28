@@ -26,6 +26,19 @@ def uint32(value):
     return integer(value, 0, 0xffffffff)
 
 
+def int32(value):
+    return integer(value, -0x80000000, 0x7fffffff)
+
+
+def session_queue(queue):
+    require(isinstance(queue, list), "invalid Session queue")
+    for order in queue:
+        require(isinstance(order, list) and len(order) == 5, "incomplete Session order")
+        require(all(int32(order[i]) for i in (0, 1)), "invalid Session order integers")
+        require(all(uint32(order[i]) for i in (2, 3)), "invalid Session order bits")
+        require(integer(order[4], -1, 4), "unnormalized Session order object")
+
+
 def expected():
     for family in ("intermediate", "trailing-reference", "crowded", "opposing"):
         physical = family in ("intermediate", "trailing-reference")
@@ -88,17 +101,23 @@ def validate(records, family, physical, rng, step, arguments):
                 require(all(uint32(actor[key]) for key in actor if key.endswith("_bits")), "invalid physical float bits")
                 require(isinstance(actor["queue"], list), "missing physical queue")
                 for order in actor["queue"]:
-                    require(set(order) == {"type", "phase", "param1_bits", "param2_bits", "param3_bits", "param4", "object"}, "incomplete physical order")
+                    fields = {"type", "phase", "param1_bits", "param2_bits", "param3_bits", "param4", "object"}
+                    require(isinstance(order, dict) and set(order) == fields, "incomplete physical order")
+                    require(all(int32(order[key]) for key in ("type", "phase", "param4")),
+                            "invalid physical order integers")
                     require(all(uint32(order[key]) for key in ("param1_bits", "param2_bits", "param3_bits")), "invalid order bits")
-                    require(order["object"] in range(count + 1), "unnormalized order object")
+                    require(integer(order["object"], 0, count), "unnormalized order object")
             else:
                 # These are the original Scene::snapshot arrays, preserved without reinterpretation.
                 require(len(actor) == 9 and all(uint32(value) for value in actor[1:6]), "incomplete work actor/float bits")
                 require(integer(actor[6]) and actor[7] in (0, 1) and isinstance(actor[8], list), "invalid work group/arrival/queue")
                 for order in actor[8]:
-                    require(len(order) == 7 and all(uint32(value) for value in order[2:5]), "incomplete work order")
-                    require(order[6] in range(count + 1), "unnormalized work order object")
+                    require(isinstance(order, list) and len(order) == 7, "incomplete work order")
+                    require(all(int32(order[i]) for i in (0, 1, 5)), "invalid work order integers")
+                    require(all(uint32(value) for value in order[2:5]), "invalid work order bits")
+                    require(integer(order[6], 0, count), "unnormalized work order object")
         for original in state["robots"]:
+            session_queue(original.get("queue"))
             actor = observed[original["id"] - 1]
             x, y = (actor["x_bits"], actor["y_bits"]) if physical else (actor[1], actor[2])
             require(original["alive"] is True and (original["x_bits"], original["y_bits"]) == (x, y), "Session/extended actor identity mismatch")
