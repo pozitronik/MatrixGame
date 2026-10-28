@@ -5,6 +5,7 @@
 #include "battle_mesh.hpp"
 #include "command_world.hpp"
 #include "test_support.hpp"
+#include "strategic_production_recording.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixObjectBuilding.hpp"
 #include "Interface/CInterface.h"
@@ -168,6 +169,7 @@ void ai_purchase_deleted() { ai_production_purchase(PurchaseEnd::Deleted); }
 
 enum class StrategicEnd { Deploy, RemoveWaitingBase, RemovePaidBase };
 void strategic_purchase(StrategicEnd ending) {
+    tests::production::invalidate(int(ending));
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
       for (int step : {10, 16}) {
         tests::BattleMaterialProfile materials;
@@ -209,24 +211,44 @@ void strategic_purchase(StrategicEnd ending) {
         }
         const auto draws = random::draw_count();
         const auto build_stat = side.GetStatValue(STAT_ROBOT_BUILD);
+        tests::production::View observation{factory, base_core.get()};
+        tests::production::Recording recording(session, mode, step, int(ending));
+        const auto sample = [&](const char *phase) {
+            const auto payload = tests::production::observe(session, observation, phase);
+            recording.snapshot(payload);
+        };
+        sample("initial");
         side.BuildRobot();
         MG_CHECK(side.m_WaitResForBuildRobot == 0 && side.m_BuildRobotLast == -1);
         MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && resources() == (Cost{90, 90, 90, 90}));
         MG_CHECK(random::draw_count() == draws + 1);
+        recording.command("choose", draws);
         std::cout << "strategic ending=" << int(ending) << ' '
                   << session.metadata("synthetic-strategic-purchase-v1") << '\n';
+        sample("choice");
         if (ending == StrategicEnd::RemoveWaitingBase) {
+            const auto deletion_draws = random::draw_count();
             g_MatrixMap->StaticDelete(factory);
-            MG_CHECK(!base_core->m_Object && side.GetMaxSideRobots() == 0);
+            recording.command("delete-base", deletion_draws);
+            MG_CHECK(!base_core->m_Object);
+            const int capacity = side.GetMaxSideRobots();
+            MG_CHECK(capacity == 0);
+            observation.capacity = capacity;
+            sample("base-deleted");
             const auto before = resources();
             for (int frame = 0; frame < 100; ++frame) {
                 session.advance();
+                sample("tick");
+                const auto command_draws = random::draw_count();
                 side.BuildRobot();
                 MG_CHECK(resources() == before && side.m_WaitResForBuildRobot == 0);
                 MG_CHECK(side.m_BuildRobotLast == -1 && side.GetStatValue(STAT_ROBOT_BUILD) == build_stat);
+                recording.command("build", command_draws);
+                sample("strategy");
             }
             // Losing the only base removes capacity; this guard precedes wait cancellation.
             MG_CHECK(random::draw_count() == draws + 1);
+            recording.finish();
             continue;
         }
         int payouts = 0;
@@ -239,11 +261,16 @@ void strategic_purchase(StrategicEnd ending) {
             MG_CHECK(change == 0 || change == 3);
             for (int r = 0; r < MAX_RESOURCES; ++r) MG_CHECK(earned[r] == before[r] + change);
             payouts += change / 3;
+            observation.payouts = payouts;
+            sample("tick");
+            const auto command_draws = random::draw_count();
             side.BuildRobot();
             if (payouts < 10) {
                 MG_CHECK(factory->m_BS.GetItemsCnt() == 0 && resources() == earned);
                 MG_CHECK(side.m_WaitResForBuildRobot == 0 && side.m_BuildRobotLast == -1);
             }
+            recording.command("build", command_draws);
+            sample("strategy");
         }
         MG_CHECK(payouts == 10 && factory->m_BS.GetItemsCnt() == 1);
         // Sixteen-millisecond frames contain 10+6 ms object ticks. Income
@@ -253,31 +280,51 @@ void strategic_purchase(StrategicEnd ending) {
         MG_CHECK(random::draw_count() == draws + 1); // The retained plan needs no new lottery.
         auto *built = factory->m_BS.GetTopItem()->AsRobot();
         std::unique_ptr<SObjectCore, decltype(release_core)> robot_core(built->GetCore(DEBUG_CALL_INFO), release_core);
+        observation.robot = built;
+        observation.robot_core = robot_core.get();
+        observation.paid = session.time();
         MG_CHECK(!in_logic(built) && built->GetBase() == factory && built->GetSide() == PLAYER_SIDE);
         MG_CHECK(built->m_UnitCnt == 4);
-        for (int unit = 2; unit < 4; ++unit)
+        std::array<std::array<int, 3>, 2> weapon_samples{};
+        for (int unit = 2; unit < 4; ++unit) {
             MG_CHECK(built->m_Unit[unit].m_Type == MRT_WEAPON &&
                      built->m_Unit[unit].u1.s1.m_Kind == RUK_WEAPON_REPAIR);
+            weapon_samples[unit - 2] = {unit, int(built->m_Unit[unit].m_Type), int(built->m_Unit[unit].u1.s1.m_Kind)};
+        }
         Cost constructor_price{};
         side.m_Constructor->GetConstructionPrice(constructor_price.data());
         MG_CHECK(constructor_price == (Cost{120, 120, 120, 120}));
+        observation.constructor_price = constructor_price;
+        observation.weapon_samples = weapon_samples;
+        sample("paid");
+        const auto recheck_draws = random::draw_count();
         side.BuildRobot();
         MG_CHECK(factory->m_BS.GetItemsCnt() == 1 && factory->m_BS.GetTopItem() == built);
         MG_CHECK(resources() == Cost{} && random::draw_count() == draws + 1);
+        recording.command("queue-recheck", recheck_draws);
+        sample("queue-recheck");
         if (ending == StrategicEnd::RemovePaidBase) {
+            const auto deletion_draws = random::draw_count();
             g_MatrixMap->StaticDelete(factory);
+            recording.command("delete-base", deletion_draws);
             MG_CHECK(!base_core->m_Object && !robot_core->m_Object);
             MG_CHECK(resources() == constructor_price);
             MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == build_stat);
+            sample("base-deleted");
             for (int frame = 0; frame < 100; ++frame) {
                 session.advance();
+                sample("tick");
+                const auto command_draws = random::draw_count();
                 side.BuildRobot();
                 MG_CHECK(!base_core->m_Object && !robot_core->m_Object);
                 MG_CHECK(resources() == constructor_price);
                 MG_CHECK(side.m_WaitResForBuildRobot == -1 && side.m_BuildRobotLast == 0);
                 MG_CHECK(side.GetStatValue(STAT_ROBOT_BUILD) == build_stat);
+                recording.command("build", command_draws);
+                sample("strategy");
             }
             MG_CHECK(random::draw_count() == draws + 1);
+            recording.finish();
             continue;
         }
         const int purchased = session.time();
@@ -300,11 +347,18 @@ void strategic_purchase(StrategicEnd ending) {
             if (spawned >= 0 && detached < 0 && built->GetBase() == nullptr) {
                 detached = session.time();
                 const D3DXVECTOR2 delta(built->m_PosX - factory->m_Pos.x, built->m_PosY - factory->m_Pos.y);
-                MG_CHECK(D3DXVec2LengthSq(&delta) >= BASE_DIST * BASE_DIST);
+                const float distance_squared = D3DXVec2LengthSq(&delta);
+                MG_CHECK(distance_squared >= BASE_DIST * BASE_DIST);
+                observation.detach_distance = distance_squared;
                 MG_CHECK(built->m_CurrState == ROBOT_SUCCESSFULLY_BUILD && !built->IsDisableManual());
                 MG_CHECK(factory->m_State == BASE_CLOSING && !factory->IsSpawningBot());
             }
             if (detached >= 0 && factory->m_State == BASE_CLOSED) closed = session.time();
+            observation.spawned = spawned;
+            observation.opened = opened;
+            observation.detached = detached;
+            observation.closed = closed;
+            sample("tick");
         }
         std::cout << "purchase=" << purchased << " spawned=" << spawned << " opened=" << opened
                   << " detached=" << detached << " closed=" << closed << '\n';
@@ -320,6 +374,7 @@ void strategic_purchase(StrategicEnd ending) {
         const int final_balance = step == 10 ? 144 : 138;
         MG_CHECK(resources() == (Cost{final_balance, final_balance, final_balance, final_balance}));
         MG_CHECK(random::draw_count() == draws + 4);
+        recording.finish();
     }
 }
 void strategic_deployment() { strategic_purchase(StrategicEnd::Deploy); }
@@ -978,5 +1033,14 @@ int main(int argc, char **argv) {
     }
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            tests::production::complete_after_cleanup();
+        }
+        catch (const std::exception &error) {
+            std::cerr << "Failed to complete strategic production recordings: " << error.what() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     return result;
 }

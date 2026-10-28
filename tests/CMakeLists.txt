@@ -316,7 +316,8 @@ foreach(contract replacement target_removal repeatability observation rejected_c
 endforeach()
 
 add_matrix_test_executable(matrixgame_production_scenarios production_scenario_tests.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp
+    strategic_production_recording.cpp strategic_production_recording.hpp)
 target_link_libraries(matrixgame_production_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_production_scenarios matrixgame_scenario_identity)
 target_include_directories(matrixgame_production_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
