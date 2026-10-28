@@ -657,7 +657,8 @@ foreach(contract queue_order capacity refund_owner neutralization price income t
     add_matrix_test(game.production.${contract} matrixgame_production_queue_tests gameplay)
 endforeach()
 
-add_matrix_test_executable(matrixgame_ai_bomb_escape_tests ai_bomb_escape_tests.cpp battle_combat_geometry.cpp
+add_matrix_test_executable(matrixgame_ai_bomb_escape_tests ai_bomb_escape_tests.cpp bomb_escape_recording.cpp
+    battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_ai_bomb_escape_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_ai_bomb_escape_tests matrixgame_scenario_identity)
