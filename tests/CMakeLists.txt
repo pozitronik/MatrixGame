@@ -670,7 +670,7 @@ foreach(contract free reserved unreachable)
     set_tests_properties(game.ai.bomb_escape_${contract}_journey PROPERTIES TIMEOUT 90)
 endforeach()
 
-add_matrix_test_executable(matrixgame_ai_decision_tests ai_decision_tests.cpp ai_observation_tests.cpp ai_cleanup_tests.cpp ai_armed_tests.cpp ai_capture_tests.cpp ai_reinforcement_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_ai_decision_tests competing_repair_recording.cpp ai_decision_tests.cpp ai_observation_tests.cpp ai_cleanup_tests.cpp ai_armed_tests.cpp ai_capture_tests.cpp ai_reinforcement_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_ai_decision_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_ai_decision_tests matrixgame_scenario_identity)
