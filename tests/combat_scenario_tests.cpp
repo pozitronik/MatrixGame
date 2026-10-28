@@ -14,11 +14,13 @@
 #include "MatrixMap.hpp"
 #include "MatrixObjectCannon.hpp"
 #include "MatrixRobot.hpp"
+#include <array>
 #include <bit>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <memory>
 #include <sstream>
 
 namespace {
@@ -1320,7 +1322,12 @@ std::vector<std::string> cannon_patient_run(random::Mode mode, bool plasma, int 
     tests::arm_battle_robot(*shooter, plasma ? RUK_WEAPON_PLASMA : RUK_WEAPON_LASER);
     auto *patient = tests::create_battle_cannon(2, 500, 500);
     patient->m_CurrState = CANNON_UNDER_CONSTRUCTION;
-    Trace trace(session, profile, plasma ? "cannon-patient-plasma" : "cannon-patient-laser", run);
+    // PGAssignPlacePlayer reads every live cannon's navigation reservation.
+    patient->m_Place = g_MatrixMap->m_RN.FindInPL(CPoint(48, 48));
+    MG_CHECK(patient->m_Place >= 0 && patient->m_Place < g_MatrixMap->m_RN.m_PlaceCnt);
+    MG_CHECK(g_MatrixMap->m_RN.GetPlace(patient->m_Place)->m_Pos == CPoint(48, 48));
+    Trace trace(session, profile, plasma ? "cannon-patient-plasma" : "cannon-patient-laser", run,
+                "synthetic-cannon-patient-navigation-v2");
     auto *side = g_MatrixMap->GetPlayerSide();
     trace.command(session, "order-attack-cannon", [&] {
         side->PGOrderAttack(side->SelGroupToLogicGroup(), CPoint(50, 50), patient);
@@ -1337,14 +1344,75 @@ std::vector<std::string> cannon_patient_run(random::Mode mode, bool plasma, int 
         }
     }
     const std::vector<std::pair<int, int>> expected =
-            plasma ? std::vector<std::pair<int, int>>{{1130, 48}, {1220, 46}, {1320, 44}, {1430, 42}, {1530, 40}}
-                   : std::vector<std::pair<int, int>>{{200, 48}, {300, 46}, {400, 44}, {500, 42}, {600, 40}};
+            plasma ? std::vector<std::pair<int, int>>{{1130, 48}, {1230, 46}, {1320, 44}, {1420, 42}, {1520, 40},
+                                                     {1610, 38}, {1710, 36}, {1800, 34}, {1900, 32}, {1990, 30}}
+                   : std::vector<std::pair<int, int>>{{200, 48}, {300, 46}, {400, 44}, {500, 42}, {600, 40},
+                                                     {700, 38}, {800, 36}, {900, 34}, {1000, 32}, {1100, 30},
+                                                     {1200, 28}, {1300, 26}, {1400, 24}};
     MG_CHECK(impacts == expected);
-    MG_CHECK(health == 40 && patient->m_CurrState == CANNON_UNDER_CONSTRUCTION);
+    MG_CHECK(health == (plasma ? 30 : 24) && patient->m_CurrState == CANNON_UNDER_CONSTRUCTION);
     trace.record(session, shooter, shooter, patient);
     trace.complete(session);
     return trace.states;
 }
+void order_pool_compaction() {
+    Session session(Profile{});
+    auto *actor = robot(PLAYER_SIDE);
+    MG_CHECK(actor->GetOrdersInPool() == 0);
+    const auto release = [](SObjectCore *core) { core->Release(); };
+    using Core = std::unique_ptr<SObjectCore, decltype(release)>;
+    std::array<Core, 3> cores{Core(robot(PLAYER_SIDE, 1)->GetCore(DEBUG_CALL_INFO)),
+                              Core(robot(2)->GetCore(DEBUG_CALL_INFO)),
+                              Core(robot(2, 1)->GetCore(DEBUG_CALL_INFO))};
+    const std::array<int, 3> initial_refs{cores[0]->m_Ref, cores[1]->m_Ref, cores[2]->m_Ref};
+    const auto draws = random::draw_count();
+    for (int i = 0; i < MAX_ORDERS; ++i) {
+        auto *order = actor->AllocPlaceForOrderOnTop();
+        MG_CHECK(order);
+        order->SetOrder(ROT_FIRE, cores[i % cores.size()]->m_Object);
+        order->SetPhase(static_cast<OrderPhase>(i));
+        order->m_Param1 = float(i + 10);
+        order->m_Param2 = float(-i - 20);
+        order->m_Param3 = i == 0 ? -0.0f : float(i) * .25f;
+        order->m_Param4 = 100 + i;
+    }
+    std::vector<SOrder> expected;
+    for (int i = 0; i < MAX_ORDERS; ++i)
+        expected.push_back(*actor->GetOrder(i));
+    const auto check = [&] {
+        MG_CHECK(actor->GetOrdersInPool() == int(expected.size()));
+        for (unsigned i = 0; i < expected.size(); ++i) {
+            const auto &actual = *actor->GetOrder(int(i));
+            const auto &want = expected[i];
+            MG_CHECK(actual.m_OrderType == want.m_OrderType && actual.m_OrderPhase == want.m_OrderPhase);
+            MG_CHECK(std::bit_cast<uint32_t>(actual.m_Param1) == std::bit_cast<uint32_t>(want.m_Param1));
+            MG_CHECK(std::bit_cast<uint32_t>(actual.m_Param2) == std::bit_cast<uint32_t>(want.m_Param2));
+            MG_CHECK(std::bit_cast<uint32_t>(actual.m_Param3) == std::bit_cast<uint32_t>(want.m_Param3));
+            MG_CHECK(actual.m_Param4 == want.m_Param4 && actual.m_ObjCore == want.m_ObjCore);
+        }
+        for (unsigned i = 0; i < cores.size(); ++i) {
+            const auto references = std::count_if(expected.begin(), expected.end(), [&](const SOrder &order) {
+                return order.m_ObjCore == cores[i].get();
+            });
+            MG_CHECK(cores[i]->m_Ref == initial_refs[i] + references);
+        }
+        MG_CHECK(session.frame() == 0 && session.time() == 0 && random::draw_count() == draws);
+    };
+    check();
+    actor->RemoveOrder(-1);
+    actor->RemoveOrder(MAX_ORDERS);
+    check();
+    // Head and middle removals deliberately compact overlapping source/destination ranges.
+    for (int position : {0, 1, 2, 0, 0}) {
+        MG_CHECK(position < int(expected.size()));
+        actor->RemoveOrder(position);
+        expected.erase(expected.begin() + position);
+        check();
+    }
+    actor->RemoveOrder(0);
+    check();
+}
+
 void cannon_patient() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (bool plasma : {false, true}) {
@@ -2322,6 +2390,7 @@ const tests::Case cases[] = {
         {"game.combat.module_firing", module_firing},         {"game.combat.splash_boundary", splash_boundary},
         {"game.combat.chained_bombs", chained_bombs},         {"game.combat.repair_redirect", repair_redirect},
         {"game.combat.cannon_patient", cannon_patient},       {"game.combat.cannon_acquisition", cannon_acquisition},
+        {"game.orders.pool_compaction", order_pool_compaction},
         {"game.combat.robot_boundaries", robot_boundaries},   {"game.combat.status_refresh", status_refresh},
         {"game.combat.status_lethal", status_lethal},
         {"game.combat.delayed_status_attribution", delayed_status_attribution},

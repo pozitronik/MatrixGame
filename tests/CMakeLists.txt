@@ -369,6 +369,7 @@ endforeach()
 add_matrix_test(game.combat.delayed_status_mixed_owners matrixgame_combat_scenarios gameplay ai memory)
 add_matrix_test(game.combat.delayed_status_direct_hit matrixgame_combat_scenarios gameplay ai memory)
 add_matrix_test(game.combat.turret_mixed_owners matrixgame_combat_scenarios gameplay ai memory)
+add_matrix_test(game.orders.pool_compaction matrixgame_combat_scenarios gameplay input memory)
 
 add_matrix_test_executable(matrixgame_material_ruin_tests material_ruin_tests.cpp battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
