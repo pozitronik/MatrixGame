@@ -12,6 +12,7 @@
 #include "MatrixFlyer.hpp"
 
 //#define MAX_ROBOTS_BUILD        10
+// TODO(#329): Replace robot-dependent fixed capacities with dynamic storage.
 #define MAX_ROBOTS      60
 #define MAX_FACTORIES   10
 #define PLAYER_SIDE     1
@@ -648,6 +649,8 @@ public:
     bool FirePL(int group);
     void RepairPL(int group);
     void WarPL(int group);
+    bool HasFreePlayerLogicGroup() const;
+    // Return -1 on exhaustion; PGOrder* rejects invalid group identifiers.
     int SelGroupToLogicGroup(void);
     int RobotToLogicGroup(CMatrixRobotAI *robot);
     void PGOrderStop(int no);
