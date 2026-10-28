@@ -829,7 +829,8 @@ foreach(profile park_miller10 park_miller16 legacy10 legacy16)
             matrixgame_formation_movement_scenarios gameplay ai navigation)
     endforeach()
 endforeach()
-add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
+add_matrix_test_executable(matrixgame_player_order_scenarios player_order_scenarios.cpp
+    manual_control_recording.cpp manual_control_recording.hpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_player_order_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_player_order_scenarios matrixgame_scenario_identity)

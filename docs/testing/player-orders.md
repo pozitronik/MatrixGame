@@ -114,6 +114,8 @@ The robot next moves with Forward held, with physical progress asserted immediat
 
 These are bounded assertions against production behavior, not accepted historical traces. C5's UI-hover/fire transitions retain the separate presentation-suite evidence. Native focus and visual alignment remain P1 requirements; settings-input consumption remains P4. No new production access interface is introduced. Negative controls that suppress manual right-turn dispatch or manual fire dispatch must fail both chassis cases; restoring production code must restore passing results.
 
+The [manual-control recording adapter](80-manual-control-recordings.md) retains all sixteen Original and sixty-four neighboring Live/Removed episodes without adding sessions or changing their bounds/navigation branches. It supplies full actor-5/input/weapon/order data, thirty-two existing replay pairs, sixteen existing prefixes and fresh-process comparison for Original. UI-hover and native evidence remain separate.
+
 ## Mixed chassis and commands during lifecycle transitions
 
 The separate `matrixgame_player_command_lifecycles` executable covers the finite C2 selection. Run it with:

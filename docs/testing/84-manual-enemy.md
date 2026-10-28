@@ -36,6 +36,8 @@ After the live-target observation, ordinary deletion removes that target. The wo
 
 After another 500 ms, both continuations issue Move to the separate unreserved point (100,300), footprint-corner `(8,28)`. Actual movement coordinates must change to that point, and nine simulated seconds must finish with exact physical arrival, the production in-place result, the retained new Move intention and no remaining MoveTo/fire order. This distinguishes reservation effects from a robot that cannot resume autonomous movement after manual control.
 
+The [manual-control recording adapter](80-manual-control-recordings.md) writes these same sixty-four continuation episodes and sixteen unchanged Original episodes as an eighty-file schema-1 corpus. Its independent observer preserves the existing vectors and prefix/replay assertions and retains full Param3/Param4 and reservation-place data without adding game calls.
+
 ## Evidence and limits
 
 Sixteen registered cases cover two chassis, stationary/moving targets, both RNGs and both timesteps. Each runs the live-target continuation twice and the enemy-removed control twice: 64 sessions per build configuration. Complete same-profile recordings compare the manual robot's exact position/health/speed/direction bits, order queues including `m_Param4` with normalized entity IDs, group intent and destination, actual place and Move coordinates, enemy/target observations, held input and the shared RNG draw count. The session snapshot includes the other registered actors; the added manual robot has fixture ID 5. Observation is checked not to consume RNG. The two continuations require an identical recorded manual prefix and a different first record after the declared intervention.

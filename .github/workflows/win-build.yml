@@ -203,6 +203,15 @@ jobs:
           path: |
             build/**/test-results.xml
             build/**/scenario-traces/*.jsonl
+      - name: Validate complete manual-control recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify manual-control source revision.' }
+          python -B tools/check-manual-control-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Manual-control recording validation failed.' }
       - name: Validate complete mixed-selection recordings
         shell: pwsh
         run: |
