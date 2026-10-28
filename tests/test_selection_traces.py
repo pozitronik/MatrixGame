@@ -302,6 +302,58 @@ class SelectionTraceTests(unittest.TestCase):
             with self.subTest(field=field), self.assertRaises(selection.trace.TraceError):
                 self.checked(records)
 
+    def test_live_queue_scalar_boundaries_and_empty_retired_actor(self):
+        records = recording(self.profile)
+        for record in records:
+            if record["type"] != "snapshot":
+                continue
+            for robot in record["state"]["robots"]:
+                if robot["alive"]:
+                    robot["queue"] = [[-0x80000000, 0x7fffffff, 0, 0xffffffff, -1],
+                                      [0, 0, 0xffffffff, 0, 0], [8, 8, 0, 0, 4]]
+                else:
+                    self.assertNotIn("queue", robot)
+        self.checked(records)
+
+    def test_live_queue_requires_array_and_five_field_entries(self):
+        invalid = (None, "not-an-array", {}, True, 1, [None], ["not-an-entry"], [{}],
+                   [[0, 0, 0, 0]], [[0, 0, 0, 0, 0, 0]])
+        for queue in invalid:
+            records = recording(self.profile)
+            records[1]["state"]["robots"][0]["queue"] = queue
+            with self.subTest(queue=queue), self.assertRaisesRegex(selection.trace.TraceError, "live actor queue"):
+                self.checked(records)
+
+    def test_every_live_actor_queue_is_checked(self):
+        records = recording(self.profile)
+        tick = next(r for r in records if r.get("selection", {}).get("phase") == "retirement-tick")
+        self.assertNotIn("queue", tick["state"]["robots"][0])
+        tick["state"]["robots"][3]["queue"] = "not-an-array"
+        with self.assertRaisesRegex(selection.trace.TraceError, "live actor queue must be an array"):
+            self.checked(records)
+
+    def test_live_queue_requires_scalar_types_and_source_ranges(self):
+        for field in range(5):
+            invalid = [None, True, False, "0", 0.0, [], {}]
+            invalid += ([-0x80000001, 0x80000000] if field < 2 else
+                        [-1, 0x100000000] if field < 4 else [-2, 5])
+            for value in invalid:
+                records = recording(self.profile)
+                order = [0, 0, 0, 0, 0]
+                order[field] = value
+                records[1]["state"]["robots"][0]["queue"] = [order]
+                with self.subTest(field=field, value=value), self.assertRaisesRegex(
+                        selection.trace.TraceError, "live actor queue"):
+                    self.checked(records)
+
+    def test_correlated_queue_shape_and_scalar_defects_are_rejected(self):
+        for queue in ("not-an-array", [[0, 0, 0, 0]], [[True, 0, 0, 0, 0]],
+                      [[0, 0, True, 0, 0]], [[0, 0, 0, 0, True]]):
+            def corrupt(records):
+                records[1]["state"]["robots"][0]["queue"] = copy.deepcopy(queue)
+            with self.subTest(queue=queue):
+                self.reject_correlated_change(corrupt, "live actor queue")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -618,13 +618,36 @@ add_matrix_test(game.host.progress_callback matrixgame_host_contract_tests start
 add_matrix_test(game.host.sound_arguments matrixgame_host_contract_tests gameplay audio dll)
 
 add_matrix_test_executable(matrixgame_native_demo_export native_demo_export.cpp native_demo_assets.cpp
-    native_outcome_assets.cpp native_session_assets.cpp native_packed_config.cpp battle_geometry.cpp)
+    native_outcome_assets.cpp native_session_assets.cpp native_calcvis_assets.cpp native_packed_config.cpp battle_geometry.cpp)
 target_link_libraries(matrixgame_native_demo_export PRIVATE MatrixGameInternal shell32)
 target_compile_definitions(matrixgame_native_demo_export PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
 foreach(contract layout_ordinary layout_reinforcement layout_no_reinforcement layout_win layout_loss layout_fights ownership cli)
     add_matrix_test(game.session.demo_export_${contract} matrixgame_native_demo_export startup ai storage)
 endforeach()
 set_tests_properties(game.session.demo_export_cli PROPERTIES TIMEOUT 90)
+foreach(profile flat ridge cli)
+    add_matrix_test(game.presentation.calcvis_export_${profile} matrixgame_native_demo_export startup rendering storage)
+endforeach()
+set_tests_properties(game.presentation.calcvis_export_cli PROPERTIES TIMEOUT 90)
+add_matrix_test_executable(matrixgame_calcvis_tests calcvis_tests.cpp native_calcvis_assets.cpp native_session_assets.cpp
+    battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_calcvis_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_calcvis_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_calcvis_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_calcvis_tests PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}"
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}> MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract runtime_guard input_guard flat ridge)
+    add_matrix_test(game.presentation.calcvis_${contract} matrixgame_calcvis_tests rendering startup)
+endforeach()
+if(NOT MATRIXGAME_BUILD_DLL)
+    add_matrix_test_executable(matrixgame_calcvis_native_view calcvis_native_view.cpp native_calcvis_assets.cpp
+        native_session_assets.cpp battle_geometry.cpp)
+    target_link_libraries(matrixgame_calcvis_native_view PRIVATE MatrixGameInternal shell32)
+    target_compile_definitions(matrixgame_calcvis_native_view PRIVATE MATRIXGAME_SOURCE_ROOT="${PROJECT_SOURCE_DIR}")
+    foreach(contract argument_guard transition_guard input_guard)
+        add_matrix_test(game.presentation.calcvis_view_${contract} matrixgame_calcvis_native_view rendering input)
+    endforeach()
+endif()
 
 if(MATRIXGAME_BUILD_DLL)
     add_matrix_test_executable(matrixgame_dll_host_tests dll_host_tests.cpp)
