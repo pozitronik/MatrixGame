@@ -1,0 +1,1343 @@
+{
+  "purpose": "Finite source input/assertion catalog for thirteen existing direct combat contracts; not execution evidence, a manifest policy, a selected reference or baseline acceptance.",
+  "source_revision": "9a85aa9a98414913e0d2ffd9d7d24b0dc96fa362",
+  "hash_conventions": {
+    "git_content_sha256": "SHA-256 of the exact Git blob bytes at source_revision.",
+    "canonical_body_sha256": "UTF-8 source with LF line endings, from the first signature character through its closing } or }; at the inclusive source line range, without a trailing LF. Original comments and internal whitespace remain.",
+    "finite_input_assertion_json_sha256": "SHA-256 of canonical JSON for the case object excluding source and finite_input_assertion_json_sha256; sort_keys=true, separators comma/colon, ensure_ascii=true, UTF-8, no trailing newline.",
+    "active_assertion_expressions": "Actual MG_CHECK expressions with whitespace collapsed for readability; the body hash retains the complete original source."
+  },
+  "shared": {
+    "weapons": [
+      {
+        "name": "WEAPON_PLASMA",
+        "enum_value": 200,
+        "Weap2Index": 0
+      },
+      {
+        "name": "WEAPON_VOLCANO",
+        "enum_value": 70,
+        "Weap2Index": 1
+      },
+      {
+        "name": "WEAPON_HOMING_MISSILE",
+        "enum_value": 1000,
+        "Weap2Index": 2
+      },
+      {
+        "name": "WEAPON_BOMB",
+        "enum_value": 2500,
+        "Weap2Index": 3
+      },
+      {
+        "name": "WEAPON_FLAMETHROWER",
+        "enum_value": 60,
+        "Weap2Index": 4
+      },
+      {
+        "name": "WEAPON_BIGBOOM",
+        "enum_value": 10000,
+        "Weap2Index": 5
+      },
+      {
+        "name": "WEAPON_LIGHTENING",
+        "enum_value": 99,
+        "Weap2Index": 6
+      },
+      {
+        "name": "WEAPON_LASER",
+        "enum_value": 98,
+        "Weap2Index": 7
+      },
+      {
+        "name": "WEAPON_GUN",
+        "enum_value": 598,
+        "Weap2Index": 8
+      },
+      {
+        "name": "WEAPON_ABLAZE",
+        "enum_value": 10000000,
+        "Weap2Index": 9
+      },
+      {
+        "name": "WEAPON_SHORTED",
+        "enum_value": 10000001,
+        "Weap2Index": 10
+      },
+      {
+        "name": "WEAPON_DEBRIS",
+        "enum_value": 10000002,
+        "Weap2Index": 11
+      },
+      {
+        "name": "WEAPON_REPAIR",
+        "enum_value": 57,
+        "Weap2Index": 12
+      },
+      {
+        "name": "WEAPON_CANNON0",
+        "enum_value": 300,
+        "Weap2Index": 13
+      },
+      {
+        "name": "WEAPON_CANNON1",
+        "enum_value": 998,
+        "Weap2Index": 14
+      },
+      {
+        "name": "WEAPON_CANNON2",
+        "enum_value": 97,
+        "Weap2Index": 15
+      },
+      {
+        "name": "WEAPON_CANNON3",
+        "enum_value": 1002,
+        "Weap2Index": 16
+      }
+    ],
+    "damage_tuple_fields": [
+      "damage",
+      "friend_damage",
+      "mindamage"
+    ],
+    "damage_tables": {
+      "target_arrays": [
+        "robots",
+        "buildings",
+        "cannons"
+      ],
+      "for_index_i_0_to_16": [
+        "i + 1",
+        2,
+        10
+      ],
+      "weapon_radius_all": 10,
+      "weapon_cooldown_all": 0,
+      "restored": "three saved arrays, radii, cooldowns and CMatrixEffect::m_Dist2 at DamageTables destruction"
+    },
+    "world": {
+      "seed": 82,
+      "modes_in_order": [
+        "ParkMiller",
+        "LegacyCRT"
+      ],
+      "seed_scope": "Each case constructs one World per mode; Seed member runs before CommandWorld/tables. No reseed between inner entries.",
+      "RNG_state_restoration_claimed": false,
+      "fixture": "tests::CommandWorld; engine-zeroed HNew allocation and EnginePtr ownership",
+      "map_move_size": [
+        20,
+        20
+      ],
+      "player_side": 1,
+      "enemy_multiplier": 1,
+      "friendly_multiplier": 1,
+      "ui": "temporary CIFaceList restored on World destruction",
+      "robot_stub_state": {
+        "ROBOT_SUCCESSFULLY_BUILD": 2,
+        "side": 1
+      },
+      "no_models_packages_window_device": "Fixture has no graphics/audio backend or resource package; distant hits deliberately avoid visible effect asset paths. No zero-effect-count assertion is invented.",
+      "other_global_config": "Not a general SetDefaults or resource-balance parser fixture; only declared synthetic tables/multipliers are overwritten."
+    },
+    "direct_hit": {
+      "position": [
+        1000000,
+        1000000,
+        1000000
+      ],
+      "direction": [
+        1,
+        0,
+        0
+      ],
+      "default_attacker_side": 2,
+      "attacker_object": null,
+      "dispatch": "target.Damage(...)"
+    },
+    "health_units": {
+      "Robot::health": "raw m_HitPoint",
+      "CMatrixBuilding::GetHitPoint": "m_HitPoint / 10",
+      "CMatrixCannon::GetHitPoint": "raw m_HitPoint"
+    },
+    "callback": {
+      "handler": "HitRecord::record stores calls/target/flags; hit position not retained/asserted",
+      "FEHF_DAMAGE_ROBOT": "SETBIT(1) = 2",
+      "input_flags": 0,
+      "weapon_creation": "production CreateWeapon(distant_hit,direction,user,HitRecord::record,type), released by WeaponDelete/Release"
+    },
+    "draw_count_assertion": "Only cannon_repair_state captures before/after the two invulnerable hit calls; no suite-wide or other-case zero-draw guarantee.",
+    "fixture_blocks": [
+      {
+        "name": "DamageTables",
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 27,
+        "last_line": 54,
+        "canonical_body_sha256": "7c3bc5fda30d8e4792af81b6e8e48de5e9d173faea1bf7f2b440ca5b1b99b9ea"
+      },
+      {
+        "name": "World",
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 56,
+        "last_line": 74,
+        "canonical_body_sha256": "67ef7b8fc98f7d8b34ef8f5e71fa3ede689a5ee7aa6cde918f121833beedbb7d"
+      },
+      {
+        "name": "Robot",
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 76,
+        "last_line": 85,
+        "canonical_body_sha256": "5a89daef37cc59a4da4351ba9f969ee6b66d7bda6312e81a6f489d90d694491c"
+      },
+      {
+        "name": "HitRecord",
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 343,
+        "last_line": 353,
+        "canonical_body_sha256": "c2293f86164b5c971d984552ebfa1f1e1c198f3184c32e028539a4e69cb90fd4"
+      },
+      {
+        "name": "hit",
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 87,
+        "last_line": 89,
+        "canonical_body_sha256": "124ab1df1eae56a5567cd779a1cb954c4f8b78177dfe7cec77e6776a1d5e9310"
+      },
+      {
+        "name": "weapon",
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 354,
+        "last_line": 357,
+        "canonical_body_sha256": "21421448f76149ddd14199092a25313c5f3c1449874cf1d3aad75eb4e5daa3c0"
+      }
+    ]
+  },
+  "registration": {
+    "target": "matrixgame_combat_damage_tests",
+    "sources": [
+      "combat_damage_tests.cpp",
+      "diagnostic_overlay_stub.cpp",
+      "test_support.cpp",
+      "test_support.hpp"
+    ],
+    "links": [
+      "MatrixLib",
+      "MatrixGameInternal",
+      "MSVC-only dbghelp"
+    ],
+    "source": "tests/CMakeLists.txt:402-408",
+    "labels": [
+      "engine",
+      "asset-free",
+      "gameplay"
+    ],
+    "timeout_seconds": 30,
+    "conditional": "All thirteen unconditionally registered when tests are enabled.",
+    "main": "Only tests::run(argc,argv,cases); no BaseInit/BaseDeInit or final global MEM_SPY scan in this executable. Shared tests::run optionally configures MSVC Debug CRT reports.",
+    "assertions": "MG_CHECK remains active in Release; tests::run catches C++ exceptions and reports a case result.",
+    "fresh_process": "Ordinary CTest dispatches one named case; each case internally visits both seeded modes."
+  },
+  "cases": [
+    {
+      "case": "game.combat.robot_families",
+      "function": "robot_families",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 91,
+        "last_line": 105,
+        "canonical_body_sha256": "093dcd267f1f9888a48cb3e0248b00bcde5cc1eb8d3e61cf4f0f02f7dd4c1af6"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "weapons_in_order": 17,
+        "fresh_target_per_weapon": true
+      },
+      "ordered_inputs": [
+        {
+          "target": "Robot",
+          "side": 1,
+          "attacker_side": 2,
+          "InitMaxHitpoint": 50,
+          "weapon_order": "shared.weapons",
+          "damage_tables": "shared.damage_tables"
+        }
+      ],
+      "asserted_outcomes": [
+        "Damage returns false for each entry.",
+        "Internal expected health = WEAPON_REPAIR ? 50.0f : 49.0f - float(i).",
+        "Robot::health() reads raw m_HitPoint; exact equality to expected.",
+        "IsLiveRobot is true; IsAblaze iff FLAMETHROWER; IsShorted iff LIGHTENING."
+      ],
+      "asserted_forbidden_results": [
+        "Unexpected death return/dead state; spurious/missing flame/electric flags."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No per-hit RNG count or native effect output.",
+        "No lethal threshold, projectile flight or autonomous turret action.",
+        "Building/cannon cases do not assert robot-only status flags."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Distinct target-class damage-table routing; exact nonlethal health.",
+        "COM-02": "Robot live/nonlethal observation only."
+      },
+      "active_assertion_expressions": [
+        "!hit(*robot, weapons[i])",
+        "robot->health() == expected",
+        "robot->IsLiveRobot()",
+        "robot->IsAblaze() == (weapons[i] == WEAPON_FLAMETHROWER)",
+        "robot->IsShorted() == (weapons[i] == WEAPON_LIGHTENING)"
+      ],
+      "finite_input_assertion_json_sha256": "bf0fb7a0ef314b43c822fdfe10e60e6c8b43b62758929a9abbbbcea64da8bb80"
+    },
+    {
+      "case": "game.combat.building_families",
+      "function": "building_families",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 107,
+        "last_line": 120,
+        "canonical_body_sha256": "0d16d013a406c9e55c55ea13b512d97c62314787e04a02efd2e01d1ffffbc8f8"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "weapons_in_order": 17,
+        "fresh_target_per_weapon": true
+      },
+      "ordered_inputs": [
+        {
+          "target": "CMatrixBuilding",
+          "side": 2,
+          "attacker_side": 1,
+          "InitMaxHitpoint": 50,
+          "weapon_order": "shared.weapons",
+          "damage_tables": "shared.damage_tables"
+        }
+      ],
+      "asserted_outcomes": [
+        "Damage returns false for each entry.",
+        "Internal expected health = WEAPON_REPAIR ? 50.0f : 49.0f - float(i).",
+        "GetHitPoint() == expected / 10.0f; State() != BUILDING_DIP."
+      ],
+      "asserted_forbidden_results": [
+        "Unexpected death return or DIP state."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No per-hit RNG count or native effect output.",
+        "No lethal threshold, projectile flight or autonomous turret action.",
+        "Building/cannon cases do not assert robot-only status flags."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Distinct target-class damage-table routing; non-DIP predicate only."
+      },
+      "active_assertion_expressions": [
+        "!hit(*building, weapons[i], PLAYER_SIDE)",
+        "building->GetHitPoint() == expected / 10.0f",
+        "building->State() != BUILDING_DIP"
+      ],
+      "finite_input_assertion_json_sha256": "270eac58003b18480fd34a90038efdb0451ec9c77702b65077691e37114b34e1"
+    },
+    {
+      "case": "game.combat.cannon_families",
+      "function": "cannon_families",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 122,
+        "last_line": 135,
+        "canonical_body_sha256": "62b82e43f19424084d714ee1dad198e3d2a591eac3d980611e1bd29fcf47789e"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "weapons_in_order": 17,
+        "fresh_target_per_weapon": true
+      },
+      "ordered_inputs": [
+        {
+          "target": "CMatrixCannon",
+          "side": 2,
+          "attacker_side": 1,
+          "InitMaxHitpoint": 50,
+          "weapon_order": "shared.weapons",
+          "damage_tables": "shared.damage_tables"
+        }
+      ],
+      "asserted_outcomes": [
+        "Damage returns false for each entry.",
+        "Internal expected health = WEAPON_REPAIR ? 50.0f : 49.0f - float(i).",
+        "GetHitPoint() == expected; m_CurrState != CANNON_DIP."
+      ],
+      "asserted_forbidden_results": [
+        "Unexpected death return or DIP state."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No per-hit RNG count or native effect output.",
+        "No lethal threshold, projectile flight or autonomous turret action.",
+        "Building/cannon cases do not assert robot-only status flags."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Distinct target-class damage-table routing; non-DIP predicate only."
+      },
+      "active_assertion_expressions": [
+        "!hit(*cannon, weapons[i], PLAYER_SIDE)",
+        "cannon->GetHitPoint() == expected",
+        "cannon->m_CurrState != CANNON_DIP"
+      ],
+      "finite_input_assertion_json_sha256": "d6d2be4b4a97d923bf7f47871d45b8b0e0beac6169798ffed5235556c68a82aa"
+    },
+    {
+      "case": "game.combat.difficulty",
+      "function": "difficulty",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 137,
+        "last_line": 169,
+        "canonical_body_sha256": "e0de0b39f7f691f0521a141e3ac1c59bfd6680eb1a7287b32f6252755fb67583"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "literal_examples": 12,
+        "target_classes_in_each_example": [
+          "Robot",
+          "CMatrixBuilding",
+          "CMatrixCannon"
+        ]
+      },
+      "ordered_inputs": [
+        {
+          "weapon": "WEAPON_GUN",
+          "three_target_damage_tuples": [
+            8,
+            4,
+            0
+          ]
+        },
+        {
+          "example_columns": [
+            "victim_side",
+            "attacker_side",
+            "enemy_to_player_multiplier",
+            "friendly_fire_multiplier",
+            "expected_remaining_internal_health"
+          ],
+          "examples": [
+            [
+              1,
+              2,
+              0,
+              1,
+              50
+            ],
+            [
+              1,
+              2,
+              0.5,
+              1,
+              46
+            ],
+            [
+              1,
+              2,
+              1,
+              1,
+              42
+            ],
+            [
+              1,
+              2,
+              2,
+              1,
+              34
+            ],
+            [
+              1,
+              1,
+              2,
+              0,
+              50
+            ],
+            [
+              1,
+              1,
+              2,
+              0.5,
+              48
+            ],
+            [
+              1,
+              1,
+              2,
+              1,
+              46
+            ],
+            [
+              1,
+              1,
+              2,
+              2,
+              42
+            ],
+            [
+              2,
+              1,
+              2,
+              2,
+              42
+            ],
+            [
+              2,
+              2,
+              2,
+              2,
+              46
+            ],
+            [
+              1,
+              0,
+              2,
+              2,
+              34
+            ],
+            [
+              2,
+              0,
+              2,
+              2,
+              42
+            ]
+          ],
+          "fresh_target_initial_health": 50,
+          "order_per_example": [
+            "robot",
+            "building",
+            "cannon"
+          ]
+        }
+      ],
+      "asserted_outcomes": [
+        "All three Damage calls return false.",
+        "Robot raw health and cannon getter equal remaining exactly.",
+        "Building getter binary32 equals bit_cast<uint32_t>(remaining / 10.0f)."
+      ],
+      "asserted_forbidden_results": [
+        "Incorrect multiplier/friendly/neutral-attacker routing and health."
+      ],
+      "not_asserted_or_outside_scope": [
+        "Does not advance combat or assert kill/stat/side effects.",
+        "Bit comparison uses the source float expression, not a newly generated numeric tolerance or golden."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Twelve actual side/difficulty examples across three target classes."
+      },
+      "active_assertion_expressions": [
+        "!hit(*robot, WEAPON_GUN, example.attacker)",
+        "robot->health() == example.remaining",
+        "!hit(*building, WEAPON_GUN, example.attacker)",
+        "std::bit_cast<std::uint32_t>(building->GetHitPoint()) == std::bit_cast<std::uint32_t>(example.remaining / 10.0f)",
+        "!hit(*cannon, WEAPON_GUN, example.attacker)",
+        "cannon->GetHitPoint() == example.remaining"
+      ],
+      "finite_input_assertion_json_sha256": "384df51084e63c4704d0c954b4554f75a4cab16fbea868400f9818606a8c9029"
+    },
+    {
+      "case": "game.combat.minimum_health",
+      "function": "minimum_health",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 171,
+        "last_line": 186,
+        "canonical_body_sha256": "3da0a3e587c733d48c0c35e09d8d8d42b8cf22b475001abb38219d5dfccd21c9"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "initial_health_values": 3,
+        "sequential_gun_hits_per_target": 2
+      },
+      "ordered_inputs": [
+        {
+          "robot_gun_damage_tuple": [
+            4,
+            2,
+            10
+          ],
+          "initial_health_values": [
+            9.0,
+            10.0,
+            11.0
+          ],
+          "attacker_side": 2,
+          "weapon": "WEAPON_GUN"
+        }
+      ],
+      "asserted_outcomes": [
+        "Both hits return false.",
+        "After first: health = initial == 11 ? 7 : initial.",
+        "After second: health equals captured once value."
+      ],
+      "asserted_forbidden_results": [
+        "Threshold equality must not damage; subtraction must not floor-clamp 11 to 10; repeated hit below threshold must not damage."
+      ],
+      "not_asserted_or_outside_scope": [
+        "Robot only; not building/cannon minimum thresholds or lethal behavior."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Robot pre-subtraction minimum-damage threshold boundary."
+      },
+      "active_assertion_expressions": [
+        "!hit(*robot, WEAPON_GUN)",
+        "robot->health() == (initial == 11 ? 7 : initial)",
+        "!hit(*robot, WEAPON_GUN)",
+        "robot->health() == once"
+      ],
+      "finite_input_assertion_json_sha256": "3fbbbce1838b673a05276380609f478c3bd200da2938da21b9fa3f8b41e876f2"
+    },
+    {
+      "case": "game.combat.repair",
+      "function": "repair",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 188,
+        "last_line": 214,
+        "canonical_body_sha256": "6386551e58b0151b934a5b4b4f344cf480cd6a60cd921d156f05f23aaa0eea2e"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "ordered_events_per_mode": 5
+      },
+      "ordered_inputs": [
+        {
+          "robot_max_health": 50,
+          "raw_current_health": 39,
+          "repair_damage_tuple": [
+            8,
+            4,
+            100
+          ],
+          "enemy_multiplier": 0,
+          "friendly_multiplier": 0
+        },
+        {
+          "events": [
+            {
+              "weapon": "WEAPON_REPAIR",
+              "attacker_side": 1,
+              "expected_return": false,
+              "expected_raw_health": 43
+            },
+            {
+              "weapon": "WEAPON_REPAIR",
+              "attacker_side": 2,
+              "expected_return": false,
+              "expected_raw_health": 50
+            },
+            {
+              "weapon": "WEAPON_REPAIR",
+              "attacker_side": 2,
+              "expected_return": false,
+              "expected_raw_health": 50
+            }
+          ]
+        },
+        {
+          "set_state": "ROBOT_DIP",
+          "set_raw_health": 0,
+          "events": [
+            {
+              "weapon": "WEAPON_REPAIR",
+              "attacker_side": 2,
+              "expected_return": true,
+              "expected_raw_health": 0
+            },
+            {
+              "weapon": "WEAPON_GUN",
+              "attacker_side": 2,
+              "expected_return": true,
+              "expected_raw_health": 0
+            }
+          ],
+          "cleanup_set_state": "ROBOT_SUCCESSFULLY_BUILD"
+        }
+      ],
+      "asserted_outcomes": [
+        "NeedRepair true at39; false at50.",
+        "Exact friendly/other-side repair, saturation and full-health idempotence despite zero difficulty multipliers."
+      ],
+      "asserted_forbidden_results": [
+        "Repair/damage against manually set DIP must not change zero health."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No timed healer, repair effect, death/removal journey or explicit post-hit state-identity assertion."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Repair arithmetic/eligibility and zero difficulty factor behavior.",
+        "COM-02": "Already-DIP synchronous return/unchanged-health predicate; no removal claim."
+      },
+      "active_assertion_expressions": [
+        "robot->NeedRepair()",
+        "!hit(*robot, WEAPON_REPAIR, PLAYER_SIDE)",
+        "robot->health() == 43",
+        "!hit(*robot, WEAPON_REPAIR, 2)",
+        "robot->health() == 50",
+        "!robot->NeedRepair()",
+        "!hit(*robot, WEAPON_REPAIR)",
+        "robot->health() == 50",
+        "hit(*robot, WEAPON_REPAIR)",
+        "robot->health() == 0",
+        "hit(*robot, WEAPON_GUN)",
+        "robot->health() == 0"
+      ],
+      "finite_input_assertion_json_sha256": "c9951dfdfcfbf967e82c61d624486f38441a111cc21aa21b417eed9eb73bdbe1"
+    },
+    {
+      "case": "game.combat.status_effects",
+      "function": "status_effects",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 216,
+        "last_line": 243,
+        "canonical_body_sha256": "682a3a39cf79890f6ed7e5f5a0d2524050c32ed2fea281e52e1cdd814ef84e70"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "ordered_hit_batches": 6
+      },
+      "ordered_inputs": [
+        {
+          "robot_max_health": 50,
+          "FLAMETHROWER_and_LIGHTENING_damage_tuples": [
+            0,
+            0,
+            100
+          ]
+        },
+        {
+          "weapon": "WEAPON_FLAMETHROWER",
+          "repeat": 17,
+          "expected_health": 50,
+          "expected_ablaze": true,
+          "expected_TTL": 5000
+        },
+        {
+          "weapon": "WEAPON_FLAMETHROWER",
+          "repeat": 1,
+          "expected_TTL": 5000
+        },
+        {
+          "weapon": "WEAPON_LIGHTENING",
+          "repeat": 7,
+          "expected_shorted": true,
+          "expected_TTL": 3000
+        },
+        {
+          "set_short_TTL": 0,
+          "set_LightProtect": 0.5,
+          "weapon": "WEAPON_LIGHTENING",
+          "repeat": 1,
+          "expected_TTL": 250
+        },
+        {
+          "weapon": "WEAPON_LIGHTENING",
+          "repeat": 6,
+          "expected_TTL": 1500
+        },
+        {
+          "set_short_TTL": 0,
+          "set_LightProtect": 1,
+          "weapon": "WEAPON_LIGHTENING",
+          "repeat": 1,
+          "expected_TTL": 0
+        }
+      ],
+      "asserted_outcomes": [
+        "Every direct hit returns false.",
+        "Observed application TTL caps and half/full electrical protection are exact."
+      ],
+      "asserted_forbidden_results": [
+        "Further flame hit must not raise TTL above5000; full electrical protection leaves TTL0.",
+        "Health unchanged is explicitly checked after the initial17 flame hits."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No tick/decay/periodic secondary damage, stacking timing or final electrical-health assertion.",
+        "No per-hit TTL assertions inside the17/7/6 loops; only the declared batch endpoints."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Immediate status application/cap/resistance predicates, excluding timed status evolution."
+      },
+      "active_assertion_expressions": [
+        "!hit(*robot, WEAPON_FLAMETHROWER)",
+        "robot->IsAblaze()",
+        "robot->GetAblazeTTL() == 5000",
+        "robot->health() == 50",
+        "!hit(*robot, WEAPON_FLAMETHROWER)",
+        "robot->GetAblazeTTL() == 5000",
+        "!hit(*robot, WEAPON_LIGHTENING)",
+        "robot->IsShorted()",
+        "robot->GetShortedTTL() == 3000",
+        "!hit(*robot, WEAPON_LIGHTENING)",
+        "robot->GetShortedTTL() == 250",
+        "!hit(*robot, WEAPON_LIGHTENING)",
+        "robot->GetShortedTTL() == 1500",
+        "!hit(*robot, WEAPON_LIGHTENING)",
+        "robot->GetShortedTTL() == 0"
+      ],
+      "finite_input_assertion_json_sha256": "927edcd19bdac1e04d236a140e61625d575d8915212093f87d7ad4a9a5a15ac6"
+    },
+    {
+      "case": "game.combat.bomb_protection",
+      "function": "bomb_protection",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 245,
+        "last_line": 257,
+        "canonical_body_sha256": "573d190f6ec0c5c906dfd167bb83ff9df03ffe9587be8a05d1c73befead397ba"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "protection_values": 3,
+        "fresh_robot_per_value": true
+      },
+      "ordered_inputs": [
+        {
+          "BIGBOOM_damage_tuple": [
+            8,
+            4,
+            0
+          ],
+          "max_health": 50,
+          "protection_values": [
+            0.0,
+            0.5,
+            1.0
+          ],
+          "attacker_side": 2,
+          "weapon": "WEAPON_BIGBOOM"
+        }
+      ],
+      "asserted_outcomes": [
+        "Each hit returns false.",
+        "Raw health at protection0/.5/1 =42/46/50."
+      ],
+      "asserted_forbidden_results": [
+        "Incorrect protection amount or nonzero damage at full protection."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No detonation, splash enumeration, falloff, chained blast or timing."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Direct robot-bomb protection arithmetic only."
+      },
+      "active_assertion_expressions": [
+        "!hit(*robot, WEAPON_BIGBOOM)",
+        "robot->health() == (protection == 0 ? 42 : protection == 0.5f ? 46 : 50)"
+      ],
+      "finite_input_assertion_json_sha256": "1ae9e990ecd480c190cde30c7c3cc3924de427f236c7281cfb4f46faf9c5f695"
+    },
+    {
+      "case": "game.combat.building_death",
+      "function": "building_death",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 259,
+        "last_line": 286,
+        "canonical_body_sha256": "540a1c0b51dd7abef8abbad6c974c898706e66d2a5557e43ca968dc81dd0a6fa"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "ordered_damage_events": 3
+      },
+      "ordered_inputs": [
+        {
+          "building_side": 2,
+          "max_health": 4,
+          "registered_logic_objects": [
+            "building",
+            "Robot linked via SetBase",
+            "cannon linked via m_ParentBuilding"
+          ],
+          "building_gun_damage_tuple": [
+            4,
+            2,
+            0
+          ],
+          "attacker_side": 1
+        },
+        {
+          "events": [
+            "GUN lethal hit",
+            "REPAIR on dead building",
+            "GUN on dead building"
+          ]
+        }
+      ],
+      "asserted_outcomes": [
+        "Initial lethal hit returns true and State == BUILDING_DIP.",
+        "GetHitPoint binary32 literal0xbdcccccdU, repeated after later hits.",
+        "Robot base null and IsMustDie true; cannon parent null.",
+        "Player STAT_BUILDING_KILL increases exactly1 and stays there after repeated dead hits.",
+        "Later dead REPAIR/GUN return true."
+      ],
+      "asserted_forbidden_results": [
+        "Dead building cannot regain health or increment kills again; linked references must clear as asserted."
+      ],
+      "not_asserted_or_outside_scope": [
+        "Does not assert actual object retirement, robot deletion, cannon death or delayed explosion/ruin cleanup.",
+        "Later state enum is not separately asserted again; sentinel and return values are."
+      ],
+      "catalog_component_credit": {
+        "COM-02": "Immediate lethal transition, linked-reference cleanup, sentinel and no duplicate kill credit."
+      },
+      "active_assertion_expressions": [
+        "hit(*building, WEAPON_GUN, PLAYER_SIDE)",
+        "building->State() == BUILDING_DIP",
+        "std::bit_cast<std::uint32_t>(building->GetHitPoint()) == 0xbdcccccdU",
+        "robot->GetBase() == nullptr",
+        "robot->IsMustDie()",
+        "cannon->m_ParentBuilding == nullptr",
+        "world.world.map->GetPlayerSide()->GetStatValue(STAT_BUILDING_KILL) == kills + 1",
+        "hit(*building, WEAPON_REPAIR, PLAYER_SIDE)",
+        "hit(*building, WEAPON_GUN, PLAYER_SIDE)",
+        "std::bit_cast<std::uint32_t>(building->GetHitPoint()) == 0xbdcccccdU",
+        "world.world.map->GetPlayerSide()->GetStatValue(STAT_BUILDING_KILL) == kills + 1"
+      ],
+      "finite_input_assertion_json_sha256": "5b9f82bc9fc8d81958ae4f32d55f3059c5351c95b954c4b32c6cbe2f431ba943"
+    },
+    {
+      "case": "game.combat.cannon_repair_state",
+      "function": "cannon_repair_state",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 288,
+        "last_line": 316,
+        "canonical_body_sha256": "8a59b3cc9cddaf0cd54977e6cd66e0a49fa15f9ca13e90ad85321146ef72d53c"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "ordered_hit_events": 5
+      },
+      "ordered_inputs": [
+        {
+          "side": 1,
+          "max_health": 50,
+          "current_health": 45,
+          "state_sequence": [
+            "constructor state",
+            "CANNON_UNDER_CONSTRUCTION",
+            "CANNON_IDLE"
+          ],
+          "invulnerable_events": [
+            "GUN attacker2",
+            "REPAIR attacker2"
+          ]
+        },
+        {
+          "reset_invulnerability": true,
+          "repair_events": [
+            {
+              "attacker_side": 1,
+              "expected_health": 47
+            },
+            {
+              "attacker_side": 2,
+              "expected_health": 50
+            }
+          ]
+        },
+        {
+          "set_state": "CANNON_DIP",
+          "repair_attacker_side": 2,
+          "expected_return": true,
+          "expected_health": 50,
+          "cleanup_set_state": "CANNON_IDLE"
+        }
+      ],
+      "asserted_outcomes": [
+        "NeedRepair true initially, false under construction and at full health.",
+        "Invulnerable gun/repair both return false; health45 unchanged; draw_count after exactly those two calls equals captured before.",
+        "Repair after protection reset returns false and reaches47 then50; dead repair returns true with health50."
+      ],
+      "asserted_forbidden_results": [
+        "Invulnerable damage/repair must change neither health nor scoped RNG draw count; dead repair must not raise health."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No global zero-draw assertion, construction progress, cannon targeting/fire/cooldown or full death lifecycle.",
+        "No explicit post-dead-hit state identity assertion."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Immediate cannon repair arithmetic/saturation.",
+        "COM-02": "Construction eligibility, invulnerability and already-DIP health predicates; no COM-03 autonomy credit."
+      },
+      "active_assertion_expressions": [
+        "cannon->NeedRepair()",
+        "!cannon->NeedRepair()",
+        "!hit(*cannon, WEAPON_GUN)",
+        "!hit(*cannon, WEAPON_REPAIR)",
+        "cannon->GetHitPoint() == 45",
+        "random::draw_count() == before",
+        "!hit(*cannon, WEAPON_REPAIR, PLAYER_SIDE)",
+        "cannon->GetHitPoint() == 47",
+        "!hit(*cannon, WEAPON_REPAIR, 2)",
+        "cannon->GetHitPoint() == 50",
+        "!cannon->NeedRepair()",
+        "hit(*cannon, WEAPON_REPAIR)",
+        "cannon->GetHitPoint() == 50"
+      ],
+      "finite_input_assertion_json_sha256": "604f24b080e76c2e6957d7b5904afcfeaf04e44cbf60f465238ff1ea1a0ae485"
+    },
+    {
+      "case": "game.combat.building_repair",
+      "function": "building_repair",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 318,
+        "last_line": 339,
+        "canonical_body_sha256": "5f56e9ad2182dcc48ae6a5eb4b264e3392df49d020d8491031999fce7e7ce32a"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "ordered_hits": 4
+      },
+      "ordered_inputs": [
+        {
+          "building_side": 1,
+          "max_health": 50,
+          "GUN_damage_tuple": [
+            10,
+            2,
+            0
+          ],
+          "REPAIR_damage_tuple": [
+            8,
+            4,
+            100
+          ]
+        },
+        {
+          "events": [
+            {
+              "weapon": "WEAPON_GUN",
+              "attacker_side": 2,
+              "expected_getter": 4
+            },
+            {
+              "set_enemy_and_friendly_multipliers": 0,
+              "weapon": "WEAPON_REPAIR",
+              "attacker_side": 1,
+              "expected_getter_bits": "0x408ccccdU"
+            },
+            {
+              "weapon": "WEAPON_REPAIR",
+              "attacker_side": 2,
+              "expected_getter": 5
+            },
+            {
+              "weapon": "WEAPON_REPAIR",
+              "attacker_side": 2,
+              "expected_getter": 5
+            }
+          ]
+        }
+      ],
+      "asserted_outcomes": [
+        "Every hit returns false.",
+        "NeedRepair true after gun, false after saturation.",
+        "Friendly repair getter uses literal binary32 0x408ccccdU; other/full repair getter5."
+      ],
+      "asserted_forbidden_results": [
+        "Zero difficulty must not suppress repair; full health must not overfill."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No timed building repair, ownership transfer, lethal building repair or native progress bar output."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Building repair amount, float result, saturation and multiplier independence."
+      },
+      "active_assertion_expressions": [
+        "!hit(*building, WEAPON_GUN)",
+        "building->GetHitPoint() == 4",
+        "building->NeedRepair()",
+        "!hit(*building, WEAPON_REPAIR, PLAYER_SIDE)",
+        "std::bit_cast<std::uint32_t>(building->GetHitPoint()) == 0x408ccccdU",
+        "!hit(*building, WEAPON_REPAIR)",
+        "building->GetHitPoint() == 5",
+        "!building->NeedRepair()",
+        "!hit(*building, WEAPON_REPAIR)",
+        "building->GetHitPoint() == 5"
+      ],
+      "finite_input_assertion_json_sha256": "1e71bc67d08c60e264b7210963a9e618eabdbef81ae5b6faf702b3337febaf37"
+    },
+    {
+      "case": "game.combat.projectile_range_callback",
+      "function": "projectile_range_callback",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 359,
+        "last_line": 381,
+        "canonical_body_sha256": "a0705915f7e0ab53fcd2488986476a4c974df26504a8d354b8d93140a4110c0e"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "weapon_types": 5,
+        "distance_squared_values": 3,
+        "same_projectile_and_target_per_type": true
+      },
+      "ordered_inputs": [
+        {
+          "weapon_types": [
+            "WEAPON_HOMING_MISSILE",
+            "WEAPON_GUN",
+            "WEAPON_CANNON0",
+            "WEAPON_CANNON1",
+            "WEAPON_CANNON3"
+          ],
+          "per_type_robot_damage_tuple": [
+            4,
+            2,
+            0
+          ],
+          "created_weapon_radius": 10,
+          "robot_max_health": 50,
+          "reset_raw_health_before_each_callback": 50,
+          "distance_squared_values": [
+            99.0,
+            100.0,
+            101.0
+          ],
+          "direct_callback_input_flags": 0,
+          "weapon_owner": "not set; constructor side storage0"
+        }
+      ],
+      "asserted_outcomes": [
+        "GetWeaponDist equals10.",
+        "At squared distance<=100 raw health46 and callback flags FEHF_DAMAGE_ROBOT; at101 health50 and flags0.",
+        "Callback target equals robot on each call, even outside damage range.",
+        "Total callback count3 per projectile type."
+      ],
+      "asserted_forbidden_results": [
+        "Out-of-range hit must not damage; equality must damage; callback must still identify target outside range."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No flight, firing, aiming, obstruction, alternate radius/coefficient, FEHF_LASTHIT release or native geometry.",
+        "Callback count asserted only after all3 distances, not after each."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Direct WeaponHit squared-range boundary and callback target/flag routing for five actual types."
+      },
+      "active_assertion_expressions": [
+        "projectile->GetWeaponDist() == 10",
+        "robot->health() == (distance <= 100 ? 46 : 50)",
+        "record.target == robot.get()",
+        "record.flags == (distance <= 100 ? FEHF_DAMAGE_ROBOT : 0)",
+        "record.calls == 3"
+      ],
+      "finite_input_assertion_json_sha256": "c6e55df606a697ffbd5a4b8bfef2f62e5b122c87f438d546399994b5ed7837c9"
+    },
+    {
+      "case": "game.combat.projectile_owner_retirement",
+      "function": "projectile_owner_retirement",
+      "source": {
+        "path": "tests/combat_damage_tests.cpp",
+        "first_line": 383,
+        "last_line": 407,
+        "canonical_body_sha256": "9c615a590c1a32d334949f65e049b61b34cd2d4fd0fb3bd4835d8c7a5ab821d5"
+      },
+      "declared_loop_dimensions": {
+        "RNG_modes": 2,
+        "owner_deletions": 1,
+        "subsequent_callbacks": 1
+      },
+      "ordered_inputs": [
+        {
+          "created_weapon": "WEAPON_GUN",
+          "owner": "Robot side1; RNoNeed(0xffffffff), AddLT, then SetOwner",
+          "delete_owner": "owner.reset()",
+          "target_max_health": 50,
+          "GUN_robot_damage_tuple": [
+            8,
+            2,
+            0
+          ],
+          "effect_distance_squared": 0,
+          "direct_callback_input_flags": 0
+        }
+      ],
+      "asserted_outcomes": [
+        "Before deletion GetOwner == owner and GetSideStorage == PLAYER_SIDE.",
+        "After deletion GetOwner null while stored side remains PLAYER_SIDE.",
+        "Later target raw health48; callback count1 and flags FEHF_DAMAGE_ROBOT."
+      ],
+      "asserted_forbidden_results": [
+        "Owner pointer must not remain live after deletion; retained friendly-side damage must not become enemy damage."
+      ],
+      "not_asserted_or_outside_scope": [
+        "No in-flight effect/map ticks, later callback target-identity assertion, lethal impact, kill statistics or real collision shape.",
+        "Identity-only owner core has no mesh-derived bounds."
+      ],
+      "catalog_component_credit": {
+        "COM-01": "Retained-side friendly damage at a direct impact.",
+        "COM-02": "Actual owner deletion and synchronous callback ownership afterward."
+      },
+      "active_assertion_expressions": [
+        "projectile->GetOwner() == owner.get()",
+        "projectile->GetSideStorage() == PLAYER_SIDE",
+        "projectile->GetOwner() == nullptr",
+        "projectile->GetSideStorage() == PLAYER_SIDE",
+        "target->health() == 48",
+        "record.calls == 1",
+        "record.flags == FEHF_DAMAGE_ROBOT"
+      ],
+      "finite_input_assertion_json_sha256": "d0dcb05b176088f3f773b8f71df7edae6656e29079485711b5d5b1beb6768653"
+    }
+  ],
+  "tick_boundary": {
+    "explicit_fixture_case_and_shared_dispatches": [],
+    "production_entrypoint_scans": [
+      {
+        "path": "MatrixGame/src/MatrixRobot.cpp",
+        "entrypoint": "bool CMatrixRobotAI::Damage(",
+        "first_line": 1822,
+        "last_line": 2118,
+        "canonical_body_sha256": "26b709f9e1277b357246296ece2fcade0f43e5ec385551a98b3543039f8f18f8",
+        "direct_tick_dispatch_calls": []
+      },
+      {
+        "path": "MatrixGame/src/MatrixObjectBuilding.cpp",
+        "entrypoint": "bool CMatrixBuilding::Damage(",
+        "first_line": 281,
+        "last_line": 369,
+        "canonical_body_sha256": "6024689e5ffc19e2d0a449b69209bf91363a7742007e6610ba1b233531c05484",
+        "direct_tick_dispatch_calls": []
+      },
+      {
+        "path": "MatrixGame/src/MatrixObjectCannon.cpp",
+        "entrypoint": "bool CMatrixCannon::Damage(",
+        "first_line": 1265,
+        "last_line": 1454,
+        "canonical_body_sha256": "5b3c43b210a48a67bc20b4b91a7f22d272e6a267734c81f5d8a63f4e003064ba",
+        "direct_tick_dispatch_calls": []
+      },
+      {
+        "path": "MatrixGame/src/Effects/MatrixEffectWeapon.cpp",
+        "entrypoint": "void CMatrixEffectWeapon::WeaponHit(",
+        "first_line": 23,
+        "last_line": 68,
+        "canonical_body_sha256": "9ea29290c948e989c3e15ea57c81cfbd2be4130df71c4bc6a0644e46b949c50a",
+        "direct_tick_dispatch_calls": []
+      }
+    ],
+    "meaning": "No test/fixture or directly entered Damage/WeaponHit body dispatches Takt/LogicTakt/TickTimer/advance. Existing direct ordered Damage/callback/delete sequences are static component inputs; status TTL is assigned, not elapsed. This is not an assertion of zero RNG/effects in all nested helper work."
+  },
+  "catalog_limits": {
+    "COM-01": "Only the declared direct damage/repair/resistance/range-callback predicates; no complete firing/timing/trajectory/geometry cross-product.",
+    "COM-02": "Only declared immediate health/death/reference/owner predicates; no complete spawn/timed death/removal/repair lifecycle.",
+    "COM-03": "No autonomous acquisition/rotation/firing/retargeting evidence from this executable, even when target/projectile type is a cannon."
+  },
+  "excluded": [
+    "All temporal armed/Session scenarios, status ticking and component-timed families in other executables.",
+    "Native visuals/audio/device, original-host/DLL runtime and final baseline/reference acceptance."
+  ],
+  "execution_identity_requirements": [
+    "Bind the exact source and finite input/assertion selection to the actual producer binary SHA-256, PE architecture and engine role.",
+    "Retain effective compiler, build/cache/defines, dependency/runtime and floating-point identities for each actual execution profile.",
+    "Retain per-case process exits, stdout and JUnit tied to that exact producer; the source catalog contains no execution results.",
+    "Record the approved same-profile reference/comparison decisions separately; no tolerance, native waiver or complete-baseline acceptance follows from this catalog."
+  ],
+  "source_identities": [
+    {
+      "path": "tests/combat_damage_tests.cpp",
+      "git_blob": "c0b8a3b86bbe0654a23955561ae620e7237c20a8",
+      "git_content_sha256": "396ebe893ddc0b6e3395d5caf1bae5818edaa7a229486f66f45bf21bb4ded434"
+    },
+    {
+      "path": "tests/command_world.hpp",
+      "git_blob": "1a735b9d754be5fc38858f59ea271d44848d33ea",
+      "git_content_sha256": "5535c11521ba7097b4c2d208dc0298ec14d5455dcd7b0b4c5acaacdc57cd9067"
+    },
+    {
+      "path": "tests/test_support.hpp",
+      "git_blob": "940580a5339aae04f0de7d26653b4e3ed677e64c",
+      "git_content_sha256": "53681fff37f0c398a3f8f60134a61ff3a122b2b423166c5c65773aaac8b27e05"
+    },
+    {
+      "path": "tests/test_support.cpp",
+      "git_blob": "4c5b465df8274e4e43b0c18c650da8ff9b3a4a93",
+      "git_content_sha256": "406ddbadfec3d3785aaf464424fccec0d56222cd3fd86e52c51cbd2dd546ba1a"
+    },
+    {
+      "path": "tests/diagnostic_overlay_stub.cpp",
+      "git_blob": "aa9f0e71b03c70f04aa2a0ab6202275970bdf120",
+      "git_content_sha256": "32e286d0685f6f7c3e3ff7599e2b5ad3c24e4d39c4eeeab0997892988110746f"
+    },
+    {
+      "path": "tests/CMakeLists.txt",
+      "git_blob": "ea9d0fb9a36453aaaa06ea5f9853cb95ebfc38d4",
+      "git_content_sha256": "f309ed34f1e3b107158873429913762cf5b040e4966b1ac51cfd9518626a185c"
+    },
+    {
+      "path": "MatrixGame/src/MatrixConfig.hpp",
+      "git_blob": "9128e3d57480e9baeaae1de51ceb6ee88dab2cee",
+      "git_content_sha256": "8e512b18a0738a6d34e3c25dd87f26dfc54fa477efeb9acf484e1d9d89b70a19"
+    },
+    {
+      "path": "MatrixGame/src/Effects/MatrixEffectWeapon.hpp",
+      "git_blob": "23e011f5e22851fb0d5c2ea46339762ab8040b49",
+      "git_content_sha256": "9c55828eb1d7c3f82f7e9f9e5ef4cba3f7c55919d7fb5317696ece0205456821"
+    },
+    {
+      "path": "MatrixGame/src/Effects/MatrixEffect.hpp",
+      "git_blob": "edfc693529e7f7262a06a2affb23a7f8a78047b6",
+      "git_content_sha256": "344bbf6858b6699adb26dc3b02b42104609148d276400fc3d601d937856734f5"
+    },
+    {
+      "path": "MatrixGame/src/MatrixRobot.hpp",
+      "git_blob": "aa62365fda17e92ee00bea1b289db85a8dbcfc0c",
+      "git_content_sha256": "51b076df2074a57261ac910273cb9ffeb8a06f093c789a04a886f723304ba7b7"
+    },
+    {
+      "path": "MatrixGame/src/MatrixObjectRobot.hpp",
+      "git_blob": "f95403cad85160556e4f6e8fdb6a592e32cc180c",
+      "git_content_sha256": "6441b197c85969f3852d01d12e1f2b6d94d97110021e70a53c5c086e573efae9"
+    },
+    {
+      "path": "MatrixGame/src/MatrixRobot.cpp",
+      "git_blob": "76d72c87cac83c227d05bebcd79c63198be17e3c",
+      "git_content_sha256": "7e6bcaa6632392f72ebffac72992b54cd7c23b2ee8fc360bf5b9ee9e0e83d219"
+    },
+    {
+      "path": "MatrixGame/src/MatrixObjectBuilding.hpp",
+      "git_blob": "da96d23c9c60f85534b4713acad61f635f5aaa47",
+      "git_content_sha256": "7d34057d79e62c1fd30a09edd53fefc1ff05362e113c558fc7cd75480bb3d3b4"
+    },
+    {
+      "path": "MatrixGame/src/MatrixObjectBuilding.cpp",
+      "git_blob": "e36a7f4204ae38735a9e53679205daf027abb355",
+      "git_content_sha256": "61275c1316d8e848a739a8ecb2faed1414c5ade280472d4cc098e3da974a4ee1"
+    },
+    {
+      "path": "MatrixGame/src/MatrixObjectCannon.hpp",
+      "git_blob": "4f73d783cd3197eb1426f8d9c6080ed10e14613f",
+      "git_content_sha256": "5c61916d6248bf82dc6f9fd42eec5d70df8d3dce3578f69e41ca39843a387662"
+    },
+    {
+      "path": "MatrixGame/src/MatrixObjectCannon.cpp",
+      "git_blob": "c68a5828ff5cbf6b5400b55411897a014a5a68e2",
+      "git_content_sha256": "f4d0158a7b54454c5ddbee6b6e5389d83c74503d70ad31fee011c6977e5eb21b"
+    },
+    {
+      "path": "MatrixGame/src/Effects/MatrixEffectWeapon.cpp",
+      "git_blob": "44e1d31cd416265d38c161e2f45343ea4619467b",
+      "git_content_sha256": "6edbe5ac3619d4c2c77bcb24008d3682676b3cbd39cea264acf7904e28ed1395"
+    },
+    {
+      "path": "MatrixGame/src/MatrixSide.hpp",
+      "git_blob": "e04f5f6a260930b3adea1ab15e7d4da2be83ec40",
+      "git_content_sha256": "25fbc6926fbf216e02daa7b30710b1d5261ba96dbac3e41542cfa7c208b3eba5"
+    },
+    {
+      "path": "MatrixLib/Base/random.hpp",
+      "git_blob": "cafdd624674224e691b262f686c4c83885754c8e",
+      "git_content_sha256": "ec17d5355e937a1f229cd54f9b76b40c6585c16251faa1a59dd921944f6fa194"
+    },
+    {
+      "path": "MatrixLib/Base/random.cpp",
+      "git_blob": "3960df98131c3b7872c58b225f71997be0b82b1f",
+      "git_content_sha256": "a0cc8d6dd4ae8cc862cb48586c316f0f2081ecfd206bfbc294f2a11f13a3d4ba"
+    }
+  ]
+}

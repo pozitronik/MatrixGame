@@ -11,6 +11,8 @@ These contracts implement part of [combat preservation](https://github.com/pozit
 
 The thirteen component CTest contracts link `MatrixGameInternal`, use `MG_CHECK` in every configuration and run in separate processes without an interactive window or supplied resource packages. Every contract runs with seed 82 in both Park-Miller and legacy CRT modes. The fixture is the existing `CommandWorld`, with engine-allocated objects and synthetic damage tables restored at teardown. No simulation frames are advanced: the schedule consists of the explicit damage/callback sequence in each case. This is component evidence, not a substitute for the controlled full-map scenario profile or its trace comparison.
 
+The [static combat input catalog](static-combat-inputs.md) identifies the exact thirteen-case selection, shared literal inputs, source/body hashes, active assertions and unasserted limits.
+
 Audio has no backend. Hit positions are deliberately far outside the default camera's effect distance, so production explosion culling prevents presentation assets from being loaded. Robot family cases also remain above zero and at or below 50 internal health units. Do not generalize their RNG consumption or lifetime evidence to visible explosions or a native device. The owner-retirement fixture supplies an identity-only core without mesh-derived bounds; it tests ownership and callback dispatch, not collision detection.
 
 ## Families and assertions
