@@ -761,7 +761,8 @@ foreach(contract menu_result_exit diagnostic_result_exit)
 endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_chassis_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp navigation_damage_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp
+    carrier_recording.cpp carrier_recording.hpp)
 target_link_libraries(matrixgame_navigation_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_tests matrixgame_scenario_identity)
 target_include_directories(matrixgame_navigation_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
@@ -1250,7 +1251,8 @@ foreach(mode park_miller legacy_crt)
 endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_approach_scenarios navigation_approach_scenarios.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp
+    carrier_recording.cpp carrier_recording.hpp)
 target_link_libraries(matrixgame_navigation_approach_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_approach_scenarios matrixgame_scenario_identity)
 target_include_directories(matrixgame_navigation_approach_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
