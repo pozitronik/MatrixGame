@@ -710,7 +710,8 @@ add_matrix_test(game.ai.auto_camera_fights matrixgame_ai_auto_scenarios gameplay
 add_matrix_test(game.ai.auto_camera_replay matrixgame_ai_auto_scenarios gameplay ai rendering)
 add_matrix_test(game.ai.auto_camera_overview_replay matrixgame_ai_auto_scenarios gameplay ai rendering)
 
-add_matrix_test_executable(matrixgame_battle_outcome_scenarios battle_outcome_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
+add_matrix_test_executable(matrixgame_battle_outcome_scenarios
+    battle_outcome_scenarios.cpp capture_completion_recording.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_outcome_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_battle_outcome_scenarios matrixgame_scenario_identity)

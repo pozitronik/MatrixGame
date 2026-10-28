@@ -1,5 +1,7 @@
 # Capture timing profiles
 
+The [capture recording guide](capture-completion-recordings.md) describes the finite registered factory/base completion corpus and its independent semantic checks.
+
 This supplement records the scheduled capture cases extended to both 10 ms and 16 ms in O2 of the [outcome completion plan](85-outcome-completion.md). Each case runs ParkMiller and LegacyCRT separately. The fixtures use synthetic resources and production map, building, robot and side logic; they do not load an original map or render a native window. Existing 10 ms observations remain unchanged.
 
 ## Cases and observations

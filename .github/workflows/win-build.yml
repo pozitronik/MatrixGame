@@ -339,6 +339,15 @@ jobs:
             build/**/MatrixGame.pdb
             build/**/MatrixGame/**/*.dll
             build/**/CFG/**/*.txt
+      - name: Validate registered capture recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $sourceRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
+          python -B tests/check_capture_completion_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats && 'ON' || 'OFF' }}' --trace '${{ matrix.trace && 'ON' || 'OFF' }}' --revision $sourceRevision
+          if ($LASTEXITCODE -ne 0) { throw 'Capture producer/parser validation failed.' }
 
   coverage:
     name: MinGW Debug coverage
