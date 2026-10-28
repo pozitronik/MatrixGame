@@ -778,7 +778,8 @@ foreach(contract shorted_route_blocker dying_route_blocker shorted_movement_reco
 endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_road_scenarios navigation_road_scenarios.cpp battle_combat_geometry.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp
+    road_journey_recording.cpp road_journey_recording.hpp)
 target_link_libraries(matrixgame_navigation_road_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_road_scenarios matrixgame_scenario_identity)
 target_include_directories(matrixgame_navigation_road_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
