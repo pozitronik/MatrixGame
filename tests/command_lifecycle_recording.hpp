@@ -39,6 +39,7 @@ private:
     battle::Session &session_;
     std::filesystem::path path_;
     std::ofstream file_;
+    std::string snapshot_buffer_;
     std::vector<CMatrixRobotAI *> actors_;
     std::vector<std::size_t> uids_;
     CMatrixFlyer *carrier_ = nullptr;

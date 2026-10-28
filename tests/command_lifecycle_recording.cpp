@@ -7,13 +7,48 @@
 #include <algorithm>
 #include <array>
 #include <bit>
+#include <charconv>
+#include <concepts>
 #include <sstream>
+#include <string_view>
 #include <utility>
 
 namespace tests::c2 {
 namespace {
 Recording *active = nullptr;
 std::vector<std::pair<std::filesystem::path, std::string>> pending;
+
+// These snapshots contain only JSON literals, existing text and decimal integers.
+// Reuse one buffer and avoid locale-aware stream construction for every frame.
+class SnapshotLine {
+public:
+    explicit SnapshotLine(std::string &buffer) : buffer_(buffer) {
+        buffer_.clear();
+        buffer_.reserve(4096);
+    }
+    SnapshotLine &operator<<(std::string_view value) {
+        buffer_.append(value);
+        return *this;
+    }
+    SnapshotLine &operator<<(const char *value) { return *this << std::string_view(value); }
+    SnapshotLine &operator<<(char value) {
+        buffer_.push_back(value);
+        return *this;
+    }
+    SnapshotLine &operator<<(bool) = delete;
+    template<std::integral T> requires (!std::same_as<T, char> && !std::same_as<T, bool>)
+    SnapshotLine &operator<<(T value) {
+        static_assert(sizeof(T) <= sizeof(std::uint64_t));
+        char digits[32];
+        const auto result = std::to_chars(digits, digits + sizeof(digits), value);
+        MG_CHECK(result.ec == std::errc{});
+        buffer_.append(digits, result.ptr);
+        return *this;
+    }
+    std::string_view view() const { return buffer_; }
+private:
+    std::string &buffer_;
+};
 
 std::filesystem::path path(const char *family, random::Mode mode, int step, int route, bool flag) {
     std::string name = std::string("player-command-") + family + '-' +
@@ -106,7 +141,7 @@ void Recording::state(const char *phase) {
             ++members[robot->GetGroupLogic()];
         }
     }
-    std::ostringstream out;
+    SnapshotLine out(snapshot_buffer_);
     out << "{\"type\":\"snapshot\",\"state\":" << session_.snapshot()
         << ",\"c2\":{\"phase\":\"" << phase << "\",\"actors\":[";
     for (unsigned index = 0; index < actors_.size(); ++index) {
@@ -119,7 +154,7 @@ void Recording::state(const char *phase) {
                 << ",\"state\":" << int(robot->m_CurrState);
             // Death repurposes unit storage for debris; only its lifetime state remains relevant here.
             if (alive) {
-                out << ",\"chassis\":" << robot->m_Unit[0].u1.s1.m_Kind
+                out << ",\"chassis\":" << int(robot->m_Unit[0].u1.s1.m_Kind)
                     << ",\"x_bits\":" << std::bit_cast<std::uint32_t>(robot->m_PosX)
                     << ",\"y_bits\":" << std::bit_cast<std::uint32_t>(robot->m_PosY)
                     << ",\"group\":" << robot->GetGroupLogic() << ",\"place\":" << robot->GetEnv()->m_Place
@@ -173,7 +208,9 @@ void Recording::state(const char *phase) {
         << ",\"watched_core\":" << (core_ ? id(core_->m_Object) : 0)
         << ",\"enemy_kills\":" << g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) << "}}";
     MG_CHECK(random::draw_count() == draws);
-    file_ << out.str() << '\n';
+    const auto serialized = out.view();
+    file_.write(serialized.data(), std::streamsize(serialized.size()));
+    file_.put('\n');
     MG_CHECK(file_.good());
 }
 
