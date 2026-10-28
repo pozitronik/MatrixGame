@@ -37,6 +37,15 @@ class FeedbackSemantics(unittest.TestCase):
     def test_signed_unassigned_time_and_nonnull_unknown_target_are_preserved(self):
         CHECK.observations(observation())
 
+    def test_live_order_domain_is_separate_from_physical_queue_enums(self):
+        for order in (-1, 0, 9):
+            value = observation()
+            value["state"]["robots"][0]["order"] = order
+            value["state"]["player_groups"][0]["order"] = 9
+            value["state"]["robots"][0]["queue"] = [[0, 0, 0, 0xffffffff, -1],
+                                                   [8, 8, 0xffffffff, 0, 4]] * 2 + [[1, 0, 0, 0, 0]]
+            CHECK.observations(value)
+
     def test_both_equal_files_missing_live_actor_fail_independently(self):
         left, right = observation(), observation()
         left["feedback"].pop()
@@ -219,6 +228,31 @@ class CompleteRecordings(unittest.TestCase):
         for value in pair:
             with self.assertRaisesRegex(ValueError, message):
                 CHECK.validate(value, self.description, arguments())
+
+    def test_paired_queue_enum_and_capacity_corruption_is_rejected(self):
+        for queue, message in (([[9, 0, 0, 0, 0]], "queue type or phase"),
+                               ([[-1, 0, 0, 0, 0]], "queue type or phase"),
+                               ([[1, 9, 0, 0, 0]], "queue type or phase"),
+                               ([[1, -1, 0, 0, 0]], "queue type or phase"),
+                               ([[1, 0, 0, 0, 0]] * 6, "invalid Session queue")):
+            with self.subTest(queue=queue):
+                self.reject_pair(lambda r: r[3]["state"]["robots"][0].update(queue=queue), message)
+
+    def test_paired_live_order_and_group_order_domains_are_rejected(self):
+        for field, values in (("actor", (-2, 10, 999)), ("group", (-1, 10, 999))):
+            for order in values:
+                with self.subTest(field=field, order=order):
+                    def edit(records):
+                        state = records[3]["state"]
+                        owner = state["robots"][0] if field == "actor" else state["player_groups"][0]
+                        owner["order"] = order
+                    self.reject_pair(edit, "player order" if field == "actor" else "player-group order")
+
+    def test_paired_retired_actor_cannot_retain_a_queue(self):
+        for queue in ([], [[1, 0, 0, 0, 0]], None):
+            with self.subTest(queue=queue):
+                self.reject_pair(lambda r: r[3]["state"]["robots"][3].update(queue=queue),
+                                 "retired Session actor retains a queue")
 
     def test_valid_recording_for_every_family_rng_step_role_and_context(self):
         for description, _ in CHECK.pairs():
