@@ -59,6 +59,8 @@ Always select the matching configuration with `-C` for MSVC's multi-configuratio
 
 CI runs the engine suite after every game-build configuration. Test failures fail the build job and the aggregate Required checks gate. JUnit reports are retained as separate artifacts, including when a test fails. Contribution-policy tests remain a separate check.
 
+The [CalcVis preparation](testing/87-calcvis.md) supplies safe synthetic flat/ridge exports, input/runtime guards, production-linked CPU checks and opt-in native launch/Debug observations. `game.presentation.calcvis_*` runs without a native game window; the visible observer is never registered with CTest.
+
 For current command, navigation, AI and presentation completion work, see the [baseline completion checklist](testing/baseline-completion.md). It reconciles shared test evidence and distinguishes proposed remaining scenario selections from final baseline acceptance. Completed implementation and pending native execution have separate records in the [native validation ledger](testing/native-validation.md); automated regressions continue to run during implementation.
 
 Synthetic native fixtures can use the [test-window containment helper](testing/native-window-containment.md) to keep their own game/loading windows hidden and adapt desktop cursor operations. Its cursor contracts run without a graphics device; its import/hidden-window checks are separately opt-in. Neither establishes visible presentation or original-host integration.
@@ -108,7 +110,7 @@ The comparator rejects incompatible profile headers by default, checks command r
 
 ### Shared scenario fixtures
 
-The [player command guide](testing/player-orders.md) maps input and cheat contracts to the behavior catalog and distinguishes real form routes from supplied fixture preconditions. The [group-capacity regressions](testing/327-group-capacity.md) cover safe refusal, order-result propagation and last-slot recovery, with a checked failure control before the old invalid access.
+The [player command guide](testing/player-orders.md) maps input and cheat contracts to the behavior catalog and distinguishes real form routes from supplied fixture preconditions. The [group-capacity regressions](testing/327-group-capacity.md) cover safe refusal, order-result propagation and last-slot recovery, with a checked failure control before the old invalid access. The [crazy-history cases](testing/80-crazy-history.md) distinguish fresh-process, repeated-Session and shared-actor retarget counts through production robot logic, with a fixed map clock and no production reset.
 
 The [synthetic armed fixtures](testing/armed-fixtures.md) describe generated attachment meshes, weapon/effect dependencies, ownership and bounded firing evidence. Scenario-specific fixture guides live under `docs/testing/`; this page remains their navigation entry point and the authority for common validation rules.
 

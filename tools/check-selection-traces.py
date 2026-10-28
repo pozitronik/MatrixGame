@@ -87,6 +87,17 @@ def validate(records, *, rng, step, building_first, click, revision=None, config
             if robot["alive"]:
                 require({"x_bits", "y_bits", "side", "state", "health_bits", "in_place", "group", "order",
                          "target", "target_is_null", "destination", "queue"} <= robot.keys(), "live actor observations missing")
+                require(isinstance(robot["queue"], list), "live actor queue must be an array")
+                for order in robot["queue"]:
+                    require(isinstance(order, list) and len(order) == 5,
+                            "live actor queue entry must have five fields")
+                    # Check serialized int representation without adding an order/phase whitelist.
+                    require(all(trace._integer(order[i], minimum=-0x80000000, maximum=0x7fffffff) for i in (0, 1)),
+                            "live actor queue type/phase must be int32")
+                    require(all(trace._integer(order[i], maximum=0xffffffff) for i in (2, 3)),
+                            "live actor queue parameters must be uint32 bit patterns")
+                    require(trace._integer(order[4], minimum=-1, maximum=4),
+                            "live actor queue object must be a normalized Session identity")
         require(isinstance(state.get("player_groups"), list), "session player groups missing")
         require(all(isinstance(group, dict) and {"slot", "stored_count", "members", "order", "target"} <= group.keys()
                     for group in state["player_groups"]), "player group observations missing")
