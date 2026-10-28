@@ -9,6 +9,7 @@
 
 #include "CReminder.hpp"
 #include "Tracer.hpp"
+#include <type_traits>
 
 namespace Base {
 
@@ -27,6 +28,7 @@ struct DCS_SDeadMemBody {
     int id;
     int size;
 };
+static_assert(std::is_trivially_copyable_v<DCS_SDeadMemBody>);
 
 static int DCS_get_id(void) {
     static int last_id;
@@ -39,20 +41,28 @@ int DCS_semetery_cnt = 0;
 int DCS_semetery_heap_size = 0;
 
 static int DCS_find_by_id(int id, BYTE **ptr) {
-    DCS_SDeadMemBody *b = (DCS_SDeadMemBody *)&DCS_semetery_heap;
-
-    while (id != b->id) {
-        b = (DCS_SDeadMemBody *)(((BYTE *)b) + b->size);
+    for (int offset = 0; offset <= DCS_semetery_heap_size - int(sizeof(DCS_SDeadMemBody));) {
+        DCS_SDeadMemBody body;
+        memcpy(&body, DCS_semetery_heap + offset, sizeof(body));
+        if (body.size < int(sizeof(body)) || body.size > DCS_semetery_heap_size - offset)
+            break;
+        if (body.id == id) {
+            *ptr = DCS_semetery_heap + offset;
+            return body.size;
+        }
+        offset += body.size;
     }
-
-    *ptr = (BYTE *)b;
-    return b->size;
+    *ptr = nullptr;
+    return 0;
 }
 static void DCS_remove_by_id(int id) {
     BYTE *ptr;
     int sz = DCS_find_by_id(id, &ptr);
 
-    memcpy(ptr, ptr + sz, DCS_semetery_heap_size - sz);
+    if (sz == 0)
+        return;
+    const auto remaining = DCS_semetery_heap_size - (ptr - DCS_semetery_heap) - sz;
+    memmove(ptr, ptr + sz, remaining);
     DCS_semetery_heap_size -= sz;
 }
 
@@ -60,14 +70,15 @@ static void DCS_remove_first(void) {
     if (DCS_semetery_cnt == 0)
         return;
     DCS_remove_by_id(DCS_semetery[0].id);
-    memcpy(DCS_semetery, DCS_semetery + 1, (SEMETERY_SIZE - 1) * sizeof(DCS_SDeadMem));
+    static_assert(std::is_trivially_copyable_v<DCS_SDeadMem>);
+    memmove(DCS_semetery, DCS_semetery + 1, (DCS_semetery_cnt - 1) * sizeof(DCS_SDeadMem));
     --DCS_semetery_cnt;
 }
 
 void CMain::DCS_ClassDead(int szc) const {
-    int sz = sizeof(DCS_SDeadMemBody) + szc;
-    if (sz > SEMETERY_HEAP_SIZE)
+    if (szc < 0 || szc > SEMETERY_HEAP_SIZE - int(sizeof(DCS_SDeadMemBody)))
         return;
+    const int sz = int(sizeof(DCS_SDeadMemBody)) + szc;
 
     if (DCS_semetery_cnt >= SEMETERY_SIZE) {
         DCS_remove_first();
@@ -95,7 +106,7 @@ CMain *CMain::DCS_GetDeadBody(void) const {
         if (DCS_semetery[i].ptr_was == this) {
             BYTE *ptr;
             int sz = DCS_find_by_id(DCS_semetery[i].id, &ptr);
-            return (CMain *)(ptr + sizeof(DCS_SDeadMemBody));
+            return sz == 0 ? nullptr : (CMain *)(ptr + sizeof(DCS_SDeadMemBody));
         }
     }
 
@@ -107,7 +118,7 @@ void CMain::DCS_Reincarnation(void) const {
             int id = DCS_semetery[i].id;
             DCS_remove_by_id(id);
 
-            memcpy(DCS_semetery + i, DCS_semetery + i + 1, (DCS_semetery_cnt - i - 1) * sizeof(DCS_SDeadMem));
+            memmove(DCS_semetery + i, DCS_semetery + i + 1, (DCS_semetery_cnt - i - 1) * sizeof(DCS_SDeadMem));
             --DCS_semetery_cnt;
             return;
         }

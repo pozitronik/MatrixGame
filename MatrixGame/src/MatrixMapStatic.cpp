@@ -847,7 +847,7 @@ void CMatrixMapStatic::Sort(const D3DXMATRIX &sort) {
         bool expand_left = norite || ((lc <= rc) && !noleft);
 
         if (expand_left) {
-            memcpy(&objects[objects_left - 1], &objects[objects_left], sizeof(PCMatrixMapStatic) * lc);
+            memmove(&objects[objects_left - 1], &objects[objects_left], sizeof(PCMatrixMapStatic) * lc);
             --objects_left;
             objects[idx - 1] = this;
         }

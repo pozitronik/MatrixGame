@@ -7,6 +7,7 @@
 #include "3g.hpp"
 
 #include <algorithm>
+#include <type_traits>
 
 float SinCosTable[SIN_TABLE_SIZE];
 
@@ -485,15 +486,17 @@ void CTrajectory::Init2(const D3DXVECTOR3 *points, int pcnt) {
 }
 
 void CTrajectory::CutBeforeCurrent(void) {
+    static_assert(std::is_trivially_copyable_v<STrajectorySegment>);
     if (m_CurSeg == 0)
         return;
     m_SegCnt -= m_CurSeg;
-    memcpy(m_Segments, m_Segments + m_CurSeg, sizeof(STrajectorySegment) * m_SegCnt);
+    memmove(m_Segments, m_Segments + m_CurSeg, sizeof(STrajectorySegment) * m_SegCnt);
     m_CurSeg = 0;
     m_Len = -1;
 }
 
 float CTrajectory::CutBefore(float t) {
+    static_assert(std::is_trivially_copyable_v<STrajectorySegment>);
     if (m_SegCnt == 1)
         return t;
     float tseg = t * float(m_SegCnt);
@@ -502,12 +505,12 @@ float CTrajectory::CutBefore(float t) {
         return t;
     if (seg >= m_SegCnt) {
         m_SegCnt = 1;
-        memcpy(m_Segments, m_Segments + m_SegCnt - 1, sizeof(STrajectorySegment));
+        memmove(m_Segments, m_Segments + m_SegCnt - 1, sizeof(STrajectorySegment));
         return 1;
     }
     else {
         m_SegCnt -= seg;
-        memcpy(m_Segments, m_Segments + seg, sizeof(STrajectorySegment) * m_SegCnt);
+        memmove(m_Segments, m_Segments + seg, sizeof(STrajectorySegment) * m_SegCnt);
         return tseg - seg;
     }
     m_Len = -1;

@@ -4723,13 +4723,14 @@ void CMatrixRobotAI::RemoveOrder(OrderType order) {
 }
 
 void CMatrixRobotAI::ProcessOrdersList() {
+    static_assert(std::is_trivially_copyable_v<SOrder>);
     if (m_OrdersInPool <= 1)
         return;
 
     SOrder tmp_order;
     tmp_order = m_OrdersList[0];
 
-    MoveMemory(&m_OrdersList[0], &m_OrdersList[1], sizeof(SOrder) * m_OrdersInPool - 1);
+    MoveMemory(&m_OrdersList[0], &m_OrdersList[1], sizeof(SOrder) * (m_OrdersInPool - 1));
 
     m_OrdersList[m_OrdersInPool - 1] = tmp_order;
 }

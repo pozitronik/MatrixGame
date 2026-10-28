@@ -123,3 +123,15 @@ endif()
 target_compile_options(MatrixLib PRIVATE ${COMPILE_OPTIONS})
 target_compile_definitions(MatrixLib PRIVATE ${COMPILE_DEFINITIONS})
 target_link_options(MatrixLib PUBLIC "$<$<C_COMPILER_ID:MSVC>:-SAFESEH:NO>")
+
+if(BUILD_TESTING)
+    # Compile the complete library with a consistent optional-instrumentation contract.
+    add_library(MatrixLibDeadTrackers STATIC ${3G_SOURCES} ${BASE_SOURCES} ${BITMAP_SOURCES})
+    target_include_directories(MatrixLibDeadTrackers PUBLIC 3G Base Bitmap)
+    target_link_libraries(MatrixLibDeadTrackers PUBLIC LIBPNG ${DIRECTX9_LIBRARIES})
+    target_compile_options(MatrixLibDeadTrackers PRIVATE ${COMPILE_OPTIONS})
+    target_compile_definitions(MatrixLibDeadTrackers PUBLIC
+        FORCE_ENABLE_MEM_SPY DEAD_PTR_SPY_ENABLE DEAD_CLASS_SPY_ENABLE
+        PRIVATE ${COMPILE_DEFINITIONS})
+    target_link_options(MatrixLibDeadTrackers PUBLIC "$<$<C_COMPILER_ID:MSVC>:-SAFESEH:NO>")
+endif()

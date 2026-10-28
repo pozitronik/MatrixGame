@@ -67,6 +67,7 @@ public:
     void device_lost(bool lost);
     // Opt-in Reset callback for controller integration; all rendering stays forbidden.
     void device_reset(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler);
+    void surface_observer(std::function<void(DWORD)> observer);
     void check_running() const;
     std::string metadata(std::string_view fixture = "unarmed-chassis-obstacle-v1") const;
 
