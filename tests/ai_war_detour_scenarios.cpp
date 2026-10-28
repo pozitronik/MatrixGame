@@ -1,12 +1,14 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
 #include "battle_combat_geometry.hpp"
+#include "ai_war_detour_recording.hpp"
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixSide.hpp"
 #include "Logic/MatrixEnvironment.h"
 #include <algorithm>
 #include <array>
+#include <bit>
 #include <cmath>
 #include <memory>
 #include <sstream>
@@ -15,7 +17,8 @@
 namespace {
 using namespace tests;
 using namespace tests::battle;
-enum class Change { None, Retirement, Move };
+using war_recording::Change;
+using war_recording::Role;
 struct ReleaseCore { void operator()(SObjectCore *core) const { core->Release(); } };
 using Core = std::unique_ptr<SObjectCore, ReleaseCore>;
 
@@ -30,7 +33,7 @@ struct Scene {
     std::array<CMatrixRobotAI *, 4> robots{};
     std::array<float, 4> initial_health{};
     Core target_core;
-    explicit Scene(random::Mode mode, int step) : session(profile(mode, step)) {
+    explicit Scene(random::Mode mode, int step, war_recording::Recording &recording) : session(profile(mode, step)) {
         assets.install();
         auto &map = *g_MatrixMap;
         auto &side = *map.GetPlayerSide();
@@ -83,8 +86,13 @@ struct Scene {
             ->ParSetAdd(L"Patrol", L"Sound.Synthetic");
         // Patrol takes its From point from the preceding planned Move endpoint.
         // Both are ordinary commands; no tactical target/place is injected.
+        recording.begin(session, *target_core);
+        auto command_draws = random::draw_count();
         session.ground_command(500, 100);
+        recording.command(session, *target_core, "setup-move", command_draws, 0, 20, CPoint(-1, -1));
+        command_draws = random::draw_count();
         side.PGOrderPatrol(side.RobotToLogicGroup(robots[0]), CPoint(48, 38));
+        recording.command(session, *target_core, "setup-patrol", command_draws, 0, 20, CPoint(-1, -1));
         const auto &order = side.m_PlayerGroup[robots[0]->GetGroupLogic()];
         MG_CHECK(order.Order() == mpo_Patrol && order.m_From == CPoint(48, 8) && order.m_To == CPoint(48, 38));
         CPoint move;
@@ -100,8 +108,9 @@ struct Journey {
     int war = -1, detour = -1, reached_firing_place = -1, first_hit = -1;
     int terminal = -1, changed = -1, resumed = -1, arrival = -1, pulses = 0;
 };
-Journey journey(random::Mode mode, int step, Change change) {
-    Scene scene(mode, step);
+Journey journey(random::Mode mode, int step, Change change, Change caller, Role role) {
+    war_recording::Recording recording({mode, step, caller, role});
+    Scene scene(mode, step, recording);
     auto &session = scene.session;
     auto &map = *g_MatrixMap;
     auto &side = *map.GetPlayerSide();
@@ -122,6 +131,7 @@ Journey journey(random::Mode mode, int step, Change change) {
             CPoint move;
             MG_CHECK(observer->GetMoveToCoords(move) && move == firing_place);
             result.changed = session.time();
+            const auto command_draws = random::draw_count();
             if (change == Change::Retirement) {
                 MG_CHECK(session.remove(3));
                 MG_CHECK(!core->m_Object && !observer->GetEnv()->m_Target && !observer->GetEnv()->m_TargetAttack);
@@ -132,8 +142,11 @@ Journey journey(random::Mode mode, int step, Change change) {
                 MG_CHECK(!side.m_PlayerGroup[observer->GetGroupLogic()].IsWar());
                 MG_CHECK(observer->GetMoveToCoords(move) && move == CPoint(48, 38));
             }
+            recording.command(session, *core, change == Change::Retirement ? "target-retirement" :
+                              "replacement-move", command_draws, result.pulses, health, firing_place);
         }
         const auto *firing_target = observer->GetEnv()->m_Target;
+        const int firing_target_id = war_recording::object_id(session, firing_target);
         session.advance();
         const auto draws = random::draw_count();
         const auto state = session.robot(1);
@@ -199,6 +212,7 @@ Journey journey(random::Mode mode, int step, Change change) {
                << ",\"patrol_from\":[" << order.m_From.x << ',' << order.m_From.y << "],\"move\":["
                << move.x << ',' << move.y << "]}";
         result.frames.push_back(session.snapshot() + "\n" + detail.str());
+        recording.tick(session, *core, result.frames.back(), result.pulses, health, firing_place, firing_target_id);
         MG_CHECK(random::draw_count() == draws);
         if (session.time() % 1000 == 0 || arrived) std::cout << detail.str() << '\n';
         if (arrived) { result.arrival = session.time(); break; }
@@ -226,15 +240,24 @@ Journey journey(random::Mode mode, int step, Change change) {
               << " first_hit=" << result.first_hit << " terminal=" << result.terminal << " changed=" << result.changed
               << " resumed=" << result.resumed << " arrival=" << result.arrival << " pulses=" << result.pulses
               << " health=" << health << '\n';
+    std::ostringstream milestones;
+    milestones << "{\"war\":" << result.war << ",\"detour\":" << result.detour
+               << ",\"reached_firing_place\":" << result.reached_firing_place << ",\"first_hit\":" << result.first_hit
+               << ",\"terminal\":" << result.terminal << ",\"changed\":" << result.changed
+               << ",\"resumed\":" << result.resumed << ",\"arrival\":" << result.arrival
+               << ",\"pulses\":" << result.pulses << ",\"last_health_bits\":" << std::bit_cast<std::uint32_t>(health)
+               << ",\"firing_place\":[" << firing_place.x << ',' << firing_place.y << "]}";
+    recording.finish(session, milestones.str());
     return result;
 }
 template<random::Mode Mode, int Step, Change Event>
 void run() {
-    const auto first = journey(Mode, Step, Event);
-    const auto replay = journey(Mode, Step, Event);
+    war_recording::invalidate(Mode, Step, Event);
+    const auto first = journey(Mode, Step, Event, Event, Role::First);
+    const auto replay = journey(Mode, Step, Event, Event, Role::Replay);
     MG_CHECK(first.frames == replay.frames);
     if constexpr (Event != Change::None) {
-        const auto control = journey(Mode, Step, Change::None);
+        const auto control = journey(Mode, Step, Change::None, Event, Role::Intact);
         const size_t prefix = 800 / Step;
         MG_CHECK(std::equal(first.frames.begin(), first.frames.begin() + prefix, control.frames.begin()));
     }
@@ -264,5 +287,13 @@ int main(int argc, char **argv) {
     if (Base::SMemHeader::first_mem_block != nullptr) return EXIT_FAILURE;
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            war_recording::complete();
+        } catch (const std::exception &error) {
+            std::cerr << "Cannot complete War detour recordings: " << error.what() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     return result;
 }

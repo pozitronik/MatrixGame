@@ -300,6 +300,15 @@ jobs:
           path: |
             build/packages/*.zip
             build/packages/*.sha256
+      - name: Validate successful War detour recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify War detour recording revision.' }
+          python -B tests/check_war_detour_traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'War detour recording validation failed.' }
       - name: Upload compiled binaries and text configuration
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

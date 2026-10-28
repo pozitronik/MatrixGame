@@ -1260,7 +1260,8 @@ foreach(profile park_miller10 park_miller16 legacy10 legacy16)
     add_matrix_test(game.navigation.carrier_approach_obstacle.${profile} matrixgame_navigation_approach_scenarios gameplay ai navigation)
 endforeach()
 
-add_matrix_test_executable(matrixgame_ai_war_detour_scenarios ai_war_detour_scenarios.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_ai_war_detour_scenarios ai_war_detour_scenarios.cpp
+    ai_war_detour_recording.cpp battle_scenario.cpp
     battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_ai_war_detour_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_ai_war_detour_scenarios matrixgame_scenario_identity)
