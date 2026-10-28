@@ -35,7 +35,8 @@ jobs:
   repository:
     name: Repository checks
     runs-on: windows-2022
-    timeout-minutes: 5
+    # The integrated tool and recording-validator suite exceeds five minutes.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
