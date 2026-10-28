@@ -84,10 +84,45 @@ def expected_pairs():
                     yield tuple(stem + str(replay) + ".jsonl" for replay in replays)
 
 
+def validate_queues(records, source):
+    """Check the five-cell live Session orders before comparing replay pairs."""
+    for line, record in enumerate(records, 1):
+        if record["type"] != "snapshot":
+            continue
+        for index, robot in enumerate(record["state"]["robots"]):
+            actor_path = f"{source}:{line}: $.state.robots[{index}]"
+            if type(robot.get("alive")) is not bool:
+                raise TRACES.TraceError(f"{actor_path}.alive must be a boolean")
+            # Session::snapshot omits the queue once the actor is no longer live.
+            if not robot["alive"]:
+                if "queue" in robot:
+                    raise TRACES.TraceError(f"{actor_path}.queue must be omitted for a dead actor")
+                continue
+            path = f"{actor_path}.queue"
+            queue = robot.get("queue")
+            if type(queue) is not list or len(queue) > 5:
+                raise TRACES.TraceError(f"{path} must be an array of at most 5 orders")
+            for slot, order in enumerate(queue):
+                entry = f"{path}[{slot}]"
+                if type(order) is not list or len(order) != 5:
+                    raise TRACES.TraceError(f"{entry} must be a five-cell order array")
+                # OrderType and OrderPhase both enumerate their active values from 0 to 8.
+                for cell, name in ((0, "type"), (1, "phase")):
+                    if not TRACES._integer(order[cell], maximum=8):
+                        raise TRACES.TraceError(f"{entry}[{cell}] must be an integer {name} in 0..8")
+                for cell in (2, 3):
+                    if not TRACES._integer(order[cell], maximum=0xffffffff):
+                        raise TRACES.TraceError(f"{entry}[{cell}] must be a uint32 float bit pattern")
+                # Session normalizes null, external objects and its four actors to 0, -1 and 1..4.
+                if not TRACES._integer(order[4], minimum=-1, maximum=4):
+                    raise TRACES.TraceError(f"{entry}[4] must be an integer object ID in -1..4")
+
+
 def load(directory, name):
     path = directory / name
     with path.open(encoding="utf-8") as stream:
         records = TRACES.read_records(stream, str(path))
+    validate_queues(records, str(path))
     if records[0]["fixture"] != "player-auto-order-continuation-v1":
         raise ValueError(f"{path}: unexpected fixture")
     _, _, scene, action, rng, step, _ = name.removesuffix(".jsonl").split("-")
