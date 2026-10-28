@@ -236,6 +236,7 @@ class BattleDevice::Device final : public IDirect3DDevice9 {
 public:
     std::function<HRESULT(D3DPRESENT_PARAMETERS *)> reset_handler;
     std::optional<D3DDISPLAYMODE> display_mode;
+    std::function<void(DWORD)> surface_observer;
     BattleDeviceStats statistics;
     IconTargets icon_targets_;
     explicit Device(IconTargets icon_targets) : icon_targets_(icon_targets) {
@@ -516,6 +517,7 @@ public:
     }
     HRESULT STDMETHODCALLTYPE SetRenderState(D3DRENDERSTATETYPE State, DWORD Value) override {
         render_states_[State] = Value;
+        if (State == D3DRS_TEXTUREFACTOR && surface_observer) surface_observer(Value);
         return D3D_OK;
     }
     HRESULT STDMETHODCALLTYPE GetRenderState(D3DRENDERSTATETYPE State, DWORD* pValue) override {
@@ -659,8 +661,9 @@ public:
     HRESULT STDMETHODCALLTYPE GetVertexShaderConstantB(UINT, BOOL*, UINT) override {
         unsupported("GetVertexShaderConstantB");
     }
-    HRESULT STDMETHODCALLTYPE SetStreamSource(UINT, IDirect3DVertexBuffer9*, UINT, UINT) override {
-        unsupported("SetStreamSource");
+    HRESULT STDMETHODCALLTYPE SetStreamSource(UINT stream, IDirect3DVertexBuffer9* buffer, UINT offset, UINT stride) override {
+        if (!surface_observer) unsupported("SetStreamSource");
+        return stream == 0 && buffer && offset == 0 && stride > 0 ? D3D_OK : D3DERR_INVALIDCALL;
     }
     HRESULT STDMETHODCALLTYPE GetStreamSource(UINT, IDirect3DVertexBuffer9**, UINT*, UINT*) override {
         unsupported("GetStreamSource");
@@ -671,8 +674,9 @@ public:
     HRESULT STDMETHODCALLTYPE GetStreamSourceFreq(UINT, UINT*) override {
         unsupported("GetStreamSourceFreq");
     }
-    HRESULT STDMETHODCALLTYPE SetIndices(IDirect3DIndexBuffer9*) override {
-        unsupported("SetIndices");
+    HRESULT STDMETHODCALLTYPE SetIndices(IDirect3DIndexBuffer9* buffer) override {
+        if (!surface_observer) unsupported("SetIndices");
+        return buffer ? D3D_OK : D3DERR_INVALIDCALL;
     }
     HRESULT STDMETHODCALLTYPE GetIndices(IDirect3DIndexBuffer9**) override {
         unsupported("GetIndices");
@@ -744,6 +748,9 @@ void BattleDevice::reset_handler(std::function<HRESULT(D3DPRESENT_PARAMETERS *)>
 void BattleDevice::display_mode(const D3DDISPLAYMODE &mode) {
     if (!mode.Width || !mode.Height) unsupported("empty scripted display mode");
     device_->display_mode = mode;
+}
+void BattleDevice::surface_observer(std::function<void(DWORD)> observer) {
+    device_->surface_observer = std::move(observer);
 }
 
 } // namespace tests

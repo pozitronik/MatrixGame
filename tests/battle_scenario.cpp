@@ -260,6 +260,9 @@ int Session::frame() const { return impl_->frames; }
 std::uint64_t Session::rejected_icon_targets() const { return impl_->device.stats().rejected_icon_targets; }
 int Session::time() const { return impl_->map->GetTime(); }
 void Session::device_lost(bool lost) { impl_->device.cooperative_level(lost ? D3DERR_DEVICELOST : D3D_OK); }
+void Session::surface_observer(std::function<void(DWORD)> observer) {
+    impl_->device.surface_observer(std::move(observer));
+}
 void Session::device_reset(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler) {
     impl_->device.reset_handler(std::move(handler));
 }

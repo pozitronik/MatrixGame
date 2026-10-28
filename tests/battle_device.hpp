@@ -55,6 +55,9 @@ public:
     void reset_handler(std::function<HRESULT(D3DPRESENT_PARAMETERS *)> handler);
     // Opt-in reply for the VIDEO diagnostic; unscripted display queries still fail.
     void display_mode(const D3DDISPLAYMODE &mode);
+    // Opt-in buffer bindings and texture-factor observation for zero-pass surface traversal.
+    // Primitive drawing remains forbidden, including while this observer is installed.
+    void surface_observer(std::function<void(DWORD)> observer);
     const BattleDeviceStats &stats() const;
 };
 

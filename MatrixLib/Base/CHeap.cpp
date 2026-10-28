@@ -8,12 +8,14 @@
 
 #include <windows.h>
 #include <stdlib.h>
+#include <type_traits>
 
 #include <utils.hpp>
 
 #ifdef DEAD_PTR_SPY_ENABLE
 #define DEAD_PTR_SPY_SEEK 10
 namespace DeadPtr {
+static_assert(std::is_trivially_copyable_v<SDeadMemBody>);
 int get_id(void) {
     static int last_id;
     return last_id++;
@@ -25,20 +27,29 @@ int semetery_cnt = 0;
 int semetery_heap_size = 0;
 
 int find_by_id(int id, uint8_t **ptr) {
-    SDeadMemBody *b = (SDeadMemBody *)&semetery_heap;
-
-    while (id != b->id) {
-        b = (SDeadMemBody *)(((uint8_t *)b) + b->size);
+    // Records need not be aligned: their payload lengths are arbitrary bytes.
+    for (int offset = 0; offset <= semetery_heap_size - int(sizeof(SDeadMemBody));) {
+        SDeadMemBody body;
+        memcpy(&body, semetery_heap + offset, sizeof(body));
+        if (body.size < int(sizeof(body)) || body.size > semetery_heap_size - offset)
+            break;
+        if (body.id == id) {
+            *ptr = semetery_heap + offset;
+            return body.size;
+        }
+        offset += body.size;
     }
-
-    *ptr = (uint8_t *)b;
-    return b->size;
+    *ptr = nullptr;
+    return 0;
 }
 void remove_by_id(int id) {
     uint8_t *ptr;
     int sz = find_by_id(id, &ptr);
 
-    memcpy(ptr, ptr + sz, semetery_heap_size - sz);
+    if (sz == 0)
+        return;
+    const auto remaining = semetery_heap_size - (ptr - semetery_heap) - sz;
+    memmove(ptr, ptr + sz, remaining);
     semetery_heap_size -= sz;
 }
 void remove_by_ptr(void *ptr) {
@@ -47,7 +58,8 @@ void remove_by_ptr(void *ptr) {
             int id = semetery[i].id;
             remove_by_id(id);
 
-            memcpy(semetery + i, semetery + i + 1, (semetery_cnt - i - 1) * sizeof(SDeadMem));
+            static_assert(std::is_trivially_copyable_v<SDeadMem>);
+            memmove(semetery + i, semetery + i + 1, (semetery_cnt - i - 1) * sizeof(SDeadMem));
             --semetery_cnt;
             return;
         }
@@ -55,8 +67,10 @@ void remove_by_ptr(void *ptr) {
 }
 
 void remove_first(void) {
+    if (semetery_cnt == 0)
+        return;
     remove_by_id(semetery[0].id);
-    memcpy(semetery, semetery + 1, (SEMETERY_SIZE - 1) * sizeof(SDeadMem));
+    memmove(semetery, semetery + 1, (semetery_cnt - 1) * sizeof(SDeadMem));
     --semetery_cnt;
 }
 
@@ -65,18 +79,18 @@ void *get_dead_mem(void *mem) {
         if (semetery[i].ptr_was == mem) {
             uint8_t *ptr;
             int sz = find_by_id(semetery[i].id, &ptr);
-            return ptr + sizeof(SDeadMemBody);
+            return sz == 0 ? nullptr : ptr + sizeof(SDeadMemBody);
         }
     }
 
     return NULL;
 }
 
-void free_mem(void *mem0) {
+void free_mem(void *mem0, size_t allocation_size) {
     int *mem = (int *)mem0;
 
     int idx = 0;
-    for (; idx < DEAD_PTR_SPY_SEEK; ++idx) {
+    for (; idx < DEAD_PTR_SPY_SEEK && (idx + 4) * sizeof(int) <= allocation_size; ++idx) {
         if (my_signature(mem + idx))
             goto ok;
     }
@@ -86,9 +100,12 @@ void free_mem(void *mem0) {
 ok:;
 
     {
-        int sz = sizeof(SDeadMemBody) + my_signature_size(mem + idx);
-        if (sz > SEMETERY_HEAP_SIZE)
+        const int payload_size = my_signature_size(mem + idx);
+        if (payload_size < int((idx + 4) * sizeof(int)) ||
+            size_t(payload_size) > allocation_size ||
+            payload_size > SEMETERY_HEAP_SIZE - int(sizeof(SDeadMemBody)))
             return;
+        const int sz = int(sizeof(SDeadMemBody)) + payload_size;
 
         if (semetery_cnt >= SEMETERY_SIZE) {
             remove_first();
@@ -206,7 +223,8 @@ void CHeap::Free(void *buf, const char *file, int line) {
     }
 
 #ifdef DEAD_PTR_SPY_ENABLE
-    DeadPtr::free_mem(buf);
+    const auto allocation_size = SMemHeader::CalcBegin(buf)->blocksize - SMemHeader::CalcSize(0);
+    DeadPtr::free_mem(buf, allocation_size);
 #endif
 
     SMemHeader *h = SMemHeader::CalcBegin(buf);

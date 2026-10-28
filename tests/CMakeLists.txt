@@ -93,6 +93,32 @@ add_matrix_test(game.audio.host_music_routing matrixgame_audio_frontend_tests ga
 
 add_matrix_test_executable(matrixgame_base_tests base_tests.cpp)
 
+add_matrix_test_executable(matrixgame_shift_tests shift_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_shift_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_shift_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_shift_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_shift_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(contract object_insertion surface_insertion order_rotation trajectory_trim trajectory_current trajectory_boundaries)
+    add_matrix_test(game.memory.${contract} matrixgame_shift_tests memory gameplay)
+endforeach()
+
+add_executable(matrixgame_dead_tracker_tests dead_tracker_tests.cpp test_support.cpp)
+target_link_libraries(matrixgame_dead_tracker_tests PRIVATE MatrixLibDeadTrackers)
+target_compile_options(matrixgame_dead_tracker_tests PRIVATE ${COMPILE_OPTIONS} "$<$<CXX_COMPILER_ID:MSVC>:/EHsc>")
+target_compile_definitions(matrixgame_dead_tracker_tests PRIVATE ${COMPILE_DEFINITIONS})
+if(MSVC)
+    target_link_libraries(matrixgame_dead_tracker_tests PRIVATE dbghelp)
+else()
+    target_link_options(matrixgame_dead_tracker_tests PRIVATE -static)
+endif()
+add_dependencies(matrixgame_tests matrixgame_dead_tracker_tests)
+foreach(contract pointer_compaction class_compaction pointer_eviction class_eviction pointer_bounds)
+    add_matrix_test(base.memory.${contract} matrixgame_dead_tracker_tests memory instrumentation)
+endforeach()
+
 add_matrix_test(base.crc.empty matrixgame_base_tests base crc)
 add_matrix_test(base.crc.compatibility matrixgame_base_tests base crc)
 add_matrix_test(base.crc.incremental matrixgame_base_tests base crc)

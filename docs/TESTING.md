@@ -305,6 +305,8 @@ Fixtures belong in the test sources or a clearly named directory under `tests/`.
 
 ## Repository checks
 
+For sorting, order rotation, trajectory trimming and explicitly enabled dead-memory instrumentation, see [Overlapping shifts and bounded copies](testing/overlapping-shifts.md).
+
 ```powershell
 .\tools\check-repository.ps1
 python -B -m unittest discover -s .github/scripts -p 'test_*.py'

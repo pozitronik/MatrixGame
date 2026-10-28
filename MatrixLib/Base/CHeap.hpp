@@ -46,7 +46,7 @@ struct SDeadMemBody {
     int size;
 };
 
-void free_mem(void *mem);
+void free_mem(void *mem, size_t allocation_size);
 void *get_dead_mem(void *mem);
 
 void remove_by_ptr(void *ptr);

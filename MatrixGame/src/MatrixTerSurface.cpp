@@ -358,7 +358,7 @@ void CTerSurface::BeforeDraw(void) {
         bool expand_left = norite || ((lc <= rc) && !noleft);
 
         if (expand_left) {
-            memcpy(&m_SurfacesDraw[m_SurfaceLeft - 1], &m_SurfacesDraw[m_SurfaceLeft], sizeof(CTerSurface *) * lc);
+            memmove(&m_SurfacesDraw[m_SurfaceLeft - 1], &m_SurfacesDraw[m_SurfaceLeft], sizeof(CTerSurface *) * lc);
             --m_SurfaceLeft;
             m_SurfacesDraw[idx - 1] = this;
         }
