@@ -57,6 +57,7 @@ public:
     bool remove(EntityId id);
     void advance();
     std::string snapshot() const;
+    void append_snapshot(std::string &buffer) const;
     RobotState robot(EntityId id) const;
     bool matches(EntityId id, const CMatrixRobotAI *candidate) const;
     int frame() const;
