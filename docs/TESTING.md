@@ -108,7 +108,7 @@ The comparator rejects incompatible profile headers by default, checks command r
 
 ### Shared scenario fixtures
 
-The [player command guide](testing/player-orders.md) maps input and cheat contracts to the behavior catalog and distinguishes real form routes from supplied fixture preconditions.
+The [player command guide](testing/player-orders.md) maps input and cheat contracts to the behavior catalog and distinguishes real form routes from supplied fixture preconditions. The [group-capacity regressions](testing/327-group-capacity.md) cover safe refusal, order-result propagation and last-slot recovery, with a checked failure control before the old invalid access.
 
 The [synthetic armed fixtures](testing/armed-fixtures.md) describe generated attachment meshes, weapon/effect dependencies, ownership and bounded firing evidence. Scenario-specific fixture guides live under `docs/testing/`; this page remains their navigation entry point and the authority for common validation rules.
 
