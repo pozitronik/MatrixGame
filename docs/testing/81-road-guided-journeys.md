@@ -2,6 +2,8 @@
 
 These asset-free cases cover the selected N2 scene in the [baseline completion checklist](baseline-completion.md#navigation). They join the production regional road planner, robot zone/local searches, context commands, movement, damage and retirement in one synthetic battle. They do not change production code or establish completion of the entire navigation package.
 
+The [regional-road recording contract](road-recordings.md) documents the complete retained thirty-two-file corpus, semantic guards, deferred completion and exact replay/reference commands.
+
 ## Run the cases
 
 ```powershell

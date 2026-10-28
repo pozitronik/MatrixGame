@@ -37,16 +37,20 @@ def session_observations(state):
     robots = state["robots"]
     require([r["id"] for r in robots] == [1, 2, 3, 4] and all(integer(r["id"]) for r in robots), "Session actor inventory differs")
     require([r["alive"] for r in robots] == [True, True, True, False] and all(type(r["alive"]) is bool for r in robots), "live/retired actor identity differs")
+    require("queue" not in robots[3], "retired Session actor retains a queue")
     live_fields = {"id", "alive", "x_bits", "y_bits", "side", "state", "health_bits", "in_place", "group", "order", "target", "target_is_null", "destination", "queue"}
     for robot in robots[:3]:
         require(live_fields <= robot.keys(), "missing live Session actor field")
         require(all(bits(robot[key]) for key in ("x_bits", "y_bits", "health_bits")), "invalid live Session float bits")
         require(all(integer(robot[key]) for key in ("side", "state", "group", "order", "target")), "invalid live Session integer")
+        # EMatrixPlayerOrder includes AutoDefence (9); -1 means no player-group order.
+        require(-1 <= robot["order"] <= 9, "invalid live Session player order")
         require(-1 <= robot["target"] <= 4 and type(robot["target_is_null"]) is bool and type(robot["in_place"]) is bool, "invalid live Session target/arrival")
         require(type(robot["destination"]) is list and len(robot["destination"]) == 2 and all(integer(x) for x in robot["destination"]), "invalid Session destination")
-        require(type(robot["queue"]) is list, "invalid Session queue")
+        require(type(robot["queue"]) is list and len(robot["queue"]) <= 5, "invalid Session queue")
         for order in robot["queue"]:
             require(type(order) is list and len(order) == 5 and all(integer(order[i]) for i in (0, 1, 4)) and all(bits(order[i]) for i in (2, 3)), "invalid Session queue entry")
+            require(0 <= order[0] <= 8 and 0 <= order[1] <= 8, "invalid Session queue type or phase")
             require(-1 <= order[4] <= 4, "unnormalized Session queue object")
     groups = state["player_groups"]
     require(type(groups) is list, "invalid Session player_groups")
@@ -54,6 +58,7 @@ def session_observations(state):
     for group in groups:
         require(type(group) is dict and fields <= group.keys(), "missing Session player-group field")
         require(all(integer(group[key]) for key in fields) and group["slot"] >= 0 and group["members"] >= 0 and -1 <= group["target"] <= 4, "invalid Session player-group type")
+        require(0 <= group["order"] <= 9, "invalid Session player-group order")
     slots = [group["slot"] for group in groups]
     require(len(slots) == len(set(slots)), "duplicate Session player-group slot")
     require(all(robot["group"] in slots for robot in robots[:3] if robot["side"] == 1 and robot["group"] >= 0), "missing live Session player group")

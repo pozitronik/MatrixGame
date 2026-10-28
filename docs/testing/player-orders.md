@@ -114,6 +114,8 @@ The robot next moves with Forward held, with physical progress asserted immediat
 
 These are bounded assertions against production behavior, not accepted historical traces. C5's UI-hover/fire transitions retain the separate presentation-suite evidence. Native focus and visual alignment remain P1 requirements; settings-input consumption remains P4. No new production access interface is introduced. Negative controls that suppress manual right-turn dispatch or manual fire dispatch must fail both chassis cases; restoring production code must restore passing results.
 
+The [manual-control recording adapter](80-manual-control-recordings.md) retains all sixteen Original and sixty-four neighboring Live/Removed episodes without adding sessions or changing their bounds/navigation branches. It supplies full actor-5/input/weapon/order data, thirty-two existing replay pairs, sixteen existing prefixes and fresh-process comparison for Original. UI-hover and native evidence remain separate.
+
 ## Mixed chassis and commands during lifecycle transitions
 
 The separate `matrixgame_player_command_lifecycles` executable covers the finite C2 selection. Run it with:
@@ -141,6 +143,36 @@ These cases add executable C2 coverage without a production seam. Native visibil
 
 A sensitivity check that temporarily suppresses production Stop-button dispatch makes all four new cases fail their Stop-intent assertion; restoring dispatch restores the passing cases.
 
+### Retained C2 recordings
+
+The four cases retain their existing 76 Session lifetimes as schema-1 JSONL files in the test working directory's `scenario-traces/`. This adds observations around the existing actions and whole map ticks; it adds no gameplay scenario, replay, command or simulation tick. The dedicated [recorder](../../tests/command_lifecycle_recording.cpp) is confined to this executable.
+
+| Case | Filename | Files |
+| --- | --- | --- |
+| Mixed wheel/track | `player-command-mixed-{pm|crt}-{10|16}-{key|button}-route{0|1|2}.jsonl` | 24 |
+| Production spawning | `player-command-spawning-{pm|crt}-{10|16}-{keep|stop}-route{0|1|2}.jsonl` | 24 |
+| Carrier delivery | `player-command-carried-{pm|crt}-{10|16}-{keep|stop}-route{0|1|2}.jsonl` | 24 |
+| Dying selection member | `player-command-dying-{pm|crt}-{10|16}.jsonl` | 4 |
+
+The filename and header identify the existing RNG, timestep, Move route and Stop variant. `key`/`button` distinguish Stop in the mixed case; `keep`/`stop` distinguish retained versus canceled Move in spawning/delivery. Route 0 is context Move, 1 is M plus target click, and 2 is the Move button plus target click. Each file is one fresh Session and seed boundary. It retains the actual build/session metadata and compiled trace profile rather than combining reset clocks into one episode.
+
+The original Session state remains present. Named `c2` observations additionally retain original robot roles 1–4 and the added track/spawning/delivered robot as role 5; ordered selection; group intent, destination, stored counts and attached membership; live actor position/map cell/place, chassis, speed, state, base link and complete seven-field orders; actual unit Move destination; carrier/cargo presence; watched dying core and enemy kill count. Present dying actors expose only identity, presence, `alive=false` and state; retired actors expose only identity and absence. Actor pointers are checked against the current logic list and creation identity before dereference; carrier access is checked against the current additional-object list. No pointer address is written, and observation does not call the order accessor that can release a stale target core. Session's existing five-field queues and normalized IDs retain their documented narrower domain; the extended queue's object IDs use the C2 roles.
+
+All paths owned by the selected case are truncated before its first setup. Commands retain actual frame/time and RNG boundaries, snapshots retain every existing whole tick and same-frame selection/input ordering, and spawning/delivery completion retains the measured intermediate/ready times. Completion records are appended after every journey, required mixed-route comparison, Session teardown, existing allocation check and main cleanup have succeeded. A failed case or cleanup leaves the corpus incomplete; a completed file still requires the corresponding successful process/CTest result.
+
+After running the four cases above, validate each configuration:
+
+```powershell
+python -B tests/check_command_lifecycle_traces.py build/mingw-debug-exe/tests/scenario-traces --configuration Debug --compiler MinGW --target EXE --cheats false --trace false
+python -B tests/check_command_lifecycle_traces.py build/mingw-release-exe/tests/scenario-traces --configuration Release --compiler MinGW --target EXE --cheats false --trace false
+```
+
+The [consumer](../../tests/check_command_lifecycle_traces.py) reuses the common strict reader, checks exactly 76 filenames, validates required fields and scalar/queue types independently of equality, and checks the existing schedules, transitions, cancellation, stationary/arrival and retirement contracts. It reproduces the original sixteen context-versus-M/button comparisons over the pre-Stop window only. Different Stop variants and later trajectories are not invented replay pairs. The checker handles one file at a time and retains only the small current mixed-prefix reference. Full trajectories are intentionally substantial; use the normal build output and compact hashes for local evidence rather than duplicating the corpus.
+
+`--reference <directory>` validates and compares each corresponding complete file. `--revision <commit>` binds the candidate to a full lowercase 40-hex commit ID and integer `dirty=0`; with this option, reference headers must also identify a full clean commit and match every supplied build-profile field. The reference may come from a different historical commit. Use `--reference-revision <commit>` to pin that historical identity explicitly; it requires a reference directory and a full lowercase 40-hex ID, and always requires clean reference headers. CI supplies the candidate revision and build profile, including EXE/DLL, compiler, configuration, cheats and trace. Without `--revision`, candidate source identity is diagnostic: dirty or unpinned source identities are accepted, so that result is not baseline evidence. An explicit reference pin retains its own clean-source requirement in diagnostic mode.
+
+These recordings prepare C2's existing finite selection. They do not select a historical reference, establish the three-fresh-process campaign, replace native picking evidence or complete the whole-game baseline.
+
 ## Repair and bomb target lifecycles
 
 The isolated `matrixgame_player_target_lifecycles` executable extends C3's repair and bomb contracts with seed 80, both RNG modes and independent 10/16 ms schedules. All eight cases use complete production map ticks, generated meshes and weapon effects, unavailable audio and a device surrogate that rejects drawing. Keyboard commands enter through `CFormMatrixGame::Keyboard`; button commands enter through `CIFaceList::PlayerAction`. Target clicks supply the world trace to `OnLButtonDown`, so these cases do not establish screen picking or button hit testing. The existing `repair_command_routes` and `bomb_command_routes` retain their exact 10 ms oracles and are run alongside these cases.
@@ -154,6 +186,29 @@ Seven bomb cases cover friendly, enemy and ground completion; friendly and enemy
 Each interrupted bomb run first proves that the bomber has physically progressed, remains alive and has not requested detonation. At the first boundary at or after 1,000 ms, target-retirement cases delete the selected live target through `StaticDelete`. They retain Bomb intent and the saved destination after clearing the obsolete reference. The bomber must continue to the destination area, request detonation, enter its dying state and release its retained object core within 30,000 ms. The surviving selected robot must finish with targetless Stop. This is a reference-lifetime intervention, not a claim about weapon-caused target death. In replacement-Stop cases, the bomber remains alive with unchanged Stop intent and no target on every subsequent tick; no explosion or target damage occurs, and its position is stationary throughout the last five seconds. Stop may move the group into formation before then.
 
 The cleanup deadline follows `CMatrixSideUnit::TaktPL`: it runs when at least 100 ms have elapsed, so assertions allow 100 ms plus one profile tick after deletion. Bomb completion has a separate request boundary: `BigBoom` marks the robot for death, and a later robot tick enters the dying state. These cases do not mistake the intervening group Stop for canceled detonation. New completion checks are bounded behavioral assertions, not accepted historical trajectories; the two RNG profiles remain separate. No production code or gameplay balance changes are included.
+
+### Retained repair and bomb lifecycle recordings
+
+The existing eight cases write 80 schema-1 JSONL files under the normal build's `tests/scenario-traces/` directory. Repair contributes 24 episodes: both RNGs, both schedules, completion/removal/Stop and both input routes. The seven selected bomb variants contribute eight episodes each. Filenames retain family, target, ending, RNG, schedule and route, beginning with `player-target-`. The original 28 keyboard/button Session-vector comparisons remain active; Stop routes deliberately have no cross-route equality requirement. These comparisons do not make route-specific files interchangeable or establish same-route fresh-process reproducibility.
+
+Each file retains setup identity, every original input and complete production tick, plus initial and same-frame command boundaries. Inputs distinguish routed keyboard/button commands, keyboard cancellation, supplied target/ground clicks and explicit `StaticDelete` interventions. The `accepted` field describes the checked resulting contract of a void input handler. It is not an engine return code or native screen-picking evidence. Shared Session state is retained unchanged; custom observations add preorders, saved destinations, healing/damage events, live actor/environment state and full seven-field selected-actor orders, including aim height and firing/repair mode. Objects use null `0`, external/nonregistered `-1` and the four Session identities; no raw address is stored.
+
+Bomb records distinguish a death request, DIP with a retained object core and final core retirement. A dying robot reuses its unit storage for debris, so live health, environment, firing and order fields are omitted after DIP; only safe core/object/state/flag observations remain. Repair deletion is separate from healing completion, and Stop may still allow autonomous healing. The reader preserves those source contracts rather than treating every Stop as no activity.
+
+Each CTest caller invalidates all of its 24 or eight output files before constructing any fixture, including episodes a later failure would prevent visiting. Journeys queue only precomputed completion data. Footers are appended after all original case assertions and route comparisons, the tracked-allocation check and successful base cleanup. A failed setup, caller or cleanup therefore leaves an incomplete family; the strict reader rejects it. Keep the whole process result as well, including a possible output-write failure.
+
+The dedicated [post-engine consumer](../../tests/check_player_target_traces.py) requires the exact 80-file inventory, typed observations, full command/tick schedules, target/reference cleanup, health-event counts and request/DIP/core milestones. It parses each file once; two real-file representatives supply eight bounded malformed-observation/frame/tail controls. Its [Python contracts](../../tests/test_player_target_traces.py) use synthetic recording data, independently rejecting correlated omissions and distinguishing object lifetime phases. Those synthetic data are reader tests, not gameplay reference trajectories.
+
+After building and running the complete eight-case selection, check a clean Debug build with:
+
+```powershell
+$revision = git rev-parse HEAD
+python -B tests/check_player_target_traces.py build/mingw-debug-exe/tests/scenario-traces --revision $revision --configuration Debug --compiler MinGW --target EXE --cheats false
+```
+
+Use the corresponding Release path/configuration, compiler, EXE/DLL role and cheats value for other builds. The five profile options are optional together for diagnostic inspection and mandatory together once any is supplied. CI provides its actual HEAD and build inputs. Strict mode requires a clean exact candidate revision and correctly typed supplied build fields; it does not bind missing `_TRACE` metadata, resources, compiler version or floating-point policy to an external manifest. The recorded profile remains part of exact comparison. `--reference-directory` compares corresponding files without stripping route identity; in strict mode references must be clean and match supplied build inputs. Add `--reference-revision` to pin a different full historical revision; omitting that pin is diagnostic and does not select an accepted oracle. The final reference/candidate campaign still requires the reviewed #324 contract.
+
+No extra simulation episodes or ticks are introduced. Before/after validation compares all 80 original episode vectors and terminal RNG counts per configuration, retaining exact original stdout as well. Standalone Debug and Release preserve all 280,800 original tick strings across both profiles without normalization. The first measured 80-file output is approximately 203 MB per profile; keep current outputs and compact provenance rather than archiving duplicate runs. Native presentation, shared capture/special-object cases, older route adapters and complete C3/baseline acceptance remain separate.
 
 Run this increment and its existing route controls with:
 

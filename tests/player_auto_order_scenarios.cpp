@@ -35,14 +35,39 @@ void press(CFormMatrixGame &form, uint8_t key) {
 }
 struct Result {
     std::vector<std::string> states;
+    std::filesystem::path trace_path;
     std::size_t prefix = 0;
     int paint = 0, ownership = 0, stopped = 0;
     int hit = 0, retired = 0, replacement = 0;
     int override_time = 0, arrival = 0;
+    int final_frame = 0, final_time = 0, final_order = 0;
     float final_x = 0, final_y = 0;
 };
 
+std::filesystem::path trace_path(random::Mode mode, int step, AutoOrder order, bool override_order, int replay) {
+    return std::filesystem::current_path() / "scenario-traces" / (std::string("player-auto-") + name(order) +
+        (override_order ? "-override-" : "-control-") + (mode == random::Mode::ParkMiller ? "pm-" : "crt-") +
+        std::to_string(step) + "-" + std::to_string(replay) + ".jsonl");
+}
+
+void prepare_recordings(random::Mode mode, int step, AutoOrder order, bool independent_control) {
+    const int first = independent_control ? 2 : 0;
+    for (int replay = first; replay < first + 2; ++replay) {
+        for (bool override_order : {false, true}) {
+            if (independent_control && override_order) continue;
+            const auto path = trace_path(mode, step, order, override_order, replay);
+            std::filesystem::create_directories(path.parent_path());
+            std::ofstream file(path, std::ios::trunc);
+            MG_CHECK(file.good());
+        }
+    }
+}
+
 Result journey(random::Mode mode, int step, AutoOrder order, bool override_order, int replay) {
+    Result result;
+    result.trace_path = trace_path(mode, step, order, override_order, replay);
+    std::ofstream file(result.trace_path, std::ios::trunc);
+    MG_CHECK(file.good());
     const bool capture = order == AutoOrder::Capture;
     const uint8_t key = capture ? 'C' : order == AutoOrder::Attack ? 'U' : 'D';
     const auto automatic_order = capture ? mpo_AutoCapture : order == AutoOrder::Attack ? mpo_AutoAttack : mpo_AutoDefence;
@@ -111,13 +136,6 @@ Result journey(random::Mode mode, int step, AutoOrder order, bool override_order
     side.CreateGroupFromCurrent(actor);
     side.Select(ROBOT, nullptr);
 
-    const auto directory = std::filesystem::current_path() / "scenario-traces";
-    std::filesystem::create_directories(directory);
-    const auto path = directory / (std::string("player-auto-") + name(order) +
-        (override_order ? "-override-" : "-control-") + (mode == random::Mode::ParkMiller ? "pm-" : "crt-") +
-        std::to_string(step) + "-" + std::to_string(replay) + ".jsonl");
-    std::ofstream file(path, std::ios::trunc);
-    MG_CHECK(file.good());
     auto header = session.metadata("player-auto-order-continuation-v1");
     header.pop_back();
     header += ",\"auto_order\":\"" + std::string(name(order)) + "\",\"auto_key\":" +
@@ -126,8 +144,7 @@ Result journey(random::Mode mode, int step, AutoOrder order, bool override_order
         (override_order ? "true}" : "false}");
     file << header << '\n';
     file.flush();
-    std::cerr << "Auto-order profile: " << header << "\nTrace: " << path.string() << std::endl;
-    Result result;
+    std::cerr << "Auto-order profile: " << header << "\nTrace: " << result.trace_path.string() << std::endl;
     const auto id_of = [&](CMatrixMapStatic *object) {
         if (!object) return 0;
         if (factory && object == factory) return 5;
@@ -307,16 +324,9 @@ Result journey(random::Mode mode, int step, AutoOrder order, bool override_order
     }
     else MG_CHECK(std::hypot(result.final_x - 100, result.final_y - 400) > 50);
     session.check_running();
-    file << "{\"type\":\"complete\",\"frame\":" << session.frame() << ",\"time_ms\":" << session.time()
-        << ",\"paint_ms\":" << result.paint << ",\"ownership_ms\":" << result.ownership
-        << ",\"stopped_ms\":" << result.stopped << ",\"hit_ms\":" << result.hit
-        << ",\"retired_ms\":" << result.retired << ",\"replacement_ms\":" << result.replacement
-        << ",\"command_ms\":" << result.override_time << ",\"arrival_ms\":" << result.arrival
-        << ",\"terminal_order\":" << session.robot(1).order
-        << ",\"terminal_x_bits\":" << std::bit_cast<uint32_t>(result.final_x)
-        << ",\"terminal_y_bits\":" << std::bit_cast<uint32_t>(result.final_y) << "}\n";
-    file.flush();
-    MG_CHECK(file.good());
+    result.final_frame = session.frame();
+    result.final_time = session.time();
+    result.final_order = session.robot(1).order;
     std::cout << "Auto-order milestones: " << name(order) << " override=" << override_order
         << " paint=" << result.paint << " ownership=" << result.ownership << " stopped=" << result.stopped
         << " hit=" << result.hit << " retired=" << result.retired << " replacement=" << result.replacement
@@ -324,19 +334,43 @@ Result journey(random::Mode mode, int step, AutoOrder order, bool override_order
     return result;
 }
 
+void complete(const Result &result) {
+    const auto draws = random::draw_count();
+    std::ofstream file(result.trace_path, std::ios::app);
+    MG_CHECK(file.good());
+    file << "{\"type\":\"complete\",\"frame\":" << result.final_frame << ",\"time_ms\":" << result.final_time
+        << ",\"paint_ms\":" << result.paint << ",\"ownership_ms\":" << result.ownership
+        << ",\"stopped_ms\":" << result.stopped << ",\"hit_ms\":" << result.hit
+        << ",\"retired_ms\":" << result.retired << ",\"replacement_ms\":" << result.replacement
+        << ",\"command_ms\":" << result.override_time << ",\"arrival_ms\":" << result.arrival
+        << ",\"terminal_order\":" << result.final_order
+        << ",\"terminal_x_bits\":" << std::bit_cast<uint32_t>(result.final_x)
+        << ",\"terminal_y_bits\":" << std::bit_cast<uint32_t>(result.final_y) << "}\n";
+    file.flush();
+    MG_CHECK(file.good() && random::draw_count() == draws);
+}
+
 template<random::Mode Mode, int Step, AutoOrder Order, bool Control> void run() {
+    // Invalidate even the episodes that a setup failure would prevent us from visiting.
+    prepare_recordings(Mode, Step, Order, Control);
     if constexpr (Control) {
         const auto control = journey(Mode, Step, Order, false, 2);
-        MG_CHECK(control.states == journey(Mode, Step, Order, false, 3).states);
+        const auto replay = journey(Mode, Step, Order, false, 3);
+        MG_CHECK(control.states == replay.states);
+        complete(control);
+        complete(replay);
     }
     else {
         const auto main = journey(Mode, Step, Order, true, 0);
-        MG_CHECK(main.states == journey(Mode, Step, Order, true, 1).states);
+        const auto main_replay = journey(Mode, Step, Order, true, 1);
+        MG_CHECK(main.states == main_replay.states);
         const auto control = journey(Mode, Step, Order, false, 0);
-        MG_CHECK(control.states == journey(Mode, Step, Order, false, 1).states);
+        const auto control_replay = journey(Mode, Step, Order, false, 1);
+        MG_CHECK(control.states == control_replay.states);
         MG_CHECK(main.prefix == control.prefix && main.prefix > 0);
         MG_CHECK(std::equal(main.states.begin(), main.states.begin() + main.prefix, control.states.begin()));
         MG_CHECK(main.states.back() != control.states.back());
+        for (const auto *result : {&main, &main_replay, &control, &control_replay}) complete(*result);
     }
 }
 constexpr Case cases[]{

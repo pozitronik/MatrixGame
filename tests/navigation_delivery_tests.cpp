@@ -7,6 +7,7 @@
 #include "MatrixRobot.hpp"
 #include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include "test_support.hpp"
+#include "carrier_recording.hpp"
 #include <cmath>
 #include <memory>
 #include <array>
@@ -48,14 +49,16 @@ struct Delivery {
     CMatrixRobotAI *cargo;
     CoreLease carrier_core;
     CoreLease cargo_core;
-    explicit Delivery(float angle) {
+    explicit Delivery(float angle, tests::carrier::Recording *recording = nullptr) {
         MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 0);
         // Place 3 is a declared free place in the open navigation map.
         MG_CHECK(g_MatrixMap->m_RN.m_PlaceCnt > 3);
         const CPoint destination = g_MatrixMap->m_RN.m_Place[3].m_Pos;
         const D3DXVECTOR2 landing(float(destination.x * GLOBAL_SCALE_MOVE),
                                  float(destination.y * GLOBAL_SCALE_MOVE));
+        const auto draws = random::draw_count();
         g_MatrixMap->GetPlayerSide()->OrderFlyer(landing, FO_GIVE_BOT, angle, 3, destination, 0);
+        if (recording) recording->request(draws, angle, {landing.x, landing.y}, 3, {destination.x, destination.y});
         MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 1);
         carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[0]);
         MG_CHECK(carrier->CarryingRobot());
@@ -72,11 +75,15 @@ struct Delivery {
 void finite(const D3DXVECTOR3 &p) {
     MG_CHECK(std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z));
 }
-void finite(const CMatrixRobotAI &r) {
-    MG_CHECK(std::isfinite(r.m_PosX) && std::isfinite(r.m_PosY) && std::isfinite(r.GetMatrix()._43));
+float finite(const CMatrixRobotAI &r) {
+    MG_CHECK(std::isfinite(r.m_PosX) && std::isfinite(r.m_PosY));
+    const float height = r.GetMatrix()._43;
+    MG_CHECK(std::isfinite(height));
+    return height;
 }
 }
 void delivery_flights() {
+    tests::carrier::invalidate("flights");
     // Recorded production lifecycle boundaries for seed 81 and the declared
     // geometries; rows are PM/10, PM/16, CRT/10 and CRT/16, then variants 0..3.
     constexpr int timing[4][4][3] = {
@@ -95,17 +102,33 @@ void delivery_flights() {
         order.ParSetAdd(L"Height", variant >= 2 ? L"160" : L"100");
         order.ParSetAdd(L"LandHeight", variant % 2 ? L"70" : L"40");
         MG_CHECK(session.remove(2) && session.remove(4));
-        Delivery delivery(float(variant) * float(M_PI / 2));
+        tests::carrier::Recording recording(session, mode, step, "flights", variant);
+        Delivery delivery(float(variant) * float(M_PI / 2), &recording);
         const D3DXVECTOR3 start = delivery.carrier->GetPos();
         int release = -1, landing = -1, retired = -1;
         float released_x = 0, released_y = 0;
         float previous_z = 0;
         int falling_frames = 0;
+        const auto destination = g_MatrixMap->m_RN.m_Place[3].m_Pos;
+        const auto sample = [&](std::optional<std::array<float, 3>> position = {},
+                                std::optional<float> height = {}) {
+            const tests::carrier::Pair pair{delivery.carrier, delivery.cargo, delivery.carrier_core.get(),
+                delivery.cargo_core.get(), 3, {destination.x, destination.y}, position, height,
+                tests::carrier::Progress{release, landing, retired, falling_frames}};
+            const auto observation = tests::carrier::observe(session, std::span(&pair, 1));
+            recording.snapshot(observation);
+        };
+        sample(std::array<float, 3>{start.x, start.y, start.z});
         while (session.time() < 30000) {
             session.advance();
             MG_CHECK(delivery.cargo_core->m_Object == delivery.cargo);
-            finite(*delivery.cargo);
-            if (delivery.carrier_core->m_Object) finite(delivery.carrier->GetPos());
+            const float height = finite(*delivery.cargo);
+            std::optional<std::array<float, 3>> carrier_position;
+            if (delivery.carrier_core->m_Object) {
+                const auto &position = delivery.carrier->GetPos();
+                finite(position);
+                carrier_position = std::array<float, 3>{position.x, position.y, position.z};
+            }
             else if (retired < 0) retired = session.time();
             if (release < 0 && delivery.cargo->m_CurrState != ROBOT_CARRYING) {
                 release = session.time();
@@ -125,6 +148,7 @@ void delivery_flights() {
             }
             if (landing < 0 && release >= 0 && delivery.cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD)
                 landing = session.time();
+            sample(carrier_position, height);
         }
         std::cout << session.metadata("synthetic-navigation-delivery-v1") << '\n';
         std::cout << "variant=" << variant << " release=" << release << " landing=" << landing
@@ -139,9 +163,11 @@ void delivery_flights() {
         MG_CHECK(delivery.cargo->PLIsInPlace());
         MG_CHECK(delivery.cargo->m_PosX == 500 && delivery.cargo->m_PosY == 500);
         MG_CHECK(session.rejected_icon_targets() == 1);
+        recording.finish();
     }
 }
 void delivery_carrier_damage() {
+    tests::carrier::invalidate("damage");
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
       for (int stage = 0; stage < 3; ++stage) {
         BattleMaterialProfile materials;
@@ -152,7 +178,16 @@ void delivery_carrier_damage() {
         crater.install();
         install_battle_transport();
         MG_CHECK(session.remove(2) && session.remove(4));
-        Delivery delivery(0);
+        tests::carrier::Recording recording(session, mode, 10, "damage", stage);
+        Delivery delivery(0, &recording);
+        const auto destination = g_MatrixMap->m_RN.m_Place[3].m_Pos;
+        const auto sample = [&](std::optional<std::array<float, 3>> position = {}) {
+            const tests::carrier::Pair pair{delivery.carrier, delivery.cargo, delivery.carrier_core.get(),
+                delivery.cargo_core.get(), 3, {destination.x, destination.y}, position, {}, {}};
+            const auto observation = tests::carrier::observe(session, std::span(&pair, 1));
+            recording.snapshot(observation);
+        };
+        sample();
         for (;;) {
             MG_CHECK(delivery.cargo_core->m_Object == delivery.cargo);
             MG_CHECK(delivery.carrier_core->m_Object == delivery.carrier);
@@ -161,6 +196,7 @@ void delivery_carrier_damage() {
                              delivery.cargo->m_CurrState == ROBOT_SUCCESSFULLY_BUILD;
             if (ready || session.time() >= 10000) break;
             session.advance();
+            sample();
         }
         MG_CHECK(delivery.carrier_core->m_Object == delivery.carrier);
         MG_CHECK(stage == 0 ? delivery.cargo->m_CurrState == ROBOT_CARRYING :
@@ -171,14 +207,24 @@ void delivery_carrier_damage() {
         MG_CHECK(hp == 1000);
         const auto draws = random::draw_count();
         MG_CHECK(!delivery.carrier->Damage(WEAPON_REPAIR, position, D3DXVECTOR3(0, 0, 1), 2, nullptr));
-        MG_CHECK(delivery.carrier->GetHitPoint() == hp && random::draw_count() == draws);
+        const float repaired_hp = delivery.carrier->GetHitPoint();
+        MG_CHECK(repaired_hp == hp && random::draw_count() == draws);
+        recording.damage(draws, true, {position.x, position.y, position.z}, hp, repaired_hp, false);
+        sample(std::array<float, 3>{position.x, position.y, position.z});
         g_Config.m_FlyerDamages[Weap2Index(WEAPON_LASER)] = {1000, 0, 0};
+        const auto lethal_draws = random::draw_count();
         MG_CHECK(delivery.carrier->Damage(WEAPON_LASER, position, D3DXVECTOR3(0, 0, 1), 2, nullptr));
         MG_CHECK(!delivery.carrier_core->m_Object && g_MatrixMap->m_AD_Obj_cnt == 0);
         MG_CHECK(delivery.cargo_core->m_Object == delivery.cargo);
-        MG_CHECK(delivery.cargo->IsMustDie() == (stage == 0));
+        const bool cargo_marked = delivery.cargo->IsMustDie();
+        MG_CHECK(cargo_marked == (stage == 0));
+        recording.damage(lethal_draws, false, {position.x, position.y, position.z}, repaired_hp, {}, cargo_marked);
+        sample();
         const int hit_time = session.time();
-        while (session.time() < hit_time + 20000) session.advance();
+        while (session.time() < hit_time + 20000) {
+            session.advance();
+            sample();
+        }
         std::cout << session.metadata("synthetic-navigation-carrier-damage-v1") << '\n';
         std::cout << "damage_stage=" << stage << " hit_time=" << hit_time
                   << " cargo_survived=" << bool(delivery.cargo_core->m_Object) << '\n';
@@ -189,9 +235,11 @@ void delivery_carrier_damage() {
             MG_CHECK(delivery.cargo->PLIsInPlace());
             MG_CHECK(delivery.cargo->m_PosX == 500 && delivery.cargo->m_PosY == 500);
         }
+        recording.finish();
     }
 }
 void neighboring_delivery_landings() {
+    tests::carrier::invalidate("neighbors");
     // Recorded landing ticks: PM/10, PM/16, CRT/10, CRT/16; then terrain
     // variants 0..2 and the two carriers in their request order.
     constexpr int landing_times[4][3][2] = {
@@ -271,11 +319,14 @@ void neighboring_delivery_landings() {
             return result;
         };
         const auto before = resources();
+        tests::carrier::Recording recording(session, mode, step, "neighbors", variant);
         const auto draws = random::draw_count();
         factory->Maintenance();
         MG_CHECK(map.m_AD_Obj_cnt == 2 && session.rejected_icon_targets() == 2);
-        MG_CHECK(map.BeforeMaintenanceTime() == 1000 && random::draw_count() == draws + 5);
-        MG_CHECK(resources() == before);
+        const int cooldown = map.BeforeMaintenanceTime();
+        MG_CHECK(cooldown == 1000 && random::draw_count() == draws + 5);
+        const auto resources_after = resources();
+        MG_CHECK(resources_after == before);
         struct Cargo {
             CMatrixFlyer *carrier;
             CMatrixRobotAI *robot;
@@ -310,22 +361,49 @@ void neighboring_delivery_landings() {
             MG_CHECK(side.m_PlayerGroup[item.group].m_To == item.destination);
         }
         MG_CHECK(places == (variant == 0 ? std::set<int>({1, 2}) : std::set<int>({2, 3})));
+        const std::array<int, 2> requested_places{cargo[0].place, cargo[1].place};
+        recording.maintenance(draws, false, requested_places, before, resources_after, cooldown);
         const auto after_request = random::draw_count();
         factory->Maintenance();
         MG_CHECK(map.m_AD_Obj_cnt == 2 && random::draw_count() == after_request);
+        recording.maintenance(after_request, true, requested_places);
         std::cout << session.metadata("neighboring-delivery-landings-v1") << " variant=" << variant << std::endl;
+        const auto sample = [&](const std::array<std::optional<std::array<float, 3>>, 2> &positions,
+                                const std::array<std::optional<float>, 2> &heights,
+                                const std::array<int, 4> &observed_resources) {
+            std::array<tests::carrier::Pair, 2> pairs{};
+            for (int i = 0; i < 2; ++i) {
+                const auto &item = cargo[i];
+                pairs[i] = {item.carrier, item.robot, item.carrier_core.get(), item.robot_core.get(), item.place,
+                    {item.destination.x, item.destination.y}, positions[i], heights[i],
+                    tests::carrier::Progress{item.release, item.landing, item.retired, item.falling_samples}};
+            }
+            tests::carrier::Frame frame;
+            frame.resources = observed_resources;
+            const auto observation = tests::carrier::observe(session, pairs, frame);
+            recording.snapshot(observation);
+        };
+        sample({}, {}, before);
         while (session.time() < 30000) {
             session.advance();
-            MG_CHECK(resources() == before);
+            const auto observed_resources = resources();
+            MG_CHECK(observed_resources == before);
             MG_CHECK(session.robot(1).x == 100 && session.robot(1).y == 200);
             MG_CHECK(session.robot(3).x == 540 && session.robot(3).y == 100);
+            std::array<std::optional<std::array<float, 3>>, 2> positions;
+            std::array<std::optional<float>, 2> heights;
+            int sampled = 0;
             for (auto &item : cargo) {
                 MG_CHECK(item.robot_core->m_Object == item.robot);
                 MG_CHECK(!item.robot->IsMustDie());
-                finite(*item.robot);
+                heights[sampled] = finite(*item.robot);
                 MG_CHECK(side.m_PlayerGroup[item.group].Order() == mpo_Attack);
                 MG_CHECK(side.m_PlayerGroup[item.group].m_To == item.destination);
-                if (item.carrier_core->m_Object) finite(item.carrier->GetPos());
+                if (item.carrier_core->m_Object) {
+                    const auto &position = item.carrier->GetPos();
+                    finite(position);
+                    positions[sampled] = std::array<float, 3>{position.x, position.y, position.z};
+                }
                 else if (item.retired < 0) item.retired = session.time();
                 if (item.release < 0 && item.robot->m_CurrState != ROBOT_CARRYING) {
                     item.release = session.time();
@@ -354,9 +432,13 @@ void neighboring_delivery_landings() {
                     // this checks standing height, not the contact threshold.
                     MG_CHECK(std::abs(item.robot->GetMatrix()._43 - (200 + slope * item.robot->m_PosX)) < 0.001f);
                 }
+                ++sampled;
             }
+            sample(positions, heights, observed_resources);
         }
         MG_CHECK(map.m_AD_Obj_cnt == 0);
+        std::array<std::array<float, 3>, 2> standing_poses{};
+        int standing_sample = 0;
         for (const auto &item : cargo) {
             std::cout << "place=" << item.place << " release=" << item.release << " landing=" << item.landing
                       << " retirement=" << item.retired << " final=" << item.robot->m_PosX << ',' << item.robot->m_PosY
@@ -371,6 +453,7 @@ void neighboring_delivery_landings() {
             // arrival by up to 100 ms. One unit per axis is an empirical bound
             // for these profiles, not a bound on the final movement snap.
             const auto &pose = item.robot->GetMatrix();
+            standing_poses[standing_sample++] = {pose._41, pose._42, pose._43};
             MG_CHECK(std::abs(pose._43 - (200 + slope * pose._41)) < 0.001f);
             MG_CHECK(std::abs(pose._41 - item.robot->m_PosX) < 1);
             MG_CHECK(std::abs(pose._42 - item.robot->m_PosY) < 1);
@@ -378,6 +461,7 @@ void neighboring_delivery_landings() {
         const float separation = std::hypot(cargo[0].robot->m_PosX - cargo[1].robot->m_PosX,
                                             cargo[0].robot->m_PosY - cargo[1].robot->m_PosY);
         MG_CHECK(separation >= 40 && separation <= 57);
+        recording.finish(standing_poses, separation);
     }
 }
 

@@ -25,6 +25,7 @@
 #include "GroupCounts.hpp"
 
 #include <algorithm>
+#include <iterator>
 #include <stdexcept>
 #include <format>
 #include <time.h>
@@ -8957,6 +8958,18 @@ void CMatrixSideUnit::WarPL(int group) {
     }
 }
 
+bool CMatrixSideUnit::HasFreePlayerLogicGroup() const {
+    bool occupied[MAX_LOGIC_GROUP]{};
+    for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic()) {
+        if (object->IsLiveRobot() && object->GetSide() == m_Id) {
+            const int group = object->AsRobot()->GetGroupLogic();
+            if (group >= 0 && group < MAX_LOGIC_GROUP)
+                occupied[group] = true;
+        }
+    }
+    return std::find(std::begin(occupied), std::end(occupied), false) != std::end(occupied);
+}
+
 int CMatrixSideUnit::SelGroupToLogicGroup() {
     CMatrixMapStatic *obj;
     int i, no;
@@ -8978,6 +8991,8 @@ int CMatrixSideUnit::SelGroupToLogicGroup() {
         if (m_PlayerGroup[no].m_RobotCnt <= 0)
             break;
     }
+    if (no == MAX_LOGIC_GROUP)
+        return -1;
     ASSERT(no < MAX_LOGIC_GROUP);
 
     m_PlayerGroup[no].Order(mpo_Stop);
@@ -9018,6 +9033,8 @@ int CMatrixSideUnit::RobotToLogicGroup(CMatrixRobotAI *robot) {
         if (m_PlayerGroup[no].m_RobotCnt <= 0)
             break;
     }
+    if (no == MAX_LOGIC_GROUP)
+        return -1;
     ASSERT(no < MAX_LOGIC_GROUP);
 
     m_PlayerGroup[no].Order(mpo_Stop);
@@ -9032,7 +9049,7 @@ int CMatrixSideUnit::RobotToLogicGroup(CMatrixRobotAI *robot) {
 }
 
 void CMatrixSideUnit::PGOrderStop(int no) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     m_PlayerGroup[no].Order(mpo_Stop);
@@ -9056,7 +9073,7 @@ void CMatrixSideUnit::PGOrderStop(int no) {
 }
 
 void CMatrixSideUnit::PGOrderMoveTo(int no, const CPoint &tp) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     if (m_PlayerGroup[no].Order() == mpo_MoveTo) {
@@ -9126,7 +9143,7 @@ void CMatrixSideUnit::SoundCapture(int pg) {
 }
 
 void CMatrixSideUnit::PGOrderCapture(int no, CMatrixBuilding *building) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     SETFLAG(g_MatrixMap->m_Flags, MMFLAG_ENABLE_CAPTURE_FUCKOFF_SOUND);
@@ -9191,7 +9208,7 @@ void CMatrixSideUnit::PGOrderCapture(int no, CMatrixBuilding *building) {
 }
 
 void CMatrixSideUnit::PGOrderAttack(int no, const CPoint &tp, CMatrixMapStatic *terget_obj) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     if (!FLAG(g_MatrixMap->m_Flags, MMFLAG_SOUND_ORDER_ATTACK_DISABLE)) {
@@ -9272,7 +9289,7 @@ void CMatrixSideUnit::PGOrderAttack(int no, const CPoint &tp, CMatrixMapStatic *
 }
 
 void CMatrixSideUnit::PGOrderPatrol(int no, const CPoint &tp) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     if (m_PlayerGroup[no].Order() == mpo_Patrol) {
@@ -9317,7 +9334,7 @@ void CMatrixSideUnit::PGOrderPatrol(int no, const CPoint &tp) {
 }
 
 void CMatrixSideUnit::PGOrderRepair(int no, CMatrixMapStatic *terget_obj) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     if (m_PlayerGroup[no].Order() == mpo_Repair) {
@@ -9353,7 +9370,7 @@ void CMatrixSideUnit::PGOrderRepair(int no, CMatrixMapStatic *terget_obj) {
 }
 
 void CMatrixSideUnit::PGOrderBomb(int no, const CPoint &tp, CMatrixMapStatic *terget_obj) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     m_PlayerGroup[no].Order(mpo_Bomb);
@@ -9381,7 +9398,7 @@ void CMatrixSideUnit::PGOrderBomb(int no, const CPoint &tp, CMatrixMapStatic *te
 }
 
 void CMatrixSideUnit::PGOrderAutoCapture(int no) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     if (m_PlayerGroup[no].Order() == mpo_AutoCapture) {
@@ -9407,7 +9424,7 @@ void CMatrixSideUnit::PGOrderAutoCapture(int no) {
 }
 
 void CMatrixSideUnit::PGOrderAutoAttack(int no) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     if (m_PlayerGroup[no].Order() == mpo_AutoAttack) {
@@ -9451,7 +9468,7 @@ void CMatrixSideUnit::PGOrderAutoAttack(int no) {
 }
 
 void CMatrixSideUnit::PGOrderAutoDefence(int no) {
-    if (m_PlayerGroup[no].m_RobotCnt <= 0)
+    if (no < 0 || no >= MAX_LOGIC_GROUP || m_PlayerGroup[no].m_RobotCnt <= 0)
         return;
 
     if (m_PlayerGroup[no].Order() == mpo_AutoDefence) {

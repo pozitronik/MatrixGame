@@ -38,20 +38,30 @@ def session_state(state, removed):
         require(type(robot.get("alive")) is bool and robot["alive"] == (robot["id"] != 1 or not removed),
                 "Session actor lifetime differs")
         if not robot["alive"]:
+            require("queue" not in robot, "retired Session actor retains a queue")
             continue
         require(LIVE_FIELDS <= robot.keys(), "live Session observations missing")
         require(all(integer(robot[key]) for key in ("side", "state", "group", "order", "target")), "invalid live actor integer")
+        # EMatrixPlayerOrder includes AutoDefence (9); -1 means no player-group order.
+        require(-1 <= robot["order"] <= 9, "invalid live actor player order")
+        require(-1 <= robot["target"] <= 4, "unnormalized live actor target")
         require(type(robot["in_place"]) is bool and type(robot["target_is_null"]) is bool, "invalid live actor flag")
         require(isinstance(robot["destination"], list) and len(robot["destination"]) == 2
                 and all(integer(x) for x in robot["destination"]), "invalid live actor destination")
-        require(isinstance(robot["queue"], list) and all(isinstance(order, list) and len(order) == 5
-                and all(integer(x) for x in order) and all(0 <= order[i] <= 0xffffffff for i in (2, 3))
-                for order in robot["queue"]), "invalid live actor queue")
+        require(isinstance(robot["queue"], list) and len(robot["queue"]) <= 5, "invalid live actor queue")
+        for order in robot["queue"]:
+            require(isinstance(order, list) and len(order) == 5 and all(integer(x) for x in order)
+                    and all(0 <= order[i] <= 0xffffffff for i in (2, 3)), "invalid live actor queue entry")
+            require(0 <= order[0] <= 8 and 0 <= order[1] <= 8, "invalid live actor queue type or phase")
+            require(-1 <= order[4] <= 4, "unnormalized live actor queue object")
     groups = state.get("player_groups")
     require(isinstance(groups, list) and all(isinstance(group, dict)
             and {"slot", "stored_count", "members", "order", "target"} <= group.keys()
             and all(integer(group[key]) for key in ("slot", "stored_count", "members", "order", "target"))
             for group in groups), "Session player-group observations missing or invalid")
+    for group in groups:
+        require(0 <= group["order"] <= 9, "invalid Session player-group order")
+        require(-1 <= group["target"] <= 4, "unnormalized Session player-group target")
 
 
 def validate(records, *, family, rng, step, revision=None, configuration=None, compiler=None, target=None, cheats=None):
@@ -113,6 +123,7 @@ def validate(records, *, family, rng, step, revision=None, configuration=None, c
         patient = 2 if turret and frame >= removal_frame else 1 if turret else 3
         require(combat["health_bits"] == state["robots"][patient - 1]["health_bits"], "combat patient health differs")
         require(all(integer(combat[key]) for key in ("ablaze_ttl", "shorted_ttl", "robot_state")), "invalid combat integer")
+        require(combat["robot_state"] == state["robots"][patient - 1]["state"], "combat patient state differs")
         if turret:
             require(TURRET_FIELDS <= combat.keys() and type(combat["cannon_target_is_patient"]) is bool,
                     "turret observations missing")

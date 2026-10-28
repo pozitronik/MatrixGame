@@ -98,6 +98,12 @@ python -B tools/benchmark.py compare build/benchmarks/reference.json build/bench
 
 The comparison first requires the same compiler and version, configuration, architecture, engine heap tracking, CMake build type and DLL, cheat and coverage options, processor and logical processor count, timer frequency, x87 control word, timer, sample unit and allocation-counter scope, and the same workload parameters, iterations and work counters. Differences in the operating system version and in warm-up, repetitions or processes are listed as notes; the executable hash is recorded but expected to differ between revisions. Different work means the change altered behavior or the workload, so timing is not compared; the command exits with status 2. Workloads that exist only in the candidate are listed but not compared. Use `--allow-identity-mismatch` only for an explicitly cross-configuration investigation.
 
+For baseline comparisons that require unchanged diagnostic observations, add `--require-inspection-match`. It checks each matched workload's `inspection` object before calculating its timing verdict: the existing format is a flat map of string names to signed 64-bit integers, and both the counter names and values must match exactly. Missing objects, missing counters, nested values, booleans, floats and out-of-range integers make the comparison not comparable (exit 2), even when both reports contain the same malformed value. Empty objects are valid for Sessions that emit no inspection counters; this switch does not establish that the selected workload observes every required behavior. Neither `--allow-identity-mismatch` nor `--allow-parameter-change` bypasses this check. Without the switch, cross-report inspection differences retain their previous behavior so an explicitly reviewed algorithm optimization can change diagnostic operation counts. Full trajectory/event/RNG reconciliation and the reviewed reference identity remain separate requirements; this check does not replace them or accept the baseline.
+
+```powershell
+python -B tools/benchmark.py compare build/benchmarks/reference.json build/benchmarks/candidate.json --require-inspection-match
+```
+
 For comparable workloads, the comparison computes a 95% hierarchical percentile bootstrap interval of the ratio of the candidate median to the base median, using 2,000 resamples and a fixed seed. Each resample first draws processes with replacement and then samples within each drawn process, so a difference between processes widens the interval instead of being averaged away. With the material threshold `t`, 5% by default:
 
 - **regression:** the whole interval is above `1 + t`, and every candidate process median is above every base process median;
@@ -134,9 +140,9 @@ Build and measure the selected executable explicitly; stop after any failed prep
 $ErrorActionPreference = 'Stop'
 .\tools\test.ps1 -Configuration Release -Filter '^game\.benchmark\.(combat\.laser_tick|strategy\.capture_tick)\.'
 if ($LASTEXITCODE -ne 0) { throw 'Active workload smoke checks failed.' }
-python -B tools/benchmark.py run --executable build/mingw-release-exe/tests/matrixgame_battle_benchmarks.exe --processes 3 --iterations 1 --output build/benchmarks/active-a.json
+python -B tools/benchmark.py run --build-dir build/mingw-release-exe --executable build/mingw-release-exe/tests/matrixgame_battle_benchmarks.exe --processes 3 --iterations 1 --output build/benchmarks/active-a.json
 if ($LASTEXITCODE -ne 0) { throw 'First active workload measurement failed.' }
-python -B tools/benchmark.py run --executable build/mingw-release-exe/tests/matrixgame_battle_benchmarks.exe --processes 3 --iterations 1 --output build/benchmarks/active-b.json
+python -B tools/benchmark.py run --build-dir build/mingw-release-exe --executable build/mingw-release-exe/tests/matrixgame_battle_benchmarks.exe --processes 3 --iterations 1 --output build/benchmarks/active-b.json
 if ($LASTEXITCODE -ne 0) { throw 'Second active workload measurement failed.' }
 python -B tools/benchmark.py compare build/benchmarks/active-a.json build/benchmarks/active-b.json
 if ($LASTEXITCODE -ne 0) { throw 'Active workload comparison failed.' }
@@ -153,7 +159,7 @@ Build the Release tests and stage the test runtime with the supported helper, th
 
 ```powershell
 .\tools\test.ps1 -Configuration Release -Filter '^game\.navigation\.work_'
-python -B tools/benchmark.py run --executable build/mingw-release-exe/tests/matrixgame_navigation_work_benchmarks.exe --iterations 1 --output build/benchmarks/navigation-work.json
+python -B tools/benchmark.py run --build-dir build/mingw-release-exe --executable build/mingw-release-exe/tests/matrixgame_navigation_work_benchmarks.exe --iterations 1 --output build/benchmarks/navigation-work.json
 ```
 
 Use `--workload navigation.crowded_destination.park_miller10` to select one profile; `--list` on the executable lists all eight scene/RNG/timestep combinations. The RNG labels have identical zero-draw executions for each scene/step pair, giving four distinct measured workloads. Each iteration starts a fresh fixture outside timing and runs exactly 32,000 simulated milliseconds. Reported `work_per_sample` contains actual completed ticks, elapsed simulation, arrived robots and RNG draws. Timing keeps collection inactive and omits full snapshots, but includes the scene's per-frame contract observations and result bookkeeping; it is not a production frame-cost or collector-overhead claim.
@@ -209,7 +215,7 @@ Observation work is part of these synthetic CPU costs; it is not a separately me
 
 ### Equality, A/A qualification and delivery
 
-First require each run's iteration/sample work equality and the wrapper's equal work/inspection across fresh processes. Before reference/candidate timing, reconcile the matching trajectory/event/RNG evidence from [#325](https://github.com/pozitronik/MatrixGame/issues/325) and the fields above. The comparator currently checks parameters, iteration counts and `work_per_sample` across two reports; it does not automatically compare their `inspection` objects. Inspect those explicitly. In N5, distinguish behavior observations/digests from the ten algorithmic operation counts: an independently accepted algorithm change may change the latter without changing the protected behavior. Equal tick counts, arrivals and compact hashes alone cannot replace the required direct recording comparison. Differences need a recorded explanation before interpreting any faster/slower result.
+First require each run's iteration/sample work equality and the wrapper's equal work/inspection across fresh processes. Before reference/candidate timing, reconcile the matching trajectory/event/RNG evidence from [#325](https://github.com/pozitronik/MatrixGame/issues/325) and the fields above. The comparator checks parameters, iteration counts and `work_per_sample` across two reports; baseline comparisons must also pass `--require-inspection-match` to require exactly matching `inspection` counters. That switch does not compare trajectories, events or RNG histories, which still need the separate reconciliation above. In N5, distinguish behavior observations/digests from the ten algorithmic operation counts: an independently accepted algorithm change may change the latter without changing the protected behavior. Equal tick counts, arrivals and compact hashes alone cannot replace the required direct recording comparison. Differences need a recorded explanation before interpreting any faster/slower result.
 
 Run the predeclared reference A/A campaign on the same host, with at least three fresh processes per report; the wrapper defaults to five. Retain every process/sample distribution and the existing warm-up/repetition/iteration policy. An exit code of zero can include `inconclusive`; read every verdict and require the stated A/A `no material change` condition before interpreting candidate timings. More runs or a quieter host may resolve noise, but do not silently change scenarios, work, timesteps, tolerances or the threshold to obtain a desired verdict. The existing comparator's recorded material threshold is a comparison setting, not a newly accepted game-performance budget. CTest and process timeouts are failure bounds, not such budgets either.
 

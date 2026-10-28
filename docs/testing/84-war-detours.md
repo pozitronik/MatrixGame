@@ -2,6 +2,8 @@
 
 `game.ai.war_detour.*` follows an armed player robot through a successful tactical firing-place assignment, actual travel, combat and continuation of player intent. It extends A2 / AI-02 and CMD-04 without changing obedience, AI priorities or production code. Existing occupied-place Patrol cases retain their separate failed-search coverage.
 
+The same existing sessions also produce [complete retained War detour recordings](war-detour-recordings.md), including their original observations, full live-actor order parameters and caller-wide completion checks.
+
 ```powershell
 .\tools\test.ps1 -Configuration Debug -Filter '^game\.ai\.war_detour\.'
 .\tools\test.ps1 -Configuration Release -Filter '^game\.ai\.war_detour\.'
@@ -37,4 +39,4 @@ Both RNG modes are exercised independently; this fixed scene has not demonstrate
 
 Source controls temporarily omit the successful `WarPL` movement dispatch or ignore later `PGOrderMoveTo` commands. The retirement case must reject an absent actual detour at 800 ms. The replacement case must reject an ignored command, while the unchanged-control journey still passes with later Move commands suppressed. Restore exact production bytes, rebuild and rerun the positive matrix after each control; no mutation belongs in the committed change.
 
-The scene runs the full map tick against generated meshes, a no-draw surrogate device and unavailable audio. It establishes neither native presentation nor original-host battle compatibility. It covers one armed robot against one stationary unarmed target, one declared topology and fixed compatibility defaults, not all valid place rankings or distance calculations. Obstructed/ineffective firing against moving targets, the manual-chassis Move nonarrival near a live target, other Patrol cycles and the catalog's ordinary-Move detour wording remain unresolved A2 work. Ordinary Move does not enter War; these tests use an eligible Patrol order and do not silently alter that catalog contract or complete #84/the whole-game baseline.
+The scene runs the full map tick against generated meshes, a no-draw surrogate device and unavailable audio. It establishes neither native presentation nor original-host battle compatibility. It covers one armed robot against one stationary unarmed target, one declared topology and fixed compatibility defaults, not all valid place rankings or distance calculations. [Moving-target fire feedback](84-fire-feedback.md) and [manual-exit reservations](84-manual-enemy.md) have separate production journeys. Ordinary context Move starts without War and can fire while retaining its assigned movement; these tests instead use an eligible Patrol order. Other Patrol cycles, native execution and the whole-game acceptance gate remain outside this bounded scene.
