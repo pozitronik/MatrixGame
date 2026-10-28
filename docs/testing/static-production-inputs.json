@@ -1,0 +1,6027 @@
+{
+  "purpose": "Source input/assertion catalog for six direct production predicates; not a runtime manifest, process result, reference selection or baseline acceptance.",
+  "source_revision": "9a85aa9a98414913e0d2ffd9d7d24b0dc96fa362",
+  "common_setup": {
+    "source": {
+      "path": "tests/production_queue_tests.cpp",
+      "first_line": 16,
+      "last_line": 60
+    },
+    "fixture": "World / tests::CommandWorld",
+    "allocator": "HNew engine-zeroed storage, EnginePtr and CBuildStack ownership",
+    "base_side": 1,
+    "base_state": 0,
+    "initial_balances": [
+      100,
+      200,
+      300,
+      400
+    ],
+    "resource_order": [
+      "TITAN",
+      "ELECTRONICS",
+      "ENERGY",
+      "PLASMA"
+    ],
+    "all_prices_initially": 0,
+    "CHASSIS1_TITAN_price": [
+      11,
+      17,
+      23,
+      31
+    ],
+    "robot_chassis": "RUK_CHASSIS_PNEUMATIC = 1",
+    "robot_base": "fixture base",
+    "resources": "Synthetic CBlockPar/config only; no packages, window, device, models or audible backend.",
+    "RNG": "No explicit seeding, mode loop or draw-count assertion in these six cases; do not claim a zero-draw or both-mode result.",
+    "map_clock": "No full map advances in these six cases; ordered API calls are input order, not temporal map history."
+  },
+  "registration": {
+    "target": "matrixgame_production_queue_tests",
+    "source_files": [
+      "tests/production_queue_tests.cpp",
+      "tests/diagnostic_overlay_stub.cpp",
+      "tests/test_support.cpp",
+      "tests/test_support.hpp"
+    ],
+    "links": [
+      "MatrixGameInternal",
+      "MatrixLib",
+      "MSVC only dbghelp"
+    ],
+    "cmake_lines": [
+      639,
+      645
+    ],
+    "CTest_command": "<resolved matrixgame_production_queue_tests.exe> <exact-case-name>",
+    "labels": [
+      "engine",
+      "asset-free",
+      "gameplay"
+    ],
+    "timeout_seconds": 30,
+    "conditions": "All six registered unconditionally when the tests directory is enabled; no native opt-in.",
+    "process_contract": "Fresh process per CTest; BaseInit, tests::run, conditional MEM_SPY allocation check, BaseDeInit, exit result. A Passed line precedes the final leak check and is insufficient alone.",
+    "checks_active_release": "MG_CHECK uses tests::require and remains active when ASSERT_OFF disables legacy assertions."
+  },
+  "declared_ci_matrix_not_executed": [
+    {
+      "compiler": "MinGW",
+      "configuration": "Debug",
+      "target": "EXE",
+      "cheats": false,
+      "name": "MinGW Debug EXE"
+    },
+    {
+      "compiler": "MinGW",
+      "configuration": "Release",
+      "target": "EXE",
+      "cheats": false,
+      "name": "MinGW Release EXE"
+    },
+    {
+      "compiler": "MSVC",
+      "configuration": "Debug",
+      "target": "EXE",
+      "cheats": false,
+      "name": "MSVC Debug EXE"
+    },
+    {
+      "compiler": "MSVC",
+      "configuration": "Release",
+      "target": "EXE",
+      "cheats": false,
+      "name": "MSVC Release EXE"
+    },
+    {
+      "compiler": "MinGW",
+      "configuration": "Release",
+      "target": "DLL",
+      "cheats": true,
+      "name": "MinGW Release DLL (cheats)"
+    },
+    {
+      "compiler": "MSVC",
+      "configuration": "Release",
+      "target": "DLL",
+      "cheats": true,
+      "name": "MSVC Release DLL (cheats)"
+    },
+    {
+      "compiler": "MinGW",
+      "configuration": "Debug",
+      "target": "EXE",
+      "cheats": true,
+      "name": "MinGW Debug EXE (cheats)"
+    },
+    {
+      "compiler": "MinGW",
+      "configuration": "Debug",
+      "target": "EXE",
+      "cheats": false,
+      "trace": true,
+      "name": "MinGW Debug EXE (trace)"
+    },
+    {
+      "compiler": "MSVC",
+      "configuration": "Release",
+      "target": "DLL",
+      "cheats": true,
+      "trace": true,
+      "name": "MSVC Release DLL (trace)"
+    }
+  ],
+  "profile_switch_sources": {
+    "configuration": "_DEBUG and ASSERT_OFF, root CMakeLists.txt:51/78; actual compile/cache evidence absent.",
+    "trace": "MATRIXGAME_TRACE adds _TRACE; none of these six case bodies has a trace branch.",
+    "cheats": "MATRIXGAME_CHEATS adds CHEATS_ON only to MatrixFormGame.cpp; no cheat input here.",
+    "role": "MATRIXGAME_BUILD_DLL selects game role/source BUILD_EXE; console tests link internal engine and do not load the host DLL.",
+    "instrumentation": "MEM_SPY_ENABLE derives from _DEBUG OR FORCE_ENABLE_MEM_SPY in CHeap.hpp:14-16; main checks residual tracked allocations. Record actual defines, not just configuration.",
+    "other": "Retain actual coverage/music/compiler/runtime/architecture/build definitions even if not a branch in these predicates."
+  },
+  "cases": [
+    {
+      "case": "game.production.queue_order",
+      "function": "queue_order_and_refunds",
+      "source": {
+        "path": "tests/production_queue_tests.cpp",
+        "first_line": 63,
+        "last_line": 88,
+        "symbol": "queue_order_and_refunds",
+        "body_sha256": "897a51394afb1b9e5f839247f9b76af929dcbe5d0adf0b73ecea61e7892a44d0"
+      },
+      "catalog": [
+        "ECO-01"
+      ],
+      "call_table": [
+        {
+          "id": "enqueue-1-through-3",
+          "call": "World::enqueue() x3",
+          "inputs": {
+            "robot_roles": [
+              "first",
+              "second",
+              "third"
+            ],
+            "each": {
+              "before_AddItem": "IsMaxItems() == false",
+              "after_AddItem": "GetRobotsCnt() == GetItemsCnt()",
+              "ownership": "Local EnginePtr releases only after AddItem; queue owns each accepted robot."
+            }
+          },
+          "asserted": {
+            "balances": [
+              100,
+              200,
+              300,
+              400
+            ],
+            "top": "first",
+            "links": [
+              "first.next == second",
+              "second.next == third"
+            ]
+          },
+          "source_line": 64,
+          "negative_input": false
+        },
+        {
+          "id": "delete-middle",
+          "call": "DeleteItem(2)",
+          "inputs": {
+            "index": 2
+          },
+          "asserted": {
+            "return_remaining_count": 2,
+            "links": [
+              "first.next == third",
+              "third.prev == first"
+            ],
+            "balances": [
+              111,
+              217,
+              323,
+              431
+            ]
+          },
+          "source_line": 71,
+          "negative_input": false
+        },
+        {
+          "id": "invalid-index-zero",
+          "call": "DeleteItem(0)",
+          "inputs": {
+            "index": 0
+          },
+          "asserted": {
+            "return": 0
+          },
+          "source_line": 74,
+          "negative_input": true
+        },
+        {
+          "id": "invalid-index-nine",
+          "call": "DeleteItem(9)",
+          "inputs": {
+            "index": 9
+          },
+          "asserted": {
+            "return": 0,
+            "items": 2,
+            "balances": [
+              111,
+              217,
+              323,
+              431
+            ]
+          },
+          "source_line": 75,
+          "negative_input": true
+        },
+        {
+          "id": "delete-by-pointer",
+          "call": "DeleteItem(first)",
+          "inputs": {
+            "role": "first"
+          },
+          "asserted": {
+            "top": "third",
+            "balances": [
+              122,
+              234,
+              346,
+              462
+            ]
+          },
+          "source_line": 78,
+          "negative_input": false
+        },
+        {
+          "id": "clear-last",
+          "call": "ClearStack()",
+          "inputs": {},
+          "asserted": {
+            "top": null,
+            "items": 0,
+            "balances": [
+              133,
+              251,
+              369,
+              493
+            ]
+          },
+          "source_line": 81,
+          "negative_input": false
+        },
+        {
+          "id": "clear-empty",
+          "call": "ClearStack()",
+          "inputs": {},
+          "asserted": {
+            "balances": [
+              133,
+              251,
+              369,
+              493
+            ]
+          },
+          "source_line": 85,
+          "negative_input": true
+        }
+      ],
+      "forbidden_effects_actively_asserted": [
+        "Insertion does not debit the four balances.",
+        "Invalid indices preserve item count and balances.",
+        "Second empty clear grants no additional refund."
+      ],
+      "not_asserted": [
+        "No RNG count, native icon result, map scheduling, partial-construction progress or destructor refund assertion.",
+        "Only the explicitly asserted links are evidence; a complete pointer/layout dump is not present."
+      ],
+      "float_bit_expectations": [],
+      "explicit_rng_seed_mode_draw_assertions": false,
+      "clock_policy": "No Session, Takt, LogicTakt or TickTimer call in this selected case. Ordered direct component calls are retained."
+    },
+    {
+      "case": "game.production.capacity",
+      "function": "queue_capacity",
+      "source": {
+        "path": "tests/production_queue_tests.cpp",
+        "first_line": 89,
+        "last_line": 105,
+        "symbol": "queue_capacity",
+        "body_sha256": "be6226ee2e1b27b9b4aa8804ae47d40c10227d63f174b631e18430ce51ba38eb"
+      },
+      "catalog": [
+        "ECO-01"
+      ],
+      "call_table": [
+        {
+          "id": "null-insertion",
+          "call": "AddItem(nullptr)",
+          "inputs": {},
+          "asserted": {
+            "items": 0
+          },
+          "source_line": 91,
+          "negative_input": true
+        },
+        {
+          "id": "accepted-1",
+          "call": "World::enqueue()",
+          "inputs": {
+            "accepted_slot": 1,
+            "each": {
+              "before_AddItem": "IsMaxItems() == false",
+              "after_AddItem": "GetRobotsCnt() == GetItemsCnt()",
+              "ownership": "Local EnginePtr releases only after AddItem; queue owns each accepted robot."
+            }
+          },
+          "asserted": {
+            "robots_count_equals_items": true
+          },
+          "source_line": 93,
+          "negative_input": false
+        },
+        {
+          "id": "accepted-2",
+          "call": "World::enqueue()",
+          "inputs": {
+            "accepted_slot": 2,
+            "each": {
+              "before_AddItem": "IsMaxItems() == false",
+              "after_AddItem": "GetRobotsCnt() == GetItemsCnt()",
+              "ownership": "Local EnginePtr releases only after AddItem; queue owns each accepted robot."
+            }
+          },
+          "asserted": {
+            "robots_count_equals_items": true
+          },
+          "source_line": 93,
+          "negative_input": false
+        },
+        {
+          "id": "accepted-3",
+          "call": "World::enqueue()",
+          "inputs": {
+            "accepted_slot": 3,
+            "each": {
+              "before_AddItem": "IsMaxItems() == false",
+              "after_AddItem": "GetRobotsCnt() == GetItemsCnt()",
+              "ownership": "Local EnginePtr releases only after AddItem; queue owns each accepted robot."
+            }
+          },
+          "asserted": {
+            "robots_count_equals_items": true
+          },
+          "source_line": 93,
+          "negative_input": false
+        },
+        {
+          "id": "accepted-4",
+          "call": "World::enqueue()",
+          "inputs": {
+            "accepted_slot": 4,
+            "each": {
+              "before_AddItem": "IsMaxItems() == false",
+              "after_AddItem": "GetRobotsCnt() == GetItemsCnt()",
+              "ownership": "Local EnginePtr releases only after AddItem; queue owns each accepted robot."
+            }
+          },
+          "asserted": {
+            "robots_count_equals_items": true
+          },
+          "source_line": 93,
+          "negative_input": false
+        },
+        {
+          "id": "accepted-5",
+          "call": "World::enqueue()",
+          "inputs": {
+            "accepted_slot": 5,
+            "each": {
+              "before_AddItem": "IsMaxItems() == false",
+              "after_AddItem": "GetRobotsCnt() == GetItemsCnt()",
+              "ownership": "Local EnginePtr releases only after AddItem; queue owns each accepted robot."
+            }
+          },
+          "asserted": {
+            "robots_count_equals_items": true
+          },
+          "source_line": 93,
+          "negative_input": false
+        },
+        {
+          "id": "accepted-6",
+          "call": "World::enqueue()",
+          "inputs": {
+            "accepted_slot": 6,
+            "each": {
+              "before_AddItem": "IsMaxItems() == false",
+              "after_AddItem": "GetRobotsCnt() == GetItemsCnt()",
+              "ownership": "Local EnginePtr releases only after AddItem; queue owns each accepted robot."
+            }
+          },
+          "asserted": {
+            "robots_count_equals_items": true
+          },
+          "source_line": 93,
+          "negative_input": false
+        },
+        {
+          "id": "full-predicate",
+          "call": "IsMaxItems()",
+          "inputs": {
+            "accepted_entries": 6
+          },
+          "asserted": {
+            "return": true
+          },
+          "source_line": 94,
+          "negative_input": false
+        },
+        {
+          "id": "reject-seventh",
+          "call": "AddItem(rejected.get())",
+          "inputs": {
+            "accepted_entries": 6,
+            "rejected_owner": "local EnginePtr"
+          },
+          "asserted": {
+            "items": 6,
+            "rejected_next": null,
+            "rejected_prev": null,
+            "balances": [
+              100,
+              200,
+              300,
+              400
+            ]
+          },
+          "source_line": 96,
+          "negative_input": true
+        },
+        {
+          "id": "clear-six",
+          "call": "ClearStack()",
+          "inputs": {
+            "accepted_entries": 6
+          },
+          "asserted": {
+            "is_max": false,
+            "balances": [
+              166,
+              302,
+              438,
+              586
+            ]
+          },
+          "source_line": 100,
+          "negative_input": false
+        }
+      ],
+      "forbidden_effects_actively_asserted": [
+        "Null insertion leaves count zero.",
+        "Full insertion leaves count six and rejected links null; local owner retains its pointer.",
+        "No debit on accepted/rejected insertions; refund contains exactly six chassis prices."
+      ],
+      "not_asserted": [
+        "The final clear checks !IsMaxItems, not an explicit zero count in this case.",
+        "No exact queue ordering, RNG, render/icon, or allocation-failure injection is asserted here."
+      ],
+      "float_bit_expectations": [],
+      "explicit_rng_seed_mode_draw_assertions": false,
+      "clock_policy": "No Session, Takt, LogicTakt or TickTimer call in this selected case. Ordered direct component calls are retained."
+    },
+    {
+      "case": "game.production.refund_owner",
+      "function": "refund_owner_and_cap",
+      "source": {
+        "path": "tests/production_queue_tests.cpp",
+        "first_line": 106,
+        "last_line": 114,
+        "symbol": "refund_owner_and_cap",
+        "body_sha256": "46345e386b56523c72901d5098498d482cb4f30848b0fa0cd0d6466d300d83b6"
+      },
+      "catalog": [
+        "ECO-01",
+        "ECO-02"
+      ],
+      "call_table": [
+        {
+          "id": "queued-player-robot",
+          "call": "World::enqueue()",
+          "inputs": {
+            "robot_side": 1,
+            "base_side": 1,
+            "each": {
+              "before_AddItem": "IsMaxItems() == false",
+              "after_AddItem": "GetRobotsCnt() == GetItemsCnt()",
+              "ownership": "Local EnginePtr releases only after AddItem; queue owns each accepted robot."
+            }
+          },
+          "asserted": {
+            "robots_count_equals_items": true
+          },
+          "source_line": 108,
+          "negative_input": false
+        },
+        {
+          "id": "change-owner-and-balances",
+          "call": "Direct fixture assignments",
+          "inputs": {
+            "base_side": 2,
+            "player_balances": [
+              8995,
+              8980,
+              9000,
+              0
+            ]
+          },
+          "asserted": {},
+          "source_line": 109,
+          "negative_input": false
+        },
+        {
+          "id": "refund-and-clamp",
+          "call": "ClearStack()",
+          "inputs": {
+            "robot_side": 1,
+            "base_side": 2,
+            "chassis_price": [
+              11,
+              17,
+              23,
+              31
+            ]
+          },
+          "asserted": {
+            "player_balances": [
+              9000,
+              8997,
+              9000,
+              31
+            ]
+          },
+          "source_line": 111,
+          "negative_input": false
+        }
+      ],
+      "forbidden_effects_actively_asserted": [
+        "Refund reaches the queued robot owner despite a changed base side.",
+        "Each asserted player balance clamps independently at 9000."
+      ],
+      "not_asserted": [
+        "No separate enemy-side balance object is queried.",
+        "No repeated clear, queue emptiness, RNG or timed ownership-transfer trajectory is asserted."
+      ],
+      "float_bit_expectations": [],
+      "explicit_rng_seed_mode_draw_assertions": false,
+      "clock_policy": "No Session, Takt, LogicTakt or TickTimer call in this selected case. Ordered direct component calls are retained."
+    },
+    {
+      "case": "game.production.price",
+      "function": "construction_price",
+      "source": {
+        "path": "tests/production_queue_tests.cpp",
+        "first_line": 135,
+        "last_line": 158,
+        "symbol": "construction_price",
+        "body_sha256": "4d1f6dc075f24be5b6126fe51710d3cd463b69c094f875943c2dd127578d6014"
+      },
+      "catalog": [
+        "ECO-01"
+      ],
+      "call_table": [
+        {
+          "id": "empty-price",
+          "call": "GetConstructionPrice(actual)",
+          "inputs": {
+            "render_robot_units": []
+          },
+          "asserted": {
+            "price": [
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "source_line": 140,
+          "negative_input": false
+        },
+        {
+          "id": "chassis-price",
+          "call": "UnitInsert(0, MRT_CHASSIS, RUK_CHASSIS_PNEUMATIC); GetConstructionPrice(actual)",
+          "inputs": {
+            "chassis_kind": 1,
+            "price": [
+              11,
+              17,
+              23,
+              31
+            ]
+          },
+          "asserted": {
+            "price": [
+              11,
+              17,
+              23,
+              31
+            ]
+          },
+          "source_line": 142,
+          "negative_input": false
+        },
+        {
+          "id": "head-price",
+          "call": "UnitInsert(1, MRT_HEAD, RUK_HEAD_BLOCKER); GetConstructionPrice(actual)",
+          "inputs": {
+            "head_kind": 1,
+            "head_price": [
+              3,
+              5,
+              7,
+              9
+            ]
+          },
+          "asserted": {
+            "price": [
+              14,
+              22,
+              30,
+              40
+            ]
+          },
+          "source_line": 146,
+          "negative_input": false
+        },
+        {
+          "id": "exact-funds",
+          "call": "IsEnoughResources(actual)",
+          "inputs": {
+            "cost": [
+              14,
+              22,
+              30,
+              40
+            ],
+            "balances": [
+              14,
+              22,
+              30,
+              40
+            ]
+          },
+          "asserted": {
+            "return": true
+          },
+          "source_line": 151,
+          "negative_input": false
+        },
+        {
+          "id": "one-short-0",
+          "call": "Reset balances(actual); AddResourceAmount(resource,-1); IsEnoughResources(actual)",
+          "inputs": {
+            "resource": 0,
+            "cost": [
+              14,
+              22,
+              30,
+              40
+            ],
+            "balances": [
+              13,
+              22,
+              30,
+              40
+            ]
+          },
+          "asserted": {
+            "return": false
+          },
+          "source_line": 153,
+          "negative_input": true
+        },
+        {
+          "id": "one-short-1",
+          "call": "Reset balances(actual); AddResourceAmount(resource,-1); IsEnoughResources(actual)",
+          "inputs": {
+            "resource": 1,
+            "cost": [
+              14,
+              22,
+              30,
+              40
+            ],
+            "balances": [
+              14,
+              21,
+              30,
+              40
+            ]
+          },
+          "asserted": {
+            "return": false
+          },
+          "source_line": 153,
+          "negative_input": true
+        },
+        {
+          "id": "one-short-2",
+          "call": "Reset balances(actual); AddResourceAmount(resource,-1); IsEnoughResources(actual)",
+          "inputs": {
+            "resource": 2,
+            "cost": [
+              14,
+              22,
+              30,
+              40
+            ],
+            "balances": [
+              14,
+              22,
+              29,
+              40
+            ]
+          },
+          "asserted": {
+            "return": false
+          },
+          "source_line": 153,
+          "negative_input": true
+        },
+        {
+          "id": "one-short-3",
+          "call": "Reset balances(actual); AddResourceAmount(resource,-1); IsEnoughResources(actual)",
+          "inputs": {
+            "resource": 3,
+            "cost": [
+              14,
+              22,
+              30,
+              40
+            ],
+            "balances": [
+              14,
+              22,
+              30,
+              39
+            ]
+          },
+          "asserted": {
+            "return": false
+          },
+          "source_line": 153,
+          "negative_input": true
+        }
+      ],
+      "forbidden_effects_actively_asserted": [
+        "Each individual one-unit resource shortage rejects affordability."
+      ],
+      "not_asserted": [
+        "These calls do not assert unchanged balances or queue state after price/affordability queries.",
+        "No actual purchase/debit, UI dispatch, module legality, timer or RNG contract is asserted."
+      ],
+      "float_bit_expectations": [],
+      "explicit_rng_seed_mode_draw_assertions": false,
+      "clock_policy": "No Session, Takt, LogicTakt or TickTimer call in this selected case. Ordered direct component calls are retained."
+    },
+    {
+      "case": "game.production.ai_constructor_prices",
+      "function": "ai_and_constructor_prices",
+      "source": {
+        "path": "tests/production_queue_tests.cpp",
+        "first_line": 363,
+        "last_line": 396,
+        "symbol": "ai_and_constructor_prices",
+        "body_sha256": "9715a4b959ce3e16cfc572c47eef5da2faa361086170fbb59c87a3a9993f9f13"
+      },
+      "catalog": [
+        "ECO-01"
+      ],
+      "call_table": [
+        {
+          "id": "load-two-definitions",
+          "call": "SSpecialBot::LoadAIRobotType(definitions, capacities)",
+          "inputs": {
+            "definitions": [
+              [
+                "1",
+                "P,1,G,S"
+              ],
+              [
+                "2",
+                "P,1,G"
+              ]
+            ],
+            "armor6_price": [
+              41,
+              43,
+              47,
+              53
+            ],
+            "weapon1_price": [
+              59,
+              61,
+              67,
+              71
+            ],
+            "head1_price": [
+              73,
+              79,
+              83,
+              89
+            ],
+            "capacities": "Zero all entries; MONOSTACK.common=1"
+          },
+          "asserted": {
+            "type_count": 2
+          },
+          "source_line": 375,
+          "negative_input": false
+        },
+        {
+          "id": "loaded-entry-price-and-refund",
+          "call": "For i=0..1: construct units from bot fields; GetConstructionPrice; zero balances; ReturnRobotResources(robot)",
+          "inputs": {
+            "repeat": 2,
+            "unit_insertion_order": [
+              "chassis from bot",
+              "armor from bot",
+              "weapon[0] from bot",
+              "head from bot if nonzero"
+            ],
+            "head_present_expected": [
+              184,
+              200,
+              220,
+              244
+            ],
+            "head_absent_expected": [
+              111,
+              121,
+              137,
+              155
+            ],
+            "branch": "bot.m_Head.m_nKind != 0; source does not assert which branch belongs to index 0 or 1"
+          },
+          "asserted": {
+            "constructor_price": "exact conditional expected vector",
+            "bot_resources_each": "same expected vector",
+            "player_refund_balances": "same expected vector"
+          },
+          "source_line": 377,
+          "negative_input": false
+        }
+      ],
+      "forbidden_effects_actively_asserted": [
+        "Constructor price, loaded AI price and direct refund agree for each loaded entry.",
+        "Zero balances are set before each refund, preventing previous entry funds from masking its amount."
+      ],
+      "not_asserted": [
+        "The test asserts two loaded entries but not their sort order, exact parsed module identities or one-headed/one-headless branch distribution independently.",
+        "No queue insert/debit, AI BuildRobot dispatch, successful construction, RNG or rendered constructor is asserted."
+      ],
+      "float_bit_expectations": [],
+      "explicit_rng_seed_mode_draw_assertions": false,
+      "clock_policy": "No Session, Takt, LogicTakt or TickTimer call in this selected case. Ordered direct component calls are retained."
+    },
+    {
+      "case": "game.production.weapon_slots",
+      "function": "weapon_slot_selection",
+      "source": {
+        "path": "tests/production_queue_tests.cpp",
+        "first_line": 397,
+        "last_line": 434,
+        "symbol": "weapon_slot_selection",
+        "body_sha256": "188037e3570c322b586d19ac454e8d101b3c6294fe5ddb768310d13f016dcb5f"
+      },
+      "catalog": [
+        "ECO-01"
+      ],
+      "call_table": [
+        {
+          "id": "armor-1-weapon-1-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-1-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-1-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-2-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-2-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-2-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-3-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-3-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-3-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-4-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-4-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-4-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-5-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-5-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-5-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-6-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-6-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-6-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-7-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-7-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-7-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-8-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-8-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-8-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-9-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-9-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-9-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-weapon-10-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-10-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-1-weapon-10-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-empty-capacity-weapon-1",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 428,
+          "negative_input": true
+        },
+        {
+          "id": "armor-1-empty-capacity-weapon-7",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 1,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 429,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-1-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-1-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-1-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-2-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-2-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-2-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-3-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-3-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-3-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-4-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-4-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-4-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-5-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-5-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-5-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-6-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-6-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-6-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-7-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-7-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-7-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-8-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-8-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-8-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-9-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-9-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-9-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-weapon-10-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-10-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-2-weapon-10-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-empty-capacity-weapon-1",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 428,
+          "negative_input": true
+        },
+        {
+          "id": "armor-2-empty-capacity-weapon-7",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 2,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 429,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-1-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-1-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-1-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-2-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-2-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-2-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-3-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-3-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-3-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-4-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-4-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-4-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-5-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-5-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-5-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-6-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-6-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-6-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-7-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-7-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-7-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-8-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-8-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-8-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-9-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-9-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-9-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-weapon-10-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-10-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-3-weapon-10-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-empty-capacity-weapon-1",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 428,
+          "negative_input": true
+        },
+        {
+          "id": "armor-3-empty-capacity-weapon-7",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 3,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 429,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-1-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-1-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-1-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-2-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-2-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-2-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-3-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-3-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-3-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-4-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-4-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-4-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-5-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-5-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-5-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-6-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-6-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-6-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-7-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-7-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-7-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-8-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-8-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-8-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-9-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-9-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-9-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-weapon-10-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-10-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-4-weapon-10-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-empty-capacity-weapon-1",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 428,
+          "negative_input": true
+        },
+        {
+          "id": "armor-4-empty-capacity-weapon-7",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 4,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 429,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-1-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-1-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-1-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-2-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-2-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-2-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-3-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-3-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-3-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-4-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-4-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-4-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-5-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-5-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-5-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-6-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-6-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-6-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-7-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-7-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-7-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-8-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-8-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-8-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-9-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-9-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-9-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-weapon-10-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-10-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-5-weapon-10-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-empty-capacity-weapon-1",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 428,
+          "negative_input": true
+        },
+        {
+          "id": "armor-5-empty-capacity-weapon-7",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 5,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 429,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-1-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-1-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-1-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-2-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-2-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-2-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 2,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-3-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-3-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-3-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 3,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-4-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-4-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-4-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 4,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-5-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-5-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-5-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 5,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-6-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-6-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-6-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 6,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-7-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 410,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-7-replace-extra",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 2
+          },
+          "source_line": 413,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-7-extra-access-absent",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 0
+            },
+            "slots_kind": [
+              0,
+              0,
+              5,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 415,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-8-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-8-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-8-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 8,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-9-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-9-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-9-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 9,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-weapon-10-empty",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 0
+          },
+          "source_line": 419,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-10-first-common-occupied",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": 1
+          },
+          "source_line": 421,
+          "negative_input": false
+        },
+        {
+          "id": "armor-6-weapon-10-common-full",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 10,
+            "matrix": {
+              "cnt": 3,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              1,
+              10,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 423,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-empty-capacity-weapon-1",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 1,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 428,
+          "negative_input": true
+        },
+        {
+          "id": "armor-6-empty-capacity-weapon-7",
+          "call": "CheckWeaponLegality(slots, weapon, armor)",
+          "inputs": {
+            "armor": 6,
+            "weapon": 7,
+            "matrix": {
+              "cnt": 0,
+              "common": 2,
+              "extra": 1,
+              "list2_access_invert": 80
+            },
+            "slots_kind": [
+              0,
+              0,
+              0,
+              0,
+              0
+            ]
+          },
+          "asserted": {
+            "selected_slot": -1
+          },
+          "source_line": 429,
+          "negative_input": true
+        },
+        {
+          "id": "selection-side-effects",
+          "call": "World::expect; GetItemsCnt",
+          "inputs": {},
+          "asserted": {
+            "balances": [
+              100,
+              200,
+              300,
+              400
+            ],
+            "items": 0
+          },
+          "source_line": 431,
+          "negative_input": false
+        }
+      ],
+      "forbidden_effects_actively_asserted": [
+        "Occupied common slots and missing compatible/available slots reject with -1.",
+        "Extra slot may replace its existing mortar.",
+        "Complete selection loop leaves balances unchanged and queue empty."
+      ],
+      "not_asserted": [
+        "Synthetic matrices are supplied for each armor; this does not assert real asset attachment matrices, all weapon mixes or native construction behavior.",
+        "No RNG, queue insertion, resource debit or physical combat behavior is asserted."
+      ],
+      "float_bit_expectations": [],
+      "explicit_rng_seed_mode_draw_assertions": false,
+      "clock_policy": "No Session, Takt, LogicTakt or TickTimer call in this selected case. Ordered direct component calls are retained."
+    }
+  ],
+  "excluded": [
+    {
+      "case": "game.production.neutralization",
+      "reason": "TickTimer(99) before direct neutralization/deletion; borderline ordered component-timed family needs separate per-family disposition."
+    },
+    {
+      "case": "game.production.turret_progress",
+      "reason": "Explicit 25/10/89/1 ms component timer progress; excluded, not static price/refund evidence."
+    },
+    {
+      "case": "game.production.income_ticks",
+      "reason": "Explicit LogicTakt intervals 99/1/250/99/1/100 ms; excluded component-timed family."
+    },
+    {
+      "cases": [
+        "game.production.income",
+        "game.production.reinforcement_gates",
+        "game.production.reinforcement_disabled",
+        "game.production.reinforcement_scaling"
+      ],
+      "reason": "Other static/report/request-clock predicates outside this requested six-case price/slot/capacity/refund inventory."
+    },
+    {
+      "scope": "All production_scenario_tests.cpp journeys",
+      "reason": "Temporal journeys require separate complete observations and acceptance; direct predicates do not replace them."
+    }
+  ],
+  "source_identities": [
+    {
+      "path": "tests/production_queue_tests.cpp",
+      "git_blob": "bea66d989de38570ff8bb3c89f086efb4a415096",
+      "git_content_sha256": "00de8439321d655df8b6287be3ce94bf0d133ece136b1c813ab85a500d780fe7"
+    },
+    {
+      "path": "tests/CMakeLists.txt",
+      "git_blob": "ea9d0fb9a36453aaaa06ea5f9853cb95ebfc38d4",
+      "git_content_sha256": "f309ed34f1e3b107158873429913762cf5b040e4966b1ac51cfd9518626a185c"
+    },
+    {
+      "path": "tests/command_world.hpp",
+      "git_blob": "1a735b9d754be5fc38858f59ea271d44848d33ea",
+      "git_content_sha256": "5535c11521ba7097b4c2d208dc0298ec14d5455dcd7b0b4c5acaacdc57cd9067"
+    },
+    {
+      "path": "tests/test_support.hpp",
+      "git_blob": "940580a5339aae04f0de7d26653b4e3ed677e64c",
+      "git_content_sha256": "53681fff37f0c398a3f8f60134a61ff3a122b2b423166c5c65773aaac8b27e05"
+    },
+    {
+      "path": "MatrixGame/src/MatrixConfig.hpp",
+      "git_blob": "9128e3d57480e9baeaae1de51ceb6ee88dab2cee",
+      "git_content_sha256": "8e512b18a0738a6d34e3c25dd87f26dfc54fa477efeb9acf484e1d9d89b70a19"
+    },
+    {
+      "path": "MatrixGame/src/MatrixObjectBuilding.hpp",
+      "git_blob": "da96d23c9c60f85534b4713acad61f635f5aaa47",
+      "git_content_sha256": "7d34057d79e62c1fd30a09edd53fefc1ff05362e113c558fc7cd75480bb3d3b4"
+    },
+    {
+      "path": "MatrixGame/src/MatrixObjectBuilding.cpp",
+      "git_blob": "e36a7f4204ae38735a9e53679205daf027abb355",
+      "git_content_sha256": "61275c1316d8e848a739a8ecb2faed1414c5ade280472d4cc098e3da974a4ee1"
+    },
+    {
+      "path": "MatrixGame/src/Interface/CConstructor.cpp",
+      "git_blob": "3689c69de2d83411452d4fe4ed6d6625a460cb36",
+      "git_content_sha256": "9985364d7c1127683bff32238cbb0c78da25352e2a4f2d61745fe3d04f86d7fa"
+    },
+    {
+      "path": "MatrixGame/src/MatrixSide.hpp",
+      "git_blob": "e04f5f6a260930b3adea1ab15e7d4da2be83ec40",
+      "git_content_sha256": "25fbc6926fbf216e02daa7b30710b1d5261ba96dbac3e41542cfa7c208b3eba5"
+    },
+    {
+      "path": "CMakeLists.txt",
+      "git_blob": "d79ba6d7ef5f79a4256ff3d9c109febe14162366",
+      "git_content_sha256": "8f0d8c0724a3d0d7bfb7b19b5677d29d6c2d9750d033dd521ad406d71ff5c865"
+    },
+    {
+      "path": "MatrixGame/CMakeLists.txt",
+      "git_blob": "3b167756b0fa55bccd6973048b3a942cb79d3adf",
+      "git_content_sha256": "373e8274809688c7b84156d603489236fca7dad79038ce1f953d26875cb1a009"
+    },
+    {
+      "path": "MatrixLib/Base/CHeap.hpp",
+      "git_blob": "abc48d81af1dadc411f27345ce97fc1e76138edb",
+      "git_content_sha256": "fb6fcb64d4bd8254689fe46bb9d64a1407050a92c6a7ec2820493b34692e6ad8"
+    }
+  ],
+  "missing_execution_evidence": [
+    "Selected final integration/reference revision and profile acceptance",
+    "Actual producer PE/architecture/runtime hashes",
+    "Actual compiler/tool/dependency versions and CMake compile/cache artifacts",
+    "Compiled source identity for this console executable (no Session header emitted)",
+    "Effective per-run synthetic input identity paired with process artifacts",
+    "Per-case process exit and JUnit tied to exact binary/profile",
+    "RNG/FP state if required by approved profile; no measurements inferred",
+    "Meaningful deliberate assertion/failure controls if required for accepted static evidence; not executed here",
+    "Chosen same-profile comparison/reference/tier disposition; no tolerance or native waiver"
+  ]
+}

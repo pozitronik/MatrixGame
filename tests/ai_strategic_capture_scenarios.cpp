@@ -54,7 +54,7 @@ CMatrixBuilding *building(int owner, EBuildingType kind, float x, float y) {
 
 struct ReleaseCore { void operator()(SObjectCore *core) const { core->Release(); } };
 using Core = std::unique_ptr<SObjectCore, ReleaseCore>;
-enum class Loss { None, Objective, Home };
+enum class Loss { None, Objective, Home, Member };
 
 struct Journey {
     std::vector<std::string> frames;
@@ -63,6 +63,10 @@ struct Journey {
     int primary_owned = -1;
     int backup_owned = -1;
     int replacement = -1;
+    EntityId retired_member = 0;
+    int member_recount = -1;
+    int survivor_capture = -1;
+    int survivor_crossed = -1;
 };
 
 Journey capture_journey(random::Mode mode, int step, Loss loss) {
@@ -107,7 +111,7 @@ Journey capture_journey(random::Mode mode, int step, Loss loss) {
         robot->DelLT(); robot->AddLT();
     }
     MG_CHECK(CMatrixMapStatic::GetFirstLogic() == home);
-    std::cout << session.metadata("strategic-capture-journey-v1") << std::endl;
+    std::cout << session.metadata("strategic-capture-journey-v2") << std::endl;
     std::cout << "variant=" << int(loss) << " loss_time_ms=6000 horizon_ms=48000\n";
     Journey result;
     result.frames.reserve(profile.max_frames);
@@ -116,6 +120,8 @@ Journey capture_journey(random::Mode mode, int step, Loss loss) {
     bool forward = false, capture = false, crossed = false, defence = false;
     int first_backup_order = -1;
     int first_capture_action = -1;
+    Core member_core;
+    int retired_team = -1, retired_group = -1;
     while (session.frame() < profile.max_frames) {
         if (session.time() == 6000) {
             int assigned = 0;
@@ -129,6 +135,35 @@ Journey capture_journey(random::Mode mode, int step, Loss loss) {
             MG_CHECK(result.primary_order > 0 && result.primary_order <= first_capture_action);
             if (mode == random::Mode::LegacyCRT && step == 10)
                 MG_CHECK(result.primary_order < first_capture_action);
+            if (loss == Loss::Member) {
+                MG_CHECK(assigned == 1);
+                for (size_t i = 0; i < robots.size(); ++i)
+                    if (robots[i]->GetSide() == 2 && !original_capturer[i]) {
+                        MG_CHECK(robots[i]->AsRobot()->GetRegion() == 1);
+                        MG_CHECK(!robots[i]->AsRobot()->GetCaptureFactory());
+                    }
+                for (size_t i = 0; i < robots.size(); ++i) if (original_capturer[i]) {
+                    auto *member = robots[i]->AsRobot();
+                    const auto id = static_cast<EntityId>(i + 1);
+                    MG_CHECK(session.matches(id, member) && member->GetRegion() == 0);
+                    MG_CHECK(member->GetTeam() >= 0 && member->GetTeam() < side.m_TeamCnt);
+                    MG_CHECK(member->GetGroupLogic() >= 0 && member->GetGroupLogic() < MAX_LOGIC_GROUP);
+                    member_core.reset(member->GetCore(DEBUG_CALL_INFO));
+                    result.retired_member = id;
+                    retired_team = member->GetTeam();
+                    retired_group = member->GetGroupLogic();
+                    MG_CHECK(side.m_Team[retired_team].m_RobotCnt == 1);
+                    MG_CHECK(side.m_LogicGroup[retired_group].RobotsCnt() == 1);
+                    std::cout << "member-loss id=" << id << " team=" << member->GetTeam()
+                              << " group=" << member->GetGroupLogic() << " capture=primary position="
+                              << member->m_PosX << ',' << member->m_PosY << '\n';
+                    MG_CHECK(session.remove(id));
+                    MG_CHECK(!member_core->m_Object && !session.robot(id).alive);
+                    robots[i] = nullptr;
+                    break;
+                }
+                MG_CHECK(result.retired_member != 0);
+            }
             if (loss == Loss::Objective) map.StaticDelete(primary);
             if (loss == Loss::Home) map.StaticDelete(home);
             MG_CHECK(bool(primary_core->m_Object) == (loss != Loss::Objective));
@@ -147,7 +182,18 @@ Journey capture_journey(random::Mode mode, int step, Loss loss) {
             MG_CHECK(!object->IsCannon());
             if (object->IsRobot()) ++live_robots;
         }
-        MG_CHECK(live_robots == 4 && backup_core->m_Object == backup);
+        const bool member_removed = loss == Loss::Member && session.time() > 6000;
+        MG_CHECK(live_robots == (member_removed ? 3 : 4) && backup_core->m_Object == backup);
+        if (member_removed) {
+            MG_CHECK(!member_core->m_Object && !session.robot(result.retired_member).alive);
+            int team_members = 0;
+            for (int t = 0; t < side.m_TeamCnt; ++t) {
+                MG_CHECK(side.m_Team[t].m_RobotCnt >= 0);
+                team_members += side.m_Team[t].m_RobotCnt;
+            }
+            if (team_members == 1 && result.member_recount < 0) result.member_recount = session.time();
+            if (session.time() >= 6500) MG_CHECK(team_members == 1);
+        }
         for (int resource = 0; resource < MAX_RESOURCES; ++resource)
             MG_CHECK(side.GetResourcesAmount(static_cast<ERes>(resource)) == 0);
         if (home_core->m_Object) MG_CHECK(home->m_BS.GetItemsCnt() == 0);
@@ -184,13 +230,19 @@ Journey capture_journey(random::Mode mode, int step, Loss loss) {
         }
         decision << "],\"members\":[";
         for (size_t i = 0; i < robots.size(); ++i) {
+            if (i) decision << ',';
+            if (!robots[i]) {
+                MG_CHECK(member_removed && result.retired_member == static_cast<EntityId>(i + 1));
+                MG_CHECK(!session.robot(result.retired_member).alive);
+                decision << "null";
+                continue;
+            }
             auto *robot = robots[i]->AsRobot();
             MG_CHECK(session.matches(static_cast<EntityId>(i + 1), robot));
             MG_CHECK(session.robot(static_cast<EntityId>(i + 1)).alive);
             MG_CHECK(std::isfinite(robot->m_PosX) && std::isfinite(robot->m_PosY));
             MG_CHECK(robot->m_PosX >= 0 && robot->m_PosX < 640 && robot->m_PosY >= 0 && robot->m_PosY < 640);
             const int group = robot->GetGroupLogic();
-            if (i) decision << ',';
             auto *target = robot->GetCaptureFactory();
             if (session.time() >= 45000) MG_CHECK(target == nullptr);
             const int target_id = !target ? 0 : target == primary_core->m_Object ? 1 :
@@ -209,10 +261,19 @@ Journey capture_journey(random::Mode mode, int step, Loss loss) {
                 } else {
                     ungrouped_since[i] = 0;
                     const auto &logic = side.m_LogicGroup[group];
+                    if (member_removed && session.time() >= 6500) {
+                        MG_CHECK(logic.RobotsCnt() == 1 && logic.m_Team == robot->GetTeam());
+                        if (robot->GetTeam() != retired_team) MG_CHECK(side.m_Team[retired_team].m_RobotCnt == 0);
+                        if (group != retired_group) MG_CHECK(side.m_LogicGroup[retired_group].RobotsCnt() == 0);
+                        if (target == primary && result.survivor_capture < 0)
+                            result.survivor_capture = session.time();
+                    }
                     decision << ',' << logic.RobotsCnt() << ',' << logic.m_Team << ','
                              << int(logic.m_Action.m_Type) << ',' << logic.m_Action.m_Region;
                 }
                 crossed |= robot->GetRegion() == 0;
+                if (member_removed && robot->GetRegion() == 0 && result.survivor_crossed < 0)
+                    result.survivor_crossed = session.time();
                 if (target == primary_core->m_Object && target && result.primary_order < 0)
                     result.primary_order = session.time();
                 if (target == backup && first_backup_order < 0) first_backup_order = session.time();
@@ -257,10 +318,18 @@ Journey capture_journey(random::Mode mode, int step, Loss loss) {
     } else {
         MG_CHECK(result.primary_paint > 6000 && result.primary_owned > result.primary_paint);
     }
+    if (loss == Loss::Member) {
+        MG_CHECK(result.retired_member != 0 && result.member_recount > 6000 && result.member_recount <= 6500);
+        MG_CHECK(first_backup_order > 6000 && result.backup_owned <= result.survivor_capture);
+        MG_CHECK(result.survivor_capture >= 6500 && result.survivor_capture < result.primary_paint);
+        MG_CHECK(result.survivor_crossed > 6000 && result.survivor_crossed < result.backup_owned);
+    }
     std::cout << "milestones capture_action=" << first_capture_action << " primary_order=" << result.primary_order
               << " primary_paint=" << result.primary_paint << " primary_owned=" << result.primary_owned
               << " backup_order=" << first_backup_order << " backup_owned=" << result.backup_owned
-              << " replacement=" << result.replacement << '\n';
+              << " replacement=" << result.replacement << " retired_member=" << result.retired_member
+              << " member_recount=" << result.member_recount << " survivor_crossed=" << result.survivor_crossed
+              << " survivor_capture=" << result.survivor_capture << '\n';
     return result;
 }
 template<random::Mode Mode, int Step, Loss Reason>
@@ -268,11 +337,17 @@ void run() {
     const auto first = capture_journey(Mode, Step, Reason);
     const auto replay = capture_journey(Mode, Step, Reason);
     MG_CHECK(first.frames == replay.frames);
+    MG_CHECK(first.retired_member == replay.retired_member && first.member_recount == replay.member_recount);
+    MG_CHECK(first.survivor_capture == replay.survivor_capture && first.survivor_crossed == replay.survivor_crossed);
     if constexpr (Reason != Loss::None) {
         const auto control = capture_journey(Mode, Step, Loss::None);
         const size_t common_frames = 6000 / Step;
         MG_CHECK(std::equal(first.frames.begin(), first.frames.begin() + common_frames, control.frames.begin()));
         MG_CHECK(first.frames.back() != control.frames.back());
+        if constexpr (Reason == Loss::Member) {
+            MG_CHECK(first.primary_paint > control.primary_paint);
+            MG_CHECK(first.primary_owned > control.primary_owned);
+        }
         if constexpr (Reason == Loss::Home) {
             MG_CHECK(first.primary_paint == control.primary_paint);
             MG_CHECK(first.primary_owned == control.primary_owned);
@@ -292,15 +367,19 @@ constexpr tests::Case cases[]{
     {"game.ai.strategic_capture.control.park_miller10", run<random::Mode::ParkMiller, 10, Loss::None>},
     {"game.ai.strategic_capture.objective_loss.park_miller10", run<random::Mode::ParkMiller, 10, Loss::Objective>},
     {"game.ai.strategic_capture.home_loss.park_miller10", run<random::Mode::ParkMiller, 10, Loss::Home>},
+    {"game.ai.strategic_capture.member_loss.park_miller10", run<random::Mode::ParkMiller, 10, Loss::Member>},
     {"game.ai.strategic_capture.control.park_miller16", run<random::Mode::ParkMiller, 16, Loss::None>},
     {"game.ai.strategic_capture.objective_loss.park_miller16", run<random::Mode::ParkMiller, 16, Loss::Objective>},
     {"game.ai.strategic_capture.home_loss.park_miller16", run<random::Mode::ParkMiller, 16, Loss::Home>},
+    {"game.ai.strategic_capture.member_loss.park_miller16", run<random::Mode::ParkMiller, 16, Loss::Member>},
     {"game.ai.strategic_capture.control.legacy10", run<random::Mode::LegacyCRT, 10, Loss::None>},
     {"game.ai.strategic_capture.objective_loss.legacy10", run<random::Mode::LegacyCRT, 10, Loss::Objective>},
     {"game.ai.strategic_capture.home_loss.legacy10", run<random::Mode::LegacyCRT, 10, Loss::Home>},
+    {"game.ai.strategic_capture.member_loss.legacy10", run<random::Mode::LegacyCRT, 10, Loss::Member>},
     {"game.ai.strategic_capture.control.legacy16", run<random::Mode::LegacyCRT, 16, Loss::None>},
     {"game.ai.strategic_capture.objective_loss.legacy16", run<random::Mode::LegacyCRT, 16, Loss::Objective>},
     {"game.ai.strategic_capture.home_loss.legacy16", run<random::Mode::LegacyCRT, 16, Loss::Home>},
+    {"game.ai.strategic_capture.member_loss.legacy16", run<random::Mode::LegacyCRT, 16, Loss::Member>},
     {"game.ai.strategic_capture.rng_sensitivity.step10", rng_sensitivity<10>},
     {"game.ai.strategic_capture.rng_sensitivity.step16", rng_sensitivity<16>},
 };

@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "capture_completion_recording.hpp"
 #include "battle_building.hpp"
 #include "battle_combat_geometry.hpp"
 #include "battle_material.hpp"
@@ -940,12 +941,16 @@ CMatrixBuilding *register_building(int owner, EBuildingType kind, float x, float
     return building;
 }
 enum class CaptureRoute { Context, Keyboard, Button };
-void submit_capture(CMatrixBuilding *building, CaptureRoute route) {
+void submit_capture(CMatrixBuilding *building, CaptureRoute route,
+                    tests::capture_completion::Recording *recording = nullptr) {
     g_MatrixMap->m_TraceStopObj = building;
     g_MatrixMap->m_TraceStopPos = building->GetGeoCenter();
     if (route == CaptureRoute::Context) {
+        const auto before = recording ? recording->input() : tests::capture_completion::Input{};
         side().OnRButtonDown(CPoint(0, 0));
+        if (recording) recording->command("capture-context", before);
     } else {
+        const auto before = recording ? recording->input() : tests::capture_completion::Input{};
         if (route == CaptureRoute::Keyboard) {
             CFormMatrixGame form;
             press(form, 'K');
@@ -955,10 +960,14 @@ void submit_capture(CMatrixBuilding *building, CaptureRoute route) {
             button->m_strName = IF_ORDER_CAPTURE;
             g_IFaceList->PlayerAction(button.get());
         }
+        if (recording) recording->command(route == CaptureRoute::Keyboard ? "capture-key" : "capture-button",
+                                          before, route == CaptureRoute::Button ? IF_ORDER_CAPTURE : nullptr);
         MG_CHECK((g_IFaceList->m_IfListFlags & (PREORDER_CAPTURE | ORDERING_MODE)) ==
                  (PREORDER_CAPTURE | ORDERING_MODE));
+        const auto confirm = recording ? recording->input() : tests::capture_completion::Input{};
         side().OnLButtonDown(CPoint(0, 0));
         MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_CAPTURE | ORDERING_MODE));
+        if (recording) recording->command("capture-confirm", confirm);
     }
 }
 void registered_capture_profile(int owner, CaptureRoute route = CaptureRoute::Context) {
@@ -967,7 +976,10 @@ void registered_capture_profile(int owner, CaptureRoute route = CaptureRoute::Co
         std::cout << session.metadata("capture-route-completion-v1") << " route=" << int(route) << '\n';
         auto *building = register_building(owner, BUILDING_TITAN, 160, 200);
         auto *robot = side().GetCurGroup()->GetObjectByN(0)->AsRobot();
-        submit_capture(building, route);
+        tests::capture_completion::Recording recording(session, *building, owner, int(route), mode, step);
+        recording.state("ready");
+        submit_capture(building, route, &recording);
+        recording.state("command");
         const auto &group = side().m_PlayerGroup[robot->GetGroupLogic()];
         MG_CHECK(group.Order() == mpo_Capture && group.m_Obj == building);
         int assigned = 0;
@@ -980,6 +992,7 @@ void registered_capture_profile(int owner, CaptureRoute route = CaptureRoute::Co
             if (!first_paint && building->m_TrueColor.m_ColoredCnt != (owner ? MAX_ZAHVAT_POINTS : 0)) first_paint = session.time();
             if (owner && !neutralized && building->GetSide() == 0) neutralized = session.time();
             if (building->GetSide() == PLAYER_SIDE) completed = session.time();
+            recording.state("tick", {first_paint, neutralized, completed});
         }
         std::cout << "registered capture mode=" << int(mode) << " step=" << step
                   << " route=" << int(route) << " owner=" << owner << " progress=" << first_paint << " neutralized=" << neutralized << " completed=" << completed << '\n';
@@ -992,13 +1005,24 @@ void registered_capture_profile(int owner, CaptureRoute route = CaptureRoute::Co
         MG_CHECK(building->m_TrueColor.m_ColoredCnt == MAX_ZAHVAT_POINTS);
         MG_CHECK(building->m_TrueColor.m_Color == 0xff00ff00);
         MG_CHECK(!g_MatrixMap->IsPaused() && side().GetStatus() == SS_ACTIVE);
-        for (int i = 0; i < 100; ++i) session.advance();
+        for (int i = 0; i < 100; ++i) {
+            session.advance();
+            recording.state("tail", {first_paint, neutralized, completed});
+        }
         MG_CHECK(building->GetSide() == PLAYER_SIDE);
         MG_CHECK(!robot->FindOrderLikeThat(ROT_CAPTURE_FACTORY));
+        recording.state("final", {first_paint, neutralized, completed});
+        recording.finish();
     }
 }
-void registered_capture() { registered_capture_profile(0); }
-void registered_enemy_capture() { registered_capture_profile(2); }
+void registered_capture() {
+    tests::capture_completion::invalidate(tests::capture_completion::Caller::NeutralFactory);
+    registered_capture_profile(0);
+}
+void registered_enemy_capture() {
+    tests::capture_completion::invalidate(tests::capture_completion::Caller::EnemyFactory);
+    registered_capture_profile(2);
+}
 void capture_move_reassignment() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         Session session({mode, 79, step, 6000, false});
@@ -1239,7 +1263,10 @@ void registered_base_capture_profile(CaptureRoute route) {
             if (accepted) queued.release();
             MG_CHECK(accepted);
         }
-        submit_capture(building, route);
+        tests::capture_completion::Recording recording(session, *building, owner, int(route), mode, step);
+        recording.state("ready");
+        submit_capture(building, route, &recording);
+        recording.state("command");
         EntityId capturer = 0;
         for (int i = 0; i < 2; ++i) {
             auto *robot = side().GetCurGroup()->GetObjectByN(i)->AsRobot();
@@ -1266,6 +1293,7 @@ void registered_base_capture_profile(CaptureRoute route) {
                 for (int resource = 0; resource < MAX_RESOURCES; ++resource)
                     MG_CHECK(enemy.GetResourcesAmount(static_cast<ERes>(resource)) == 100);
             }
+            recording.state("tick", {opened, closing, captured});
         }
         std::cout << "base capture mode=" << int(mode) << " step=" << step << " route=" << int(route) << " owner=" << owner
                   << " opened=" << opened << " closing=" << closing << " captured=" << captured << '\n';
@@ -1281,17 +1309,27 @@ void registered_base_capture_profile(CaptureRoute route) {
             MG_CHECK(side().GetResourcesAmount(static_cast<ERes>(resource)) == 200);
         }
         MG_CHECK(!g_MatrixMap->IsPaused() && side().GetStatus() == SS_ACTIVE);
-        for (int i = 0; i < 100; ++i) session.advance();
+        for (int i = 0; i < 100; ++i) {
+            session.advance();
+            recording.state("tail", {opened, closing, captured});
+        }
         MG_CHECK(building->GetSide() == PLAYER_SIDE && building->m_State == BASE_CLOSED);
+        recording.state("final", {opened, closing, captured});
+        recording.finish();
     }
 }
-void registered_base_capture() { registered_base_capture_profile(CaptureRoute::Context); }
+void registered_base_capture() {
+    tests::capture_completion::invalidate(tests::capture_completion::Caller::Base);
+    registered_base_capture_profile(CaptureRoute::Context);
+}
 void capture_keyboard_completion() {
+    tests::capture_completion::invalidate(tests::capture_completion::Caller::Keyboard);
     registered_capture_profile(0, CaptureRoute::Keyboard);
     registered_capture_profile(2, CaptureRoute::Keyboard);
     registered_base_capture_profile(CaptureRoute::Keyboard);
 }
 void capture_button_completion() {
+    tests::capture_completion::invalidate(tests::capture_completion::Caller::Button);
     registered_capture_profile(0, CaptureRoute::Button);
     registered_capture_profile(2, CaptureRoute::Button);
     registered_base_capture_profile(CaptureRoute::Button);
@@ -4370,10 +4408,18 @@ int main(int argc, char **argv) {
     Base::CMain::BaseInit();
     SetUnhandledExceptionFilter(nullptr);
     std::set_terminate([] { std::abort(); });
-    const int result = tests::run(argc, argv, cases);
+    int result = tests::run(argc, argv, cases);
 #ifdef MEM_SPY_ENABLE
     if (Base::SMemHeader::first_mem_block != nullptr) return EXIT_FAILURE;
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            tests::capture_completion::complete_after_cleanup();
+        } catch (const std::exception &error) {
+            std::cerr << "Capture recording completion failed: " << error.what() << '\n';
+            result = EXIT_FAILURE;
+        }
+    }
     return result;
 }

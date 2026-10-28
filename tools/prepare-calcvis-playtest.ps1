@@ -30,12 +30,12 @@ if ($VerifyOnly) {
         Assert-RegularFile $path
         if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $file.SHA256) { throw "Prepared file changed: $($file.Path)" }
     }
-    $writer = Join-Path $destinationRoot 'CalcVisExport.exe'
-    & $writer --verify-calcvis $record.Profile $destinationRoot $record.ConfigurationMode
-    if ($LASTEXITCODE -ne 0) { throw 'Controlled CalcVis input verification failed.' }
     foreach ($optional in @('sound.pkg','voices.pkg','music.pkg')) {
         if (Test-Path -LiteralPath (Join-Path $destinationRoot "DATA/$optional")) { throw 'The controlled profile must remain silent.' }
     }
+    $writer = Join-Path $destinationRoot 'CalcVisExport.exe'
+    & $writer --verify-calcvis $record.Profile $destinationRoot $record.ConfigurationMode
+    if ($LASTEXITCODE -ne 0) { throw 'Controlled CalcVis input verification failed.' }
     Write-Output 'Prepared CalcVis files and controlled input verified. No game launched.'
     return
 }
@@ -92,7 +92,9 @@ while ($pending.Count) {
 }
 $revision = git -C $repoRoot rev-parse HEAD
 if ($LASTEXITCODE -ne 0) { throw 'Cannot identify source revision.' }
-$record = [ordered]@{Version=1; SourceRevision=$revision; Configuration=$Configuration; ConfigurationMode=$ConfigurationMode; Profile=$profile; Files=@()}
+$trackedStatus = @(git -C $repoRoot status --porcelain --untracked-files=no)
+if ($LASTEXITCODE -ne 0) { throw 'Cannot identify tracked source state.' }
+$record = [ordered]@{Version=1; SourceRevision=$revision; TrackedSourceDirty=($trackedStatus.Count -gt 0); Configuration=$Configuration; ConfigurationMode=$ConfigurationMode; Profile=$profile; Files=@()}
 $prefix = $destinationRoot.TrimEnd([char[]]'\/') + [IO.Path]::DirectorySeparatorChar
 $record.Files = @(Get-ChildItem -LiteralPath $destinationRoot -Recurse -File | Sort-Object FullName | ForEach-Object {
     Assert-RegularFile $_.FullName

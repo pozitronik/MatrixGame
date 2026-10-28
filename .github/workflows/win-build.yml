@@ -35,7 +35,8 @@ jobs:
   repository:
     name: Repository checks
     runs-on: windows-2022
-    timeout-minutes: 5
+    # The integrated tool and recording-validator suite exceeds five minutes.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -184,13 +185,33 @@ jobs:
           if ('${{ matrix.cheats }}' -eq 'true') { $testParameters.Cheats = $true }
           if ('${{ matrix.trace }}' -eq 'true') { $testParameters.Trace = $true }
           ./tools/test.ps1 @testParameters
+      - name: Validate bomb-escape recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $sourceRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
+          python -B tests/check_bomb_escape_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats && 'ON' || 'OFF' }}' --trace '${{ matrix.trace && 'ON' || 'OFF' }}' --revision $sourceRevision
+          if ($LASTEXITCODE -ne 0) { throw 'Bomb-escape producer/parser validation failed.' }
       - name: Validate real auto-order recordings
         shell: pwsh
         run: |
           $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
           if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
-          python -B tests/check_player_auto_traces.py "build/$buildName/tests/scenario-traces"
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify auto-order recording revision.' }
+          python -B tests/check_player_auto_traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}'
           if ($LASTEXITCODE -ne 0) { throw 'Auto-order trace validation failed.' }
+      - name: Validate strategic-production recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $sourceRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
+          python -B tools/check-strategic-production-recordings.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats && 'true' || 'false' }}' --trace '${{ matrix.trace && 'true' || 'false' }}' --revision $sourceRevision
+          if ($LASTEXITCODE -ne 0) { throw 'Strategic-production recording validation failed.' }
       - name: Upload engine test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -201,6 +222,15 @@ jobs:
           path: |
             build/**/test-results.xml
             build/**/scenario-traces/*.jsonl
+      - name: Validate complete manual-control recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify manual-control source revision.' }
+          python -B tools/check-manual-control-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Manual-control recording validation failed.' }
       - name: Validate complete mixed-selection recordings
         shell: pwsh
         run: |
@@ -212,6 +242,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot identify selection recording revision.' }
           python -B tools/check-selection-traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
           if ($LASTEXITCODE -ne 0) { throw 'Mixed-selection recording validation failed.' }
+      - name: Validate complete command-lifecycle recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $revision) { throw 'Cannot identify command recording revision.' }
+          python -B tests/check_command_lifecycle_traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Command-lifecycle recording validation failed.' }
       - name: Validate complete N5 navigation recordings
         shell: pwsh
         run: |
@@ -221,6 +260,15 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $sourceRevision) { throw 'Cannot identify the N5 producer source revision.' }
           python -B tests/check_navigation_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --revision $sourceRevision
           if ($LASTEXITCODE -ne 0) { throw 'N5 producer/parser validation failed.' }
+      - name: Validate physical carrier recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify carrier recording revision.' }
+          python -B tools/check-carrier-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Physical carrier recording validation failed.' }
       - name: Validate existing armed-combat recordings
         shell: pwsh
         run: |
@@ -230,6 +278,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Cannot identify combat recording revision.' }
           python -B tools/check-combat-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}'
           if ($LASTEXITCODE -ne 0) { throw 'Armed-combat recording validation failed.' }
+      - name: Validate complete target-lifecycle recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify target-lifecycle recording revision.' }
+          python -B tests/check_player_target_traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Target-lifecycle recording validation failed.' }
       - name: Validate complete fire-feedback recordings
         shell: pwsh
         run: |
@@ -239,10 +296,28 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
           python -B tests/check_fire_feedback_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --revision $sourceRevision
           if ($LASTEXITCODE -ne 0) { throw 'Fire-feedback producer/parser validation failed.' }
+      - name: Validate competing-repair recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $sourceRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
+          python -B tests/check_competing_repair_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats && 'ON' || 'OFF' }}' --trace '${{ matrix.trace && 'ON' || 'OFF' }}' --revision $sourceRevision
+          if ($LASTEXITCODE -ne 0) { throw 'Competing-repair producer/parser validation failed.' }
       - name: Prepare the minimal standalone package
         if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         shell: pwsh
         run: ./tools/package.ps1
+      - name: Validate regional-road journey recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify road recording revision.' }
+          python -B tools/check-road-recordings.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'Regional-road recording validation failed.' }
       - name: Upload standalone package and corresponding source
         if: matrix.compiler == 'MinGW' && matrix.configuration == 'Release' && matrix.target == 'EXE' && !matrix.cheats && !matrix.trace
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -253,6 +328,15 @@ jobs:
           path: |
             build/packages/*.zip
             build/packages/*.sha256
+      - name: Validate successful War detour recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $revision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot identify War detour recording revision.' }
+          python -B tests/check_war_detour_traces.py "build/$buildName/tests/scenario-traces" --revision $revision --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats }}' --trace '${{ matrix.trace && 'true' || 'false' }}'
+          if ($LASTEXITCODE -ne 0) { throw 'War detour recording validation failed.' }
       - name: Upload compiled binaries and text configuration
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -265,6 +349,15 @@ jobs:
             build/**/MatrixGame.pdb
             build/**/MatrixGame/**/*.dll
             build/**/CFG/**/*.txt
+      - name: Validate registered capture recordings
+        shell: pwsh
+        run: |
+          $buildName = '${{ matrix.compiler }}-${{ matrix.configuration }}-${{ matrix.target }}'.ToLowerInvariant()
+          if ('${{ matrix.trace }}' -eq 'true') { $buildName += '-trace' }
+          $sourceRevision = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0 -or -not $sourceRevision -or $sourceRevision -notmatch '^[0-9a-f]{40}$') { throw 'Cannot capture the current source revision.' }
+          python -B tests/check_capture_completion_traces.py "build/$buildName/tests/scenario-traces" --configuration '${{ matrix.configuration }}' --compiler '${{ matrix.compiler }}' --target '${{ matrix.target }}' --cheats '${{ matrix.cheats && 'ON' || 'OFF' }}' --trace '${{ matrix.trace && 'ON' || 'OFF' }}' --revision $sourceRevision
+          if ($LASTEXITCODE -ne 0) { throw 'Capture producer/parser validation failed.' }
 
   coverage:
     name: MinGW Debug coverage

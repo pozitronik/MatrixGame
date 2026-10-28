@@ -30,11 +30,14 @@ std::wstring PathToOutputFiles(const wchar_t *destination) {
     return path.wstring();
 }
 namespace {
-constexpr std::array profiles{L"ordinary", L"reinforcement", L"no-reinforcement", L"win", L"loss", L"fights", L"calcvis-flat", L"calcvis-ridge"};
+constexpr std::array profiles{L"ordinary", L"reinforcement", L"no-reinforcement", L"win", L"loss", L"fights",
+                              L"calcvis-flat", L"calcvis-ridge"};
 bool calcvis(std::wstring_view profile) { return profile == L"calcvis-flat" || profile == L"calcvis-ridge"; }
 bool reinforcement(std::wstring_view profile) { return profile == L"reinforcement" || profile == L"no-reinforcement"; }
 fs::path map_path(std::wstring_view profile) {
-    return fs::path(L"Matrix/Map") / (profile == L"ordinary" ? L"ordinary.cmap" : (calcvis(profile) ? std::wstring(profile)+L".cmap" : L"demo-" + std::wstring(profile) + L".cmap"));
+    if (profile == L"ordinary") return fs::path(L"Matrix/Map/ordinary.cmap");
+    return fs::path(L"Matrix/Map") / (calcvis(profile) ? std::wstring(profile) + L".cmap" :
+                                    L"demo-" + std::wstring(profile) + L".cmap");
 }
 struct Directory {
     fs::path previous = fs::current_path(), root;
@@ -71,7 +74,10 @@ void generate(std::wstring_view profile, bool packed) {
     tests::write_native_session_assets();
     fs::create_directories(L"Matrix/Map");
     const auto map = map_path(profile);
-    if (calcvis(profile)) { tests::write_native_calcvis_map(map,profile == L"calcvis-ridge"); tests::configure_native_calcvis(); }
+    if (calcvis(profile)) {
+        tests::write_native_calcvis_map(map, profile == L"calcvis-ridge");
+        tests::configure_native_calcvis();
+    }
     else if (profile == L"ordinary") tests::write_native_session_map(map);
     else if (reinforcement(profile)) tests::write_native_demo_reinforcement(map, profile == L"reinforcement");
     else if (profile == L"fights") tests::write_native_demo_fights(map);
@@ -193,11 +199,11 @@ void validate(std::wstring_view profile, bool packed, bool staged = false) {
         MG_CHECK(buildings && buildings->GetArrayLength(0) == 0);
     }
     if (calcvis(profile)) {
-        for(const auto &entry:fs::directory_iterator(L"CFG")){
-            const auto name=entry.path().filename().wstring();
-            MG_CHECK(name.rfind(L"robots.dat.",0)!=0);
+        for (const auto &entry : fs::directory_iterator(L"CFG")) {
+            const auto name = entry.path().filename().wstring();
+            MG_CHECK(name.rfind(L"robots.dat.", 0) != 0);
         }
-        tests::validate_native_calcvis(map_path(profile),profile == L"calcvis-ridge");
+        tests::validate_native_calcvis(map_path(profile), profile == L"calcvis-ridge");
         tests::validate_native_calcvis_configuration(data);
     }
     if (!ordinary)
@@ -313,20 +319,66 @@ void export_cli() {
     MG_CHECK(!fs::exists(L"invalid-profile") && !fs::exists(L"invalid-mode") && !fs::exists(L"missing-parent"));
     fixture.close();
 }
-void calcvis_cli() {
-    Directory fixture("calcvis-cli-"+std::to_string(GetCurrentProcessId()));
-    for(const auto *profile : {L"calcvis-flat",L"calcvis-ridge"}) for(const auto *mode : {L"Text",L"Packed"}) {
-        const auto destination=fixture.root/(std::wstring(profile)+L"-"+mode);
-        MG_CHECK(run_cli({L"--export",profile,destination.wstring(),mode})==0);
-        const auto original=bytes(destination/map_path(profile));
-        MG_CHECK(run_cli({L"--verify-calcvis",profile,destination.wstring(),mode})==0);
-        MG_CHECK(bytes(destination/map_path(profile))==original);
-        MG_CHECK(run_cli({L"--verify-calcvis",profile,destination.wstring(),std::wstring_view(mode)==L"Text"?L"Packed":L"Text"})==1);
-        // The verifier rejects a different, otherwise valid all-land map without the controlled camera properties.
-        tests::write_native_session_map(destination/map_path(profile));
-        MG_CHECK(run_cli({L"--verify-calcvis",profile,destination.wstring(),mode})==1);
+void write_bytes(const fs::path &path, std::string_view contents) {
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    MG_CHECK(file.good());
+    file.write(contents.data(), std::streamsize(contents.size()));
+    file.close();
+    MG_CHECK(file.good());
+}
+
+void change_calcvis_camera(const fs::path &destination, bool packed) {
+    const auto config = destination / (packed ? L"parked-text-config/data.txt" : L"CFG/robots/data.txt");
+    CBlockPar data;
+    data.LoadFromTextFile(config.c_str());
+    data.BlockGet(PAR_SOURCE_CAMERA)->ParSetAdd(PAR_SOURCE_CAMERA_MOVESPEED, L"1");
+    data.SaveInTextFile(config.c_str());
+    if (packed) {
+        CBlockPar interface_config;
+        interface_config.LoadFromTextFile((destination / L"parked-text-config/iface.txt").c_str());
+        CStorage archive;
+        archive.StoreBlockPar(L"da", data);
+        archive.StoreBlockPar(L"if", interface_config);
+        archive.Save((destination / L"CFG/robots.dat").c_str(), true);
     }
-    MG_CHECK(run_cli({L"--verify-calcvis",L"ordinary",L"missing",L"Text"})==1);
+}
+
+void calcvis_cli() {
+    Directory fixture("calcvis-cli-" + std::to_string(GetCurrentProcessId()));
+    for (const auto *profile : {L"calcvis-flat", L"calcvis-ridge"}) {
+        for (const auto *mode : {L"Text", L"Packed"}) {
+            const bool packed = std::wstring_view(mode) == L"Packed";
+            const auto destination = fixture.root / (std::wstring(profile) + L"-" + mode);
+            MG_CHECK(run_cli({L"--export", profile, destination.wstring(), mode}) == 0);
+            const auto original = bytes(destination / map_path(profile));
+            MG_CHECK(run_cli({L"--verify-calcvis", profile, destination.wstring(), mode}) == 0);
+            MG_CHECK(bytes(destination / map_path(profile)) == original);
+
+            const auto config = destination / (packed ? L"parked-text-config/data.txt" : L"CFG/robots/data.txt");
+            const auto config_before = bytes(config);
+            const auto packed_path = destination / L"CFG/robots.dat";
+            const auto packed_before = packed ? bytes(packed_path) : std::string{};
+            change_calcvis_camera(destination, packed);
+            MG_CHECK(run_cli({L"--verify-calcvis", profile, destination.wstring(), mode}) == 1);
+            write_bytes(config, config_before);
+            if (packed) write_bytes(packed_path, packed_before);
+
+            const auto backup = destination / L"CFG/robots.dat.bak";
+            write_bytes(backup, "synthetic backup");
+            MG_CHECK(run_cli({L"--verify-calcvis", profile, destination.wstring(), mode}) == 1);
+            MG_CHECK(fs::remove(backup));
+            MG_CHECK(run_cli({L"--verify-calcvis", profile, destination.wstring(), mode}) == 0);
+            MG_CHECK(bytes(config) == config_before && bytes(destination / map_path(profile)) == original);
+            if (packed) MG_CHECK(bytes(packed_path) == packed_before);
+
+            const auto wrong_mode = packed ? L"Text" : L"Packed";
+            MG_CHECK(run_cli({L"--verify-calcvis", profile, destination.wstring(), wrong_mode}) == 1);
+            // Reject a valid all-land map without the controlled camera properties.
+            tests::write_native_session_map(destination / map_path(profile));
+            MG_CHECK(run_cli({L"--verify-calcvis", profile, destination.wstring(), mode}) == 1);
+        }
+    }
+    MG_CHECK(run_cli({L"--verify-calcvis", L"ordinary", L"missing", L"Text"}) == 1);
     MG_CHECK(!fs::exists(L"missing"));
     fixture.close();
 }
@@ -343,16 +395,20 @@ int main(int argc, char **argv) {
                      "Without --export, use a named test or --list. No game is launched.\n";
         result = argc == 1 ? 2 : 0;
     } else if (argc >= 2 && std::strcmp(argv[1], "--verify-calcvis") == 0) {
-        const auto previous=fs::current_path();
+        const auto previous = fs::current_path();
         try {
-            int count=0;auto **wide=CommandLineToArgvW(GetCommandLineW(),&count);MG_CHECK(wide);
-            struct Arguments { wchar_t **value; ~Arguments(){LocalFree(value);} } arguments{wide};
-            MG_CHECK(count==5 && calcvis(wide[2]) && (std::wstring_view(wide[4])==L"Text" || std::wstring_view(wide[4])==L"Packed"));
+            int count = 0;
+            auto **wide = CommandLineToArgvW(GetCommandLineW(), &count);
+            MG_CHECK(wide);
+            struct Arguments { wchar_t **value; ~Arguments() { LocalFree(value); } } arguments{wide};
+            MG_CHECK(count == 5 && calcvis(wide[2]) &&
+                (std::wstring_view(wide[4]) == L"Text" || std::wstring_view(wide[4]) == L"Packed"));
             fs::current_path(fs::absolute(wide[3]));
-            validate(wide[2],std::wstring_view(wide[4])==L"Packed",true);
-            std::cout<<"Controlled CalcVis export verified; no game launched.\n";result=0;
-        } catch(const CException &error){std::wcerr<<error.Info()<<'\n';result=1;}
-        catch(const std::exception &error){std::cerr<<error.what()<<'\n';result=1;}
+            validate(wide[2], std::wstring_view(wide[4]) == L"Packed", true);
+            std::cout << "Controlled CalcVis export verified; no game launched.\n";
+            result = 0;
+        } catch (const CException &error) { std::wcerr << error.Info() << '\n'; result = 1; }
+        catch (const std::exception &error) { std::cerr << error.what() << '\n'; result = 1; }
         fs::current_path(previous);
     } else if (argc >= 2 && std::strcmp(argv[1], "--export") == 0) {
         try {

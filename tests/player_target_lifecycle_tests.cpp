@@ -8,6 +8,7 @@
 #include "Interface/CInterface.h"
 #include "Interface/CIFaceElement.h"
 #include "input.hpp"
+#include "player_target_recording.hpp"
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -45,8 +46,10 @@ void ground(float x, float y) {
 }
 enum class Ending { Complete, Remove, Stop };
 std::vector<std::string> repair_run(random::Mode mode, int step, bool button, Ending ending) {
+    tests::target_recording::Recording recording({mode, step, button, -1, int(ending)});
     tests::BattleCombatAssets assets;
     Session session({mode, 80, step, 1000, false, true});
+    recording.header(session);
     std::cout << session.metadata("repair-target-lifecycle-v1") << " button=" << button
               << " ending=" << int(ending) << std::endl;
     assets.install();
@@ -63,31 +66,65 @@ std::vector<std::string> repair_run(random::Mode mode, int step, bool button, En
     patient->SetMaxSpeed(0);
     MG_CHECK(!patient->Damage(WEAPON_GUN, patient->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
     MG_CHECK(patient->GetHitPoint() == 3 && side().GetCurGroup()->GetRepairsCnt() == 1);
-    const auto before = session.snapshot();
-    action(form, button, 'R', IF_ORDER_REPAIR);
-    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR));
-    press(form, 'X');
-    click(patient);
-    MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR | ORDERING_MODE));
-    MG_CHECK(session.snapshot() == before);
-    action(form, button, 'R', IF_ORDER_REPAIR);
-    ground(500, 300);
-    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR));
-    MG_CHECK(session.snapshot() == before);
-    click(robot(session, 3));
-    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR));
-    MG_CHECK(session.snapshot() == before);
-    click(patient);
-    MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR | ORDERING_MODE));
-    MG_CHECK(session.robot(1).order == mpo_Repair && session.robot(1).target == 2);
     int interrupted_at = 0;
     int heals = 0;
     float health = 3;
+    tests::target_recording::Observation observed;
+    observed.actor = healer;
+    observed.peer_id = 2;
+    const auto record = [&](const char *phase, std::string_view state = {}) {
+        observed.peer = patient;
+        observed.heals = heals;
+        observed.interrupted_at = interrupted_at;
+        recording.snapshot(session, phase, observed, state);
+    };
+    const auto before = session.snapshot();
+    record("initial", before);
+    auto command_draws = random::draw_count();
+    action(form, button, 'R', IF_ORDER_REPAIR);
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR));
+    recording.command(session, "repair-preorder", button ? "button" : "key", button ? 0 : 'R', 0,
+                      {-1, -1}, command_draws, true);
+    record("command");
+    command_draws = random::draw_count();
+    press(form, 'X');
+    recording.command(session, "cancel-preorder", "key", 'X', 0, {-1, -1}, command_draws, true);
+    record("command");
+    command_draws = random::draw_count();
+    click(patient);
+    MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR | ORDERING_MODE));
+    MG_CHECK(session.snapshot() == before);
+    recording.command(session, "late-patient-click", "click", 0, 2, {-1, -1}, command_draws, false);
+    record("command");
+    command_draws = random::draw_count();
+    action(form, button, 'R', IF_ORDER_REPAIR);
+    recording.command(session, "repair-preorder", button ? "button" : "key", button ? 0 : 'R', 0,
+                      {-1, -1}, command_draws, true);
+    record("command");
+    command_draws = random::draw_count();
+    ground(500, 300);
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR));
+    MG_CHECK(session.snapshot() == before);
+    recording.command(session, "invalid-ground", "click", 0, 0, {500, 300}, command_draws, false);
+    record("command");
+    command_draws = random::draw_count();
+    click(robot(session, 3));
+    MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR));
+    MG_CHECK(session.snapshot() == before);
+    recording.command(session, "enemy-click", "click", 0, 3, {-1, -1}, command_draws, false);
+    record("command");
+    command_draws = random::draw_count();
+    click(patient);
+    MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_REPAIR | ORDERING_MODE));
+    MG_CHECK(session.robot(1).order == mpo_Repair && session.robot(1).target == 2);
+    recording.command(session, "patient-click", "click", 0, 2, {-1, -1}, command_draws, true);
+    record("command");
     std::vector<std::string> states;
     while (session.time() < 2000) {
         if (!interrupted_at && ending != Ending::Complete && session.time() >= 300) {
             MG_CHECK(patient->GetHitPoint() > 3 && patient->NeedRepair());
             MG_CHECK(session.robot(1).order == mpo_Repair && session.robot(1).target == 2);
+            command_draws = random::draw_count();
             if (ending == Ending::Remove) {
                 MG_CHECK(session.remove(2));
                 patient = nullptr;
@@ -96,6 +133,11 @@ std::vector<std::string> repair_run(random::Mode mode, int step, bool button, En
                 MG_CHECK(session.robot(1).order == mpo_Stop && session.robot(1).target_is_null);
             }
             interrupted_at = session.time();
+            recording.command(session, ending == Ending::Remove ? "remove-patient" : "replace-stop",
+                              ending == Ending::Remove ? "delete" : button ? "button" : "key",
+                              ending == Ending::Stop && !button ? 'S' : 0, ending == Ending::Remove ? 2 : 0,
+                              {-1, -1}, command_draws, true);
+            record("command");
         }
         session.advance();
         if (patient && patient->GetHitPoint() != health) {
@@ -111,13 +153,16 @@ std::vector<std::string> repair_run(random::Mode mode, int step, bool button, En
             MG_CHECK(healer->GetEnv()->m_Target == nullptr && !healer->FindOrderLikeThat(ROT_FIRE));
         }
         states.push_back(session.snapshot());
+        record("tick", states.back());
     }
     MG_CHECK(session.robot(1).order == mpo_Stop && session.robot(1).target_is_null);
     if (patient) MG_CHECK(heals == 5 && patient->GetHitPoint() == 5 && !patient->NeedRepair());
     else MG_CHECK(heals > 0 && heals < 5 && !session.robot(2).alive);
+    recording.finish(session, observed);
     return states;
 }
 void repair_target_lifecycle() {
+    tests::target_recording::prepare(-1);
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (int step : {10, 16})
             for (auto ending : {Ending::Complete, Ending::Remove, Ending::Stop}) {
@@ -130,8 +175,10 @@ void repair_target_lifecycle() {
 
 enum class Target { Friendly, Enemy, Ground };
 std::vector<std::string> bomb_run(random::Mode mode, int step, bool button, Target target_kind, Ending ending) {
+    tests::target_recording::Recording recording({mode, step, button, int(target_kind), int(ending)});
     tests::BattleCombatAssets assets;
     Session session({mode, 80, step, 4000, false, true});
+    recording.header(session);
     std::cout << session.metadata("bomb-target-lifecycle-v1") << " button=" << button
               << " target=" << int(target_kind) << " ending=" << int(ending) << std::endl;
     assets.install();
@@ -151,24 +198,60 @@ std::vector<std::string> bomb_run(random::Mode mode, int step, bool button, Targ
     MG_CHECK(side().GetCurGroup()->GetBombersCnt() == 1);
     std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(bomber->GetCore(DEBUG_CALL_INFO),
         [](SObjectCore *value) { value->Release(); });
+    int interrupted_at = 0;
+    CPoint stop_destination(-1, -1);
+    CPoint destination(-1, -1);
+    int requested_at = 0, dying_at = 0, retired_at = 0, damage_events = 0;
+    tests::target_recording::Observation observed;
+    observed.actor = bomber;
+    observed.actor_core = core.get();
+    observed.peer_id = 3;
+    const auto record = [&](const char *phase, std::string_view state = {}) {
+        observed.peer = target;
+        observed.interrupted_at = interrupted_at;
+        observed.requested_at = requested_at;
+        observed.dying_at = dying_at;
+        observed.retired_at = retired_at;
+        observed.damage_events = damage_events;
+        observed.destination = destination;
+        observed.stop_destination = stop_destination;
+        recording.snapshot(session, phase, observed, state);
+    };
     const auto initial = session.snapshot();
+    record("initial", initial);
+    auto command_draws = random::draw_count();
     action(form, button, 'E', IF_ORDER_BOMB);
     MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB));
+    recording.command(session, "bomb-preorder", button ? "button" : "key", button ? 0 : 'E', 0,
+                      {-1, -1}, command_draws, true);
+    record("command");
+    command_draws = random::draw_count();
     press(form, 'X');
+    recording.command(session, "cancel-preorder", "key", 'X', 0, {-1, -1}, command_draws, true);
+    record("command");
+    command_draws = random::draw_count();
     ground(500, 500);
     MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB | ORDERING_MODE));
     MG_CHECK(session.snapshot() == initial && !bomber->IsMustDie());
+    recording.command(session, "late-ground-click", "click", 0, 0, {500, 500}, command_draws, false);
+    record("command");
+    command_draws = random::draw_count();
     action(form, button, 'E', IF_ORDER_BOMB);
     MG_CHECK(FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB));
+    recording.command(session, "bomb-preorder", button ? "button" : "key", button ? 0 : 'E', 0,
+                      {-1, -1}, command_draws, true);
+    record("command");
+    command_draws = random::draw_count();
     if (target_kind == Target::Ground) ground(500, 500);
     else click(target);
     MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, PREORDER_BOMB | ORDERING_MODE));
     MG_CHECK(session.robot(1).order == mpo_Bomb);
     MG_CHECK(session.robot(1).target == (target_kind == Target::Ground ? 0 : 3));
-    const auto destination = side().m_PlayerGroup[session.robot(1).group].m_To;
-    int interrupted_at = 0;
-    CPoint stop_destination;
-    int requested_at = 0, dying_at = 0, retired_at = 0, damage_events = 0;
+    destination = side().m_PlayerGroup[session.robot(1).group].m_To;
+    recording.command(session, "bomb-target-click", "click", 0, target_kind == Target::Ground ? 0 : 3,
+                      target_kind == Target::Ground ? std::array<int, 2>{500, 500} : std::array<int, 2>{-1, -1},
+                      command_draws, true);
+    record("command");
     float health = target->GetHitPoint();
     const float damaged_health = target_kind == Target::Friendly ? 4.6f : 4.0f;
     float last_x = 0, last_y = 0;
@@ -179,6 +262,7 @@ std::vector<std::string> bomb_run(random::Mode mode, int step, bool button, Targ
             MG_CHECK(session.robot(1).order == mpo_Bomb);
             MG_CHECK((bomber->m_PosX - 100) * (bomber->m_PosX - 100) +
                      (bomber->m_PosY - 200) * (bomber->m_PosY - 200) > 100);
+            command_draws = random::draw_count();
             if (ending == Ending::Remove) {
                 MG_CHECK(target_kind != Target::Ground && session.robot(1).target == 3);
                 MG_CHECK(session.remove(3));
@@ -189,6 +273,11 @@ std::vector<std::string> bomb_run(random::Mode mode, int step, bool button, Targ
                 stop_destination = side().m_PlayerGroup[session.robot(1).group].m_To;
             }
             interrupted_at = session.time();
+            recording.command(session, ending == Ending::Remove ? "remove-target" : "replace-stop",
+                              ending == Ending::Remove ? "delete" : button ? "button" : "key",
+                              ending == Ending::Stop && !button ? 'S' : 0, ending == Ending::Remove ? 3 : 0,
+                              {-1, -1}, command_draws, true);
+            record("command");
         }
         session.advance();
         if (core->m_Object && bomber->IsMustDie() && !requested_at) {
@@ -223,6 +312,7 @@ std::vector<std::string> bomb_run(random::Mode mode, int step, bool button, Targ
             MG_CHECK(remaining.x == destination.x && remaining.y == destination.y);
         }
         states.push_back(session.snapshot());
+        record("tick", states.back());
     }
     std::cout << "requested=" << requested_at << " dying=" << dying_at << " retired=" << retired_at
               << " damage_events=" << damage_events << '\n';
@@ -234,10 +324,12 @@ std::vector<std::string> bomb_run(random::Mode mode, int step, bool button, Targ
         if (target) MG_CHECK(damage_events == 1 && target->GetHitPoint() == damaged_health);
         else MG_CHECK(!session.robot(3).alive);
     }
+    recording.finish(session, observed);
     return states;
 }
 template<Target target, Ending ending>
 void bomb_target_lifecycle() {
+    tests::target_recording::prepare(int(target), int(ending));
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (int step : {10, 16}) {
             const auto keyboard = bomb_run(mode, step, false, target, ending);
@@ -269,5 +361,12 @@ int main(int argc, char **argv) {
     }
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try { tests::target_recording::complete_after_cleanup(); }
+        catch (const std::exception &error) {
+            std::cerr << "Target lifecycle recording completion failed: " << error.what() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     return result;
 }

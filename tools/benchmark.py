@@ -256,8 +256,26 @@ def classify(low, high, threshold, separated):
     return 'inconclusive'
 
 
+def inspection_problem(left, right):
+    """Check the existing flat int64 counter format before exact comparison."""
+    for role, inspection in (('base', left), ('candidate', right)):
+        if type(inspection) is not dict:
+            return f'{role} inspection must be an object of int64 counters'
+        for name, value in inspection.items():
+            if type(name) is not str:
+                return f'{role} inspection counter names must be strings'
+            if type(value) is not int or not -(1 << 63) <= value < (1 << 63):
+                return f'{role} inspection[{name!r}] must be an int64 counter'
+    for name in sorted(left.keys() | right.keys()):
+        if name not in left or name not in right:
+            return f'inspection[{name!r}] is missing from the {"base" if name not in left else "candidate"}'
+        if left[name] != right[name]:
+            return f'inspection[{name!r}] differs: {left[name]} versus {right[name]}'
+    return None
+
+
 def compare(base, candidate, threshold=0.05, confidence=0.95, resamples=2000, seed=78,
-            allow_identity_mismatch=False, allow_parameter_change=False):
+            allow_identity_mismatch=False, allow_parameter_change=False, require_inspection_match=False):
     """Return (rows, problems, notes). Problems make timing differences meaningless."""
     problems, notes = [], []
     for section, field in IDENTITY_FIELDS:
@@ -291,6 +309,11 @@ def compare(base, candidate, threshold=0.05, confidence=0.95, resamples=2000, se
             problems.append(f'{workload["name"]} performed different work: {workload["work_per_sample"]} versus '
                             f'{other["work_per_sample"]}')
             continue
+        if require_inspection_match:
+            problem = inspection_problem(workload.get('inspection'), other.get('inspection'))
+            if problem:
+                problems.append(f'{workload["name"]} {problem}')
+                continue
         low, high = bootstrap_ratio(process_groups(workload), process_groups(other), resamples, confidence, seed)
         separated = ((min(other['process_medians_ns']) > max(workload['process_medians_ns'])) if low > 1.0 else
                      (max(other['process_medians_ns']) < min(workload['process_medians_ns'])))
@@ -331,7 +354,7 @@ def compare_command(arguments):
             raise BenchmarkError(f'The {name} file is not a combined benchmark result ({SCHEMA}).')
     rows, problems, notes = compare(base, candidate, arguments.threshold, arguments.confidence, arguments.resamples,
                                     arguments.seed, arguments.allow_identity_mismatch,
-                                    arguments.allow_parameter_change)
+                                    arguments.allow_parameter_change, arguments.require_inspection_match)
     print(f'Base: {base["revision"].get("commit")} | candidate: {candidate["revision"].get("commit")}')
     print(f'Material threshold: {arguments.threshold:.1%}; {arguments.confidence:.0%} hierarchical bootstrap '
           f'interval of the median ratio; regressions also require separated process medians.')
@@ -379,6 +402,8 @@ def main(argv=None):
     comparer.add_argument('--seed', type=int, default=78)
     comparer.add_argument('--allow-identity-mismatch', action='store_true')
     comparer.add_argument('--allow-parameter-change', action='store_true')
+    comparer.add_argument('--require-inspection-match', action='store_true',
+                          help='Require valid, exactly matching int64 inspection counters before comparing timings')
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == 'run':

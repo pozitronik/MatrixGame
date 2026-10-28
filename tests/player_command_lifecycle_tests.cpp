@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "command_lifecycle_recording.hpp"
 #include "battle_building.hpp"
 #include "battle_flyer.hpp"
 #include "battle_combat_geometry.hpp"
@@ -38,6 +39,7 @@ void select(std::initializer_list<CMatrixRobotAI *> robots) {
     for (auto *robot : robots) group->AddObject(robot, -4);
     side().SetCurGroup(group);
     side().m_CurrSel = robots.size() == 1 ? ROBOT_SELECTED : GROUP_SELECTED;
+    tests::c2::observe("selection");
 }
 CMatrixRobotAI *find(const Session &session, unsigned id) {
     for (auto *object = CMatrixMapStatic::GetFirstLogic(); object; object = object->GetNextLogic())
@@ -51,6 +53,7 @@ tests::battle::Profile profile(random::Mode mode, int step) {
     return p;
 }
 void move(Session &session, CFormMatrixGame &form, int route, float x, float y) {
+    const auto draws = random::draw_count();
     if (!route) session.ground_command(x, y);
     else {
         if (route == 1) press(form, 'M');
@@ -61,14 +64,18 @@ void move(Session &session, CFormMatrixGame &form, int route, float x, float y) 
         side().OnLButtonDown(CPoint(0, 0));
         MG_CHECK(!FLAG(g_IFaceList->m_IfListFlags, ORDERING_MODE | PREORDER_MOVE));
     }
+    const auto name = "move-" + std::to_string(route) + '-' + std::to_string(int(x)) + '-' + std::to_string(int(y));
+    tests::c2::command(name.c_str(), draws);
 }
 void stop(CFormMatrixGame &form, bool ui) {
+    const auto draws = random::draw_count();
     if (ui) button(IF_ORDER_STOP);
     else press(form, 'S');
+    tests::c2::command(ui ? "stop-button" : "stop-key", draws);
 }
 void advance(Session &session, int duration) {
     const int until = session.time() + duration;
-    while (session.time() < until) session.advance();
+    while (session.time() < until) tests::c2::tick(session);
 }
 void intent(CMatrixRobotAI &robot, int order) {
     MG_CHECK(robot.GetGroupLogic() >= 0);
@@ -111,15 +118,19 @@ std::string observation(Session &session, CMatrixRobotAI &track) {
 std::vector<std::string> mixed_run(random::Mode mode, int step, int route, bool ui_stop) {
     Effects effects;
     Session session(profile(mode, step));
+    tests::c2::Recording recording(session, "mixed", mode, step, route, ui_stop);
     effects.install();
     track_configuration();
     auto *wheel = find(session, 1), *unrelated = find(session, 2);
     auto *track = tests::BattleGeometry::create_robot(*g_MatrixMap, PLAYER_SIDE, 100, 320, RUK_CHASSIS_TRACK);
+    recording.extra(track);
     MG_CHECK(wheel->m_Unit[0].u1.s1.m_Kind == RUK_CHASSIS_WHEEL && wheel->GetMaxSpeed() == .6f);
     MG_CHECK(track->m_Unit[0].u1.s1.m_Kind == RUK_CHASSIS_TRACK && track->GetMaxSpeed() == .5f);
     CFormMatrixGame form;
     select({unrelated});
+    const auto unrelated_draws = random::draw_count();
     session.ground_command(100, 500);
+    recording.command("unrelated-move", unrelated_draws);
     const int other_group = unrelated->GetGroupLogic();
     const CPoint other_destination = side().m_PlayerGroup[other_group].m_To;
     select({wheel, track});
@@ -130,7 +141,7 @@ std::vector<std::string> mixed_run(random::Mode mode, int step, int route, bool 
     std::vector<std::string> result;
     while (session.time() < 1000) {
         result.push_back(observation(session, *track));
-        session.advance();
+        tests::c2::tick(session);
     }
     MG_CHECK(wheel->m_PosX > 110 && track->m_PosX > 110);
     stop(form, ui_stop);
@@ -155,11 +166,13 @@ std::vector<std::string> mixed_run(random::Mode mode, int step, int route, bool 
     MG_CHECK(wheel->PLIsInPlace() && track->PLIsInPlace());
     MG_CHECK(wheel->m_PosX > 400 && track->m_PosX > 400);
     MG_CHECK(wheel->m_PosY < 200 && track->m_PosY < 200);
+    recording.finish();
     std::cout << session.metadata("mixed-command-lifecycle-v1") << " route=" << route
               << " button_stop=" << ui_stop << '\n';
     return result;
 }
 void mixed_commands() {
+    tests::c2::invalidate("mixed");
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (int step : {10, 16}) for (bool ui_stop : {false, true}) {
             const auto context = mixed_run(mode, step, 0, ui_stop);
@@ -171,11 +184,13 @@ void mixed_commands() {
 // make a rejected command executable. The original Move is either retained or
 // explicitly replaced with Stop before the lifecycle finishes.
 void nonready_commands(bool carried) {
+    tests::c2::invalidate(carried ? "carried" : "spawning");
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
       for (int step : {10, 16}) for (int route = 0; route < 3; ++route)
       for (bool cancel : {false, true}) {
         tests::BattleMaterialProfile materials;
         Session session(profile(mode, step));
+        tests::c2::Recording recording(session, carried ? "carried" : "spawning", mode, step, route, cancel);
         CFormMatrixGame form;
         // This fixture isolates player commands, not enemy base capture. Keep
         // the two unarmed opposition units stationary using ordinary speeds.
@@ -193,6 +208,7 @@ void nonready_commands(bool carried) {
                 FO_GIVE_BOT, 0, 3, landing, 0);
             MG_CHECK(g_MatrixMap->m_AD_Obj_cnt == 1);
             auto *carrier = static_cast<CMatrixFlyer *>(g_MatrixMap->m_AD_Obj[0]);
+            recording.carrier(carrier);
             robot = static_cast<CMatrixRobotAI *>(carrier->GetCarryingRobot());
             MG_CHECK(robot && robot->m_CurrState == ROBOT_CARRYING);
         } else {
@@ -207,8 +223,11 @@ void nonready_commands(bool carried) {
             robot->RobotSpawn(factory);
             MG_CHECK(robot->m_CurrState == ROBOT_IN_SPAWN && factory->IsSpawningBot());
         }
+        recording.extra(robot);
         select({unrelated});
+        const auto unrelated_draws = random::draw_count();
         session.ground_command(100, 500);
+        recording.command("unrelated-move", unrelated_draws);
         const int other_group = unrelated->GetGroupLogic();
         const CPoint other_destination = side().m_PlayerGroup[other_group].m_To;
         select({robot});
@@ -234,7 +253,7 @@ void nonready_commands(bool carried) {
         };
         int ready = -1, intermediate = -1;
         while (session.time() < (cancel ? 30000 : 18000)) {
-            session.advance();
+            tests::c2::tick(session);
             if (intermediate < 0 && robot->m_CurrState == (carried ? ROBOT_FALLING : ROBOT_BASE_MOVEOUT))
                 intermediate = session.time();
             if (ready < 0 && robot->m_CurrState == ROBOT_SUCCESSFULLY_BUILD) ready = session.time();
@@ -255,7 +274,7 @@ void nonready_commands(bool carried) {
             const float stopped_x = robot->m_PosX, stopped_y = robot->m_PosY;
             const int stationary_until = session.time() + 1000;
             while (session.time() < stationary_until) {
-                session.advance();
+                tests::c2::tick(session);
                 canceled_order_stays_canceled();
                 MG_CHECK(robot->m_PosX == stopped_x && robot->m_PosY == stopped_y);
             }
@@ -275,6 +294,7 @@ void nonready_commands(bool carried) {
         intent(*robot, mpo_MoveTo);
         MG_CHECK(side().m_PlayerGroup[robot->GetGroupLogic()].m_To == CPoint(10, 48));
         MG_CHECK(robot->m_PosY > 450 && robot->m_PosX < 250 && robot->PLIsInPlace());
+        recording.finish(intermediate, ready);
         std::cout << session.metadata(carried ? "carried-command-lifecycle-v1" : "spawn-command-lifecycle-v1")
                   << " route=" << route << " canceled=" << cancel << " intermediate=" << intermediate
                   << " ready=" << ready << '\n';
@@ -283,10 +303,12 @@ void nonready_commands(bool carried) {
 void spawning_commands() { nonready_commands(false); }
 void carried_commands() { nonready_commands(true); }
 void dying_commands() {
+    tests::c2::invalidate("dying");
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT}) for (int step : {10, 16}) {
         tests::BattleCombatAssets assets;
         Effects effects;
         Session session(profile(mode, step));
+        tests::c2::Recording recording(session, "dying", mode, step, -1, false);
         assets.install(); effects.install();
         auto *robot = find(session, 1), *survivor = find(session, 2);
         CFormMatrixGame form;
@@ -295,8 +317,11 @@ void dying_commands() {
         advance(session, 500);
         std::unique_ptr<SObjectCore, void (*)(SObjectCore *)> core(robot->GetCore(DEBUG_CALL_INFO),
             [](SObjectCore *value) { value->Release(); });
+        recording.core(core.get());
         g_Config.m_RobotDamages[Weap2Index(WEAPON_GUN)] = {10000, 10000, 0};
+        const auto damage_draws = random::draw_count();
         MG_CHECK(robot->Damage(WEAPON_GUN, robot->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+        recording.command("lethal-damage", damage_draws);
         MG_CHECK(robot->m_CurrState == ROBOT_DIP && core->m_Object == robot);
         MG_CHECK(side().GetCurGroup() && side().GetCurGroup()->GetObjectsCnt() == 1);
         MG_CHECK(side().GetCurGroup()->GetObjectByN(0) == survivor);
@@ -318,6 +343,7 @@ void dying_commands() {
         MG_CHECK(survivor->PLIsInPlace() && survivor->m_PosY > 450);
         MG_CHECK(!session.robot(1).alive);
         MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+        recording.finish();
         std::cout << session.metadata("dying-command-lifecycle-v1") << '\n';
     }
 }
@@ -338,5 +364,12 @@ int main(int argc, char **argv) {
     if (Base::SMemHeader::first_mem_block != nullptr) return EXIT_FAILURE;
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try { tests::c2::complete_after_cleanup(); }
+        catch (const std::exception &error) {
+            std::cerr << "Command recording completion failed: " << error.what() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     return result;
 }
