@@ -53,7 +53,14 @@ class CalcVisPreparation(unittest.TestCase):
 
     def assert_refusal(self, expected, verify=True):
         before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
-        command = "& " + quote(self.script) + " -Destination " + quote(self.destination)
+        # Load ordinary cmdlets, then reproduce CI's unavailable script-module lookup.
+        command = (
+            "Get-Date | Out-Null; Get-Item . | Out-Null; "
+            "Remove-Item Function:\\Get-FileHash -ErrorAction SilentlyContinue; "
+            "$env:PSModulePath = 'nonexistent-core-only-modules'; "
+            "$PSModuleAutoLoadingPreference = 'None'; "
+            "& " + quote(self.script) + " -Destination " + quote(self.destination)
+        )
         if verify:
             command += " -VerifyOnly"
         environment = dict(os.environ)

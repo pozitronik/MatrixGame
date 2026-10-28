@@ -12,6 +12,18 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $destinationRoot = $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($Destination)
 $receipt = Join-Path $destinationRoot 'calcvis-preparation.json'
+function Get-CalcVisSHA256([string]$Path) {
+    # Windows PowerShell started by pwsh may not find Get-FileHash's script module.
+    $stream = [IO.File]::OpenRead($Path)
+    $sha = $null
+    try {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        return [BitConverter]::ToString($sha.ComputeHash($stream)).Replace('-', '')
+    } finally {
+        $stream.Dispose()
+        if ($sha) { $sha.Dispose() }
+    }
+}
 function Assert-RegularFile([string]$Path) {
     $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
     if ($item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw "Expected a regular file: $Path" }
@@ -28,7 +40,7 @@ if ($VerifyOnly) {
         $path = [IO.Path]::GetFullPath((Join-Path $destinationRoot $file.Path))
         if (-not $path.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Receipt path leaves the prepared export.' }
         Assert-RegularFile $path
-        if ((Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash -cne $file.SHA256) { throw "Prepared file changed: $($file.Path)" }
+        if ((Get-CalcVisSHA256 $path) -cne $file.SHA256) { throw "Prepared file changed: $($file.Path)" }
     }
     foreach ($optional in @('sound.pkg','voices.pkg','music.pkg')) {
         if (Test-Path -LiteralPath (Join-Path $destinationRoot "DATA/$optional")) { throw 'The controlled profile must remain silent.' }
@@ -98,7 +110,7 @@ $record = [ordered]@{Version=1; SourceRevision=$revision; TrackedSourceDirty=($t
 $prefix = $destinationRoot.TrimEnd([char[]]'\/') + [IO.Path]::DirectorySeparatorChar
 $record.Files = @(Get-ChildItem -LiteralPath $destinationRoot -Recurse -File | Sort-Object FullName | ForEach-Object {
     Assert-RegularFile $_.FullName
-    [pscustomobject]@{Path=$_.FullName.Substring($prefix.Length); SHA256=(Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash}
+    [pscustomobject]@{Path=$_.FullName.Substring($prefix.Length); SHA256=(Get-CalcVisSHA256 $_.FullName)}
 })
 [IO.File]::WriteAllText($receipt, ($record | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
 & $PSCommandPath -Destination $destinationRoot -VerifyOnly
