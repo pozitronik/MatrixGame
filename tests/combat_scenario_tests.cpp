@@ -1323,7 +1323,7 @@ std::vector<std::string> cannon_patient_run(random::Mode mode, bool plasma, int 
     auto *patient = tests::create_battle_cannon(2, 500, 500);
     patient->m_CurrState = CANNON_UNDER_CONSTRUCTION;
     // PGAssignPlacePlayer reads every live cannon's navigation reservation.
-    patient->m_Place = g_MatrixMap->m_RN.FindInPL(CPoint(48, 48));
+    g_MatrixMap->CalcCannonPlace();
     MG_CHECK(patient->m_Place >= 0 && patient->m_Place < g_MatrixMap->m_RN.m_PlaceCnt);
     MG_CHECK(g_MatrixMap->m_RN.GetPlace(patient->m_Place)->m_Pos == CPoint(48, 48));
     Trace trace(session, profile, plasma ? "cannon-patient-plasma" : "cannon-patient-laser", run,
