@@ -191,6 +191,16 @@ void observation() {
         const auto b = scenario({mode}, Scenario::Move, "observation", 1, false);
         MG_CHECK(a.back() == b.back());
         clean_globals();
+        {
+            Session session({mode});
+            const auto draws = random::draw_count();
+            std::string nested = "{\"state\":";
+            const auto prefix = nested;
+            session.append_snapshot(nested);
+            MG_CHECK(nested == prefix + session.snapshot());
+            MG_CHECK(random::draw_count() == draws);
+        }
+        clean_globals();
     }
 }
 

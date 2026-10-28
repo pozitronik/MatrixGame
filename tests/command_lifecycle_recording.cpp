@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "command_lifecycle_recording.hpp"
+#include "snapshot_line.hpp"
 #include "test_support.hpp"
 #include "MatrixRobot.hpp"
 #include "MatrixFlyer.hpp"
@@ -106,9 +107,11 @@ void Recording::state(const char *phase) {
             ++members[robot->GetGroupLogic()];
         }
     }
-    std::ostringstream out;
-    out << "{\"type\":\"snapshot\",\"state\":" << session_.snapshot()
-        << ",\"c2\":{\"phase\":\"" << phase << "\",\"actors\":[";
+    snapshot_buffer_.clear();
+    SnapshotLine out(snapshot_buffer_);
+    out << "{\"type\":\"snapshot\",\"state\":";
+    session_.append_snapshot(snapshot_buffer_);
+    out << ",\"c2\":{\"phase\":\"" << phase << "\",\"actors\":[";
     for (unsigned index = 0; index < actors_.size(); ++index) {
         if (index) out << ',';
         auto *robot = observed[index];
@@ -119,7 +122,7 @@ void Recording::state(const char *phase) {
                 << ",\"state\":" << int(robot->m_CurrState);
             // Death repurposes unit storage for debris; only its lifetime state remains relevant here.
             if (alive) {
-                out << ",\"chassis\":" << robot->m_Unit[0].u1.s1.m_Kind
+                out << ",\"chassis\":" << int(robot->m_Unit[0].u1.s1.m_Kind)
                     << ",\"x_bits\":" << std::bit_cast<std::uint32_t>(robot->m_PosX)
                     << ",\"y_bits\":" << std::bit_cast<std::uint32_t>(robot->m_PosY)
                     << ",\"group\":" << robot->GetGroupLogic() << ",\"place\":" << robot->GetEnv()->m_Place
@@ -173,7 +176,9 @@ void Recording::state(const char *phase) {
         << ",\"watched_core\":" << (core_ ? id(core_->m_Object) : 0)
         << ",\"enemy_kills\":" << g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) << "}}";
     MG_CHECK(random::draw_count() == draws);
-    file_ << out.str() << '\n';
+    const auto serialized = out.view();
+    file_.write(serialized.data(), std::streamsize(serialized.size()));
+    file_.put('\n');
     MG_CHECK(file_.good());
 }
 

@@ -1,5 +1,6 @@
 // MatrixGame - licensed under GPLv2 or any later version.
 #include "battle_scenario.hpp"
+#include "snapshot_line.hpp"
 #include "DelayedDamage.hpp"
 #include "GroupCounts.hpp"
 #include "PlaceContainment.hpp"
@@ -20,6 +21,7 @@
 #include "input.hpp"
 #include "Effects/MatrixEffectLandscapeSpot.hpp"
 #include <bit>
+#include <array>
 #include <sstream>
 #include <algorithm>
 #include <chrono>
@@ -275,8 +277,13 @@ RobotState Session::robot(EntityId id) const {
             !order || order->m_Obj == nullptr, r->PLIsInPlace()};
 }
 std::string Session::snapshot() const {
+    std::string buffer;
+    append_snapshot(buffer);
+    return buffer;
+}
+void Session::append_snapshot(std::string &buffer) const {
     const auto &s = *impl_;
-    std::ostringstream out;
+    SnapshotLine out(buffer);
     const auto draws = random::draw_count();
     out << "{\"frame\":" << frame() << ",\"time_ms\":" << time() << ",\"rng_draws\":" << draws << ",\"robots\":[";
     for (EntityId id = 1; id <= s.entities.size(); ++id) {
@@ -305,22 +312,25 @@ std::string Session::snapshot() const {
         out << '}';
     }
     out << "],\"player_groups\":[";
+    std::array<int, MAX_LOGIC_GROUP> members{};
+    for (auto *live = CMatrixMapStatic::GetFirstLogic(); live; live = live->GetNextLogic()) {
+        if (!live->IsRobot() || live->GetSide() != PLAYER_SIDE) continue;
+        const int group = live->AsRobot()->GetGroupLogic();
+        // The old per-slot scan ignored negative and out-of-range memberships.
+        if (group >= 0 && group < MAX_LOGIC_GROUP) ++members[group];
+    }
     bool first = true;
     for (int group = 0; group < MAX_LOGIC_GROUP; ++group) {
         const auto &order = s.side().m_PlayerGroup[group];
-        int members = 0;
-        for (auto *live = CMatrixMapStatic::GetFirstLogic(); live; live = live->GetNextLogic())
-            if (live->IsRobot() && live->GetSide() == PLAYER_SIDE && live->AsRobot()->GetGroupLogic() == group) ++members;
-        if (!members && !order.m_RobotCnt) continue;
+        if (!members[group] && !order.m_RobotCnt) continue;
         if (!first) out << ',';
         first = false;
         out << "{\"slot\":" << group << ",\"stored_count\":" << order.m_RobotCnt
-            << ",\"members\":" << members << ",\"order\":" << int(order.Order())
+            << ",\"members\":" << members[group] << ",\"order\":" << int(order.Order())
             << ",\"target\":" << s.id_of(order.m_Obj) << '}';
     }
     out << "]}";
     MG_CHECK(random::draw_count() == draws);
-    return out.str();
 }
 void Session::check_running() const {
     MG_CHECK(impl_->map->GetTime() == impl_->profile.initial_time_ms + frame() * impl_->profile.step_ms);
