@@ -2,6 +2,8 @@
 
 `game.ai.war_detour.*` follows an armed player robot through a successful tactical firing-place assignment, actual travel, combat and continuation of player intent. It extends A2 / AI-02 and CMD-04 without changing obedience, AI priorities or production code. Existing occupied-place Patrol cases retain their separate failed-search coverage.
 
+The same existing sessions also produce [complete retained War detour recordings](war-detour-recordings.md), including their original observations, full live-actor order parameters and caller-wide completion checks.
+
 ```powershell
 .\tools\test.ps1 -Configuration Debug -Filter '^game\.ai\.war_detour\.'
 .\tools\test.ps1 -Configuration Release -Filter '^game\.ai\.war_detour\.'

@@ -2,6 +2,7 @@
 #include "battle_scenario.hpp"
 #include "battle_combat_geometry.hpp"
 #include "test_support.hpp"
+#include "road_journey_recording.hpp"
 #include "MatrixRobot.hpp"
 
 #include <algorithm>
@@ -57,7 +58,7 @@ std::string observe(const Session &session, SObjectCore *blocker_core) {
     return output.str();
 }
 
-Observation journey(random::Mode mode, int step, Variant variant) {
+Observation journey(random::Mode mode, int step, Variant variant, int replay) {
     const bool guided = variant != Variant::Unguided;
     const bool blocked = variant == Variant::LiveBlocker || variant == Variant::DestroyedBlocker;
     const bool kill = variant == Variant::DestroyedBlocker;
@@ -105,7 +106,10 @@ Observation journey(random::Mode mode, int step, Variant variant) {
         g_MatrixMap->m_Difficulty.k_damage_enemy_to_player = 1;
     }
     std::cout << session.metadata("road-ring-v1") << "\nvariant=" << variant_name(variant) << std::endl;
+    tests::road::Recording recording(session, mode, step, variant_name(variant), replay);
+    const auto move_draws = random::draw_count();
     session.ground_command(500, 280);
+    recording.command("ground-move", move_draws);
     const int group_id = actors[0]->GetGroupLogic();
     MG_CHECK(group_id >= 0 && group_id < MAX_LOGIC_GROUP && actors[1]->GetGroupLogic() == group_id);
     auto &group = side.m_PlayerGroup[group_id];
@@ -115,7 +119,9 @@ Observation journey(random::Mode mode, int step, Variant variant) {
         // Supply a route through the real regional planner before the units'
         // first tick. Their zone/local paths are never written by the fixture.
         int regions[]{0, 1};
+        const auto road_draws = random::draw_count();
         g_MatrixMap->m_RN.FindPathFromRegionPath(1 << (RUK_CHASSIS_WHEEL - 1), 2, regions, group.m_RoadPath);
+        recording.command("regional-guidance", road_draws);
         MG_CHECK(group.m_RoadPath->m_ListCnt == 1 && group.m_RoadPath->m_Header[0].m_Cnt == 5);
         MG_CHECK(group.m_RoadPath->m_Header[0].m_Dist == 50);
         MG_CHECK(group.m_RoadPath->m_Units[0].m_Road == nullptr && group.m_RoadPath->m_Units[0].m_Crotch->m_Zone == 0);
@@ -125,16 +131,28 @@ Observation journey(random::Mode mode, int step, Variant variant) {
         }
     }
     Observation result;
+    const auto record = [&](const std::string &observation, bool source_observation = true) {
+        recording.snapshot(observation, group, blocker_core.get(), blocker,
+            {result.zones, result.crossed, result.arrived, result.minimum_separation, result.retired},
+            source_observation);
+    };
     result.trace.push_back(observe(session, blocker_core.get()));
+    record(result.trace.back());
     while (session.time() < journey_time) {
         if (blocked && session.time() == hit_time) {
             MG_CHECK(blocker_core->m_Object == blocker && blocker->IsLiveRobot());
             MG_CHECK(actors[0]->m_PosX > 120 && actors[0]->m_PosX < 320 && !actors[0]->PLIsInPlace());
             MG_CHECK(result.minimum_separation < 60);
             if (kill) {
-                MG_CHECK(blocker->Damage(WEAPON_LASER, blocker->GetGeoCenter(), D3DXVECTOR3(1, 0, 0), 2, nullptr));
+                const auto hit_draws = random::draw_count();
+                const auto hit_origin = blocker->GetGeoCenter();
+                MG_CHECK(blocker->Damage(WEAPON_LASER, hit_origin, D3DXVECTOR3(1, 0, 0), 2, nullptr));
                 MG_CHECK(!blocker->IsLiveRobot() && blocker->m_CurrState == ROBOT_DIP);
                 MG_CHECK(g_MatrixMap->GetSideById(2)->GetStatValue(STAT_ROBOT_KILL) == 1);
+                recording.command("lethal-laser-hit", hit_draws,
+                    {std::bit_cast<std::uint32_t>(hit_origin.x), std::bit_cast<std::uint32_t>(hit_origin.y),
+                     std::bit_cast<std::uint32_t>(hit_origin.z)});
+                record(observe(session, blocker_core.get()), false);
             }
         }
         session.advance();
@@ -176,6 +194,7 @@ Observation journey(random::Mode mode, int step, Variant variant) {
         for (int i = 0; i < 16; ++i)
             MG_CHECK(!g_MatrixMap->m_RN.m_Zone[i].m_Access);
         result.trace.push_back(observe(session, blocker_core.get()));
+        record(result.trace.back());
     }
     // Compare corridor interiors; adjacent endpoint zones can be entered during
     // formation settling. Exact per-frame positions are checked by replay below.
@@ -197,23 +216,26 @@ Observation journey(random::Mode mode, int step, Variant variant) {
         << " crossed=" << result.crossed[0] << ',' << result.crossed[1] << " arrived=" << result.arrived[0] << ','
         << result.arrived[1] << " min_separation=" << result.minimum_separation
         << " retired=" << result.retired << '\n';
+    recording.finish(result.trace);
     return result;
 }
 
 template<random::Mode Mode, int Step>
 void road_journeys() {
-    const auto ordinary = journey(Mode, Step, Variant::Unguided);
-    MG_CHECK(ordinary == journey(Mode, Step, Variant::Unguided));
-    const auto guided = journey(Mode, Step, Variant::Guided);
-    MG_CHECK(guided == journey(Mode, Step, Variant::Guided));
+    tests::road::invalidate(Mode, Step, false);
+    const auto ordinary = journey(Mode, Step, Variant::Unguided, 0);
+    MG_CHECK(ordinary == journey(Mode, Step, Variant::Unguided, 1));
+    const auto guided = journey(Mode, Step, Variant::Guided, 0);
+    MG_CHECK(guided == journey(Mode, Step, Variant::Guided, 1));
     MG_CHECK(ordinary.zones != guided.zones && ordinary.trace != guided.trace);
 }
 template<random::Mode Mode, int Step>
 void road_obstruction() {
-    const auto alive = journey(Mode, Step, Variant::LiveBlocker);
-    MG_CHECK(alive == journey(Mode, Step, Variant::LiveBlocker));
-    const auto killed = journey(Mode, Step, Variant::DestroyedBlocker);
-    MG_CHECK(killed == journey(Mode, Step, Variant::DestroyedBlocker));
+    tests::road::invalidate(Mode, Step, true);
+    const auto alive = journey(Mode, Step, Variant::LiveBlocker, 0);
+    MG_CHECK(alive == journey(Mode, Step, Variant::LiveBlocker, 1));
+    const auto killed = journey(Mode, Step, Variant::DestroyedBlocker, 0);
+    MG_CHECK(killed == journey(Mode, Step, Variant::DestroyedBlocker, 1));
     const size_t prefix = hit_time / Step + 1;
     MG_CHECK(std::equal(alive.trace.begin(), alive.trace.begin() + prefix, killed.trace.begin()));
     MG_CHECK(alive.trace != killed.trace);
@@ -245,5 +267,14 @@ int main(int argc, char **argv) {
         return EXIT_FAILURE;
 #endif
     Base::CMain::BaseDeInit();
+    if (result == EXIT_SUCCESS) {
+        try {
+            tests::road::complete_after_cleanup();
+        }
+        catch (const std::exception &error) {
+            std::cerr << "Failed to complete road recordings: " << error.what() << '\n';
+            return EXIT_FAILURE;
+        }
+    }
     return result;
 }

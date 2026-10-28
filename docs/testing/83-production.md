@@ -49,6 +49,8 @@ Native rendering and audible output do not participate. Constructor and purchase
 | `reinforcement_incompatible` | All candidate places forbid every supported chassis; request restarts cooldown and draws one angle without creating a carrier | ECO-03 landing compatibility rejection |
 | `reinforcement_over_budget` | One synthetic proposal costs 131 against the 130 ceiling; ten retries plus one angle draw consume cooldown without creating a carrier or changing resources | ECO-03 proposal budget rejection |
 
+[Static production inputs and assertions](static-production-inputs.md) records the finite price/slot/capacity/refund input tables and their execution-evidence boundary.
+
 The queue fixture deliberately does not pretend that `AddItem` debits a price: production callers own debiting. Tests start from declared balances and check the refund operation itself. Similarly, the AI/constructor comparison constructs matching module definitions through public production APIs; it does not execute a rendered construction panel or `BuildRobot` strategy.
 
 ## Remaining baseline work

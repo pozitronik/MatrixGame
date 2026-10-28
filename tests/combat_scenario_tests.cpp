@@ -1068,7 +1068,8 @@ void module_firing() {
     }
 }
 
-std::vector<std::string> splash_boundary_run(random::Mode mode, int offset, int run, float friendly = 1) {
+std::vector<std::string> splash_boundary_run(random::Mode mode, int offset, int run, float friendly = 1,
+                                            const char *recording_context = "splash-boundary") {
     tests::BattleCombatAssets assets;
     const Profile profile{mode,82,10,1000,false,false};
     Session session(profile);
@@ -1087,7 +1088,9 @@ std::vector<std::string> splash_boundary_run(random::Mode mode, int offset, int 
     const float radius = D3DXVec3Length(&delta) - patient->GetRadius() + float(offset);
     const_cast<SBotWeapon &>(bomber->GetWeapon(0)).ModifyDist(radius-1);
     MG_CHECK(bomber->GetWeapon(0).GetWeaponDist()==radius);
-    Trace trace(session, profile, ("splash-boundary-" + std::to_string(offset) + "-friendly-" + std::to_string(friendly)).c_str(), run);
+    Trace trace(session, profile,
+                (std::string(recording_context) + "-" + std::to_string(offset) + "-friendly-" +
+                 std::to_string(friendly)).c_str(), run);
     trace.command(session, "detonate(1)", [&] { bomber->BigBoom(); return bomber->IsMustDie(); });
     float health = patient->GetHitPoint();
     std::vector<int> impacts;
@@ -2249,8 +2252,8 @@ void friendly_lethal() {
 void friendly_difficulty() {
     for (auto mode : {random::Mode::ParkMiller, random::Mode::LegacyCRT})
         for (float factor : {0.f, .5f, 1.f, 2.f}) {
-            const auto reference = splash_boundary_run(mode, 1, 0, factor);
-            compare(reference, splash_boundary_run(mode, 1, 1, factor));
+            const auto reference = splash_boundary_run(mode, 1, 0, factor, "friendly-difficulty");
+            compare(reference, splash_boundary_run(mode, 1, 1, factor, "friendly-difficulty"));
         }
 }
 std::vector<std::string> cannon_difficulty_run(random::Mode mode, float factor, int run) {

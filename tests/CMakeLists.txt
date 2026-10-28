@@ -316,7 +316,8 @@ foreach(contract replacement target_removal repeatability observation rejected_c
 endforeach()
 
 add_matrix_test_executable(matrixgame_production_scenarios production_scenario_tests.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp
+    strategic_production_recording.cpp strategic_production_recording.hpp)
 target_link_libraries(matrixgame_production_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_production_scenarios matrixgame_scenario_identity)
 target_include_directories(matrixgame_production_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
@@ -673,7 +674,8 @@ foreach(contract queue_order capacity refund_owner neutralization price income t
     add_matrix_test(game.production.${contract} matrixgame_production_queue_tests gameplay)
 endforeach()
 
-add_matrix_test_executable(matrixgame_ai_bomb_escape_tests ai_bomb_escape_tests.cpp battle_combat_geometry.cpp
+add_matrix_test_executable(matrixgame_ai_bomb_escape_tests ai_bomb_escape_tests.cpp bomb_escape_recording.cpp
+    battle_combat_geometry.cpp
     battle_scenario.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_ai_bomb_escape_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_ai_bomb_escape_tests matrixgame_scenario_identity)
@@ -686,7 +688,7 @@ foreach(contract free reserved unreachable)
     set_tests_properties(game.ai.bomb_escape_${contract}_journey PROPERTIES TIMEOUT 90)
 endforeach()
 
-add_matrix_test_executable(matrixgame_ai_decision_tests ai_decision_tests.cpp ai_observation_tests.cpp ai_cleanup_tests.cpp ai_armed_tests.cpp ai_capture_tests.cpp ai_reinforcement_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_ai_decision_tests competing_repair_recording.cpp ai_decision_tests.cpp ai_observation_tests.cpp ai_cleanup_tests.cpp ai_armed_tests.cpp ai_capture_tests.cpp ai_reinforcement_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_ai_decision_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_ai_decision_tests matrixgame_scenario_identity)
@@ -725,7 +727,8 @@ add_matrix_test(game.ai.auto_camera_fights matrixgame_ai_auto_scenarios gameplay
 add_matrix_test(game.ai.auto_camera_replay matrixgame_ai_auto_scenarios gameplay ai rendering)
 add_matrix_test(game.ai.auto_camera_overview_replay matrixgame_ai_auto_scenarios gameplay ai rendering)
 
-add_matrix_test_executable(matrixgame_battle_outcome_scenarios battle_outcome_scenarios.cpp battle_scenario.cpp battle_combat_geometry.cpp
+add_matrix_test_executable(matrixgame_battle_outcome_scenarios
+    battle_outcome_scenarios.cpp capture_completion_recording.cpp battle_scenario.cpp battle_combat_geometry.cpp
     battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_battle_outcome_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_battle_outcome_scenarios matrixgame_scenario_identity)
@@ -776,7 +779,8 @@ foreach(contract menu_result_exit diagnostic_result_exit)
 endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_tests navigation_tests.cpp navigation_chassis_tests.cpp navigation_integrated_tests.cpp navigation_delivery_tests.cpp navigation_damage_tests.cpp battle_combat_geometry.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp
+    carrier_recording.cpp carrier_recording.hpp)
 target_link_libraries(matrixgame_navigation_tests PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_tests matrixgame_scenario_identity)
 target_include_directories(matrixgame_navigation_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
@@ -794,7 +798,8 @@ foreach(contract shorted_route_blocker dying_route_blocker shorted_movement_reco
 endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_road_scenarios navigation_road_scenarios.cpp battle_combat_geometry.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp
+    road_journey_recording.cpp road_journey_recording.hpp)
 target_link_libraries(matrixgame_navigation_road_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_road_scenarios matrixgame_scenario_identity)
 target_include_directories(matrixgame_navigation_road_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
@@ -1264,7 +1269,8 @@ foreach(mode park_miller legacy_crt)
 endforeach()
 
 add_matrix_test_executable(matrixgame_navigation_approach_scenarios navigation_approach_scenarios.cpp battle_scenario.cpp
-    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp
+    carrier_recording.cpp carrier_recording.hpp)
 target_link_libraries(matrixgame_navigation_approach_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_navigation_approach_scenarios matrixgame_scenario_identity)
 target_include_directories(matrixgame_navigation_approach_scenarios PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
@@ -1275,7 +1281,8 @@ foreach(profile park_miller10 park_miller16 legacy10 legacy16)
     add_matrix_test(game.navigation.carrier_approach_obstacle.${profile} matrixgame_navigation_approach_scenarios gameplay ai navigation)
 endforeach()
 
-add_matrix_test_executable(matrixgame_ai_war_detour_scenarios ai_war_detour_scenarios.cpp battle_scenario.cpp
+add_matrix_test_executable(matrixgame_ai_war_detour_scenarios ai_war_detour_scenarios.cpp
+    ai_war_detour_recording.cpp battle_scenario.cpp
     battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_ai_war_detour_scenarios PRIVATE MatrixGameInternal)
 add_dependencies(matrixgame_ai_war_detour_scenarios matrixgame_scenario_identity)

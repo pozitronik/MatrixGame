@@ -32,6 +32,8 @@ The bomb effect applies its area callback when its 300 ms lifetime becomes negat
 
 ## Repetition and validation
 
+The [bomb-escape recording guide](bomb-escape-recordings.md) describes the finite persisted corpus, its semantic checks and exact reference comparison.
+
 Each registered case runs both RNG modes, both 10/16 ms schedules, Original/Corrected place containment, and removal/detonation. Every combination runs twice in fresh sessions: 32 sessions per case, 96 per build configuration. Seed 84 is explicit. Snapshots compare every completed frame, including exact position and health bits, order queues, destinations, target identities and RNG draw counts, from the initial escape decision through terminal observation. Threat-clearance boundaries are included separately. Observation must not consume RNG; the initial planning call consumes none. This is same-build reproducibility, not a historical reference or cross-compiler equality claim.
 
 Each of the three registered cases has a 90-second CTest process limit to accommodate its complete 32-session matrix on slower runners, including MSVC Debug. The 45-second simulation bound, separate per-session wall-clock bound, profile combinations and timing assertions are unchanged.
