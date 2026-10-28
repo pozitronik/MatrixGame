@@ -189,12 +189,16 @@ void trajectory_current() {
     original.Move(15); trimmed.Move(15);
     D3DXVECTOR3 before, after;
     original.GetCurPos(before); trimmed.CutBeforeCurrent(); trimmed.GetCurPos(after); check_point(before, after);
+    D3DXVECTOR3 end;
+    original.CalcPoint(end, 1);
+    trimmed.CalcPoint(after, 1); check_point(end, after);
     // Continue within and across surviving segments; distance and interpolation stay identical.
     for (int i = 0; i < 8; ++i) {
         original.Move(3); trimmed.Move(3);
         original.GetCurPos(before); trimmed.GetCurPos(after); check_point(before, after);
     }
     trimmed.CutBeforeCurrent(); trimmed.GetCurPos(after); check_point(before, after);
+    trimmed.CalcPoint(after, 1); check_point(end, after);
 }
 void trajectory_boundaries() {
     const auto input = points();

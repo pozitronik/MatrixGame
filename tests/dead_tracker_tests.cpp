@@ -129,20 +129,42 @@ void pointer_bounds() {
         object.save(invalid); MG_CHECK(!object.DCS_GetDeadBody());
     }
     object.save(); object.check();
+    ClassRecord<64> later(8);
+    later.save(); later.check();
     std::array<int, 2> class_header;
     std::memcpy(class_header.data(), Base::DCS_semetery_heap, sizeof(class_header));
     auto damaged_class = class_header;
     damaged_class[1] = 0;
     std::memcpy(Base::DCS_semetery_heap, damaged_class.data(), sizeof(damaged_class));
     MG_CHECK(!object.DCS_GetDeadBody());
+    // Lookup must stop at the damaged prefix instead of looping at offset zero.
+    MG_CHECK(!later.DCS_GetDeadBody());
     std::memcpy(Base::DCS_semetery_heap, class_header.data(), sizeof(class_header));
-    object.check(); object.remove();
+    object.check(); later.check();
+    later.remove(); object.remove();
     // Exercise the actual instrumented allocator's size handoff for tiny blocks.
     Base::CMain::BaseInit();
     for (unsigned size = 1; size < 16; ++size) {
         void *block = Base::CHeap::AllocClear(size, __FILE__, __LINE__);
         Base::CHeap::Free(block, __FILE__, __LINE__);
     }
+    // A real free must archive a complete signed allocation, not merely skip scanning.
+    const std::array<int, 6> expected{17, 23, DPTR_SIGNATURE0, DPTR_SIGNATURE1, DPTR_SIGNATURE2, 24};
+    void *block = Base::CHeap::AllocClear(sizeof(expected), __FILE__, __LINE__);
+    std::memcpy(block, expected.data(), sizeof(expected));
+    Base::CHeap::Free(block, __FILE__, __LINE__);
+    const void *archived = DeadPtr::get_dead_mem(block);
+    MG_CHECK(archived);
+    MG_CHECK(std::memcmp(archived, expected.data(), sizeof(expected)) == 0);
+    DeadPtr::remove_by_ptr(block);
+    // The signature fits in 20 bytes, but its claimed 24-byte payload must be rejected.
+    const std::array<int, 5> oversized{17, DPTR_SIGNATURE0, DPTR_SIGNATURE1, DPTR_SIGNATURE2, 24};
+    block = Base::CHeap::AllocClear(sizeof(oversized), __FILE__, __LINE__);
+    std::memcpy(block, oversized.data(), sizeof(oversized));
+    Base::CHeap::Free(block, __FILE__, __LINE__);
+    MG_CHECK(!DeadPtr::get_dead_mem(block));
+    MG_CHECK(DeadPtr::semetery_cnt == 0 && DeadPtr::semetery_heap_size == 0);
+    MG_CHECK(Base::DCS_semetery_cnt == 0 && Base::DCS_semetery_heap_size == 0);
     Base::CMain::BaseDeInit();
 }
 constexpr tests::Case cases[] = {
