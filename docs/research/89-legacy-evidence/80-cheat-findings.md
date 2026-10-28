@@ -2,7 +2,7 @@
 
 Source reference: `662693fb6b6dcfcfd5749625e5af9e61d160e8a5`. This identifies the current implementation examined by this supplemental note, not an accepted behavior-baseline reference.
 
-This supplemental inventory gives the existing [player-command work package #80](https://github.com/pozitronik/MatrixGame/issues/80) ownership of the pending C6 investigations below. The [registry guide](../../testing/80-cheat-registry.md) records the passing bounded evidence. The historical source reference remains unchanged; the bounded #327 correction is recorded below, without complete-baseline acceptance.
+This supplemental inventory gives the existing [player-command work package #80](https://github.com/pozitronik/MatrixGame/issues/80) ownership of the C6 investigations below. The [registry guide](../../testing/80-cheat-registry.md) records the passing bounded evidence. The historical source reference remains unchanged; the bounded #327 correction is recorded below, without complete-baseline acceptance.
 
 ## Exhausted logic-group slots
 
@@ -12,4 +12,6 @@ The [capacity regressions and protected control](../../testing/327-group-capacit
 
 ## Cross-battle crazy history
 
-Classification: **unresolved lifetime investigation**. `CMatrixRobotAI::LogicTakt` retains function-static `ppx`, `ppy` and `cnt` for crazy-robot behavior across Sessions. The deployment fixtures isolate profiles in separate processes and report frame counts and digests for manual fresh-process comparison; no registered digest assertion or production reset establishes cross-battle isolation. #80 owns a bounded repeated-battle comparison and the resulting disposition. A correction and accepted reference change require their own evidence and review; this inventory does not reset production state or promote the digest to a golden.
+Classification: **measured process-shared legacy behavior, retained without correction**. `CMatrixRobotAI::LogicTakt` retains function-static `ppx`, `ppy` and `cnt` across Sessions and shares them between crazy actors. The [twenty registered history cases](../../testing/80-crazy-history.md) compare fresh-process, repeated-Session and multi-actor calls through production robot logic: fresh retargeting occurs on call 102; after 37 priming calls the next same-position Session retargets on call 65, while a different-position actor needs 66. Coordinate changes do not clear the count; alternating distinct actors prevents increments. These are controlled robot-call boundaries with a fixed map clock, not full deployment or battle-frame goldens.
+
+The existing deployment fixtures still isolate profiles in separate processes and report frame counts/digests; no digest assertion or production reset establishes cross-battle isolation. The bounded lifetime question is characterized, and this change preserves its measured result. A future per-robot/per-battle reset changes retarget timing and requires a separate gameplay/reference decision. Neither this inventory nor the tests promote deployment digests to accepted historical references or accept #69.

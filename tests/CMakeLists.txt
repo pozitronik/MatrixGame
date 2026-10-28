@@ -542,6 +542,22 @@ foreach(mode park_miller legacy_crt)
     endforeach()
 endforeach()
 
+add_matrix_test_executable(matrixgame_crazy_history_tests crazy_history_tests.cpp battle_scenario.cpp
+    battle_geometry.cpp battle_device.cpp battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
+target_link_libraries(matrixgame_crazy_history_tests PRIVATE MatrixGameInternal)
+add_dependencies(matrixgame_crazy_history_tests matrixgame_scenario_identity)
+target_include_directories(matrixgame_crazy_history_tests PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+target_compile_definitions(matrixgame_crazy_history_tests PRIVATE
+    MATRIXGAME_SCENARIO_BUILD_DLL=$<BOOL:${MATRIXGAME_BUILD_DLL}>
+    MATRIXGAME_SCENARIO_CHEATS=$<BOOL:${MATRIXGAME_CHEATS}>)
+foreach(mode ParkMiller LegacyCRT)
+    foreach(step 10 16)
+        foreach(contract fresh cross_session changed_coordinates shared_robots alternating_robots)
+            add_matrix_test(game.player.crazy_history.${contract}.${mode}_${step} matrixgame_crazy_history_tests gameplay input)
+        endforeach()
+    endforeach()
+endforeach()
+
 add_matrix_test_executable(matrixgame_form_input_tests form_input_tests.cpp command_world.hpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_form_input_tests PRIVATE MatrixGameInternal)
 add_matrix_test(game.input.mouse_focus_reset matrixgame_form_input_tests gameplay input)
