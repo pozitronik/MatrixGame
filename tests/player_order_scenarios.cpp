@@ -815,6 +815,10 @@ void cannon_and_invalid_targets() {
     cannon->m_Num = 1;
     cannon->AddLT();
     cannon->m_Pos = D3DXVECTOR2(180, 400);
+    // The mesh-free validation target still participates in navigation-place assignment.
+    cannon->m_Place = g_MatrixMap->m_RN.FindInPL(CPoint(8, 48));
+    MG_CHECK(cannon->m_Place >= 0 && cannon->m_Place < g_MatrixMap->m_RN.m_PlaceCnt);
+    MG_CHECK(g_MatrixMap->m_RN.GetPlace(cannon->m_Place)->m_Pos == CPoint(8, 48));
     g_MatrixMap->m_TraceStopObj = cannon.get();
     g_MatrixMap->m_TraceStopPos = D3DXVECTOR3(180, 400, 10);
     side().OnRButtonDown(CPoint(0, 0));

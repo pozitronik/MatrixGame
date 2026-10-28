@@ -5,6 +5,7 @@
 
 #include <new>
 #include <algorithm>
+#include <type_traits>
 
 #include "MatrixRobot.hpp"
 #include "DelayedDamage.hpp"
@@ -4706,7 +4707,9 @@ void CMatrixRobotAI::RemoveOrder(int pos) {
     m_OrdersList[pos].Release();
 
     --m_OrdersInPool;
-    memcpy(m_OrdersList + pos, m_OrdersList + pos + 1, sizeof(SOrder) * (m_OrdersInPool - pos));
+    // Surviving orders shift by one slot, so the source and destination can overlap.
+    static_assert(std::is_trivially_copyable_v<SOrder>);
+    memmove(m_OrdersList + pos, m_OrdersList + pos + 1, sizeof(SOrder) * (m_OrdersInPool - pos));
 }
 
 void CMatrixRobotAI::RemoveOrder(OrderType order) {
