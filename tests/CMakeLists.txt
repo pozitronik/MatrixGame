@@ -856,6 +856,7 @@ foreach(chassis track hovercraft)
 endforeach()
 
 add_matrix_test_executable(matrixgame_player_command_lifecycles player_command_lifecycle_tests.cpp
+    command_lifecycle_recording.cpp command_lifecycle_recording.hpp
     battle_scenario.cpp battle_combat_geometry.cpp battle_geometry.cpp battle_device.cpp
     battle_cursor_stub.cpp diagnostic_overlay_stub.cpp)
 target_link_libraries(matrixgame_player_command_lifecycles PRIVATE MatrixGameInternal)
